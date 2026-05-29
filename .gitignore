@@ -5,6 +5,8 @@ admin.key
 app-pass
 id_secret.key
 github_deploy_key*
+.antigravitycli/
+.claude/
 
 # Local State & Databases (mapped via Docker volumes)
 data/*
