@@ -7,7 +7,18 @@ id_secret.key
 github_deploy_key*
 
 # Local State & Databases (mapped via Docker volumes)
-data/
+data/*
+!data/site.json
+!data/game_categories.json
+!data/game_categories_external.json
+!data/game_categories_local.json
+!data/shop_catalog_overrides.json
+!data/wordle_dictionary.txt
+!data/logic_words.json
+!data/emojis.json
+!data/payloads.json
+!data/bad_words.json
+!data/bell_overrides.json
 logs/
 mail/
 backups/

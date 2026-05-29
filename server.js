@@ -5800,12 +5800,16 @@ Mitch.pro Team`;
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const hash = await Bun.password.hash(password);
 
+        // Pre-derive E2E Keys immediately so we never store the password in plaintext
+        const seed = createHash('sha256').update(password).digest();
+        const e2eKeys = deriveE2EKeysFromSeed(seed);
+
         const refCode = (body.refCode || '').trim().toUpperCase().slice(0, 32);
         const codes = loadJson(SIGNUP_CODES_FILE, {});
         codes[normEmail] = {
           code,
           hash,
-          password, // Temporarily store for E2E derivation on verify
+          e2eKeys,
           email,
           refCode: refCode || '',
           expires: Date.now() + (30 * 60 * 1000)
@@ -5844,11 +5848,9 @@ Mitch.pro Team`;
         passwords[normEmail] = entry.hash;
         savePasswords(passwords);
 
-        // Derive E2E Keys
-        const seed = createHash('sha256').update(entry.password).digest();
-        const e2eKeys = deriveE2EKeysFromSeed(seed);
+        // Save pre-derived E2E Keys
         const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
-        e2eKeysData[normEmail] = e2eKeys;
+        e2eKeysData[normEmail] = entry.e2eKeys;
         saveJson(E2E_KEYS_FILE, e2eKeysData);
 
         // Create permanent token & name entry
