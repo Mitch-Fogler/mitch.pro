@@ -4,6 +4,14 @@
 set -euo pipefail
 
 CADDYFILE_PATH="/home/mitch/server/bun/Caddyfile"
+NTFY_TOPIC="mitch_pro_71065_personal_alrtspquirl"
+
+send_notification() {
+    local msg="$1"
+    local title="${2:-Deploy Status}"
+    local priority="${3:-default}"
+    curl -s -H "Title: $title" -H "Priority: $priority" -d "$msg" "https://ntfy.sh/$NTFY_TOPIC" > /dev/null || true
+}
 
 echo "[deploy] Starting Blue-Green deployment swap..."
 
@@ -20,6 +28,8 @@ fi
 
 echo "[deploy] Active slot is: webserver-$ACTIVE_SLOT"
 echo "[deploy] Target inactive slot to boot is: webserver-$INACTIVE_SLOT (Port $INACTIVE_PORT)"
+
+send_notification "Rebuilding and starting webserver-$INACTIVE_SLOT (Port $INACTIVE_PORT)..." "Deploy Started" "default"
 
 # 2. Build and boot the inactive slot container
 echo "[deploy] Rebuilding and starting webserver-$INACTIVE_SLOT..."
@@ -45,6 +55,7 @@ done
 
 if [ "$HEALTHY" = false ]; then
     echo "[deploy] Error: The new webserver-$INACTIVE_SLOT failed to become healthy. Aborting swap!"
+    send_notification "Error: webserver-$INACTIVE_SLOT failed health check on port $INACTIVE_PORT. Aborting swap!" "Swap Failed" "high"
     exit 1
 fi
 
@@ -66,3 +77,4 @@ echo "[deploy] Stopping and tearing down the old webserver-$ACTIVE_SLOT..."
 docker compose stop "webserver-$ACTIVE_SLOT"
 
 echo "[deploy] Deployment successfully completed! webserver-$INACTIVE_SLOT is now serving production traffic."
+send_notification "Successfully swapped traffic from webserver-$ACTIVE_SLOT to webserver-$INACTIVE_SLOT (0ms downtime)!" "Swap Successful" "high"
