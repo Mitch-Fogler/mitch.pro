@@ -56,7 +56,6 @@ const PROFILES_FILE          = join(DATA_DIR, 'profiles.json');
 const COIN_GIFTS_FILE        = join(DATA_DIR, 'coin_gifts.json');
 const DMS_FILE               = join(DATA_DIR, 'dms.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
-const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
 const UNLOCKED_AI_FILE       = join(DATA_DIR, 'unlocked_ai.json');
 const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
@@ -5800,16 +5799,11 @@ Mitch.pro Team`;
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const hash = await Bun.password.hash(password);
 
-        // Pre-derive E2E Keys immediately so we never store the password in plaintext
-        const seed = createHash('sha256').update(password).digest();
-        const e2eKeys = deriveE2EKeysFromSeed(seed);
-
         const refCode = (body.refCode || '').trim().toUpperCase().slice(0, 32);
         const codes = loadJson(SIGNUP_CODES_FILE, {});
         codes[normEmail] = {
           code,
           hash,
-          e2eKeys,
           email,
           refCode: refCode || '',
           expires: Date.now() + (30 * 60 * 1000)
@@ -5847,11 +5841,6 @@ Mitch.pro Team`;
         const passwords = loadPasswords();
         passwords[normEmail] = entry.hash;
         savePasswords(passwords);
-
-        // Save pre-derived E2E Keys
-        const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
-        e2eKeysData[normEmail] = entry.e2eKeys;
-        saveJson(E2E_KEYS_FILE, e2eKeysData);
 
         // Create permanent token & name entry
         const tokens = loadTokens();
@@ -6189,13 +6178,6 @@ Mitch.pro Team`;
           const passwords = loadPasswords();
           passwords[normEmail] = hash;
           savePasswords(passwords);
-
-          // Derive E2E Keys
-          const seed = createHash('sha256').update(newPassword).digest();
-          const e2eKeys = deriveE2EKeysFromSeed(seed);
-          const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
-          e2eKeysData[normEmail] = e2eKeys;
-          saveJson(E2E_KEYS_FILE, e2eKeysData);
 
           entry.used = true;
         } else if (!infinite) {
@@ -6908,13 +6890,6 @@ function loadAllGamesList() {
         passwords[norm] = await Bun.password.hash(newPassword);
         savePasswords(passwords);
         
-        // Also update E2E keys
-        const seed = createHash('sha256').update(newPassword).digest();
-        const e2eKeys = deriveE2EKeysFromSeed(seed);
-        const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
-        e2eKeysData[norm] = e2eKeys;
-        saveJson(E2E_KEYS_FILE, e2eKeysData);
-
         // ntfy password change alert silenced at user request
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
