@@ -20,7 +20,11 @@ data/*
 !data/bad_words.json
 !data/bell_overrides.json
 logs/
-mail/
+mail/*
+!mail/*.js
+!mail/check_email/
+mail/check_email/*
+!mail/check_email/*.py
 backups/
 .docker-data/
 /*.json

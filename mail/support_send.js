@@ -1,0 +1,91 @@
+#!/usr/bin/env node
+// Sends email FROM support@mitch.pro (alias) via mitch@mitch.pro Hostinger SMTP.
+// Usage: node support_send.js [--in-reply-to <msgid>] <to> <subject> [body]
+//   or:  echo "body" | node support_send.js <to> <subject>
+
+const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
+
+try {
+  fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').split('\n').forEach(line => {
+    const m = line.match(/^\s*(?:export\s+)?([A-Z_]+)\s*=\s*"?([^"]*)"?\s*$/);
+    if (m) process.env[m[1]] = m[2];
+  });
+} catch(e) {}
+
+const USER = process.env.HOSTINGER_USER;  // mitch@mitch.pro
+const PASS = process.env.HOSTINGER_PASS;
+
+let _site = {primary:'https://mitch.pro', alternate:'https://mitch.88chan.me'};
+try { _site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'site.json'), 'utf8')); } catch(e) {}
+const PRIMARY = _site.primary.replace(/\/$/, '');
+const ALT     = _site.alternate.replace(/\/$/, '');
+
+if (!USER || !PASS) {
+  console.error('Set HOSTINGER_USER and HOSTINGER_PASS in .env'); process.exit(1);
+}
+
+const rawArgs    = process.argv.slice(2);
+const replyToIdx = rawArgs.indexOf('--in-reply-to');
+const inReplyTo  = replyToIdx >= 0 ? rawArgs.splice(replyToIdx, 2)[1] : null;
+const rawIdx     = rawArgs.indexOf('--raw');
+const useRaw     = rawIdx >= 0;
+if (useRaw) rawArgs.splice(rawIdx, 1);
+const [to, subject, ...bodyArgs] = rawArgs;
+
+if (!to || !subject) {
+  console.error('Usage: node support_send.js [--in-reply-to <msgid>] <to> <subject> [body]');
+  process.exit(1);
+}
+
+async function getBody() {
+  if (bodyArgs.length > 0) return bodyArgs.join(' ');
+  return new Promise(res => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', c => data += c);
+    process.stdin.on('end', () => res(data.trim()));
+  });
+}
+
+(async () => {
+  const rawBody = await getBody();
+  
+  // Generate and store a secure unsubscribe token
+  const crypto = require('crypto');
+  const token = crypto.randomBytes(16).toString('hex');
+  const tokenPath = path.join(__dirname, '..', 'data', 'unsubscribe_tokens.json');
+  let unsubTokens = {};
+  try {
+    unsubTokens = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+  } catch(e) {}
+  unsubTokens[to.toLowerCase().trim()] = token;
+  try {
+    fs.writeFileSync(tokenPath, JSON.stringify(unsubTokens, null, 2));
+  } catch(e) {
+    console.error("Failed to write unsubscribe token:", e.message);
+  }
+
+  const body = useRaw ? rawBody : rawBody + `\n\n---\nVisit ${PRIMARY}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token} to unsubscribe.\nAlso available at ${ALT}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token}\nFor support: support@mitch.pro or mitchell.fogler@student.rjuhsd.us\n2014 Capitol Ave #100, Sacramento, CA 95811`;
+
+  const transporter = nodemailer.createTransport({
+    host: 'smtp.hostinger.com',
+    port: 465,
+    secure: true,
+    auth: { user: USER, pass: PASS },
+  });
+
+  await transporter.sendMail({
+    from: `mitch.pro Support <support@mitch.pro>`,
+    to, subject,
+    text: body,
+    headers: {
+      'List-Unsubscribe': `<https://mitch.pro/unsubscribe.html?email=${encodeURIComponent(to)}&token=${token}>, <mailto:support@mitch.pro?subject=unsubscribe>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      ...(inReplyTo ? { 'In-Reply-To': inReplyTo, 'References': inReplyTo } : {}),
+    },
+  });
+
+  console.log(`Sent to ${to}`);
+})().catch(e => { console.error(e.message); process.exit(1); });
