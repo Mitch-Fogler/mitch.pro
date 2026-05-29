@@ -8,6 +8,7 @@ github_deploy_key*
 
 # Local State & Databases (mapped via Docker volumes)
 data/*
+!data/sites
 !data/site.json
 !data/game_categories.json
 !data/game_categories_external.json
@@ -19,6 +20,11 @@ data/*
 !data/payloads.json
 !data/bad_words.json
 !data/bell_overrides.json
+!data/admins.json
+!data/moderators.json
+!data/unlimited_ids.json
+!data/rainbow_refunds.json
+!data/prox_blocklist.json
 logs/
 mail/*
 !mail/*.js
