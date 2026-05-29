@@ -1,0 +1,39 @@
+User-agent: *
+
+# High priority: Allow crawling and indexing of WHS bell schedules
+Allow: /bell/
+Allow: /bell/index.html
+
+# Allow indexing of other public resources
+Allow: /enroll/
+Allow: /enroll/index.html
+Allow: /faq/
+Allow: /faq/index.html
+Allow: /use-agreement/
+Allow: /use-agreement/index.html
+Allow: /privacy/
+Allow: /privacy/index.html
+Allow: /unsubscribe/
+Allow: /unsubscribe/index.html
+Allow: /appeal/
+Allow: /appeal/index.html
+Allow: /claim/
+Allow: /claim/index.html
+Allow: /team/
+Allow: /team/index.html
+Allow: /index-sales.html
+Allow: /
+
+# Disallow private user/game resources and stateful APIs
+Disallow: /preferences/
+Disallow: /profile/
+Disallow: /shop/
+Disallow: /games/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /moderator/
+Disallow: /sync.js
+Disallow: /auth.js
+Disallow: /cookie-consent.js
+Disallow: /assistant.js
+Disallow: /broadcast.js

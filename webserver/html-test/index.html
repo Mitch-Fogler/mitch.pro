@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Live HTML Editor</title>
+<script src="/theme.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  display: grid;
+  grid-template-rows: 36px 1fr;
+  grid-template-columns: 1fr 1fr;
+  height: 100vh;
+  background: var(--t-bg);
+  font-family: system-ui, sans-serif;
+}
+#toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: var(--t-bg2);
+  border-bottom: 1px solid var(--t-bd);
+  font-size: .76rem;
+  color: var(--t-fg2);
+}
+#toolbar .title { font-weight: 700; color: var(--t-fg); margin-right: 4px; }
+.tbtn {
+  background: none;
+  border: 1px solid var(--t-bd);
+  border-radius: 5px;
+  color: var(--t-fg2);
+  padding: 3px 9px;
+  font-size: .72rem;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all .15s;
+}
+.tbtn:hover { color: var(--t-fg); border-color: var(--t-bda); }
+.tbtn.on { background: var(--t-ac); color: #fff; border-color: transparent; }
+#art-indicator { font-size: .68rem; color: var(--t-fg2); opacity: .5; margin-left: 2px; }
+#art-indicator.active { color: #81b64c; opacity: 1; }
+#left-pane {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--t-bd);
+  min-height: 0;
+  overflow: hidden;
+}
+#editor {
+  flex: 1;
+  resize: none;
+  border: none;
+  background: var(--t-bg2);
+  color: var(--t-fg);
+  padding: 14px 16px;
+  font-family: 'Courier New', monospace;
+  font-size: .87rem;
+  line-height: 1.55;
+  outline: none;
+  min-height: 0;
+  tab-size: 2;
+}
+#ai-panel {
+  height: 0;
+  overflow: hidden;
+  transition: height .2s ease;
+  border-top: 0px solid var(--t-bd);
+  display: flex;
+  flex-direction: column;
+  background: var(--t-bg);
+}
+#ai-panel.open {
+  height: 230px;
+  border-top-width: 1px;
+}
+#ai-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--t-bd);
+  font-size: .73rem;
+  color: var(--t-fg2);
+  flex-shrink: 0;
+}
+#ai-header strong { color: var(--t-fg); }
+#ai-header .hint { font-size: .68rem; opacity: .5; margin-left: auto; }
+#ai-msgs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: .77rem;
+  line-height: 1.5;
+  min-height: 0;
+}
+.aim-u { align-self: flex-end; background: var(--t-bg3); color: var(--t-fg); border-radius: 8px 8px 2px 8px; padding: 5px 9px; max-width: 90%; }
+.aim-a { align-self: flex-start; background: var(--t-bg2); color: var(--t-fg2); border-radius: 8px 8px 8px 2px; padding: 5px 9px; max-width: 100%; white-space: pre-wrap; word-break: break-word; position: relative; }
+.aim-a .use-btn { display: block; margin-top: 5px; padding: 3px 8px; background: var(--t-ac); color: #fff; border: none; border-radius: 5px; font-size: .68rem; cursor: pointer; font-family: inherit; }
+.aim-err { align-self: center; color: #e57373; font-size: .72rem; background: rgba(192,57,43,.1); border-radius: 5px; padding: 3px 8px; }
+.aim-notice { align-self: center; color: #f0c040; font-size: .69rem; background: rgba(240,192,64,.08); border-radius: 5px; padding: 3px 8px; }
+#ai-input-row {
+  display: flex;
+  gap: 6px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--t-bd);
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+#ai-input {
+  flex: 1;
+  resize: none;
+  background: var(--t-bg3);
+  border: 1px solid var(--t-bd);
+  color: var(--t-fg);
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: .77rem;
+  font-family: system-ui, sans-serif;
+  outline: none;
+  line-height: 1.4;
+  max-height: 70px;
+}
+#ai-input:focus { border-color: var(--t-ac); }
+#ai-send {
+  background: var(--t-ac);
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 5px 12px;
+  font-size: .77rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+#ai-send:disabled { opacity: .35; cursor: default; }
+#preview {
+  border: none;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+}
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="title">Live HTML Editor</span>
+  <button class="tbtn on" id="art-btn" onclick="toggleART()" title="Auto Rename Tag — syncs paired open/close tags as you type">Auto Rename Tag</button>
+  <span id="art-indicator">●</span>
+  <button class="tbtn" id="ai-btn" onclick="toggleAI()">✦ AI Assistant</button>
+</div>
+
+<div id="left-pane">
+  <textarea id="editor" placeholder="Type HTML here…" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+  <div id="ai-panel">
+    <div id="ai-header">
+      <strong>✦ AI Assistant</strong>
+      <span class="hint">Describe what you want or ask a question</span>
+    </div>
+    <div id="ai-msgs"></div>
+    <div id="ai-input-row">
+      <textarea id="ai-input" rows="1" placeholder="e.g. add a centered blue button…"></textarea>
+      <button id="ai-send" onclick="aiSend()">Send</button>
+    </div>
+  </div>
+</div>
+
+<iframe id="preview" frameborder="0"></iframe>
+
+<script>
+var editor = document.getElementById('editor');
+var aiPanel = document.getElementById('ai-panel');
+var aiMsgs = document.getElementById('ai-msgs');
+var aiInput = document.getElementById('ai-input');
+var aiSendBtn = document.getElementById('ai-send');
+
+var _artOn = true;
+var _prevTag = null;
+var _aiBusy = false;
+var _aiHistory = [];
+
+function render() {
+  var doc = document.getElementById('preview').contentDocument;
+  doc.open(); doc.write(editor.value); doc.close();
+}
+
+var VOID_TAGS = {area:1,base:1,br:1,col:1,embed:1,hr:1,img:1,input:1,link:1,meta:1,param:1,source:1,track:1,wbr:1};
+
+function getTagAtCursor(val, pos) {
+  var lt = -1;
+  for (var i = pos - 1; i >= Math.max(0, pos - 300); i--) {
+    if (val[i] === '>') return null;
+    if (val[i] === '<') { lt = i; break; }
+  }
+  if (lt === -1) return null;
+  var i = lt + 1;
+  var isClose = val[i] === '/';
+  if (isClose) i++;
+  if (!/[a-zA-Z]/.test(val[i] || '')) return null;
+  var ns = i;
+  while (i < val.length && /[a-zA-Z0-9\-_]/.test(val[i])) i++;
+  var ne = i;
+  if (pos > ne) return null;
+  return { name: val.slice(ns, ne), ns: ns, ne: ne, lt: lt, isClose: isClose };
+}
+
+function findMatchingClose(val, fromPos, oldName) {
+  if (VOID_TAGS[oldName.toLowerCase()]) return -1;
+  var low = oldName.toLowerCase(), lval = val.toLowerCase();
+  var depth = 0, i = fromPos;
+  while (i < lval.length) {
+    if (lval[i] === '<') {
+      if (lval[i+1] === '/') {
+        if (lval.slice(i+2, i+2+low.length) === low) {
+          var nc = lval[i+2+low.length];
+          if (!nc || nc === '>' || nc === ' ' || nc === '\n' || nc === '\r' || nc === '\t') {
+            if (depth === 0) return i;
+            depth--; i += 2 + low.length; continue;
+          }
+        }
+      } else {
+        if (lval.slice(i+1, i+1+low.length) === low) {
+          var nc2 = lval[i+1+low.length];
+          if (!nc2 || nc2 === '>' || nc2 === ' ' || nc2 === '\n' || nc2 === '\r' || nc2 === '\t' || nc2 === '/') {
+            depth++; i += 1 + low.length; continue;
+          }
+        }
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+function findMatchingOpen(val, beforePos, oldName) {
+  if (VOID_TAGS[oldName.toLowerCase()]) return -1;
+  var low = oldName.toLowerCase(), lval = val.toLowerCase();
+  var depth = 0, i = beforePos - 1;
+  while (i >= 0) {
+    if (lval[i] === '>') {
+      var j = i - 1;
+      while (j >= 0 && lval[j] !== '<') j--;
+      if (j < 0) { i--; continue; }
+      var inner = lval.slice(j+1, i);
+      if (inner[0] === '/' && inner.slice(1, 1+low.length) === low) {
+        var nc = inner[1+low.length];
+        if (!nc || nc === '>' || nc === ' ' || nc === '\n' || nc === '\r' || nc === '\t') {
+          depth++; i = j - 1; continue;
+        }
+      }
+      if (inner.slice(0, low.length) === low) {
+        var nc2 = inner[low.length];
+        if (!nc2 || nc2 === '>' || nc2 === ' ' || nc2 === '\n' || nc2 === '\r' || nc2 === '\t' || nc2 === '/') {
+          if (depth === 0) return j;
+          depth--; i = j - 1; continue;
+        }
+      }
+      i = j - 1; continue;
+    }
+    i--;
+  }
+  return -1;
+}
+
+function doAutoRename(val, cur) {
+  if (!_prevTag || _prevTag.ns !== cur.ns) return val;
+  var oldName = _prevTag.name, newName = cur.name;
+  if (oldName === newName || !oldName || !newName) return val;
+  if (VOID_TAGS[newName.toLowerCase()] || VOID_TAGS[oldName.toLowerCase()]) return val;
+  if (!cur.isClose) {
+    var pos = findMatchingClose(val, cur.ne, oldName);
+    if (pos < 0) return val;
+    var actual = val.slice(pos+2, pos+2+oldName.length);
+    if (actual.toLowerCase() !== oldName.toLowerCase()) return val;
+    return val.slice(0, pos+2) + newName + val.slice(pos+2+oldName.length);
+  } else {
+    var pos2 = findMatchingOpen(val, cur.lt, oldName);
+    if (pos2 < 0) return val;
+    var afterLt = val.slice(pos2+1);
+    var nameEnd = afterLt.search(/[^a-zA-Z0-9\-_]/);
+    if (nameEnd < 0) return val;
+    if (afterLt.slice(0, nameEnd).toLowerCase() !== oldName.toLowerCase()) return val;
+    return val.slice(0, pos2+1) + newName + val.slice(pos2+1+nameEnd);
+  }
+}
+
+editor.addEventListener('keydown', function(e) {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    var s = editor.selectionStart, end = editor.selectionEnd;
+    editor.value = editor.value.slice(0, s) + '  ' + editor.value.slice(end);
+    editor.setSelectionRange(s+2, s+2);
+  }
+});
+
+editor.addEventListener('input', function() {
+  var val = editor.value, pos = editor.selectionStart;
+  if (_artOn) {
+    var cur = getTagAtCursor(val, pos);
+    if (cur) {
+      var renamed = doAutoRename(val, cur);
+      if (renamed !== val) {
+        var sel = editor.selectionStart;
+        editor.value = renamed;
+        editor.setSelectionRange(sel, sel);
+        val = renamed;
+      }
+      _prevTag = cur;
+    } else {
+      _prevTag = null;
+    }
+  }
+  render();
+});
+
+function toggleART() {
+  _artOn = !_artOn;
+  document.getElementById('art-btn').classList.toggle('on', _artOn);
+  document.getElementById('art-indicator').classList.toggle('active', _artOn);
+}
+
+function toggleAI() {
+  aiPanel.classList.toggle('open');
+  document.getElementById('ai-btn').classList.toggle('on', aiPanel.classList.contains('open'));
+  if (aiPanel.classList.contains('open')) setTimeout(function() { aiInput.focus(); }, 200);
+}
+
+function getCook(n) {
+  var m = document.cookie.match(new RegExp('(?:^|; )' + n + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+var _sid = getCook('studentId');
+
+function aiAddMsg(text, cls, hasCode) {
+  var d = document.createElement('div');
+  d.className = cls;
+  d.textContent = text;
+  if (hasCode) {
+    var ub = document.createElement('button');
+    ub.className = 'use-btn';
+    ub.textContent = 'Replace editor with this code';
+    var captured = text;
+    ub.onclick = function() {
+      editor.value = captured;
+      render();
+      aiPanel.classList.remove('open');
+      document.getElementById('ai-btn').classList.remove('on');
+    };
+    d.appendChild(ub);
+  }
+  aiMsgs.appendChild(d);
+  aiMsgs.scrollTop = aiMsgs.scrollHeight;
+  return d;
+}
+
+aiInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); aiSend(); }
+});
+aiInput.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 70) + 'px';
+});
+
+async function aiSend() {
+  var text = aiInput.value.trim();
+  if (!text || _aiBusy) return;
+  if (!_sid) { aiAddMsg('Not signed in.', 'aim-err', false); return; }
+  aiInput.value = ''; aiInput.style.height = '';
+  aiAddMsg(text, 'aim-u', false);
+  _aiHistory.push({role:'user', text: text});
+  _aiBusy = true; aiSendBtn.disabled = true;
+  var ctx = editor.value.slice(0, 400);
+  var fullPrompt = editor.value ? 'Current editor content (first 400 chars):\n```\n' + ctx + '\n```\n\nRequest: ' + text : text;
+  var thinking = aiAddMsg('…', 'aim-a', false);
+  try {
+    var r = await fetch('/api/ai', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      credentials: 'include',
+      body: JSON.stringify({studentId: _sid, prompt: fullPrompt, history: _aiHistory.slice(-6), type: 'html', page: window.location.href})
+    });
+    var d = await r.json();
+    thinking.remove();
+    if (!r.ok || d.error) {
+      aiAddMsg(d.error || 'Error.', 'aim-err', false);
+      _aiHistory.pop();
+    } else {
+      if (d.degraded && d.notice) aiAddMsg(d.notice, 'aim-notice', false);
+      var resp = d.response || '';
+      var looksLikeCode = resp.trim().startsWith('<') && resp.includes('>');
+      aiAddMsg(resp, 'aim-a', looksLikeCode);
+      _aiHistory.push({role:'model', text: resp});
+      if (_aiHistory.length > 12) _aiHistory = _aiHistory.slice(-12);
+    }
+  } catch(e) {
+    thinking.remove();
+    aiAddMsg('Network error.', 'aim-err', false);
+    _aiHistory.pop();
+  }
+  _aiBusy = false; aiSendBtn.disabled = false;
+  aiInput.focus();
+}
+
+render();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>diffie-hellman exchange</title>
+<script src="/theme.js"></script>
+<style>
+  body { padding: 24px; max-width: 900px; }
+  h1, h2, h3 { margin: 0 0 16px; font-size: 1.1rem; font-weight: 700;
+    background: var(--t-gr); -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent; background-clip: text; display: inline-block; }
+  p { color: var(--t-fg2); margin-bottom: 16px; line-height: 1.55; font-size: 0.9rem; }
+  b { color: var(--t-fg); }
+  label { display: inline-block; margin-bottom: 4px; color: var(--t-fg2); font-size: 0.85rem; font-weight: 500; }
+  input[type="text"] { width: 100%; max-width: 680px; }
+  textarea#io { width: 100%; max-width: 680px; height: 160px; font-family: monospace; resize: vertical; }
+  #pubOut, #sharedOut {
+    border: 1px solid var(--t-bd) !important;
+    background: var(--t-bg2);
+    color: var(--t-fg);
+    padding: 8px 12px;
+    min-height: 36px;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    word-break: break-all;
+    max-width: 680px;
+  }
+  hr { margin: 20px 0; }
+  br { display: block; margin-bottom: 4px; content: ''; }
+</style>
+</head>
+<body>
+
+<h1>diffie-hellman exchange</h1>
+<p>fill in <b>secret</b>, <b>prime (p)</b>, <b>generator (g)</b> then click "calculate" to get your public key (share it), paste the other person's public key, calculate the shared secret, then use it to encrypt/decrypt below.</p>
+
+<label>secret</label><br>
+<input id="secret" type="text" placeholder="your private random integer">
+<button id="genSecret">generate</button>
+
+<br><br>
+
+<label>prime (p)</label><br>
+<input id="prime" type="text" placeholder="large prime">
+<button id="genPrime">generate</button>
+<button data-copy="#prime">copy</button>
+<br><br>
+
+<label>generator (g)</label><br>
+<input id="generator" type="text" placeholder="generator">
+<button id="genGen">generate</button>
+<button data-copy="#generator">copy</button>
+<br><br>
+
+<label>your public key (send this)</label><br>
+<div id="pubOut"></div>
+<button id="calcPub">calculate</button>
+<button data-copy-text="#pubOut">copy</button>
+<br><br>
+
+<hr>
+
+<label>their public key</label><br>
+<input id="theirPub" type="text" placeholder="paste the other person's public key">
+<button data-copy="#theirPub">copy</button>
+<br><br>
+
+<label>shared secret (keep private)</label><br>
+<div id="sharedOut"></div>
+<button id="calcShared">calculate</button>
+<br><br>
+
+<hr>
+
+<label>text to encrypt/decrypt (uses shared secret)</label><br>
+<textarea id="io" placeholder="type plain text, click Encrypt → gets base64. paste base64, click Decrypt → gets plain text."></textarea><br>
+<button id="btnEncrypt">Encrypt (XOR)</button>
+<button id="btnDecrypt">Decrypt (XOR)</button>
+<button data-copy="#io">copy</button>
+<br><br>
+
+<button id="btnFileEncrypt">Encrypt File</button>
+<input type="file" id="fileInputEncrypt" style="display:none;">
+
+<button id="btnFileDecrypt">Decrypt File</button>
+<input type="file" id="fileInputDecrypt" style="display:none;">
+
+<script>
+const $ = s => document.querySelector(s);
+
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); }
+  catch { const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta);
+          ta.select(); document.execCommand('copy'); ta.remove(); }
+}
+
+document.addEventListener('click', e=>{
+  const c1 = e.target.closest('[data-copy]');
+  if(c1){ const el = $(c1.getAttribute('data-copy')); copyText(el.value||''); }
+  const c2 = e.target.closest('[data-copy-text]');
+  if(c2){ const el = $(c2.getAttribute('data-copy-text')); copyText((el.textContent||'').trim()); }
+});
+
+function modPow(base, exp, mod){
+  if (mod === 0n) throw new Error('mod p cannot be 0');
+  let b = ((base % mod) + mod) % mod;
+  let e = exp;
+  let r = 1n;
+  while (e > 0n){
+    if (e & 1n) r = (r * b) % mod;
+    b = (b * b) % mod;
+    e >>= 1n;
+  }
+  return r;
+}
+function gcd(a,b){ a=a<0n?-a:a; b=b<0n?-b:b; while(b){ const t=a%b; a=b; b=t; } return a; }
+
+function randIntInclusive(min, max){
+  return Math.floor(Math.random()*(max-min+1))+min;
+}
+function randomBigIntDigits(decDigits){
+  if (decDigits < 1) decDigits = 1;
+  let s = String(randIntInclusive(1,9));
+  for (let i=0; i<decDigits-2; i++) s += String(randIntInclusive(0,9));
+  const lastChoices = ['1','3','7','9'];
+  s += lastChoices[randIntInclusive(0, lastChoices.length-1)];
+  return BigInt(s);
+}
+
+function isProbablePrime(n, k=16){
+  if (n < 2n) return false;
+  const small = [2n,3n,5n,7n,11n,13n,17n,19n,23n,29n,31n,37n];
+  for (const p of small){
+    if (n === p) return true;
+    if (n % p === 0n) return false;
+  }
+  let d = n - 1n, r = 0n;
+  while ((d & 1n) === 0n){ d >>= 1n; r++; }
+  outer: for (let i=0; i<k; i++){
+    const a = 2n + (BigInt(Math.floor(Math.random()*1e9)) % (n-3n));
+    let x = modPow(a, d, n);
+    if (x === 1n || x === n-1n) continue;
+    for (let j=1n; j<r; j++){
+      x = (x * x) % n;
+      if (x === n-1n) continue outer;
+    }
+    return false;
+  }
+  return true;
+}
+
+function randomPrimeDigits(decDigits){
+  while(true){
+    let n = randomBigIntDigits(decDigits);
+    if (isProbablePrime(n)) return n;
+  }
+}
+
+function getBigIntFromInput(sel, name){
+  const v = $(sel).value.trim();
+  if (!v) throw new Error('Missing ' + name);
+  if (!/^\d+$/.test(v)) throw new Error(name + ' must be a non-negative integer string');
+  return BigInt(v);
+}
+
+$('#genSecret').addEventListener('click', () => {
+  const bitLength = 3072;
+  const secretBig = randomBigIntBits(bitLength);
+  $('#secret').value = secretBig.toString();
+});
+
+$('#genPrime').addEventListener('click', async () => {
+  const btn = $('#genPrime');
+  btn.disabled = true;
+  btn.textContent = 'loading…';
+  try {
+    const resp = await fetch('primes3072.json');
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const arr = await resp.json();
+    if (!Array.isArray(arr) || arr.length === 0) {
+      throw new Error('Empty list');
+    }
+    const idx = Math.floor(Math.random() * arr.length);
+    const obj = arr[idx];
+    if (!obj.p || typeof obj.p.human !== 'string') {
+      throw new Error('Bad object format');
+    }
+    let humanStr = obj.p.human;
+    humanStr = humanStr.replace(/,/g, "");
+    $('#prime').value = humanStr;
+  } catch (e) {
+    alert('Error loading prime list: ' + e);
+  } finally {
+    btn.textContent = 'generate';
+    btn.disabled = false;
+  }
+});
+
+function randomBigIntBits(bitLength) {
+  const byteLen = Math.ceil(bitLength / 8);
+  const randomBytes = new Uint8Array(byteLen);
+  crypto.getRandomValues(randomBytes);
+  randomBytes[0] |= (1 << ((bitLength - 1) % 8));
+  let result = 0n;
+  for (let i = 0; i < randomBytes.length; i++) {
+    result = (result << 8n) | BigInt(randomBytes[i]);
+  }
+  return result;
+}
+
+$('#genGen').addEventListener('click', ()=>{
+  try{
+    let p = getBigIntFromInput('#prime', 'prime (p)');
+    if (p < 5n) throw new Error('prime (p) must be ≥ 5');
+    let gBig = randomBigIntDigits(100);
+    gBig = 2n + (gBig % (p - 3n));
+    if (gBig === 0n || gBig === 1n) gBig = 2n;
+    if (gBig === p-1n) gBig = p-2n;
+    $('#generator').value = gBig.toString();
+  }catch(e){ alert(e.message); }
+});
+
+$('#calcPub').addEventListener('click', ()=>{
+  try{
+    const a = getBigIntFromInput('#secret', 'secret');
+    const p = getBigIntFromInput('#prime', 'prime (p)');
+    const g = getBigIntFromInput('#generator', 'generator (g)');
+    const A = modPow(g, a, p);
+    $('#pubOut').textContent = A.toString();
+  }catch(e){ alert(e.message); }
+});
+
+$('#calcShared').addEventListener('click', ()=>{
+  try{
+    const a = getBigIntFromInput('#secret', 'secret');
+    const p = getBigIntFromInput('#prime', 'prime (p)');
+    const Bstr = $('#theirPub').value.trim();
+    if (!Bstr) throw new Error('Missing their public key');
+    if (!/^\d+$/.test(Bstr)) throw new Error('their public key must be a non-negative integer');
+    const B = BigInt(Bstr);
+    const s = modPow(B, a, p);
+    $('#sharedOut').textContent = s.toString();
+  }catch(e){ alert(e.message); }
+});
+
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+async function sha256Bytes(str){
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(str));
+  return new Uint8Array(buf);
+}
+
+function xorBytes(dataBytes, keyBytes){
+  const out = new Uint8Array(dataBytes.length);
+  for (let i = 0; i < dataBytes.length; i++){
+    out[i] = dataBytes[i] ^ keyBytes[i % keyBytes.length];
+  }
+  return out;
+}
+
+function bytesToBase64(bytes){
+  let bin = '';
+  for (let b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
+function base64ToBytes(b64){
+  const s = atob(b64);
+  const bytes = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++){
+    bytes[i] = s.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function requireShared(){
+  const s = $('#sharedOut').textContent.trim();
+  if (!s) throw new Error('Calculate the shared secret first');
+  return s;
+}
+
+$('#btnEncrypt').addEventListener('click', async () => {
+  try {
+    const key = await sha256Bytes(requireShared());
+    const pt = $('#io').value;
+    const ptBytes = enc.encode(pt);
+    const ctBytes = xorBytes(ptBytes, key);
+    $('#io').value = bytesToBase64(ctBytes);
+  } catch(e) {
+    alert('Encryption failed: ' + e);
+  }
+});
+
+$('#btnDecrypt').addEventListener('click', async () => {
+  try {
+    const key = await sha256Bytes(requireShared());
+    const ctB64 = $('#io').value.trim();
+    const ctBytes = base64ToBytes(ctB64);
+    const ptBytes = xorBytes(ctBytes, key);
+    $('#io').value = dec.decode(ptBytes);
+  } catch(e) {
+    alert('Decryption failed (check shared secret & input)');
+  }
+});
+
+document.getElementById('btnFileEncrypt').addEventListener('click', () => {
+  document.getElementById('fileInputEncrypt').click();
+});
+document.getElementById('fileInputEncrypt').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const shared = requireShared();
+    const keyBytes = await sha256Bytes(shared);
+    const arrayBuf = await file.arrayBuffer();
+    const dataBytes = new Uint8Array(arrayBuf);
+    const encryptedData = xorBytes(dataBytes, keyBytes);
+    const nameBytes = enc.encode(file.name);
+    const scrambledNameBytes = xorBytes(nameBytes, keyBytes);
+    const base64Name = bytesToBase64(scrambledNameBytes);
+    const base64Data = bytesToBase64(encryptedData);
+    const pkg = { name: base64Name, data: base64Data };
+    const blob = new Blob([ JSON.stringify(pkg) ], { type: 'application/json' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = file.name + '.encrypted.json';
+    link.click();
+  } catch(err) {
+    alert('File encrypt failed: ' + err);
+  }
+});
+
+document.getElementById('btnFileDecrypt').addEventListener('click', () => {
+  document.getElementById('fileInputDecrypt').click();
+});
+document.getElementById('fileInputDecrypt').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const shared = requireShared();
+    const keyBytes = await sha256Bytes(shared);
+    const text = await file.text();
+    const pkg = JSON.parse(text);
+    if (!pkg.name || !pkg.data) throw new Error('Bad package format');
+    const scrambledNameBytes = base64ToBytes(pkg.name);
+    const origNameBytes = xorBytes(scrambledNameBytes, keyBytes);
+    const origName = dec.decode(origNameBytes);
+    const encryptedDataBytes = base64ToBytes(pkg.data);
+    const plainBytes = xorBytes(encryptedDataBytes, keyBytes);
+    const blob = new Blob([ plainBytes ], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = origName;
+    link.click();
+  } catch(err) {
+    alert('File decrypt failed: ' + err);
+  }
+});
+</script>
+<head>
+<!-- AUTH_INJECT_START -->
+<style>
+  #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
+    padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
+</style>
+<!-- AUTH_INJECT_END -->
+</head>
+</html>

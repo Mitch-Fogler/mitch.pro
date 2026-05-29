@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Adrian Clicker 2.0 — mitch.pro</title>
+  <script src="/theme.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&family=Syne:wght@800&display=swap');
+    
+    :root {
+      --ac: #ff7b35;
+      --panel: rgba(255, 255, 255, 0.03);
+      --line: rgba(255, 255, 255, 0.08);
+      --green: #4ade80;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--t-bg, #060608);
+      color: var(--t-fg, #fff);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      overflow-x: hidden;
+    }
+
+    .container {
+      width: min(1100px, 100%);
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 30px;
+    }
+
+    .main-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 40px;
+      text-align: center;
+      backdrop-filter: blur(20px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: fit-content;
+    }
+
+    .stats { margin-bottom: 30px; }
+    .points { font-family: 'Syne', sans-serif; font-size: 3.5rem; line-height: 1; color: var(--ac); margin-bottom: 8px; }
+    .mitchcoins { font-size: 1.2rem; color: var(--t-fg2); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .click-target {
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      cursor: pointer;
+      position: relative;
+      transition: transform 0.05s;
+      user-select: none;
+      -webkit-user-drag: none;
+      border: 6px solid var(--ac);
+      box-shadow: 0 0 60px rgba(255, 123, 53, 0.25);
+      overflow: hidden;
+      margin: 20px 0;
+    }
+    .click-target:active { transform: scale(0.92); }
+    .click-target img { width: 100%; height: 100%; object-fit: cover; }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .upgrade-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+    }
+    .upgrade-card:hover { border-color: var(--ac); background: rgba(255, 123, 53, 0.06); transform: translateX(5px); }
+    .upgrade-card.disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+    .upgrade-name { font-weight: 800; font-size: 1.05rem; }
+    .upgrade-desc { font-size: 0.85rem; color: var(--t-fg2); }
+    .upgrade-cost { font-weight: 900; color: var(--ac); font-size: 0.95rem; margin-top: 6px; }
+
+    .payout-progress {
+      width: 100%;
+      height: 6px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 3px;
+      margin-top: 15px;
+      overflow: hidden;
+    }
+    .payout-bar {
+      height: 100%;
+      background: var(--ac);
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    h2 { font-family: 'Syne', sans-serif; margin-bottom: 12px; font-size: 1.5rem; text-transform: uppercase; letter-spacing: -0.02em; }
+
+    #back-btn {
+      position: fixed; top: 20px; left: 20px;
+      background: var(--panel); border: 1px solid var(--line); color: #fff;
+      padding: 8px 16px; border-radius: 10px; text-decoration: none; font-weight: 700;
+      z-index: 100;
+    }
+
+    .claim-btn {
+      margin-top: 20px;
+      background: var(--ac);
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 900;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: all 0.2s;
+    }
+    .claim-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+    .claim-btn:active { transform: scale(0.95); }
+
+    .amt-btn {
+      background: transparent;
+      border: none;
+      color: var(--t-fg2);
+      font-size: 0.75rem;
+      font-weight: 800;
+      padding: 4px 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .amt-btn:hover { color: #fff; }
+    .amt-btn.active { background: var(--ac); color: #fff; }
+
+    .tech-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 10px;
+      margin-bottom: 20px;
+      min-height: 64px;
+      align-items: center;
+    }
+    .tech-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .tech-icon:hover { border-color: var(--ac); background: rgba(255,123,53,0.1); transform: scale(1.1); }
+    .tech-icon.disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(1); }
+    
+    .tech-tooltip {
+      position: absolute;
+      bottom: 110%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #000;
+      border: 1px solid var(--line);
+      padding: 10px 15px;
+      border-radius: 12px;
+      width: 220px;
+      font-size: 0.85rem;
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.2s;
+      z-index: 100;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    }
+    .tech-icon:hover .tech-tooltip { opacity: 1; bottom: 120%; }
+
+    @media (max-width: 800px) {
+      .container { grid-template-columns: 1fr; }
+      .main-panel { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <a href="/games/" id="back-btn">← Back</a>
+
+  <header style="text-align: center; margin-bottom: 40px;">
+    <h2>Adrian Clicker 2.0</h2>
+    <p style="color: var(--t-fg2); font-weight: 600;">Server-Secured Progress.</p>
+    <div id="premium-bonus-badge" style="display:none; margin-top: 10px; background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; color: #f59e0b; padding: 4px 12px; border-radius: 99px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">✨ Premium: 2x MitchCoins Active</div>
+  </header>
+
+  <div class="container">
+    <div class="main-panel">
+      <div class="stats">
+        <div class="points" id="points-display">0</div>
+        <div class="mitchcoins" id="coins-display">0 MitchCoins Earned</div>
+        <div class="payout-progress"><div class="payout-bar" id="payout-bar"></div></div>
+        <div style="font-size: 0.75rem; color: var(--t-fg2); margin-top: 10px; font-weight: 700;" id="next-coin-cost">Next coin: 10 pts</div>
+      </div>
+
+      <div class="click-target" id="target">
+        <img src="/adrian-lopez.webp" alt="Adrian">
+      </div>
+      
+      <div style="margin-top: 20px; text-align: left; width: 100%; font-size: 0.85rem; display: flex; flex-direction: column; gap: 4px;">
+        <div id="stat-cps">CPS: 0</div>
+        <div id="stat-cpc">CPC: 1</div>
+        <div id="stat-actual-cps" style="color: var(--ac); font-weight: 800;">Actual CPS: 0</div>
+      </div>
+      
+      <button class="claim-btn" id="claim-btn" onclick="sync(true)">Claim & Save</button>
+
+      <div style="margin-top: 15px; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--t-fg2); font-weight: 700;">
+        <input type="checkbox" id="auto-claim-toggle" style="width: 16px; height: 16px; cursor: pointer; accent-color: var(--ac);">
+        <label for="auto-claim-toggle" style="cursor: pointer;">Auto-Claim MitchCoins</label>
+      </div>
+      
+      <p style="margin-top: 30px; font-size: 0.75rem; color: var(--green); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;">✅ Progress saved to account</p>
+    </div>
+
+    <div class="side-panel">
+      <div id="tech-bar" class="tech-bar"></div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <h2>Upgrades</h2>
+        <div id="buy-amount-selector" style="display: flex; gap: 4px; background: var(--panel); padding: 4px; border-radius: 10px; border: 1px solid var(--line);">
+          <button class="amt-btn active" onclick="setBuyAmount(1)">1</button>
+          <button class="amt-btn" onclick="setBuyAmount(10)">10</button>
+          <button class="amt-btn" onclick="setBuyAmount(100)">100</button>
+          <button class="amt-btn" onclick="setBuyAmount('max')">Max</button>
+        </div>
+      </div>
+      <div id="upgrades-list"></div>
+    </div>
+  </div>
+
+  <script>
+    var state = {
+      points: 0,
+      sessionCoins: 0,
+      clickPower: 1,
+      autoPower: 0,
+      multiplier: 1,
+      premMult: 1.0,
+      buyAmount: 1,
+      upgrades: {},
+      upgradeDefs: {
+        desk: { name: "Student Desk", baseCost: 15, power: 0.1, type: "c", desc: "Basic study station." },
+        chromebook: { name: "Chromebook Script", baseCost: 100, power: 1, type: "a", desc: "Automated clicking script." },
+        fiber: { name: "Fiber Connection", baseCost: 1100, power: 8, type: "a", desc: "Ultra-low latency clicks." },
+        ai_bot: { name: "Assistant Bot", baseCost: 12000, power: 47, type: "a", desc: "AI-driven productivity." },
+        mainframe: { name: "High-End Mainframe", baseCost: 130000, power: 260, type: "a", desc: "Enterprise-grade speed." },
+        quantum: { name: "Quantum Core", baseCost: 1400000, power: 1400, type: "a", desc: "Beyond human limits." },
+        cloud_farm: { name: "Cloud Computing Farm", baseCost: 20000000, power: 7800, type: "a", desc: "Distributed clicking power." },
+        satellite: { name: "Orbital Uplink", baseCost: 330000000, power: 44000, type: "a", desc: "Interstellar bandwidth." },
+        dyson: { name: "Dyson Swarm", baseCost: 5100000000, power: 260000, type: "a", desc: "Total solar output clicks." },
+        singularity: { name: "AI Singularity", baseCost: 75000000000, power: 1600000, type: "a", desc: "Infinite intelligence." },
+        multiverse: { name: "Multiverse Bridge", baseCost: 1e12, power: 10000000, type: "a", desc: "Harvesting other timelines." },
+        neutron_star: { name: "Neutron Star Forge", baseCost: 1.4e13, power: 65000000, type: "a", desc: "High-density clicking." },
+        antimatter: { name: "Antimatter Engine", baseCost: 1.7e17, power: 430000000, type: "a", desc: "Pure annihilation speed." },
+        black_hole: { name: "Black Hole Event Horizon", baseCost: 2.1e18, power: 2.9e9, type: "a", desc: "Time-dilated clicking." },
+        galactic_cluster: { name: "Galactic Cluster", baseCost: 2.6e22, power: 2.1e10, type: "a", desc: "A trillion worlds clicking." },
+        supercluster: { name: "Laniakea Supercluster", baseCost: 3.1e24, power: 1.5e11, type: "a", desc: "The great attractor." },
+        dimension_rip: { name: "Dimensional Rip", baseCost: 7.1e28, power: 1.1e12, type: "a", desc: "Bleeding points from 2D." },
+        hyper_dimension: { name: "11th Dimension", baseCost: 1.2e32, power: 8.3e12, type: "a", desc: "Multi-dimensional input." },
+        string_theory: { name: "String Theory Core", baseCost: 1.9e38, power: 6.4e13, type: "a", desc: "Vibrating atoms." },
+        quantum_foam: { name: "Quantum Foam", baseCost: 5.4e42, power: 5.1e14, type: "a", desc: "Clicking at the Planck scale." },
+        beyond_googol: { name: "Beyond Googol", baseCost: 1e80, power: 1e30, type: "a", desc: "Numbers without names." },
+        infinite_set: { name: "Infinite Set", baseCost: 1e100, power: 1e45, type: "a", desc: "Cantor would be proud." },
+        aleph_null: { name: "Aleph Null", baseCost: 1e140, power: 1e65, type: "a", desc: "Counting the uncountable." },
+        quantum_singularity: { name: "Quantum Singularity", baseCost: 1e200, power: 1e85, type: "a", desc: "Crushing logic." },
+        omnipresence: { name: "Omnipresence", baseCost: 1e260, power: 1e135, type: "a", desc: "Everywhere at once." }
+      },
+      techDefs: {}
+    };
+
+    var isLoading = true;
+    var isSyncing = false;
+    var clickTimes = [];
+
+    const SUFFIXES = [
+      '', 'K', 'Million', 'Billion', 'Trillion', 'Quadrillion', 'Quintillion', 
+      'Sextillion', 'Septillion', 'Octillion', 'Nonillion', 'Decillion',
+      'Undecillion', 'Duodecillion', 'Tredecillion', 'Quattuordecillion', 'Quindecillion',
+      'Sexdecillion', 'Septendecillion', 'Octodecillion', 'Novemdecillion', 'Vigintillion',
+      'Googol', 'Centillion'
+    ];
+
+    function Fmt(n) {
+      if (!Number.isFinite(n)) return 'Infinity';
+      if (n < 1000) return n % 1 === 0 ? n.toString() : n.toFixed(1);
+      if (n >= 1e100 && n < 1e103) return (n / 1e100).toFixed(2) + ' Googol';
+      var tier = Math.floor(Math.log10(n) / 3);
+      if (tier < SUFFIXES.length) {
+        var suffix = SUFFIXES[tier];
+        var scale = Math.pow(10, tier * 3);
+        var scaled = n / scale;
+        return scaled.toFixed(2).replace(/\.00$/, '') + ' ' + suffix;
+      }
+      return n.toExponential(2);
+    }
+
+    function setBuyAmount(amt) {
+      state.buyAmount = amt;
+      document.querySelectorAll('.amt-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.innerText.toLowerCase() === amt.toString());
+      });
+      updateDisplay();
+    }
+
+    function getTotalCost(baseCost, currentCount, amount) {
+      if (amount === 'max') {
+        let total = 0, count = 0;
+        while (true) {
+          let nextCost = Math.floor(baseCost * Math.pow(1.15, currentCount + count));
+          if (total + nextCost <= state.points) { total += nextCost; count++; }
+          else break;
+          if (count >= 1000) break;
+        }
+        return { cost: total, count: count };
+      }
+      let total = 0;
+      for (let i = 0; i < amount; i++) {
+        total += Math.floor(baseCost * Math.pow(1.15, currentCount + i));
+      }
+      return { cost: total, count: amount };
+    }
+
+    function recalcStats() {
+      state.clickPower = 1;
+      state.autoPower = 0;
+      state.multiplier = 1;
+      const buildMults = {};
+      if (state.techDefs) {
+        Object.keys(state.techDefs).forEach(tid => {
+          if (state.upgrades[tid] > 0) {
+            const tech = state.techDefs[tid];
+            if (tech.target === 'global') state.multiplier *= tech.mult;
+            else buildMults[tech.target] = (buildMults[tech.target] || 1) * tech.mult;
+          }
+        });
+      }
+      Object.keys(state.upgradeDefs).forEach(key => {
+        var def = state.upgradeDefs[key];
+        var count = state.upgrades[key] || 0;
+        const m = buildMults[key] || 1;
+        if (def.type === 'c') state.clickPower += (count * def.power * m);
+        if (def.type === 'a') state.autoPower += (count * def.power * m);
+      });
+      state.clickPower *= state.premMult;
+      state.autoPower *= state.premMult;
+    }
+
+    let lastTechKeys = "";
+
+    function updateTechBar() {
+      const bar = document.getElementById('tech-bar');
+      if (!bar || !state.techDefs) return;
+
+      const available = Object.keys(state.techDefs).filter(tid => {
+        const tech = state.techDefs[tid];
+        if ((state.upgrades[tid] || 0) > 0) return false;
+        const unlock = tech.unlock;
+        return unlock.points ? state.points >= unlock.points : (state.upgrades[unlock.id] || 0) >= unlock.n;
+      });
+
+      const currentKeys = available.join(',');
+      if (currentKeys !== lastTechKeys) {
+        lastTechKeys = currentKeys;
+        bar.innerHTML = '';
+        available.forEach(tid => {
+          const tech = state.techDefs[tid];
+          const btn = document.createElement('div');
+          btn.id = 'tech-' + tid;
+          btn.className = 'tech-icon';
+          btn.innerHTML = `${tech.icon}<div class="tech-tooltip"><b>${tech.name}</b><br>x${tech.mult} ${tech.target}<br><span style="color:var(--ac)">${Fmt(tech.cost)} pts</span></div>`;
+          btn.onclick = () => buyUpgrade(tid);
+          bar.appendChild(btn);
+        });
+      }
+
+      // High-frequency: only update disabled state
+      available.forEach(tid => {
+        const tech = state.techDefs[tid];
+        const el = document.getElementById('tech-' + tid);
+        if (el) el.classList.toggle('disabled', state.points < tech.cost);
+      });
+    }
+
+    function updateDisplay() {
+      document.getElementById('points-display').textContent = Fmt(state.points);
+      document.getElementById('coins-display').textContent = state.sessionCoins + ' MitchCoins Earned';
+      var nextCost = Math.floor(10 * Math.pow(1.04, state.sessionCoins));
+      var prog = (state.points / nextCost) * 100;
+      document.getElementById('payout-bar').style.width = Math.min(100, prog) + '%';
+      document.getElementById('next-coin-cost').textContent = 'Next coin: ' + Fmt(nextCost) + ' pts';
+      document.getElementById('stat-cps').textContent = 'CPS: ' + Fmt(state.autoPower * state.multiplier);
+      document.getElementById('stat-cpc').textContent = 'CPC: ' + Fmt(state.clickPower * state.multiplier);
+      updateUpgradeButtons();
+      updateTechBar();
+    }
+
+    async function loadState() {
+      try {
+        const res = await fetch('/api/games/adrian-clicker/state', { credentials: 'include' });
+        const data = await res.json();
+        if (data.success) {
+          state.points = data.state.points || 0;
+          state.sessionCoins = data.state.coins || 0;
+          state.upgrades = data.state.upgrades || {};
+          if (data.upgrades) state.upgradeDefs = data.upgrades;
+          if (data.tech) state.techDefs = data.tech;
+          const me = await fetch('/api/me').then(r => r.json());
+          if (me.isPremium) {
+            state.premMult = 2.0;
+            document.getElementById('premium-bonus-badge').style.display = 'inline-block';
+          }
+          recalcStats();
+          updateDisplay();
+          initUpgradeButtons();
+        }
+      } catch(e) {}
+      isLoading = false;
+    }
+
+    function initUpgradeButtons() {
+      var list = document.getElementById('upgrades-list');
+      list.innerHTML = '';
+      Object.keys(state.upgradeDefs).forEach(key => {
+        var u = state.upgradeDefs[key];
+        var card = document.createElement('div');
+        card.id = 'upg-' + key; card.className = 'upgrade-card';
+        card.innerHTML = `<div class="upgrade-name" id="upg-name-${key}"></div><div class="upgrade-desc">${u.desc} ${getDesc(u)}</div><div class="upgrade-cost" id="upg-cost-${key}"></div>`;
+        card.onclick = () => buyUpgrade(key);
+        list.appendChild(card);
+      });
+      updateUpgradeButtons();
+    }
+
+    function updateUpgradeButtons() {
+      Object.keys(state.upgradeDefs).forEach(key => {
+        var def = state.upgradeDefs[key], count = state.upgrades[key] || 0, card = document.getElementById('upg-' + key);
+        if (!card) return;
+        var buyInfo = getTotalCost(def.baseCost, count, state.buyAmount);
+        card.classList.toggle('disabled', state.points < buyInfo.cost);
+        var nameEl = document.getElementById('upg-name-' + key), costEl = document.getElementById('upg-cost-' + key);
+        if (nameEl) nameEl.textContent = def.name + ' (Lvl ' + count + ')' + (buyInfo.count > 1 ? ` (+${buyInfo.count})` : '');
+        if (costEl) costEl.textContent = Fmt(buyInfo.cost) + ' points';
+      });
+    }
+
+    function getDesc(u) { return u.type === 'c' ? '(+' + u.power + ' Click)' : (u.type === 'a' ? '(+' + u.power + ' Sec)' : '(x' + u.power + ' Mult)'); }
+
+    async function buyUpgrade(key) {
+      var def = state.techDefs[key] || state.upgradeDefs[key];
+      var count = state.upgrades[key] || 0;
+      var isTech = !!state.techDefs[key];
+      var buyInfo = isTech ? { cost: def.cost, count: 1 } : getTotalCost(def.baseCost, count, state.buyAmount);
+      if (state.points < buyInfo.cost || (isTech && count > 0)) return;
+      try {
+        const res = await fetch('/api/games/adrian-clicker/buy', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ id: key, points: state.points, amount: buyInfo.count })
+        });
+        const data = await res.json();
+        if (data.success) {
+          state.points = data.serverPoints;
+          state.sessionCoins = data.serverCoins;
+          state.upgrades[key] = data.count;
+          recalcStats();
+          updateDisplay();
+        }
+      } catch(e) {}
+    }
+
+    document.getElementById('target').onclick = function(e) {
+      clickTimes.push(Date.now());
+      var gain = state.clickPower * state.multiplier;
+      state.points += gain;
+      updateDisplay();
+      createParticle(e.clientX, e.clientY, '+' + Fmt(gain));
+    };
+
+    async function sync(manual = false) {
+      if (isSyncing) return;
+      isSyncing = true;
+      var claimFlag = (manual === true) || document.getElementById('auto-claim-toggle').checked;
+      if (manual) document.getElementById('claim-btn').textContent = 'Syncing...';
+      try {
+        const res = await fetch('/api/games/adrian-clicker/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ points: state.points, claim: claimFlag }) });
+        const data = await res.json();
+        if (data.success) { state.points = data.serverPoints; state.sessionCoins = data.serverCoins; updateDisplay(); }
+      } catch(e) {}
+      isSyncing = false;
+      if (manual) {
+        document.getElementById('claim-btn').textContent = 'Claim & Save';
+        var s = document.getElementById('points-display'); s.style.color = '#4ade80';
+        setTimeout(() => s.style.color = 'var(--ac)', 500);
+      }
+    }
+
+    function createParticle(x, y, text) {
+      var p = document.createElement('div');
+      p.textContent = text;
+      p.style.cssText = `position:fixed;left:${x}px;top:${y}px;color:var(--ac);font-weight:900;pointer-events:none;z-index:99;animation:float-up 0.8s forwards;`;
+      document.body.appendChild(p);
+      setTimeout(() => p.remove(), 800);
+    }
+
+    var style = document.createElement('style');
+    style.textContent = '@keyframes float-up { to { transform: translateY(-100px); opacity: 0; } }';
+    document.head.appendChild(style);
+
+    setInterval(() => {
+      if (state.autoPower > 0) { state.points += (state.autoPower * state.multiplier) / 10; updateDisplay(); }
+      const now = Date.now(); clickTimes = clickTimes.filter(t => now - t < 1000);
+      document.getElementById('stat-actual-cps').textContent = 'Actual CPS: ' + clickTimes.length;
+    }, 100);
+
+    setInterval(() => sync(false), 10000);
+    document.getElementById('auto-claim-toggle').onchange = function() { localStorage.setItem('_adrianAutoClaim', this.checked); };
+    if (localStorage.getItem('_adrianAutoClaim') === 'true') document.getElementById('auto-claim-toggle').checked = true;
+
+    recalcStats();
+    initUpgradeButtons();
+    loadState();
+  </script>
+  <script src="/cookie-consent.js" defer></script>
+</body>
+</html>

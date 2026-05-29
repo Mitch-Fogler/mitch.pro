@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Export / Import Data</title>
+<script src="/theme.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  min-height: 100vh;
+  background: var(--t-bg);
+  color: var(--t-fg);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 3rem 1rem;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--t-bgr);
+  pointer-events: none;
+  z-index: 0;
+}
+.card {
+  position: relative;
+  z-index: 1;
+  background: var(--t-bg2);
+  border: 1px solid var(--t-bd);
+  border-radius: 18px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.4);
+  display: flex;
+  flex-direction: column;
+  gap: 1.4rem;
+}
+h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  background: var(--t-gr);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: .6rem;
+}
+.section-title {
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  opacity: .6;
+  font-weight: 700;
+}
+.section-desc {
+  font-size: .86rem;
+  opacity: .75;
+  line-height: 1.5;
+}
+button {
+  padding: .6rem 1.1rem;
+  border-radius: 10px;
+  border: none;
+  font-size: .88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+button:hover { opacity: .85; }
+button:active { opacity: .7; }
+button:disabled { opacity: .35; cursor: default; }
+.btn-primary { background: var(--t-gr); color: #fff; }
+.btn-secondary {
+  background: var(--t-bg3, rgba(255,255,255,.08));
+  color: var(--t-fg);
+  border: 1px solid var(--t-bd);
+}
+.btn-danger {
+  background: rgba(220,60,60,.18);
+  color: #e07070;
+  border: 1px solid rgba(220,60,60,.3);
+}
+#status {
+  font-size: .84rem;
+  padding: .5rem .8rem;
+  border-radius: 8px;
+  display: none;
+}
+#status.ok  { background: rgba(100,200,100,.15); color: #7ecf7e; display: block; }
+#status.err { background: rgba(220,80,80,.15);   color: #e07070; display: block; }
+#status.info{ background: rgba(100,150,255,.12); color: #7aaeff; display: block; }
+hr { border: none; border-top: 1px solid var(--t-bd); }
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+}
+.stat-box {
+  background: var(--t-bg3, rgba(255,255,255,.05));
+  border-radius: 10px;
+  padding: .7rem 1rem;
+  border: 1px solid var(--t-bd);
+}
+.stat-box .label { font-size: .72rem; opacity: .55; text-transform: uppercase; letter-spacing: .05em; }
+.stat-box .value { font-size: 1.2rem; font-weight: 700; margin-top: 2px; }
+a.back { color: var(--t-fg); opacity: .6; text-decoration: none; font-size: .85rem; }
+a.back:hover { opacity: 1; }
+
+.slot-row {
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  background: var(--t-bg3, rgba(255,255,255,.04));
+  border: 1px solid var(--t-bd);
+  border-radius: 12px;
+  padding: .9rem 1rem;
+}
+.slot-header {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+}
+.slot-label {
+  font-weight: 700;
+  font-size: .9rem;
+  flex: 1;
+}
+.slot-tag {
+  font-size: .72rem;
+  padding: .15rem .5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  background: rgba(100,150,255,.15);
+  color: #7aaeff;
+}
+.slot-tag.manual {
+  background: rgba(130,200,100,.12);
+  color: #81c47a;
+}
+.slot-meta {
+  font-size: .78rem;
+  opacity: .55;
+  margin-top: .1rem;
+}
+.slot-btns {
+  display: flex;
+  gap: .5rem;
+  margin-top: .3rem;
+  flex-wrap: wrap;
+}
+
+.quota-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.quota-bar-bg {
+  width: 100%;
+  height: 7px;
+  background: rgba(255,255,255,.08);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.quota-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--t-gr);
+  transition: width .4s ease;
+}
+.quota-bar-fill.warn { background: #e07070; }
+.quota-text {
+  font-size: .78rem;
+  opacity: .6;
+  display: flex;
+  justify-content: space-between;
+}
+.quota-over {
+  background: rgba(220,60,60,.12);
+  border: 1px solid rgba(220,60,60,.3);
+  border-radius: 10px;
+  padding: .7rem 1rem;
+  font-size: .84rem;
+  color: #e07070;
+  display: none;
+  flex-direction: column;
+  gap: .6rem;
+}
+.quota-over.visible { display: flex; }
+.big-key-list {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.big-key-row {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  font-size: .8rem;
+  background: rgba(0,0,0,.2);
+  border-radius: 7px;
+  padding: .3rem .6rem;
+}
+.big-key-name { flex: 1; font-family: monospace; word-break: break-all; opacity: .85; }
+.big-key-size { opacity: .5; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div style="display:flex;align-items:center;gap:1rem;">
+    <a class="back" href="/">← Home</a>
+    <h1 style="flex:1">Data Export / Import</h1>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="section">
+    <div class="section-title">Your Stats</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="label">Chess ELO</div><div class="value" id="s-elo">—</div></div>
+      <div class="stat-box"><div class="label">Games Played</div><div class="value" id="s-games">—</div></div>
+      <div class="stat-box"><div class="label">W / L / D</div><div class="value" id="s-wld">—</div></div>
+      <div class="stat-box"><div class="label">Account</div><div class="value" id="s-acct" style="font-size:.85rem">—</div></div>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <div class="section-title">Server Save Slots</div>
+
+    <div class="slot-row">
+      <div class="slot-header">
+        <span class="slot-label">Slot 1</span>
+        <span class="slot-tag">Auto</span>
+      </div>
+      <div class="slot-meta" id="slot1-meta">Loading…</div>
+      <div class="slot-btns">
+        <button class="btn-primary" onclick="saveSlot(1)">Save Now</button>
+        <button class="btn-secondary" id="slot1-restore" onclick="restoreSlot(1)" disabled>Restore</button>
+      </div>
+    </div>
+
+    <div class="slot-row">
+      <div class="slot-header">
+        <span class="slot-label">Slot 2</span>
+        <span class="slot-tag manual">Manual</span>
+      </div>
+      <div class="slot-meta" id="slot2-meta">Loading…</div>
+      <div class="slot-btns">
+        <button class="btn-secondary" onclick="saveSlot(2)">Save Here</button>
+        <button class="btn-secondary" id="slot2-restore" onclick="restoreSlot(2)" disabled>Restore</button>
+      </div>
+    </div>
+
+    <div class="quota-wrap">
+      <div class="quota-bar-bg"><div class="quota-bar-fill" id="quota-fill" style="width:0%"></div></div>
+      <div class="quota-text"><span id="quota-used">—</span><span>1 GB limit</span></div>
+    </div>
+
+    <div class="quota-over" id="quota-over">
+      <strong>Storage limit exceeded — last save was not stored.</strong>
+      <span>Your largest saved items (click × to remove from server save):</span>
+      <div class="big-key-list" id="big-key-list"></div>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <div class="section-title">Export</div>
+    <div class="section-desc">Download all your progress as a JSON file (includes eaglercraft data). Can be restored on any mitch.pro domain.</div>
+    <button class="btn-primary" onclick="exportData()">Download export.json</button>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <div class="section-title">Import</div>
+    <div class="section-desc">Upload a previously exported file to restore your progress. Overwrites current data.</div>
+    <input type="file" id="file-input" accept=".json" style="display:none" onchange="importData(this)">
+    <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Choose export.json file</button>
+  </div>
+</div>
+
+<script>
+const CHESS_ELO_KEY  = 'chess_elo';
+const CHESS_HIST_KEY = 'chess_history';
+let _serverData = null;
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = type;
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n/1024).toFixed(1) + ' KB';
+  if (n < 1073741824) return (n/1048576).toFixed(1) + ' MB';
+  return (n/1073741824).toFixed(2) + ' GB';
+}
+
+function fmtTs(ts) {
+  if (!ts) return null;
+  return new Date(ts).toLocaleString();
+}
+
+function getLocalData() {
+  const data = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    try { data[k] = JSON.parse(localStorage.getItem(k)); }
+    catch { data[k] = localStorage.getItem(k); }
+  }
+  return data;
+}
+
+async function getServerData() {
+  try {
+    const r = await fetch('/api/userdata', { credentials: 'include' });
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function pushServerData(payload) {
+  try {
+    const r = await fetch('/api/userdata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    return r;
+  } catch { return null; }
+}
+
+
+function getSnap() {
+  const obj = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    try { obj[k] = JSON.parse(localStorage.getItem(k)); }
+    catch { obj[k] = localStorage.getItem(k); }
+  }
+  return obj;
+}
+
+async function saveSlot(n) {
+  showStatus('Saving to slot ' + n + '…', 'info');
+  const snap = getSnap();
+  const ts = Date.now();
+  const payload = n === 1
+    ? { _snapshot: snap, _snapshot_ts: ts }
+    : { _snapshot2: snap, _snapshot2_ts: ts };
+  const r = await pushServerData(payload);
+  if (!r) { showStatus('Save failed (not signed in?)', 'err'); return; }
+  if (r.status === 413) {
+    const d = await r.json().catch(() => ({}));
+    showStatus('Over 1 GB limit — save rejected. Free up space below.', 'err');
+    renderQuotaOver(_serverData && _serverData._snapshot, d.used);
+    return;
+  }
+  if (!r.ok) { showStatus('Save failed.', 'err'); return; }
+  if (n === 1) localStorage.setItem('_sync_ts', ts);
+  showStatus('Saved to slot ' + n + '!', 'ok');
+  await refreshServerData();
+}
+
+function applySnap(snap) {
+  for (const [k, v] of Object.entries(snap)) {
+    try { localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v)); }
+    catch {}
+  }
+}
+
+async function restoreSlot(n) {
+  const snap = n === 1 ? _serverData && _serverData._snapshot
+                       : _serverData && _serverData._snapshot2;
+  if (!snap) { showStatus('Slot ' + n + ' is empty.', 'err'); return; }
+  applySnap(snap);
+  const ts = n === 1 ? _serverData._snapshot_ts : _serverData._snapshot2_ts;
+  if (ts) localStorage.setItem('_sync_ts', ts);
+  showStatus('Slot ' + n + ' restored!', 'ok');
+  loadStats();
+}
+
+
+function renderQuotaOver(snap, usedBytes) {
+  if (!snap) return;
+  const panel = document.getElementById('quota-over');
+  panel.classList.add('visible');
+
+  const entries = Object.entries(snap).map(([k, v]) => {
+    const raw = typeof v === 'string' ? v : JSON.stringify(v);
+    return { k, size: new TextEncoder().encode(raw).length };
+  }).sort((a, b) => b.size - a.size).slice(0, 10);
+
+  const list = document.getElementById('big-key-list');
+  list.innerHTML = '';
+  entries.forEach(({ k, size }) => {
+    const row = document.createElement('div');
+    row.className = 'big-key-row';
+    row.innerHTML =
+      '<span class="big-key-name">' + k + '</span>' +
+      '<span class="big-key-size">' + fmtBytes(size) + '</span>' +
+      '<button class="btn-danger" style="padding:.2rem .5rem;font-size:.75rem" onclick="deleteKeyFromSlot(1,' + JSON.stringify(k) + ',this)">×</button>';
+    list.appendChild(row);
+  });
+}
+
+async function deleteKeyFromSlot(slot, key, btn) {
+  if (!_serverData) return;
+  btn.disabled = true;
+  const snap = slot === 1 ? _serverData._snapshot : _serverData._snapshot2;
+  if (!snap || !(key in snap)) { btn.parentElement.remove(); return; }
+  delete snap[key];
+  const tsKey = slot === 1 ? '_snapshot_ts' : '_snapshot2_ts';
+  const snapKey = slot === 1 ? '_snapshot' : '_snapshot2';
+  const r = await pushServerData({ [snapKey]: snap, [tsKey]: _serverData[tsKey] });
+  if (r && r.ok) {
+    btn.parentElement.remove();
+    showStatus('Removed "' + key + '" from server save.', 'ok');
+    await refreshServerData();
+  } else {
+    btn.disabled = false;
+    showStatus('Failed to update server.', 'err');
+  }
+}
+
+
+function renderSlots(data) {
+  const quota = data._quota || {};
+  const used = quota.used || 0;
+  const limit = quota.limit || 1_073_741_824;
+  const pct = Math.min(100, (used / limit) * 100);
+
+  document.getElementById('quota-fill').style.width = pct + '%';
+  document.getElementById('quota-fill').classList.toggle('warn', pct > 90);
+  document.getElementById('quota-used').textContent = fmtBytes(used) + ' used';
+
+  const s1ts = data._snapshot_ts;
+  const s1size = data._snapshot ? new TextEncoder().encode(JSON.stringify(data._snapshot)).length : 0;
+  document.getElementById('slot1-meta').textContent = s1ts
+    ? fmtTs(s1ts) + (s1size ? ' · ' + fmtBytes(s1size) : '')
+    : 'No save yet';
+  document.getElementById('slot1-restore').disabled = !data._snapshot;
+
+  const s2ts = data._snapshot2_ts;
+  const s2size = data._snapshot2 ? new TextEncoder().encode(JSON.stringify(data._snapshot2)).length : 0;
+  document.getElementById('slot2-meta').textContent = s2ts
+    ? fmtTs(s2ts) + (s2size ? ' · ' + fmtBytes(s2size) : '')
+    : 'Empty';
+  document.getElementById('slot2-restore').disabled = !data._snapshot2;
+}
+
+async function refreshServerData() {
+  _serverData = await getServerData();
+  if (_serverData) renderSlots(_serverData);
+}
+
+
+async function exportData() {
+  showStatus('Saving to server…', 'info');
+  if (window._sync) window._sync.save();
+  await new Promise(r => setTimeout(r, 600));
+  const serverData = await getServerData();
+  const bundle = {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    local: getLocalData(),
+    server: serverData || {},
+  };
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'mitch-pro-export.json';
+  a.click();
+  showStatus('Export downloaded!', 'ok');
+}
+
+async function importData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  showStatus('Reading file…', 'info');
+  try {
+    const text = await file.text();
+    const bundle = JSON.parse(text);
+    if (!bundle.version || !bundle.local) {
+      showStatus('Invalid export file.', 'err'); return;
+    }
+    for (const [k, v] of Object.entries(bundle.local)) {
+      try { localStorage.setItem(k, typeof v === 'string' ? v : JSON.stringify(v)); }
+      catch {}
+    }
+    if (bundle.server && Object.keys(bundle.server).length > 0) {
+      const r = await pushServerData(bundle.server);
+      if (!r || !r.ok) showStatus('Local data restored. Server sync failed (not signed in?).', 'info');
+      else showStatus('All data restored successfully!', 'ok');
+    } else {
+      showStatus('Local data restored. No server data in this export.', 'ok');
+    }
+    loadStats();
+    await refreshServerData();
+  } catch(e) {
+    showStatus('Failed to parse file: ' + e.message, 'err');
+  }
+  input.value = '';
+}
+
+
+async function loadStats() {
+  try {
+    const chess = JSON.parse(localStorage.getItem(CHESS_ELO_KEY) || 'null');
+    if (chess) {
+      document.getElementById('s-elo').textContent = chess.elo || '—';
+      document.getElementById('s-games').textContent = chess.games || 0;
+      document.getElementById('s-wld').textContent = `${chess.wins||0}/${chess.losses||0}/${chess.draws||0}`;
+    }
+  } catch {}
+
+  if (!_serverData) _serverData = await getServerData();
+  if (_serverData && !_serverData.error) {
+    document.getElementById('s-acct').textContent = 'Synced';
+    renderSlots(_serverData);
+    if (_serverData.chess && !localStorage.getItem(CHESS_ELO_KEY)) {
+      const { history, ...eloData } = _serverData.chess;
+      localStorage.setItem(CHESS_ELO_KEY, JSON.stringify(eloData));
+      if (history) localStorage.setItem(CHESS_HIST_KEY, JSON.stringify(history));
+      loadStats();
+    }
+  } else {
+    document.getElementById('s-acct').textContent = 'Not signed in';
+    document.getElementById('slot1-meta').textContent = 'Not signed in';
+    document.getElementById('slot2-meta').textContent = 'Not signed in';
+  }
+}
+
+window._syncOnQuotaExceeded = function(d) {
+  showStatus('Auto-save hit the 1 GB limit — free up space on the Export page.', 'err');
+};
+
+loadStats();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

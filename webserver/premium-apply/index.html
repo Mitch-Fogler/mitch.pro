@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mitch.pro Premium</title>
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --gold: #f59e0b;
+    --gold-dim: rgba(245,158,11,0.15);
+    --gold-border: rgba(245,158,11,0.25);
+    --card-bg: rgba(255,255,255,0.03);
+    --card-border: rgba(255,255,255,0.08);
+    --input-bg: rgba(255,255,255,0.04);
+    --input-border: rgba(255,255,255,0.1);
+    --radius: 10px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0d0d0d);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 20px 80px;
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 55% 35% at 50% 0%, rgba(245,158,11,0.06) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 30% at 80% 80%, rgba(167,139,250,0.04) 0%, transparent 55%);
+    pointer-events: none;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 560px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: rise 0.55s cubic-bezier(0.22,1,0.36,1) forwards;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--gold-dim);
+    border: 1px solid var(--gold-border);
+    border-radius: 99px;
+    padding: 4px 14px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 18px;
+  }
+  .badge::before { content: '✦'; font-size: 8px; }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2.2rem, 7vw, 3.2rem);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  h1 span { color: var(--gold); }
+
+  .subtitle {
+    font-size: 13px;
+    color: var(--t-fg2, #777);
+    line-height: 1.7;
+    font-style: italic;
+    font-weight: 300;
+    max-width: 400px;
+    margin: 0 auto;
+  }
+
+  .features {
+    background: var(--gold-dim);
+    border: 1px solid var(--gold-border);
+    border-radius: 14px;
+    padding: 24px 28px;
+    margin-bottom: 32px;
+    opacity: 0;
+    transform: translateY(14px);
+    animation: rise 0.55s cubic-bezier(0.22,1,0.36,1) 0.08s forwards;
+  }
+
+  .features-title {
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 16px;
+  }
+
+  .feature-list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 20px;
+    list-style: none;
+  }
+  @media (max-width: 480px) { .feature-list { grid-template-columns: 1fr; } }
+
+  .feature-list li {
+    font-size: 12px;
+    color: var(--t-fg, #e8e8e8);
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    line-height: 1.5;
+  }
+  .feature-list li::before {
+    content: '✦';
+    color: var(--gold);
+    font-size: 8px;
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 36px 40px 40px;
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    transform: translateY(18px);
+    animation: rise 0.6s cubic-bezier(0.22,1,0.36,1) 0.15s forwards;
+  }
+  @media (max-width: 520px) { .card { padding: 28px 22px 32px; } }
+
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 24px;
+    color: var(--t-fg, #e8e8e8);
+  }
+
+  .field { margin-bottom: 20px; }
+
+  label {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--t-fg2, #666);
+    margin-bottom: 7px;
+  }
+  label .opt {
+    font-size: 9px;
+    font-weight: 300;
+    letter-spacing: 0;
+    text-transform: none;
+    font-style: italic;
+    opacity: 0.6;
+  }
+
+  input, textarea, select {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    padding: 11px 14px;
+    outline: none;
+    transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
+    -webkit-appearance: none;
+  }
+  input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); font-style: italic; }
+  input:focus, textarea:focus, select:focus {
+    border-color: var(--gold);
+    background: rgba(245,158,11,0.04);
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.08);
+  }
+  select option { background: #1a1a1a; }
+  textarea { resize: vertical; line-height: 1.6; min-height: 100px; }
+
+  .divider {
+    height: 1px;
+    background: var(--card-border);
+    margin: 26px 0;
+  }
+
+  button[type=submit] {
+    width: 100%;
+    background: var(--gold);
+    color: #0d0d0d;
+    border: none;
+    border-radius: var(--radius);
+    padding: 13px 20px;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
+  }
+  button[type=submit]:hover:not(:disabled) {
+    opacity: 0.88;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(245,158,11,0.25);
+  }
+  button[type=submit]:active:not(:disabled) { transform: translateY(0); }
+  button[type=submit]:disabled { opacity: 0.4; cursor: default; }
+
+  #msg {
+    margin-top: 12px;
+    font-size: 12px;
+    text-align: center;
+    line-height: 1.5;
+    font-style: italic;
+    min-height: 1.4em;
+  }
+  #msg.err { color: #f87171; }
+
+  .success-state {
+    display: none;
+    text-align: center;
+    padding: 16px 0 8px;
+  }
+  .success-state .icon {
+    font-size: 2.2rem;
+    display: block;
+    margin-bottom: 14px;
+    animation: pop 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+  }
+  .success-state h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--gold);
+  }
+  .success-state p {
+    font-size: 13px;
+    color: var(--t-fg2, #777);
+    line-height: 1.6;
+    font-style: italic;
+    font-weight: 300;
+  }
+
+  @keyframes rise {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes pop {
+    from { transform: scale(0.5); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="badge">mitch.pro premium</div>
+    <h1>Upgrade your<br><span>experience.</span></h1>
+    <p class="subtitle">Premium is reviewed manually. Apply below and we'll reach out if you're approved.</p>
+  </div>
+
+  <div class="features">
+    <div class="features-title">What you get</div>
+    <ul class="feature-list">
+      <li>Larger canvas brush sizes</li>
+      <li>Overwrite your own pixels</li>
+      <li>Exclusive palette colors</li>
+      <li>Supporter badge on canvas</li>
+      <li>Custom profile page</li>
+      <li>Chess board themes</li>
+      <li>Priority support</li>
+      <li>Early feature access</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Apply for Premium</div>
+    <form id="form">
+      <div class="field">
+        <label>Name</label>
+        <input id="name" type="text" placeholder="Your name" autocomplete="name" required>
+      </div>
+      <div class="field">
+        <label>Email <span class="opt">must match your mitch.pro account</span></label>
+        <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required>
+      </div>
+      <div class="field">
+        <label>Discord <span class="opt">optional</span></label>
+        <input id="discord" type="text" placeholder="@username">
+      </div>
+      <div class="field">
+        <label>Why do you want Premium?</label>
+        <textarea id="why" placeholder="Which features interest you most, how you use the site…" required></textarea>
+      </div>
+      <div class="field">
+        <label>Anything else <span class="opt">optional</span></label>
+        <textarea id="extra" placeholder="Questions, notes, or anything else…" style="min-height:75px"></textarea>
+      </div>
+      <div class="divider"></div>
+      <button type="submit" id="submit-btn">Submit application ✦</button>
+      <div id="msg"></div>
+    </form>
+
+    <div class="success-state" id="success">
+      <span class="icon">✦</span>
+      <h2>Application received.</h2>
+      <p>We'll review your application and reach out to your email if you're approved.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+document.getElementById('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  const msg = document.getElementById('msg');
+
+  const payload = {
+    name:    document.getElementById('name').value.trim(),
+    email:   document.getElementById('email').value.trim(),
+    discord: document.getElementById('discord').value.trim(),
+    why:     document.getElementById('why').value.trim(),
+    extra:   document.getElementById('extra').value.trim(),
+    type:    'premium',
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  msg.className = '';
+  msg.textContent = '';
+
+  try {
+    const r = await fetch('/api/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Something went wrong.');
+    document.getElementById('form').style.display = 'none';
+    document.getElementById('success').style.display = 'block';
+  } catch (err) {
+    msg.className = 'err';
+    msg.textContent = err.message;
+    btn.disabled = false;
+    btn.textContent = 'Submit application ✦';
+  }
+});
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

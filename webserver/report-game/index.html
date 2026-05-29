@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Report a broken game</title>
+<script src="/theme.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg);
+    color: var(--t-fg);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+  .card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: 16px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 520px;
+    box-shadow: 0 0 0 1px var(--t-gls), 0 16px 48px rgba(0,0,0,0.4);
+  }
+  h1 {
+    font-size: 1.3rem;
+    font-weight: 700;
+    background: var(--t-gr);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.6rem;
+  }
+  p {
+    color: var(--t-fg2);
+    font-size: 0.85rem;
+    margin-bottom: 1.2rem;
+    line-height: 1.5;
+  }
+  textarea {
+    width: 100%;
+    height: 120px;
+    background: var(--t-bg3);
+    color: var(--t-fg);
+    border: 1px solid var(--t-bd);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: monospace;
+    font-size: 0.88rem;
+    resize: vertical;
+    transition: border-color .15s, box-shadow .15s;
+    margin-bottom: 1rem;
+  }
+  textarea:focus {
+    outline: none;
+    border-color: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls);
+  }
+  button#submitBtn {
+    padding: 8px 24px;
+    background: var(--t-bg2);
+    color: var(--t-ac);
+    border: 1px solid var(--t-bda);
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all .15s;
+  }
+  button#submitBtn:hover {
+    background: var(--t-bg3);
+    box-shadow: 0 0 8px var(--t-gls);
+  }
+  button#submitBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  #status {
+    margin-top: 0.8rem;
+    font-size: 0.82rem;
+    color: var(--t-ac);
+    min-height: 1.2em;
+  }
+</style>
+
+<!-- AUTH_INJECT_START -->
+<style>
+  #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
+    padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
+</style>
+<!-- AUTH_INJECT_END -->
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+</head>
+<body>
+<div class="card">
+  <h1>Report a broken game</h1>
+  <p>describe which game is broken and what's wrong</p>
+  <textarea id="site" placeholder="e.g. "snake game crashes when you hit the wall""></textarea>
+  <div class="g-recaptcha" data-sitekey="6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz" data-theme="dark" style="margin-bottom:.8rem"></div>
+  <button id="submitBtn" onclick="submitSite()">submit</button>
+  <div id="status"></div>
+</div>
+
+<script>
+var _SUG_LIMIT = 3, _SUG_WIN = 60000;
+function _sugAttempts() {
+  var m = {}; document.cookie.split(';').forEach(function(c){var p=c.trim().split('=');if(p.length>=2)m[p[0]]=p[1];});
+  return (m['_sug_rl']||'').split(',').map(Number).filter(Boolean);
+}
+function _saveSugAttempts(arr) {
+  document.cookie = '_sug_rl='+arr.join(',')+';expires='+new Date(Date.now()+_SUG_WIN).toUTCString()+';path=/';
+}
+function _sugSpam() {
+  var now = Date.now(), arr = _sugAttempts().filter(function(t){return now-t<_SUG_WIN;});
+  arr.push(now); _saveSugAttempts(arr);
+  if (arr.length > _SUG_LIMIT) { return true; }
+  return false;
+}
+async function submitSite() {
+  var site = document.getElementById('site').value.trim();
+  if (!site) return;
+  if (_sugSpam()) return;
+  var btn = document.getElementById('submitBtn');
+  var status = document.getElementById('status');
+  btn.disabled = true; status.textContent = 'sending...';
+  var id = new URLSearchParams(document.cookie.replaceAll('; ','&')).get('id') || '';
+  var r = await (await fetch('/api/suggest', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id, type: 'broken_game', text: site, recaptcha_token: grecaptcha.getResponse()})
+  })).json();
+  status.textContent = r.success ? 'submitted!' : (r.message || 'error');
+  if (r.success) { document.getElementById('site').value = ''; } else { grecaptcha.reset(); }
+  btn.disabled = false;
+}
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

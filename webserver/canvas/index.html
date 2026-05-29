@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html>
+<head><script>var IS_PREMIUM=false;</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>pixelplace — mitch.pro</title>
+  <script src="/theme.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --canvas-ui: rgba(18, 22, 31, .86);
+      --canvas-ui2: rgba(12, 16, 24, .78);
+      --canvas-line: rgba(148, 163, 184, .18);
+      --canvas-glow: rgba(45, 212, 191, .2);
+      --canvas-accent: #2dd4bf;
+      --canvas-accent2: #f59e0b;
+      --canvas-danger: #f87171;
+    }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: #10141d;
+      color: var(--t-fg, #e8e8e8);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      user-select: none; -webkit-user-select: none;
+    }
+
+    #c { display: block; position: fixed; left: 0; touch-action: none; cursor: crosshair; }
+
+    #toolbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 12px; height: 42px;
+      background: linear-gradient(180deg, rgba(20,25,36,.94), rgba(13,17,25,.86));
+      border-bottom: 1px solid var(--canvas-line);
+      box-shadow: 0 10px 30px rgba(0,0,0,.28);
+      backdrop-filter: blur(14px);
+      font-size: 12px;
+    }
+    .title {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; font-weight: 900;
+      background: linear-gradient(90deg,#2dd4bf,#60a5fa,#f59e0b);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      letter-spacing: 1px; flex-shrink: 0;
+    }
+    .tsep { width: 1px; height: 18px; background: var(--canvas-line); flex-shrink: 0; }
+    #coords, #zoom-disp, #pcount {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #cbd5e1; flex-shrink: 0; font-size: 11px;
+      background: rgba(15,23,42,.55);
+      border: 1px solid rgba(148,163,184,.14);
+      border-radius: 999px;
+      padding: 3px 8px;
+    }
+    #coords { min-width: 90px; }
+    .tb-btn {
+      min-width: 28px; height: 26px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+      background: rgba(15,23,42,.62); color: #cbd5e1;
+      border: 1px solid rgba(148,163,184,.2); border-radius: 7px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      transition: color .12s, border-color .12s, background .12s, transform .12s;
+      flex-shrink: 0;
+    }
+    .tb-btn:hover { color: #fff; border-color: var(--canvas-accent); background: rgba(45,212,191,.12); transform: translateY(-1px); }
+    .tb-btn.active { color: #99f6e4; border-color: var(--canvas-accent); background: rgba(45,212,191,0.15); }
+    #mod-st { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; color: #94a3b8; flex-shrink: 0; }
+    #help-hint {
+      margin-left: auto; font-size: 10px; color: #64748b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: nowrap; flex-shrink: 0;
+    }
+
+    #palette {
+      position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 100;
+      display: flex; align-items: center; gap: 4px;
+      padding: 8px 10px; min-height: 52px; max-width: min(980px, calc(100vw - 18px));
+      background: linear-gradient(180deg, rgba(22,27,39,.9), rgba(12,16,24,.9));
+      border: 1px solid var(--canvas-line);
+      border-radius: 14px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.03) inset;
+      backdrop-filter: blur(16px);
+      overflow-x: auto;
+    }
+    #palette::-webkit-scrollbar { height: 2px; }
+    #palette::-webkit-scrollbar-thumb { background: var(--t-bd, #444); }
+    .sw {
+      width: 29px; height: 29px; border-radius: 8px; cursor: pointer; flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,.1); transition: transform .1s, border-color .1s, box-shadow .1s;
+      box-shadow: 0 5px 12px rgba(0,0,0,.25);
+    }
+    .sw:hover { transform: translateY(-2px) scale(1.08); }
+    .sw.on { border-color: #fff; transform: translateY(-2px) scale(1.08); box-shadow: 0 0 0 2px rgba(45,212,191,.55), 0 10px 18px rgba(0,0,0,.36); }
+    input[type=color]#cust {
+      width: 32px; height: 32px; border-radius: 8px; cursor: pointer; border: 2px solid rgba(148,163,184,.28);
+      padding: 2px; background: rgba(15,23,42,.8); flex-shrink: 0;
+    }
+    input[type=color]#cust::-webkit-color-swatch-wrapper { padding: 0; }
+    input[type=color]#cust::-webkit-color-swatch { border: none; border-radius: 2px; }
+    .psep { width: 1px; height: 28px; background: var(--canvas-line); flex-shrink: 0; margin: 0 4px; }
+    #size-wrap {
+      display: flex; align-items: center; gap: 7px; flex-shrink: 0;
+      background: rgba(15,23,42,.56); border: 1px solid rgba(148,163,184,.14);
+      padding: 4px 8px; border-radius: 10px;
+    }
+    #size-wrap label { font-size: 10px; color: #94a3b8; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    #brush-sz { width: 78px; accent-color: var(--canvas-accent); }
+    #premium-badge { display: none; font-size: 10px; color: #fbbf24; border: 1px solid rgba(245,158,11,0.45); border-radius: 99px; padding: 3px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; flex-shrink: 0; background: rgba(245,158,11,.1); }
+    .sw.premium-only { position: relative; }
+    .sw.premium-only::after { content: '✦'; position: absolute; top: -4px; right: -4px; font-size: 6px; color: #f59e0b; }
+    #brush-val { font-size: 10px; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 10px; }
+    #erase-btn {
+      height: 32px; padding: 3px 10px; font-size: 11px; cursor: pointer;
+      background: rgba(15,23,42,.62); color: #cbd5e1;
+      border: 1px solid rgba(148,163,184,.2); border-radius: 9px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; transition: all .12s; flex-shrink: 0;
+    }
+    #erase-btn:hover { color:#fff; border-color:#f87171; }
+    #erase-btn.on { color: #fecaca; border-color: #ef4444; background: rgba(239,68,68,0.16); }
+
+    #toast {
+      position: fixed; top: 56px; right: 14px; z-index: 300;
+      padding: 9px 13px; border-radius: 10px; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: rgba(15,23,42,.92); border: 1px solid rgba(148,163,184,.22);
+      box-shadow: 0 18px 45px rgba(0,0,0,.32);
+      color: var(--t-fg, #e8e8e8); pointer-events: none;
+      opacity: 0; transform: translateY(-6px);
+      transition: opacity .15s, transform .15s;
+      max-width: 260px;
+    }
+    #toast.show { opacity: 1; transform: none; }
+    #toast.warn { border-color: #f59e0b; color: #fbbf24; }
+    #toast.err  { border-color: #ef4444; color: #f87171; }
+
+    #controls-help {
+      position: fixed; bottom: 76px; right: 14px; z-index: 200;
+      padding: 14px 16px; border-radius: 12px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: rgba(15,23,42,0.92); border: 1px solid rgba(148,163,184,.2);
+      box-shadow: 0 18px 50px rgba(0,0,0,.34);
+      color: #94a3b8; line-height: 1.8;
+      backdrop-filter: blur(14px);
+    }
+    #controls-help.hide { display: none; }
+    #controls-help kbd {
+      background: rgba(30,41,59,.9); padding: 1px 5px; border-radius: 5px;
+      color: #ccc; font-family: monospace; font-size: 10px;
+    }
+
+    #ban-ol {
+      display: none; position: fixed; inset: 0; z-index: 500;
+      background: rgba(0,0,0,0.94); flex-direction: column;
+      align-items: center; justify-content: center; gap: 16px; text-align: center; padding: 40px;
+    }
+    #ban-ol.show { display: flex; }
+    #ban-ol h1 { font-size: 1.8rem; color: #ef4444; font-weight: 800; }
+    #ban-ol .reason { color: var(--t-fg2, #888); max-width: 400px; font-size: 0.9rem; line-height: 1.5; }
+    #ban-ol .contact { font-size: 0.8rem; color: #555; }
+
+    #sw-alert {
+      display: none; position: fixed; inset: 0; z-index: 9999;
+      background: #7f1d1d; flex-direction: column;
+      align-items: center; justify-content: center; gap: 22px; text-align: center; padding: 40px;
+    }
+    #sw-alert.show { display: flex; animation: flash-bg 0.6s infinite alternate; }
+    @keyframes flash-bg { from { background: #7f1d1d; } to { background: #991b1b; } }
+    #sw-alert .alarm-icon { font-size: 4rem; animation: throb 0.5s infinite alternate; }
+    #sw-alert .alarm-title {
+      font-size: clamp(2rem, 7vw, 4.5rem); font-weight: 900; color: #fff;
+      letter-spacing: -1px; animation: throb 0.5s infinite alternate;
+    }
+    @keyframes throb { from { transform: scale(1); } to { transform: scale(1.04); } }
+    #sw-alert .alarm-sub { font-size: 1.2rem; color: rgba(255,255,255,0.85); font-weight: 600; }
+    #sw-alert .alarm-detail { font-size: 0.9rem; color: rgba(255,255,255,0.55); max-width: 460px; }
+
+    #loading {
+      position: fixed; inset: 0; z-index: 400; display: flex;
+      flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+      background:
+        radial-gradient(circle at 30% 25%, rgba(45,212,191,.14), transparent 32%),
+        radial-gradient(circle at 70% 75%, rgba(96,165,250,.12), transparent 34%),
+        #10141d;
+    }
+    #loading .spin {
+      width: 34px; height: 34px; border: 3px solid rgba(148,163,184,.22);
+      border-top-color: var(--canvas-accent); border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    #loading p { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; color: #94a3b8; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #admin-panel {
+      display: none; position: fixed; top: 52px; left: 12px; z-index: 200;
+      background: rgba(10,10,10,0.95); border: 1px solid #dc2626;
+      border-radius: 9px; padding: 10px 12px; font-family: monospace; font-size: 11px;
+      color: #e8e8e8; min-width: 220px; max-width: 280px;
+    }
+    #admin-panel.show { display: block; }
+    #admin-panel .adm-hd {
+      color: #dc2626; font-weight: 800; font-size: 12px; margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    #admin-panel .adm-row { margin-bottom: 5px; color: #aaa; word-break: break-all; }
+    #admin-panel .adm-row b { color: #e8e8e8; }
+    #admin-panel .adm-btns { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .adm-btn {
+      padding: 3px 8px; font-size: 10px; font-family: monospace; cursor: pointer;
+      border-radius: 4px; border: 1px solid; background: transparent; transition: background .12s;
+    }
+    .adm-btn.red   { color: #f87171; border-color: #ef4444; }
+    .adm-btn.red:hover { background: rgba(239,68,68,0.15); }
+    .adm-btn.green { color: #4ade80; border-color: #22c55e; }
+    .adm-btn.green:hover { background: rgba(34,197,94,0.15); }
+    .adm-btn.gray  { color: #9ca3af; border-color: #4b5563; }
+    .adm-btn.gray:hover { background: rgba(75,85,99,0.2); }
+    #admin-bans-wrap {
+      display: none; position: fixed; top: 52px; right: 12px; z-index: 200;
+      background: rgba(10,10,10,0.95); border: 1px solid #6b7280;
+      border-radius: 9px; padding: 10px 12px; font-family: monospace; font-size: 11px;
+      color: #e8e8e8; width: 280px; max-height: 60vh; overflow-y: auto;
+    }
+    #admin-bans-wrap.show { display: block; }
+    #admin-bans-wrap .adm-hd { color: #f59e0b; font-weight: 800; font-size: 12px; margin-bottom: 8px; }
+    .ban-entry { border-top: 1px solid #333; padding: 6px 0; display: flex; flex-direction: column; gap: 3px; }
+    .ban-entry .ban-id { color: #a78bfa; font-size: 10px; }
+    .ban-entry .ban-reason { color: #9ca3af; font-size: 10px; }
+    .ban-entry .ban-unban { color: #4ade80; border-color: #22c55e; margin-top: 3px; }
+    .mod-entry { border-top: 1px solid #333; padding: 7px 0; display: flex; flex-direction: column; gap: 4px; }
+    .mod-entry .mod-title { color: #fbbf24; font-size: 10px; font-weight: 800; }
+    .mod-entry .mod-meta { color: #9ca3af; font-size: 10px; line-height: 1.4; }
+    #play-tip {
+      position: fixed; left: 14px; bottom: 78px; z-index: 90;
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 12px; border-radius: 12px;
+      background: rgba(15,23,42,.76);
+      border: 1px solid rgba(148,163,184,.18);
+      color: #94a3b8; font-size: 11px;
+      box-shadow: 0 14px 38px rgba(0,0,0,.28);
+      backdrop-filter: blur(12px);
+      pointer-events: none;
+    }
+    #play-tip b { color: #e2e8f0; font-weight: 800; }
+    #play-tip .tip-dot {
+      width: 9px; height: 9px; border-radius: 999px; background: var(--canvas-accent);
+      box-shadow: 0 0 18px rgba(45,212,191,.7);
+      flex: 0 0 auto;
+    }
+    @media (max-width: 760px) {
+      #toolbar { gap: 5px; padding: 0 8px; overflow-x: auto; }
+      #toolbar::-webkit-scrollbar { display:none; }
+      #help-hint { display:none; }
+      #palette { bottom: 8px; padding: 7px; max-width: calc(100vw - 12px); }
+      .sw { width: 28px; height: 28px; }
+      #play-tip { display:none; }
+      #controls-help { right: 8px; bottom: 72px; max-width: calc(100vw - 16px); }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div id="toolbar">
+  <span class="title">pixelplace</span>
+  <div class="tsep"></div>
+  <span id="coords">0, 0</span><div class="tsep"></div><button id="speed-up-btn" style="background:none; border:none; color:#f59e0b; font-size:10px; font-weight:800; cursor:pointer; padding:2px 5px;">⚡ SPEED UP (5c)</button>
+  <div class="tsep"></div>
+  <span id="zoom-disp">100%</span>
+  <div class="tsep"></div>
+  <span id="pcount">— px</span>
+  <div class="tsep"></div>
+  <button class="tb-btn" id="home-btn">⌂</button>
+  <button class="tb-btn" id="ref-btn">↻</button>
+  <button class="tb-btn" id="help-btn">?</button>
+  <span id="premium-badge" style="display:none">✦ premium</span>
+  <button class="tb-btn" id="admin-btn" style="display:none;color:#dc2626;border-color:#dc2626">⚑ admin</button>
+  <button class="tb-btn" id="bans-btn" style="display:none;color:#f59e0b;border-color:#f59e0b">bans</button>
+  <span id="mod-st"></span>
+  <span id="help-hint">space+drag or scroll to pan · ctrl+scroll to zoom</span>
+</div>
+
+<div id="play-tip"><span class="tip-dot"></span><span><b>Tip</b> drag to paint, scroll to travel, ctrl+scroll to zoom</span></div>
+
+<div id="palette">
+  <div class="psep"></div>
+  <input type="color" id="cust" value="#ff0000" title="Custom color">
+  <div class="psep"></div>
+  <button id="erase-btn">✕ erase</button>
+  <div class="psep"></div>
+  <div id="size-wrap">
+    <label>brush</label>
+    <input type="range" id="brush-sz" min="1" max="8" value="1" data-premium-max="16">
+    <label id="brush-val">1</label>
+  </div>
+</div>
+
+<div id="controls-help" class="hide">
+  <b style="color:#ccc;display:block;margin-bottom:4px">Controls</b>
+  <kbd>click</kbd> / drag — paint<br>
+  <kbd>space</kbd> + drag — pan<br>
+  <kbd>scroll</kbd> — pan<br>
+  <kbd>ctrl</kbd> + scroll — zoom<br>
+  <kbd>right-click</kbd> drag — pan<br>
+  <kbd>middle-click</kbd> drag — pan<br>
+  <kbd>✕ erase</kbd> — erase your pixels
+</div>
+
+<div id="toast"></div>
+
+<div id="ban-ol">
+  <h1>Painting banned</h1>
+  <p class="reason" id="ban-reason">Drawing inappropriate content is not permitted.</p>
+  <p class="contact">Appeal: support@mitch.pro</p>
+</div>
+
+<div id="sw-alert">
+  <div class="alarm-icon">🚨</div>
+  <div class="alarm-title">REVIEW NEEDED</div>
+  <div class="alarm-sub">Canvas review alerts are disabled.</div>
+  <div class="alarm-detail">Admins can inspect painter details directly from the canvas.</div>
+</div>
+
+<div id="admin-panel">
+  <div class="adm-hd">⚑ Admin</div>
+  <div class="adm-row" id="adm-pos"></div>
+  <div class="adm-row" id="adm-painter"></div>
+  <div class="adm-row" id="adm-time"></div>
+  <div class="adm-row" id="adm-color"></div>
+  <div class="adm-btns">
+    <button class="adm-btn red" id="adm-ban-btn">ban painter</button>
+  </div>
+</div>
+
+<div id="admin-bans-wrap">
+  <div class="adm-hd">Canvas moderation</div>
+  <div style="color:#777;font-size:10px;margin-bottom:8px;line-height:1.4">Manual bans stay here for quick cleanup.</div>
+  <div class="adm-hd" style="color:#f87171;margin-top:4px">Banned painters</div>
+  <div id="admin-bans-list"><span style="color:#555">loading…</span></div>
+</div>
+
+<div id="loading"><div class="spin"></div><p>Loading canvas…</p></div>
+
+<script>
+const PX = 16, MINZ = 0.05, MAXZ = 24;
+const TB = 42, PB = 44;
+const MOD_EVERY = 15, MOD_IDLE = 5000;
+const CHUNK = 64;
+
+const PALETTE = [
+  '#000000','#1c1c1c','#3a3a3a','#666666','#999999','#cccccc','#ffffff',
+  '#ff0000','#cc2200','#ff6600','#ff9900','#ffcc00','#ffff00',
+  '#00cc00','#007700','#00ffaa','#00aaff','#0055cc','#0000ff',
+  '#7700cc','#ff00ff','#cc0066','#ffaaaa','#aaddff','#aaffcc',
+];
+const PREMIUM_PALETTE = [
+  '#ffd700','#ffc0cb','#ff69b4','#00ffff','#7fffd4','#adff2f',
+  '#ff4500','#da70d6','#40e0d0','#f0e68c','#e6e6fa','#b8860b',
+];
+
+let pixels = {};
+const loadedChunks = new Set();
+let chunkLoadTimer = null;
+let chunkLoadPending = false;
+let panX = 0, panY = 0, zoom = 1;
+let painting = false, panning = false, spaceDown = false;
+let lastPan = null;
+let hWX = 0, hWY = 0;
+let color = '#ff0000';
+let brushSz = 1;
+let erasing = false;
+let banned = false;
+let isAdmin = false;
+let adminMode = false;
+let adminHoverPx = null;
+let pixSinceMod = 0;
+let modPending = false;
+let modTimer = null;
+let toastTimer = null;
+let helpVisible = false;
+let recentPainted = [];
+
+
+let pid = localStorage.getItem('canvas_pid') || (() => {
+  const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  localStorage.setItem('canvas_pid', id);
+  return id;
+})();
+
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+
+function resize() {
+  cv.width = window.innerWidth;
+  cv.height = window.innerHeight - TB - PB;
+  cv.style.top = TB + 'px';
+}
+window.addEventListener('resize', resize);
+resize();
+
+function s2w(sx, sy) {
+  const p = PX * zoom;
+  return [Math.floor((sx - cv.width / 2) / p + panX), Math.floor((sy - cv.height / 2) / p + panY)];
+}
+function w2sx(wx) { return (wx - panX) * PX * zoom + cv.width / 2; }
+function w2sy(wy) { return (wy - panY) * PX * zoom + cv.height / 2; }
+
+function render() {
+  requestAnimationFrame(render);
+  const W = cv.width, H = cv.height, p = PX * zoom;
+
+  const bg = ctx.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#0e1320');
+  bg.addColorStop(0.55, '#111827');
+  bg.addColorStop(1, '#12151d');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const glow = ctx.createRadialGradient(W * 0.18, H * 0.18, 0, W * 0.18, H * 0.18, Math.max(W, H) * 0.62);
+  glow.addColorStop(0, 'rgba(45,212,191,0.09)');
+  glow.addColorStop(1, 'rgba(45,212,191,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(0, 0, W, H);
+
+  if (p >= 1.5) {
+    ctx.strokeStyle = p >= 5 ? 'rgba(148,163,184,0.055)' : 'rgba(148,163,184,0.025)';
+    ctx.lineWidth = 1;
+    const majorEvery = 8;
+    const x0m = Math.floor((0 - W / 2) / p + panX) - 1, x1m = Math.ceil((W - W / 2) / p + panX) + 1;
+    for (let wx = x0m; wx <= x1m; wx++) {
+      if (wx % majorEvery !== 0) continue;
+      const sx = w2sx(wx);
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+    }
+    const y0m = Math.floor((0 - H / 2) / p + panY) - 1, y1m = Math.ceil((H - H / 2) / p + panY) + 1;
+    for (let wy = y0m; wy <= y1m; wy++) {
+      if (wy % majorEvery !== 0) continue;
+      const sy = w2sy(wy);
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+    }
+  }
+  if (p >= 5) {
+    ctx.strokeStyle = 'rgba(203,213,225,0.055)';
+    ctx.lineWidth = 0.5;
+    const x0 = Math.floor((0 - W / 2) / p + panX) - 1, x1 = Math.ceil((W - W / 2) / p + panX) + 1;
+    for (let wx = x0; wx <= x1; wx++) { const sx = w2sx(wx); ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke(); }
+    const y0 = Math.floor((0 - H / 2) / p + panY) - 1, y1 = Math.ceil((H - H / 2) / p + panY) + 1;
+    for (let wy = y0; wy <= y1; wy++) { const sy = w2sy(wy); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke(); }
+  }
+
+  ctx.strokeStyle = 'rgba(45,212,191,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
+  ctx.beginPath(); ctx.moveTo(w2sx(0), 0); ctx.lineTo(w2sx(0), H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, w2sy(0)); ctx.lineTo(W, w2sy(0)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  for (const [key, d] of Object.entries(pixels)) {
+    const ci = key.indexOf(',');
+    const wx = +key.slice(0, ci), wy = +key.slice(ci + 1);
+    const sx = w2sx(wx), sy = w2sy(wy);
+    if (sx + p < 0 || sx > W || sy + p < 0 || sy > H) continue;
+    ctx.fillStyle = d.color;
+    ctx.fillRect(sx, sy, p + 0.5, p + 0.5);
+    if (d.premium && p >= 12) {
+      const r = Math.max(1.5, p * 0.12);
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath();
+      ctx.arc(sx + p - r - 1, sy + r + 1, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  if (!banned) {
+    const half = Math.floor(brushSz / 2);
+    for (let bx = 0; bx < brushSz; bx++) {
+      for (let by = 0; by < brushSz; by++) {
+        const wx = hWX - half + bx, wy = hWY - half + by;
+        const sx = w2sx(wx), sy = w2sy(wy);
+        const occ = pixels[`${wx},${wy}`];
+    if (erasing) {
+          const mine = occ && occ.painter === pid;
+          ctx.fillStyle = mine ? 'rgba(251,191,36,0.2)' : 'rgba(100,100,100,0.1)';
+          ctx.fillRect(sx, sy, p, p);
+          ctx.strokeStyle = mine ? '#fbbf24' : '#444';
+          ctx.lineWidth = Math.max(0.5, p * 0.06);
+          ctx.strokeRect(sx + 0.5, sy + 0.5, p - 1, p - 1);
+        } else {
+          ctx.fillStyle = occ ? 'rgba(248,113,113,0.18)' : color + '33';
+          ctx.fillRect(sx, sy, p, p);
+          ctx.strokeStyle = occ ? '#f87171' : color + 'dd';
+          ctx.lineWidth = Math.max(0.5, p * 0.06);
+          ctx.strokeRect(sx + 0.5, sy + 0.5, p - 1, p - 1);
+        }
+      }
+    }
+  }
+}
+
+function actAt(wx, wy, isClick) {
+  if (banned) return;
+  const half = Math.floor(brushSz / 2);
+  if (isAdmin && !erasing && brushSz > 1) {
+    const points = [];
+    const now = Date.now();
+    for (let bx = 0; bx < brushSz; bx++) {
+      for (let by = 0; by < brushSz; by++) {
+        const x = wx - half + bx;
+        const y = wy - half + by;
+        const key = `${x},${y}`;
+        pixels[key] = { color, painter: pid, ts: now, email: pid, admin: true };
+        points.push({ x, y, color, painter: pid });
+      }
+    }
+    document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+    paintBulk(points);
+    return;
+  }
+  for (let bx = 0; bx < brushSz; bx++) {
+    for (let by = 0; by < brushSz; by++) {
+      if (erasing) eraseAt(wx - half + bx, wy - half + by, isClick);
+      else paintAt(wx - half + bx, wy - half + by, isClick && brushSz === 1);
+    }
+  }
+}
+
+function paintAt(wx, wy, isClick) {
+  const key = `${wx},${wy}`;
+  if (pixels[key] && !isAdmin) {
+    const isOwn = pixels[key].painter === pid;
+    if (!IS_PREMIUM || !isOwn) {
+      if (isClick) showToast(isOwn ? 'Upgrade to Premium to overwrite your pixels' : 'Pixel taken — can\'t overwrite!', 'warn');
+      return;
+    }
+  }
+  pixels[key] = { color, painter: pid, ts: Date.now() };
+  recentPainted.push({ x: wx, y: wy, color, painter: pid, ts: Date.now() });
+  if (recentPainted.length > 260) recentPainted.splice(0, recentPainted.length - 260);
+  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+
+  var tools = JSON.parse(localStorage.getItem('_prefTools') || '{}');
+  var lock = !!tools.canvasLock;
+
+  fetch('/api/canvas/pixel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x: wx, y: wy, color, painter: pid, lock: lock }),
+  }).then(r => r.json()).then(d => {
+    if (d.error === 'banned') { banned = true; showBanned(d.reason); }
+    if (d.error === 'occupied') delete pixels[key];
+  }).catch(() => {});
+}
+
+function paintBulk(points) {
+  if (!points.length) return;
+  fetch('/api/canvas/pixels/bulk', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pixels: points }),
+  }).then(r => r.json()).then(d => {
+    if (d.error) showToast(d.error, 'err');
+  }).catch(() => showToast('Bulk paint failed', 'err'));
+}
+
+function eraseAt(wx, wy, isClick) {
+  const key = `${wx},${wy}`;
+  if (!pixels[key]) return;
+  if (!isAdmin && pixels[key].painter !== pid) {
+    if (isClick) showToast('Can only erase your own pixels', 'warn');
+    return;
+  }
+  delete pixels[key];
+  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  fetch('/api/canvas/erase', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x: wx, y: wy, painter: pid }),
+  }).catch(() => {});
+}
+
+function clientToCanvas(cx, cy) { return [cx, cy - TB]; }
+
+cv.addEventListener('mousedown', e => {
+  if (e.button === 1 || e.button === 2 || (e.button === 0 && spaceDown)) {
+    panning = true;
+    lastPan = { x: e.clientX, y: e.clientY };
+    cv.style.cursor = 'grab';
+    e.preventDefault();
+  } else if (e.button === 0 && adminMode) {
+    const [sx, sy] = clientToCanvas(e.clientX, e.clientY);
+    updateAdminPanel(...s2w(sx, sy), true);
+  } else if (e.button === 0) {
+    painting = true;
+    const [sx, sy] = clientToCanvas(e.clientX, e.clientY);
+    actAt(...s2w(sx, sy), true);
+  }
+});
+
+cv.addEventListener('mousemove', e => {
+  const [sx, sy] = clientToCanvas(e.clientX, e.clientY);
+  const [wx, wy] = s2w(sx, sy);
+  hWX = wx; hWY = wy;
+  document.getElementById('coords').textContent = wx + ', ' + wy;
+  if (adminMode) updateAdminPanel(wx, wy, false);
+
+  if (painting && !panning && !adminMode) actAt(wx, wy, false);
+
+  if (panning && lastPan) {
+    const p = PX * zoom;
+    panX -= (e.clientX - lastPan.x) / p;
+    panY -= (e.clientY - lastPan.y) / p;
+    lastPan = { x: e.clientX, y: e.clientY };
+    scheduleChunkLoad();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  const wasPainting = painting;
+  painting = false; panning = false; lastPan = null;
+  cv.style.cursor = spaceDown ? 'grab' : (erasing ? 'cell' : 'crosshair');
+  if (wasPainting) submitCanvasModeration('mouseup');
+});
+cv.addEventListener('mouseleave', () => { painting = false; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' && !e.target.closest('input,textarea')) {
+    spaceDown = true;
+    cv.style.cursor = 'grab';
+    e.preventDefault();
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space') {
+    spaceDown = false;
+    painting = false; panning = false; lastPan = null;
+    cv.style.cursor = erasing ? 'cell' : 'crosshair';
+  }
+});
+
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey) {
+    const [sx, sy] = clientToCanvas(e.clientX, e.clientY);
+    const [wx, wy] = s2w(sx, sy);
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    const newZ = Math.min(MAXZ, Math.max(MINZ, zoom * factor));
+    panX = wx - (wx - panX) * (zoom / newZ);
+    panY = wy - (wy - panY) * (zoom / newZ);
+    zoom = newZ;
+    document.getElementById('zoom-disp').textContent = Math.round(zoom * 100) + '%';
+    scheduleChunkLoad();
+  } else {
+    const p = PX * zoom;
+    panX += e.deltaX / p;
+    panY += e.deltaY / p;
+  }
+}, { passive: false });
+
+document.getElementById('home-btn').onclick = () => {
+  panX = 0; panY = 0; zoom = 1;
+  document.getElementById('zoom-disp').textContent = '100%';
+};
+document.getElementById('ref-btn').onclick = loadPixels;
+document.getElementById('help-btn').onclick = () => {
+  helpVisible = !helpVisible;
+  document.getElementById('controls-help').classList.toggle('hide', !helpVisible);
+  document.getElementById('help-btn').classList.toggle('active', helpVisible);
+  try { localStorage.setItem('canvas_help_seen', '1'); } catch {}
+};
+
+const palEl = document.getElementById('palette');
+
+function pickColor(c) {
+  color = c;
+  erasing = false;
+  document.getElementById('erase-btn').classList.remove('on');
+  cv.style.cursor = 'crosshair';
+  document.querySelectorAll('.sw').forEach(s => s.classList.toggle('on', s.dataset.c === c));
+  document.getElementById('cust').value = c;
+}
+
+PALETTE.forEach(c => {
+  const sw = document.createElement('div');
+  sw.className = 'sw' + (c === color ? ' on' : '');
+  sw.style.background = c;
+  if (c === '#ffffff') sw.style.boxShadow = 'inset 0 0 0 1px #555';
+  sw.dataset.c = c;
+  sw.onclick = () => pickColor(c);
+  palEl.insertBefore(sw, palEl.querySelector('.psep'));
+});
+
+if (IS_PREMIUM) {
+  const sep = document.createElement('div'); sep.className = 'psep';
+  palEl.insertBefore(sep, palEl.querySelector('.psep'));
+  PREMIUM_PALETTE.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'sw premium-only';
+    sw.style.background = c;
+    sw.dataset.c = c;
+    sw.title = '✦ Premium color';
+    sw.onclick = () => pickColor(c);
+    palEl.insertBefore(sw, palEl.querySelector('.psep'));
+  });
+}
+
+document.getElementById('cust').oninput = e => pickColor(e.target.value);
+
+const bsEl = document.getElementById('brush-sz'), bvEl = document.getElementById('brush-val');
+bsEl.oninput = () => { brushSz = +bsEl.value; bvEl.textContent = brushSz; };
+
+document.getElementById('erase-btn').onclick = () => {
+  erasing = !erasing;
+  document.getElementById('erase-btn').classList.toggle('on', erasing);
+  cv.style.cursor = erasing ? 'cell' : 'crosshair';
+  if (erasing) document.querySelectorAll('.sw').forEach(s => s.classList.remove('on'));
+};
+
+function applyCanvasHash() {
+  const raw = decodeURIComponent(location.hash || '').replace(/^#/, '');
+  const m = /^(-?\d+),(-?\d+)(?:,([0-9.]+))?$/.exec(raw);
+  if (!m) return;
+  panX = Number(m[1]);
+  panY = Number(m[2]);
+  if (m[3]) zoom = Math.min(MAXZ, Math.max(MINZ, Number(m[3]) || zoom));
+  document.getElementById('zoom-disp').textContent = Math.round(zoom * 100) + '%';
+}
+
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'show' + (type ? ' ' + type : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 2500);
+}
+
+function htmlEscape(v) {
+  return String(v == null ? '' : v)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+setTimeout(() => {
+  try {
+    const tip = document.getElementById('play-tip');
+    if (!tip || localStorage.getItem('canvas_help_seen')) return;
+    tip.style.opacity = '0';
+    tip.style.transform = 'translateY(8px)';
+    tip.style.transition = 'opacity .35s, transform .35s';
+  } catch {}
+}, 9000);
+
+function showBanned(reason) {
+  document.getElementById('ban-reason').textContent = reason || 'Drawing inappropriate content is not permitted.';
+  document.getElementById('ban-ol').classList.add('show');
+}
+function showSwastika() {
+  document.getElementById('sw-alert').classList.add('show');
+  playAlarm();
+}
+
+function scheduleModerationCheck() {
+  clearTimeout(modTimer);
+}
+
+function buildModerationGrid() {
+  if (!recentPainted.length) return [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of recentPainted) {
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+  }
+  minX -= 10; minY -= 10; maxX += 10; maxY += 10;
+  const out = [];
+  for (const [key, d] of Object.entries(pixels)) {
+    const ci = key.indexOf(',');
+    const x = +key.slice(0, ci), y = +key.slice(ci + 1);
+    if (x < minX || x > maxX || y < minY || y > maxY) continue;
+    out.push({ x, y, color: d.color, painter: d.painter || '', email: d.email || '', ts: d.ts || 0 });
+    if (out.length >= 2500) break;
+  }
+  for (const p of recentPainted) {
+    out.push({ x: p.x, y: p.y, color: p.color, painter: p.painter, ts: p.ts || 0 });
+  }
+  return out;
+}
+
+async function submitCanvasModeration(source) {
+  pixSinceMod = 0;
+  recentPainted = [];
+  modPending = false;
+}
+
+function playAlarm() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ac.currentTime;
+    for (let i = 0; i < 6; i++) {
+      const osc = ac.createOscillator(), g = ac.createGain();
+      osc.connect(g); g.connect(ac.destination);
+      osc.type = 'sawtooth';
+      const t = now + i * 1.0;
+      osc.frequency.setValueAtTime(300, t);
+      osc.frequency.linearRampToValueAtTime(1200, t + 0.3);
+      osc.frequency.linearRampToValueAtTime(300, t + 0.7);
+      osc.frequency.linearRampToValueAtTime(1200, t + 1.0);
+      g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.55, t + 0.05);
+      g.gain.setValueAtTime(0.55, t + 0.9); g.gain.linearRampToValueAtTime(0, t + 1.0);
+      osc.start(t); osc.stop(t + 1.0);
+    }
+  } catch {}
+}
+
+function visibleChunkSet(buf = 2) {
+  const W = cv.width, H = cv.height, p = PX * zoom;
+  const x0 = Math.floor((0 - W / 2) / p + panX), x1 = Math.ceil((W - W / 2) / p + panX);
+  const y0 = Math.floor((0 - H / 2) / p + panY), y1 = Math.ceil((H - H / 2) / p + panY);
+  const cx0 = Math.floor(x0 / CHUNK) - buf, cx1 = Math.floor(x1 / CHUNK) + buf;
+  const cy0 = Math.floor(y0 / CHUNK) - buf, cy1 = Math.floor(y1 / CHUNK) + buf;
+  const s = new Set();
+  for (let cx = cx0; cx <= cx1; cx++)
+    for (let cy = cy0; cy <= cy1; cy++)
+      s.add(`${cx},${cy}`);
+  return s;
+}
+
+async function loadChunks(chunkKeys) {
+  if (!chunkKeys.length || chunkLoadPending) return;
+  chunkLoadPending = true;
+  try {
+    const param = chunkKeys.join(';');
+    const r = await fetch('/api/canvas/pixels?chunks=' + encodeURIComponent(param));
+    const data = await r.json();
+    Object.assign(pixels, data);
+    for (const k of chunkKeys) loadedChunks.add(k);
+    document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  } catch { showToast('Failed to load', 'err'); }
+  chunkLoadPending = false;
+}
+
+async function loadPixels() {
+  const btn = document.getElementById('ref-btn');
+  btn.textContent = '…';
+  loadedChunks.clear();
+  pixels = {};
+  const visible = [...visibleChunkSet(3)];
+  await loadChunks(visible);
+  btn.textContent = '↻';
+}
+
+function scheduleChunkLoad() {
+  clearTimeout(chunkLoadTimer);
+  chunkLoadTimer = setTimeout(async () => {
+    const visible = visibleChunkSet(2);
+    const needed = [...visible].filter(k => !loadedChunks.has(k));
+    if (needed.length) await loadChunks(needed);
+  }, 120);
+}
+
+let adminSelected = false;
+
+function updateAdminPanel(wx, wy, fromClick) {
+  if (!isAdmin || !adminMode) return;
+  if (adminSelected && !fromClick) return;
+  const key = `${wx},${wy}`;
+  const d = pixels[key];
+  if (fromClick) { adminSelected = !!d; adminHoverPx = d ? { wx, wy, data: d } : null; }
+  else adminHoverPx = d ? { wx, wy, data: d } : null;
+  document.getElementById('adm-pos').innerHTML = `<b>pos</b> ${wx}, ${wy}${fromClick && d ? ' <span style="color:#a78bfa">●</span>' : ''}`;
+  if (d) {
+    const who = d.email || d.painter;
+    document.getElementById('adm-painter').innerHTML = `<b>${d.email ? 'email' : 'painter'}</b> ${who}`;
+    document.getElementById('adm-time').innerHTML = `<b>painted</b> ${new Date(d.ts).toLocaleString()}`;
+    document.getElementById('adm-color').innerHTML = `<b>color</b> <span style="display:inline-block;width:10px;height:10px;background:${d.color};border:1px solid #555;vertical-align:middle;border-radius:2px"></span> ${d.color}`;
+    document.getElementById('adm-ban-btn').disabled = false;
+  } else {
+    document.getElementById('adm-painter').textContent = '(empty)';
+    document.getElementById('adm-time').textContent = '';
+    document.getElementById('adm-color').textContent = '';
+    document.getElementById('adm-ban-btn').disabled = true;
+  }
+}
+
+async function adminErase() {
+  if (!adminHoverPx) return;
+  const { wx, wy } = adminHoverPx;
+  const key = `${wx},${wy}`;
+  const r = await fetch('/api/canvas/admin-erase', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ x: wx, y: wy }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) {
+    showToast(d.error || 'Failed to erase pixel', 'err');
+    return;
+  }
+  delete pixels[key];
+  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  adminHoverPx = null; adminSelected = false;
+  document.getElementById('adm-painter').textContent = '(empty)';
+  document.getElementById('adm-time').textContent = '';
+  document.getElementById('adm-color').textContent = '';
+  document.getElementById('adm-ban-btn').disabled = true;
+  showToast('Pixel erased');
+}
+
+async function adminBan() {
+  if (!adminHoverPx) return;
+  const painter = adminHoverPx.data.painter;
+  const reason = prompt(`Ban reason for ${painter.slice(0, 16)}…?`, 'manual ban by admin');
+  if (reason === null) return;
+  const r = await fetch('/api/canvas/admin-ban', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ painter, reason }),
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) {
+    showToast(d.error || 'Failed to ban painter', 'err');
+    return;
+  }
+  showToast(`Banned ${painter.slice(0, 12)}`, 'warn');
+  loadBans();
+}
+
+async function loadBans() {
+  const list = document.getElementById('admin-bans-list');
+  list.innerHTML = '<span style="color:#555">loading…</span>';
+  try {
+    const r = await fetch('/api/canvas/admin-bans');
+    const data = await r.json();
+    if (!r.ok || data.error) throw new Error(data.error || 'failed');
+    const entries = Object.entries(data);
+    if (!entries.length) { list.innerHTML = '<span style="color:#555">no bans</span>'; return; }
+    list.innerHTML = '';
+    for (const [painter, info] of entries) {
+      const div = document.createElement('div');
+      div.className = 'ban-entry';
+      div.innerHTML = `
+        <div class="ban-id">${htmlEscape(painter)}</div>
+        <div class="ban-reason">${htmlEscape(info.reason || '')} ${info.ts ? '&middot; ' + htmlEscape(new Date(info.ts).toLocaleDateString()) : ''}</div>
+        <button class="adm-btn green ban-unban" data-p="${painter}">unban</button>
+      `;
+      div.querySelector('.ban-unban').onclick = async () => {
+        const r = await fetch('/api/canvas/admin-unban', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ painter }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) {
+          showToast(d.error || 'Failed to unban painter', 'err');
+          return;
+        }
+        showToast(`Unbanned ${painter.slice(0, 12)}`);
+        div.remove();
+      };
+      list.appendChild(div);
+    }
+  } catch { list.innerHTML = '<span style="color:#f87171">error</span>'; }
+}
+
+(async () => {
+  applyCanvasHash();
+  await loadPixels();
+  try {
+    const r = await fetch('/api/canvas/whoami');
+    const d = await r.json();
+    isAdmin = d.isAdmin;
+    if (d.email) {
+      pid = d.email;
+      localStorage.setItem('canvas_pid', pid);
+    }
+  if (IS_PREMIUM) {
+    document.getElementById('premium-badge').style.display = '';
+    document.getElementById('brush-sz').max = 16;
+    }
+  } catch {}
+  if (isAdmin) {
+    document.getElementById('admin-btn').style.display = '';
+    document.getElementById('bans-btn').style.display = '';
+    document.getElementById('premium-badge').style.display = '';
+    document.getElementById('premium-badge').textContent = 'admin';
+    document.getElementById('brush-sz').max = 50;
+
+    document.getElementById('admin-btn').onclick = () => {
+      adminMode = !adminMode;
+      if (!adminMode) { adminSelected = false; adminHoverPx = null; }
+      document.getElementById('admin-btn').classList.toggle('active', adminMode);
+      document.getElementById('admin-panel').classList.toggle('show', adminMode);
+      cv.style.cursor = adminMode ? 'default' : (erasing ? 'cell' : 'crosshair');
+    };
+    document.getElementById('bans-btn').onclick = () => {
+      const wrap = document.getElementById('admin-bans-wrap');
+      const showing = wrap.classList.toggle('show');
+      if (showing) loadBans();
+    };
+    document.getElementById('adm-ban-btn').onclick = adminBan;
+  }
+  document.getElementById('loading').style.display = 'none';
+  render();
+})();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  # Caddy Reverse Proxy (Main entry point on Port 6800)
+  reverse-proxy:
+    image: caddy:2.7-alpine
+    container_name: mitch-caddy-proxy
+    restart: unless-stopped
+    ports:
+      - "6800:6800"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+    depends_on:
+      - webserver-blue
+      - webserver-green
+
+  # Production Slot A: Blue Webserver
+  webserver-blue:
+    build: .
+    container_name: mitch-webserver-blue
+    restart: unless-stopped
+    ports:
+      - "6811:6800"
+    volumes:
+      - ./data:/app/data
+      - ./mail:/app/mail
+      - ./logs:/app/logs
+      - ./webserver:/app/webserver
+      - ./.env:/app/.env:ro
+
+  # Production Slot B: Green Webserver
+  webserver-green:
+    build: .
+    container_name: mitch-webserver-green
+    restart: unless-stopped
+    ports:
+      - "6812:6800"
+    volumes:
+      - ./data:/app/data
+      - ./mail:/app/mail
+      - ./logs:/app/logs
+      - ./webserver:/app/webserver
+      - ./.env:/app/.env:ro
+
+  # Node.js + Xvfb Stream Proxy (Port 8081)
+  proxy:
+    build:
+      context: ./proxy
+      dockerfile: Dockerfile.proxy
+    container_name: mitch-stream-proxy
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./logs:/app/logs
+
+  # Python 3 IP Server
+  ipserver:
+    image: python:3.10-alpine
+    container_name: mitch-ipserver
+    restart: unless-stopped
+    volumes:
+      - ./tools:/app/tools
+      - ./logs:/app/logs
+      - ./data:/root/tailscale/chatroom/data
+      - /home/mitch/server/fullchain.pem:/root/tailscale/fullchain.pem:ro
+      - /home/mitch/server/privkey.pem:/root/tailscale/privkey.pem:ro
+    command: python3 /app/tools/ipserver.py

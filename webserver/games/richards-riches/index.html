@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Richard's Riches — Premium Tycoon</title>
+  <script src="/theme.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Syne:wght@700;800&display=swap');
+    
+    :root {
+      --gold: #f59e0b;
+      --gold-glow: rgba(245, 158, 11, 0.25);
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.2);
+      --panel: rgba(255, 255, 255, 0.03);
+      --line: rgba(255, 255, 255, 0.08);
+      --bg-dark: #060809;
+      --glass-blur: blur(20px);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg-dark);
+      background-image: radial-gradient(circle at 50% -20%, #112d24 0%, var(--bg-dark) 70%);
+      color: #fff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      overflow-y: auto;
+    }
+
+    .game-container {
+      width: min(1200px, 100%);
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+    }
+
+    /* Top Dashboard */
+    header {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px 40px;
+      backdrop-filter: var(--glass-blur);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 20px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+    header::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--emerald), var(--gold), transparent);
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .brand h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 2.2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #34d399, var(--gold));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1.1;
+    }
+    .brand p {
+      font-size: 0.9rem;
+      color: #94a3b8;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .finances {
+      text-align: right;
+      display: flex;
+      align-items: center;
+      gap: 30px;
+    }
+    .cash-display {
+      display: flex;
+      flex-direction: column;
+    }
+    .cash-value {
+      font-family: 'Syne', sans-serif;
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: var(--emerald);
+      text-shadow: 0 0 20px var(--emerald-glow);
+      line-height: 1;
+    }
+    .cash-rate {
+      font-size: 0.95rem;
+      color: #a7f3d0;
+      font-weight: 600;
+      margin-top: 4px;
+    }
+
+    .mitchcoin-display {
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      border-radius: 16px;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(245, 158, 11, 0.05);
+    }
+    .mitchcoin-display svg {
+      width: 24px;
+      height: 24px;
+      fill: var(--gold);
+      filter: drop-shadow(0 0 4px var(--gold-glow));
+    }
+    .mitchcoin-val {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.5rem;
+      color: var(--gold);
+      font-weight: 800;
+    }
+
+    /* Tabs Panel */
+    .tabs {
+      display: flex;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 10px;
+    }
+    .tab-btn {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--line);
+      color: #94a3b8;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: 'Outfit', sans-serif;
+    }
+    .tab-btn:hover {
+      background: rgba(255,255,255,0.05);
+      color: #fff;
+    }
+    .tab-btn.active {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(245, 158, 11, 0.1));
+      border-color: var(--emerald);
+      color: #fff;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.1);
+    }
+
+    /* Main Area Layout */
+    .content-area {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .pane {
+      display: none;
+    }
+    .pane.active {
+      display: block;
+    }
+
+    /* Businesses Grid */
+    .business-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .business-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 20px;
+      backdrop-filter: var(--glass-blur);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      position: relative;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .business-card:hover {
+      border-color: rgba(16, 185, 129, 0.3);
+      transform: translateY(-2px);
+    }
+    .business-card.unlocked {
+      background: rgba(16, 185, 129, 0.015);
+    }
+
+    .biz-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .biz-title {
+      font-weight: 800;
+      font-size: 1.15rem;
+      color: #fff;
+    }
+    .biz-level {
+      background: rgba(255,255,255,0.08);
+      padding: 2px 8px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: #cbd5e1;
+    }
+
+    .biz-visual {
+      height: 90px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--line);
+      position: relative;
+      overflow: hidden;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      user-select: none;
+    }
+    .biz-visual:active {
+      transform: scale(0.97);
+    }
+    .biz-visual.disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+
+    .biz-progress-container {
+      position: absolute;
+      bottom: 0; left: 0; width: 100%; height: 8px;
+      background: rgba(255,255,255,0.03);
+    }
+    .biz-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--emerald), #34d399);
+      box-shadow: 0 0 8px var(--emerald-glow);
+    }
+
+    .biz-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    .biz-stat-val {
+      font-weight: 700;
+      color: #cbd5e1;
+    }
+
+    .buy-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Outfit', sans-serif;
+      text-transform: uppercase;
+      font-size: 0.85rem;
+      letter-spacing: 0.02em;
+    }
+    .buy-btn:hover:not(:disabled) {
+      background: var(--emerald);
+      border-color: var(--emerald);
+      box-shadow: 0 4px 15px var(--emerald-glow);
+    }
+    .buy-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .automation-tag {
+      position: absolute;
+      top: -10px; right: 15px;
+      background: linear-gradient(135deg, var(--gold), #fbbf24);
+      color: #000;
+      font-size: 0.65rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.05em;
+      box-shadow: 0 2px 8px var(--gold-glow);
+    }
+
+    /* Upgrades & Managers Lists */
+    .upgrade-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 20px;
+    }
+
+    .card-item {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 15px;
+      backdrop-filter: var(--glass-blur);
+    }
+
+    .card-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex-grow: 1;
+    }
+    .card-title {
+      font-weight: 800;
+      font-size: 1.05rem;
+      color: #fff;
+    }
+    .card-desc {
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+    .card-cost {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--gold);
+    }
+
+    .action-btn {
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.04);
+      color: #fff;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .action-btn:hover:not(:disabled) {
+      background: var(--gold);
+      color: #000;
+      border-color: var(--gold);
+      box-shadow: 0 4px 15px var(--gold-glow);
+    }
+    .action-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Exchange Panel */
+    .exchange-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 40px;
+      max-width: 600px;
+      margin: 0 auto;
+      text-align: center;
+      backdrop-filter: var(--glass-blur);
+      display: flex;
+      flex-direction: column;
+      gap: 25px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .exchange-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.8rem;
+      color: #fff;
+      font-weight: 800;
+    }
+    .exchange-rate-box {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .rate-title {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .rate-value {
+      font-size: 1.4rem;
+      font-weight: 800;
+      color: var(--emerald);
+    }
+    .rate-cost {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.6rem;
+      color: var(--gold);
+      font-weight: 800;
+    }
+
+    .claim-btn {
+      width: 100%;
+      padding: 16px;
+      border-radius: 14px;
+      border: none;
+      background: linear-gradient(135deg, var(--emerald), #34d399);
+      color: #000;
+      font-weight: 900;
+      font-size: 1.1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Outfit', sans-serif;
+      text-transform: uppercase;
+      box-shadow: 0 4px 20px var(--emerald-glow);
+    }
+    .claim-btn:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(16, 185, 129, 0.4);
+    }
+    .claim-btn:active:not(:disabled) {
+      transform: translateY(0);
+    }
+    .claim-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    /* Modal / Welcome Back */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-card {
+      background: #0d1315;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 28px;
+      padding: 40px;
+      width: min(500px, 90%);
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(16, 185, 129, 0.15);
+      transform: scale(0.9);
+      transition: transform 0.3s ease;
+    }
+    .modal-overlay.active .modal-card {
+      transform: scale(1);
+    }
+    .modal-icon {
+      font-size: 3.5rem;
+      margin-bottom: 20px;
+    }
+    .modal-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--emerald);
+      margin-bottom: 12px;
+    }
+    .modal-text {
+      color: #cbd5e1;
+      font-size: 1.05rem;
+      line-height: 1.6;
+      margin-bottom: 30px;
+    }
+    .modal-close {
+      padding: 12px 30px;
+      border-radius: 12px;
+      background: var(--emerald);
+      color: #000;
+      border: none;
+      font-weight: 800;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .modal-close:hover {
+      box-shadow: 0 4px 15px var(--emerald-glow);
+    }
+
+    /* Floating numbers */
+    .floating-text {
+      position: absolute;
+      color: #34d399;
+      font-weight: 900;
+      font-size: 1.3rem;
+      pointer-events: none;
+      animation: floatUp 0.8s forwards ease-out;
+      z-index: 100;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+
+    @keyframes floatUp {
+      0% {
+        transform: translate(-50%, -50%) translateY(0) scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: translate(-50%, -50%) translateY(-60px) scale(0.8);
+        opacity: 0;
+      }
+    }
+
+    /* Banners & Statuses */
+    .premium-badge {
+      display: none;
+      background: linear-gradient(135deg, var(--gold), #fbbf24);
+      color: #000;
+      font-size: 0.75rem;
+      font-weight: 900;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-radius: 20px;
+      letter-spacing: 0.05em;
+      box-shadow: 0 0 15px var(--gold-glow);
+    }
+
+    .qty-btn {
+      transition: all 0.2s ease;
+    }
+    .qty-btn:hover {
+      color: #fff;
+    }
+    .qty-btn.active {
+      background: linear-gradient(135deg, var(--emerald), #34d399) !important;
+      color: #000 !important;
+      box-shadow: 0 2px 10px var(--emerald-glow);
+    }
+
+    .footer-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 40px;
+      font-size: 0.85rem;
+      color: #64748b;
+      border-top: 1px solid var(--line);
+      padding-top: 20px;
+    }
+    .back-link {
+      color: #94a3b8;
+      text-decoration: none;
+      font-weight: 700;
+      transition: color 0.2s;
+    }
+    .back-link:hover {
+      color: #fff;
+    }
+
+    @media (max-width: 768px) {
+      header {
+        padding: 20px;
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+      }
+      .finances {
+        flex-direction: column;
+        align-items: center;
+        gap: 15px;
+      }
+      .cash-value {
+        font-size: 2.2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="game-container">
+  
+  <header>
+    <div class="brand">
+      <h1>Richard's Riches</h1>
+      <p>Idle Corporate Multiplier</p>
+    </div>
+    <div class="finances">
+      <div id="premium-badge" class="premium-badge">Premium 2X Enabled</div>
+      <div class="cash-display">
+        <div id="cash-val" class="cash-value">$0.00</div>
+        <div id="cash-rate" class="cash-rate">+$0.00/sec</div>
+      </div>
+      <div class="mitchcoin-display">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 16h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 11.9 13 12.5 13 14h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H7c0-2.76 2.24-5 5-5s5 2.24 5 5c0 1.04-.42 1.99-1.07 2.75z"/></svg>
+        <div id="mitchcoins-val" class="mitchcoin-val">0</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('businesses')">Businesses</button>
+    <button class="tab-btn" onclick="switchTab('upgrades')">Upgrades (<span id="upgrades-count">0</span>)</button>
+    <button class="tab-btn" onclick="switchTab('managers')">Managers (<span id="managers-count">0</span>)</button>
+    <button class="tab-btn" onclick="switchTab('exchange')">MitchCoin Exchange</button>
+  </div>
+
+  <div class="content-area">
+    <!-- Businesses Pane -->
+    <div id="pane-businesses" class="pane active">
+      <!-- Buy Quantity Multiplier Control -->
+      <div class="multiplier-bar" style="margin-bottom: 20px; display: flex; justify-content: flex-end; align-items: center; gap: 10px;">
+        <span style="font-size: 0.9rem; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Buy Quantity:</span>
+        <div class="qty-toggle" style="display: flex; background: rgba(0,0,0,0.3); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px;">
+          <button id="qty-1" class="qty-btn active" onclick="setBuyQty('1')" style="background: none; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; color: #cbd5e1; font-family: inherit;">x1</button>
+          <button id="qty-10" class="qty-btn" onclick="setBuyQty('10')" style="background: none; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; color: #cbd5e1; font-family: inherit;">x10</button>
+          <button id="qty-100" class="qty-btn" onclick="setBuyQty('100')" style="background: none; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; color: #cbd5e1; font-family: inherit;">x100</button>
+          <button id="qty-next" class="qty-btn" onclick="setBuyQty('next')" style="background: none; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; color: #cbd5e1; font-family: inherit;">xNEXT</button>
+          <button id="qty-max" class="qty-btn" onclick="setBuyQty('max')" style="background: none; border: none; padding: 6px 16px; border-radius: 8px; font-weight: 800; cursor: pointer; color: #cbd5e1; font-family: inherit;">xMAX</button>
+        </div>
+      </div>
+      <div id="business-grid" class="business-grid"></div>
+    </div>
+
+    <!-- Upgrades Pane -->
+    <div id="pane-upgrades" class="pane">
+      <div id="upgrade-list" class="upgrade-list"></div>
+    </div>
+
+    <!-- Managers Pane -->
+    <div id="pane-managers" class="pane">
+      <div id="manager-list" class="upgrade-list"></div>
+    </div>
+
+    <!-- Exchange Pane -->
+    <div id="pane-exchange" class="pane">
+      <div class="exchange-card">
+        <h2 class="exchange-title">Claim MitchCoins</h2>
+        <p style="color: #cbd5e1; font-size: 0.95rem; line-height: 1.5;">
+          Every time you collect enough cash, you can purchase standard game coins. 
+          Claiming them here securely registers them as official MitchCoins in your student account!<br>
+          <strong style="color: var(--gold); font-weight: 800;">Supercharged Exchange Rate: 1 Game Coin = 100 MitchCoins!</strong>
+        </p>
+        <div class="exchange-rate-box">
+          <div class="rate-title">Current Game Coins</div>
+          <div id="exchange-coins" class="rate-value">0 Coins</div>
+          <div style="height: 1px; background: var(--line); margin: 10px 0;"></div>
+          <div class="rate-title">Cost of Next Game Coin</div>
+          <div id="exchange-cost" class="rate-cost">$100.00</div>
+        </div>
+        <button id="claim-btn" class="claim-btn" onclick="claimMitchCoins()">Claim MitchCoins Now</button>
+        <p style="color: #94a3b8; font-size: 0.85rem; font-style: italic;">
+          Premium members receive a permanent 2X multiplier (200 MitchCoins per game coin)!
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-bar">
+    <a href="/" class="back-link">&larr; Back to Mitch.pro Home</a>
+    <div>Richard's Riches &copy; 2026. Fully Secure, Anti-Cheat Enabled.</div>
+  </div>
+
+</div>
+
+<!-- Offline Gains Modal -->
+<div id="offline-modal" class="modal-overlay">
+  <div class="modal-card">
+    <div class="modal-icon">💸</div>
+    <div class="modal-title">Welcome Back!</div>
+    <div id="offline-text" class="modal-text">
+      While you were away, your operations kept running flawlessly!<br>
+      You generated <span style="color:var(--emerald); font-weight:800; font-size:1.2rem;">${Fmt(gain)}</span> in offline corporate wealth!
+    </div>
+    <button class="modal-close" onclick="closeOfflineModal()">Collect Riches</button>
+  </div>
+</div>
+
+<script>
+  // Game Configuration matching backend
+  const RICHARD_BUSINESSES = {
+    lemon: { name: "Lemon Squeezer", baseCost: 4, baseRevenue: 1, baseSpeed: 0.6, emoji: "🍋" },
+    news: { name: "Newspaper Delivery", baseCost: 60, baseRevenue: 60, baseSpeed: 3, emoji: "📰" },
+    carwash: { name: "Car Wash", baseCost: 720, baseRevenue: 540, baseSpeed: 6, emoji: "🧼" },
+    pizza: { name: "Pizza Delivery", baseCost: 8640, baseRevenue: 4320, baseSpeed: 12, emoji: "🍕" },
+    donut: { name: "Donut Shop", baseCost: 103680, baseRevenue: 51840, baseSpeed: 24, emoji: "🍩" },
+    shrimp: { name: "Shrimp Boat", baseCost: 1244160, baseRevenue: 622080, baseSpeed: 96, emoji: "🍤" },
+    hockey: { name: "Hockey Team", baseCost: 14929920, baseRevenue: 7464960, baseSpeed: 384, emoji: "🏒" },
+    movie: { name: "Movie Studio", baseCost: 179159040, baseRevenue: 89579520, baseSpeed: 1536, emoji: "🎬" },
+    bank: { name: "Bank", baseCost: 2149908480, baseRevenue: 1074954240, baseSpeed: 6144, emoji: "🏦" },
+    oil: { name: "Oil Company", baseCost: 25798901760, baseRevenue: 29668737024, baseSpeed: 36864, emoji: "🛢️" }
+  };
+
+  const UPGRADES_LIST = [
+    { id: "lemon_1", name: "Super Squeezer", desc: "Lemon Squeezer profit x3", cost: 250 },
+    { id: "news_1", name: "Printed Gold", desc: "Newspaper profit x3", cost: 1000 },
+    { id: "carwash_1", name: "High Pressure Wax", desc: "Car Wash profit x3", cost: 10000 },
+    { id: "pizza_1", name: "Stuffed Crusts", desc: "Pizza Delivery profit x3", cost: 100000 },
+    { id: "donut_1", name: "Glazed Sprinkles", desc: "Donut Shop profit x3", cost: 1000000 },
+    { id: "shrimp_1", name: "Deep Sea Trawler", desc: "Shrimp Boat profit x3", cost: 20000000 },
+    { id: "hockey_1", name: "Golden Skates", desc: "Hockey Team profit x3", cost: 500000000 },
+    { id: "movie_1", name: "Blockbuster Budgets", desc: "Movie Studio profit x3", cost: 10000000000 },
+    { id: "bank_1", name: "Gold Vault Reserve", desc: "Bank profit x3", cost: 250000000000 },
+    { id: "oil_1", name: "Gushing Wells", desc: "Oil Company profit x3", cost: 5000000000000 },
+    { id: "all_1", name: "Richard's Resurgence", desc: "Global profit x2", cost: 5000 },
+    { id: "all_2", name: "MitchCoin Synergy", desc: "Global profit x3", cost: 500000 },
+    { id: "all_3", name: "Capitalist Crown", desc: "Global profit x5", cost: 500000000 }
+  ];
+
+  const MANAGERS_LIST = [
+    { id: "lemon", name: "Squeeze Assistant", desc: "Automates Lemon Squeezer", cost: 1000 },
+    { id: "news", name: "Paperboy Manager", desc: "Automates Newspaper Delivery", cost: 15000 },
+    { id: "carwash", name: "Bubbles Supervisor", desc: "Automates Car Wash", cost: 100000 },
+    { id: "pizza", name: "Delivery Coordinator", desc: "Automates Pizza Delivery", cost: 800000 },
+    { id: "donut", name: "Baker Chief", desc: "Automates Donut Shop", cost: 5000000 },
+    { id: "shrimp", name: "Captain Bubba", desc: "Automates Shrimp Boat", cost: 80000000 },
+    { id: "hockey", name: "Head Coach", desc: "Automates Hockey Team", cost: 1200000000 },
+    { id: "movie", name: "Executive Producer", desc: "Automates Movie Studio", cost: 20000000000 },
+    { id: "bank", name: "Branch Manager", desc: "Automates Bank", cost: 400000000000 },
+    { id: "oil", name: "Drilling Director", desc: "Automates Oil Company", cost: 8000000000000 }
+  ];
+
+  // Game State variables
+  let state = {
+    cash: 0,
+    coins: 0,
+    levels: { lemon: 1 },
+    managers: {},
+    upgrades: []
+  };
+
+  let buyQty = '1'; // Buy quantity multiplier: '1', '10', '100', 'max'
+  let globalMitchCoins = 0;
+  let premMult = 1.0;
+  let syncInProgress = false;
+  let activeCycles = {}; // Tracking active cycles for manual / auto runs
+
+  function setBuyQty(qty) {
+    buyQty = qty;
+    document.querySelectorAll('.qty-btn').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('qty-' + qty).classList.add('active');
+    updateUI();
+  }
+
+  function getBuyDetails(id) {
+    const info = RICHARD_BUSINESSES[id];
+    if (!info) return { count: 0, cost: 0 };
+    const currentLevel = state.levels[id] || 0;
+    
+    let targetCount = 1;
+    if (buyQty === '10') targetCount = 10;
+    else if (buyQty === '100') targetCount = 100;
+    else if (buyQty === 'next') {
+      const nextM = getNextMilestone(currentLevel);
+      targetCount = Math.max(1, nextM - currentLevel);
+    } else if (buyQty === 'max') {
+      let tempCash = state.cash;
+      let count = 0;
+      let cost = 0;
+      let lvl = currentLevel;
+      while (true) {
+        const nextCost = Math.floor(info.baseCost * Math.pow(1.15, lvl));
+        if (tempCash >= nextCost && cost + nextCost < 1e290) {
+          tempCash -= nextCost;
+          cost += nextCost;
+          count++;
+          lvl++;
+        } else {
+          break;
+        }
+      }
+      if (count === 0) {
+        return { count: 1, cost: Math.floor(info.baseCost * Math.pow(1.15, currentLevel)) };
+      }
+      return { count: count, cost: cost };
+    }
+    
+    let cost = 0;
+    for (let i = 0; i < targetCount; i++) {
+      cost += Math.floor(info.baseCost * Math.pow(1.15, currentLevel + i));
+    }
+    return { count: targetCount, cost: cost };
+  }
+
+  function getNextMilestone(level) {
+    const milestones = [25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000];
+    for (const m of milestones) {
+      if (level < m) return m;
+    }
+    return 5000;
+  }
+
+  function getPrevMilestone(level) {
+    const milestones = [0, 25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000];
+    for (let i = milestones.length - 1; i >= 0; i--) {
+      if (level >= milestones[i]) return milestones[i];
+    }
+    return 0;
+  }
+
+  // Math formatting helper
+  function Fmt(n) {
+    if (n === undefined || n === null || isNaN(n)) return '$0.00';
+    if (n === 0) return '$0.00';
+    if (n < 0.01) return '$0.00';
+    if (n < 1000) return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    
+    const suffixes = [
+      "", "K", "Million", "Billion", "Trillion", "Quadrillion", "Quintillion",
+      "Sextillion", "Septillion", "Octillion", "Nonillion", "Decillion",
+      "Undecillion", "Duodecillion", "Tredecillion", "Quattuordecillion",
+      "Quindecillion", "Sexdecillion", "Septendecillion", "Octodecillion",
+      "Novemdecillion", "Vigintillion", "Centillion"
+    ];
+    
+    const exp = Math.floor(Math.log10(n) / 3);
+    if (exp < suffixes.length) {
+      const suffix = suffixes[exp];
+      const shortVal = n / Math.pow(10, exp * 3);
+      return '$' + shortVal.toFixed(2) + ' ' + suffix;
+    } else {
+      return '$' + n.toExponential(2);
+    }
+  }
+
+  // Switch tabs
+  function switchTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(pane => pane.classList.remove('active'));
+
+    // Highlight button
+    event.currentTarget.classList.add('active');
+    document.getElementById('pane-' + tabId).classList.add('active');
+  }
+
+  // Calculate profit and speed values locally
+  function getBusinessRevenue(id) {
+    const info = RICHARD_BUSINESSES[id];
+    if (!info) return 0;
+    const level = state.levels[id] || 0;
+    if (level === 0) return 0;
+
+    let mult = 1;
+    const ownedUpgrades = new Set(state.upgrades);
+    
+    // individual upgrade x3
+    if (ownedUpgrades.has(id + '_1')) mult *= 3;
+
+    // global upgrades
+    let globalMult = 1;
+    if (ownedUpgrades.has('all_1')) globalMult *= 2;
+    if (ownedUpgrades.has('all_2')) globalMult *= 3;
+    if (ownedUpgrades.has('all_3')) globalMult *= 5;
+
+    return level * info.baseRevenue * mult * globalMult * premMult;
+  }
+
+  function getBusinessSpeed(id) {
+    const info = RICHARD_BUSINESSES[id];
+    if (!info) return 1.0;
+    const lvl = state.levels[id] || 0;
+    
+    let divisor = 1;
+    const milestones = [25, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 2000, 3000, 4000, 5000];
+    for (const m of milestones) {
+      if (lvl >= m) {
+        divisor *= 2;
+      } else {
+        break;
+      }
+    }
+    return Math.max(0.05, info.baseSpeed / divisor);
+  }
+
+  // Calculate cost of business
+  function getBusinessCost(id) {
+    const info = RICHARD_BUSINESSES[id];
+    if (!info) return 0;
+    const currentLevel = state.levels[id] || 0;
+    return Math.floor(info.baseCost * Math.pow(1.15, currentLevel));
+  }
+
+  // Calculate overall Cash Per Second
+  function getOverallCashPerSec() {
+    let rate = 0;
+    Object.keys(RICHARD_BUSINESSES).forEach(id => {
+      const level = state.levels[id] || 0;
+      const auto = state.managers[id] || false;
+      if (level > 0 && auto) {
+        const rev = getBusinessRevenue(id);
+        const speed = getBusinessSpeed(id);
+        rate += (rev / speed);
+      }
+    });
+    return rate;
+  }
+
+  // Handle business clicking (Manual Lemon or triggering progress)
+  function clickBusiness(id) {
+    const level = state.levels[id] || 0;
+    if (level === 0) return;
+
+    if (activeCycles[id]) return; // Cycle already running
+
+    startBusinessCycle(id);
+
+    if (event) {
+      // Show manual points popup
+      const rev = getBusinessRevenue(id);
+      showFloatingText(event, "+" + Fmt(rev));
+    }
+  }
+
+  function startBusinessCycle(id) {
+    const speed = getBusinessSpeed(id);
+    const start = Date.now();
+    activeCycles[id] = true;
+
+    function frame() {
+      const elapsed = (Date.now() - start) / 1000;
+      const progress = Math.min(100, (elapsed / speed) * 100);
+      
+      const el = document.getElementById(`progress-${id}`);
+      if (el) el.style.width = progress + '%';
+
+      if (elapsed < speed) {
+        requestAnimationFrame(frame);
+      } else {
+        // Complete cycle
+        const rev = getBusinessRevenue(id);
+        state.cash = Math.min(1e290, state.cash + rev);
+        
+        if (el) el.style.width = '0%';
+        activeCycles[id] = false;
+        
+        updateUIValuesOnly();
+
+        // If automated, restart cycle immediately
+        if (state.managers[id] && state.levels[id] > 0) {
+          startBusinessCycle(id);
+        }
+      }
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // Buy or upgrade business levels
+  function buyBusinessLevel(id) {
+    const details = getBuyDetails(id);
+    if (state.cash >= details.cost) {
+      state.cash -= details.cost;
+      state.levels[id] = (state.levels[id] || 0) + details.count;
+      
+      updateUI();
+      
+      // If manager is hired and was idle, start automated loop
+      if (state.managers[id] && !activeCycles[id] && state.levels[id] >= details.count && state.levels[id] - details.count === 0) {
+        startBusinessCycle(id);
+      }
+    }
+  }
+
+  // Buy Upgrades
+  function buyUpgrade(uid) {
+    const upgrade = UPGRADES_LIST.find(u => u.id === uid);
+    if (!upgrade) return;
+
+    if (state.cash >= upgrade.cost && !state.upgrades.includes(uid)) {
+      state.cash -= upgrade.cost;
+      state.upgrades.push(uid);
+      updateUI();
+    }
+  }
+
+  // Hire Managers
+  function hireManager(mid) {
+    const manager = MANAGERS_LIST.find(m => m.id === mid);
+    if (!manager) return;
+
+    if (state.cash >= manager.cost && !state.managers[mid]) {
+      state.cash -= manager.cost;
+      state.managers[mid] = true;
+      updateUI();
+
+      // Trigger automation immediately if business has levels
+      if (state.levels[mid] > 0 && !activeCycles[mid]) {
+        startBusinessCycle(mid);
+      }
+    }
+  }
+
+  // Update only values on screen (for high-frequency loops)
+  function updateUIValuesOnly() {
+    document.getElementById('cash-val').textContent = Fmt(state.cash);
+    const rate = getOverallCashPerSec();
+    document.getElementById('cash-rate').textContent = "+" + Fmt(rate) + "/sec";
+    
+    // Quick shop highlights
+    Object.keys(RICHARD_BUSINESSES).forEach(id => {
+      const details = getBuyDetails(id);
+      const costEl = document.getElementById(`cost-${id}`);
+      if (costEl) costEl.textContent = Fmt(details.cost);
+      
+      const btn = document.getElementById(`buy-btn-${id}`);
+      if (btn) btn.disabled = state.cash < details.cost;
+    });
+
+    // Cost of next game coin
+    const nextCoinCost = Math.floor(100 * Math.pow(3, state.coins));
+    document.getElementById('exchange-cost').textContent = Fmt(nextCoinCost);
+    document.getElementById('claim-btn').disabled = state.cash < nextCoinCost;
+  }
+
+  // Update complete lists and UI bindings
+  function updateUI() {
+    updateUIValuesOnly();
+    
+    // Render businesses
+    const grid = document.getElementById('business-grid');
+    grid.innerHTML = '';
+    
+    Object.entries(RICHARD_BUSINESSES).forEach(([id, info]) => {
+      const lvl = state.levels[id] || 0;
+      const isUnlocked = lvl > 0;
+      const isAuto = state.managers[id] || false;
+      const rev = getBusinessRevenue(id);
+      const speed = getBusinessSpeed(id);
+      
+      const details = getBuyDetails(id);
+      
+      // Calculate milestone progress
+      const prevM = getPrevMilestone(lvl);
+      const nextM = getNextMilestone(lvl);
+      const range = nextM - prevM;
+      const milestoneProgress = range > 0 ? ((lvl - prevM) / range) * 100 : 100;
+      
+      const card = document.createElement('div');
+      card.className = `business-card ${isUnlocked ? 'unlocked' : ''}`;
+      
+      card.innerHTML = `
+        ${isAuto ? '<div class="automation-tag">Automated</div>' : ''}
+        <div class="biz-header">
+          <div class="biz-title">${info.name}</div>
+          <div class="biz-level">LVL ${lvl}</div>
+        </div>
+        <div class="biz-visual ${!isUnlocked && id !== 'lemon' ? 'disabled' : ''}" onclick="clickBusiness('${id}')">
+          <span>${info.emoji}</span>
+          <div class="biz-progress-container">
+            <div id="progress-${id}" class="biz-progress-bar" style="width: ${activeCycles[id] ? '0%' : '0%'}"></div>
+          </div>
+        </div>
+        <div class="biz-stats">
+          <div>Revenue</div>
+          <div class="biz-stat-val">${Fmt(rev)}</div>
+        </div>
+        <div class="biz-stats">
+          <div>Speed</div>
+          <div class="biz-stat-val">${speed.toFixed(1)}s</div>
+        </div>
+        <div class="biz-stats" style="margin-top: 4px; display: flex; flex-direction: column; gap: 4px;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: #64748b; font-weight: 700;">
+            <span>Speed Milestone</span>
+            <span>${lvl} / ${nextM}</span>
+          </div>
+          <div style="width: 100%; height: 4px; background: rgba(255,255,255,0.03); border-radius: 2px; overflow: hidden;">
+            <div style="width: ${milestoneProgress}%; height: 100%; background: var(--emerald); box-shadow: 0 0 4px var(--emerald-glow); border-radius: 2px;"></div>
+          </div>
+        </div>
+        <button id="buy-btn-${id}" class="buy-btn" onclick="buyBusinessLevel('${id}')" ${state.cash < details.cost ? 'disabled' : ''}>
+          ${lvl === 0 ? 'Unlock' : `Buy +${details.count}`} <span style="color:var(--gold); font-weight:900;">${Fmt(details.cost)}</span>
+        </button>
+      `;
+      
+      grid.appendChild(card);
+    });
+
+    // Render unpurchased upgrades
+    const upgradeList = document.getElementById('upgrade-list');
+    upgradeList.innerHTML = '';
+    let availUpgradesCount = 0;
+    
+    UPGRADES_LIST.forEach(u => {
+      if (state.upgrades.includes(u.id)) return;
+      availUpgradesCount++;
+      
+      const item = document.createElement('div');
+      item.className = 'card-item';
+      item.innerHTML = `
+        <div class="card-info">
+          <div class="card-title">${u.name}</div>
+          <div class="card-desc">${u.desc}</div>
+          <div class="card-cost">${Fmt(u.cost)}</div>
+        </div>
+        <button class="action-btn" onclick="buyUpgrade('${u.id}')" ${state.cash < u.cost ? 'disabled' : ''}>Buy Upgrade</button>
+      `;
+      upgradeList.appendChild(item);
+    });
+    document.getElementById('upgrades-count').textContent = availUpgradesCount;
+
+    // Render unhired managers
+    const managerList = document.getElementById('manager-list');
+    managerList.innerHTML = '';
+    let availManagersCount = 0;
+
+    MANAGERS_LIST.forEach(m => {
+      if (state.managers[m.id]) return;
+      availManagersCount++;
+
+      const item = document.createElement('div');
+      item.className = 'card-item';
+      item.innerHTML = `
+        <div class="card-info">
+          <div class="card-title">${m.name}</div>
+          <div class="card-desc">${m.desc}</div>
+          <div class="card-cost">${Fmt(m.cost)}</div>
+        </div>
+        <button class="action-btn" onclick="hireManager('${m.id}')" ${state.cash < m.cost ? 'disabled' : ''}>Hire Manager</button>
+      `;
+      managerList.appendChild(item);
+    });
+    document.getElementById('managers-count').textContent = availManagersCount;
+
+    // Exchange tab values
+    document.getElementById('exchange-coins').textContent = state.coins + " Coins";
+  }
+
+  // Floating text feedback for click power
+  function showFloatingText(e, text) {
+    if (!e || !e.clientX) return;
+    const body = document.body;
+    const floatEl = document.createElement('div');
+    floatEl.className = 'floating-text';
+    floatEl.textContent = text;
+    floatEl.style.left = e.clientX + 'px';
+    floatEl.style.top = (e.clientY + window.scrollY) + 'px';
+    body.appendChild(floatEl);
+    setTimeout(() => floatEl.remove(), 800);
+  }
+
+  // Offline Modal Operations
+  function showOfflineModal(gain) {
+    document.getElementById('offline-text').innerHTML = `
+      While you were away, your operations kept running flawlessly!<br>
+      You generated <span style="color:var(--emerald); font-weight:800; font-size:1.2rem;">${Fmt(gain)}</span> in offline corporate wealth!
+    `;
+    document.getElementById('offline-modal').classList.add('active');
+  }
+
+  function closeOfflineModal() {
+    document.getElementById('offline-modal').classList.remove('active');
+  }
+
+  // Initialize and load game state from server
+  async function initGame() {
+    try {
+      const res = await fetch('/api/games/richard-riches/state', { credentials: 'include' });
+      const data = await res.json();
+      if (data.success) {
+        state = data.state;
+        
+        // Load premium
+        const me = await fetch('/api/me').then(r => r.json());
+        if (me.isPremium) {
+          premMult = 2.0;
+          document.getElementById('premium-badge').style.display = 'inline-block';
+        }
+        globalMitchCoins = me.coins || 0;
+        document.getElementById('mitchcoins-val').textContent = globalMitchCoins;
+
+        // Render base UI
+        updateUI();
+
+        // Check offline gains
+        if (data.offlineGain && data.offlineGain > 0) {
+          showOfflineModal(data.offlineGain);
+        }
+
+        // Start automation loops for already automated businesses
+        Object.keys(RICHARD_BUSINESSES).forEach(id => {
+          if (state.managers[id] && state.levels[id] > 0) {
+            startBusinessCycle(id);
+          }
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load initial Richard's Riches state:", e);
+    }
+  }
+
+  // Synchronize state with server (every 10s or manually)
+  async function syncState(claim = false) {
+    if (syncInProgress) return;
+    syncInProgress = true;
+
+    try {
+      const res = await fetch('/api/games/richard-riches/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: state, claim: claim }),
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (data.success) {
+        state.cash = data.serverCash;
+        state.coins = data.serverCoins;
+        globalMitchCoins = data.globalCoins;
+        
+        document.getElementById('mitchcoins-val').textContent = globalMitchCoins;
+        updateUI();
+      }
+    } catch(e) {
+      console.error("Synchronization failed:", e);
+    } finally {
+      syncInProgress = false;
+    }
+  }
+
+  // Claim MitchCoins
+  async function claimMitchCoins() {
+    await syncState(true);
+  }
+
+  // Auto-sync loop
+  setInterval(() => {
+    syncState(false);
+  }, 10000);
+
+  // Initialize
+  window.onload = initGame;
+</script>
+
+</body>
+</html>

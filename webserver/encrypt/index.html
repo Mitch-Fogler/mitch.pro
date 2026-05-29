@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secure Chat</title>
+<script src="/theme.js"></script>
+<script src="/broadcast.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Courier New", ui-monospace, monospace;
+  background: var(--t-bg);
+  color: var(--t-fg2);
+  height: 100vh;
+  overflow: hidden;
+}
+button, input {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+#loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: .45;
+  font-size: .85rem;
+  letter-spacing: 2px;
+}
+#app {
+  display: none;
+  width: 100%;
+  height: 100vh;
+}
+#app.ready { display: flex; }
+#sidebar {
+  width: 292px;
+  min-width: 292px;
+  background: rgba(0,0,0,.12);
+  border-right: 1px solid var(--t-bd);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+#sidebar-top {
+  min-height: 48px;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--t-bd);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#sidebar-title {
+  color: var(--t-ac);
+  font-size: .78rem;
+  letter-spacing: 2px;
+  font-weight: 900;
+  flex: 1;
+}
+.small-btn, .tool-btn, .msg-action, #sendBtn, #attachBtn {
+  background: var(--t-bg2);
+  border: 1px solid var(--t-bd);
+  color: var(--t-fg2);
+  border-radius: 7px;
+  padding: 6px 9px;
+  font-size: .76rem;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.small-btn:hover, .tool-btn:hover, .msg-action:hover, #sendBtn:hover, #attachBtn:hover,
+.small-btn.on {
+  border-color: var(--t-bda);
+  color: var(--t-ac);
+  background: var(--t-bg3);
+}
+#my-identity {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--t-bd);
+  font-size: .75rem;
+  color: var(--t-ac);
+  opacity: .75;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#search-wrap {
+  padding: 8px;
+  border-bottom: 1px solid var(--t-bd);
+  display: grid;
+  gap: 7px;
+}
+#searchInput, #msgSearch, #groupName, #groupMemberSearch, #msgInput {
+  width: 100%;
+  background: var(--t-bg2);
+  border: 1px solid var(--t-bd);
+  border-radius: 7px;
+  color: var(--t-fg);
+  padding: 7px 9px;
+  outline: none;
+  font-size: .8rem;
+}
+#searchInput:focus, #msgSearch:focus, #groupName:focus, #groupMemberSearch:focus, #msgInput:focus {
+  border-color: var(--t-bda);
+}
+.tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.tab {
+  background: transparent;
+  border: 1px solid var(--t-bd);
+  border-radius: 7px;
+  color: var(--t-fg2);
+  padding: 7px;
+  font-size: .76rem;
+}
+.tab.active {
+  border-color: var(--t-bda);
+  color: var(--t-ac);
+  background: var(--t-bg2);
+}
+#user-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+.user-entry {
+  width: 100%;
+  padding: 10px 11px;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.045);
+  background: transparent;
+  color: var(--t-fg2);
+  display: grid;
+  grid-template-columns: auto minmax(0,1fr) auto;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+}
+.user-entry:hover {
+  background: var(--t-bg2);
+  color: var(--t-fg);
+}
+.user-entry.active {
+  background: var(--t-bg2);
+  color: var(--t-ac);
+  border-left: 2px solid var(--t-ac);
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--t-fg2);
+  opacity: .26;
+}
+.dot.on {
+  background: var(--t-ac);
+  opacity: 1;
+  box-shadow: 0 0 7px var(--t-gls);
+}
+.entry-main {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.entry-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.entry-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: .68rem;
+  color: var(--t-fg2);
+  opacity: .68;
+}
+.role-tag, .unread {
+  font-size: .58rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  border: 1px solid var(--t-bd);
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: var(--t-fg2);
+}
+.role-tag.owner { color: #facc15; border-color: rgba(250,204,21,.45); }
+.role-tag.admin { color: #f87171; border-color: rgba(248,113,113,.45); }
+.role-tag.premium { color: #f59e0b; border-color: rgba(245,158,11,.45); }
+.unread {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #fff;
+}
+.sidebar-foot {
+  padding: 8px;
+  border-top: 1px solid var(--t-bd);
+  display: flex;
+  gap: 6px;
+}
+.sidebar-foot .small-btn { flex: 1; text-align: center; text-decoration: none; }
+#chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+#chat-header {
+  min-height: 58px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--t-bd);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.chat-title-wrap {
+  min-width: 0;
+  flex: 1;
+}
+#chat-title {
+  color: var(--t-fg);
+  font-size: .92rem;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#chat-subtitle {
+  margin-top: 2px;
+  font-size: .7rem;
+  opacity: .62;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#msgSearch {
+  width: 190px;
+  min-width: 130px;
+  padding: 6px 8px;
+}
+#no-chat {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t-bd);
+  font-size: .86rem;
+  text-align: center;
+  padding: 24px;
+}
+#msgs {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: none;
+  min-height: 0;
+}
+#msgs.on { display: block; }
+.day-sep {
+  margin: 14px 0 9px;
+  text-align: center;
+  color: var(--t-fg2);
+  opacity: .42;
+  font-size: .68rem;
+}
+.msg {
+  margin: 7px 0;
+  font-size: .84rem;
+  line-height: 1.5;
+  display: grid;
+  gap: 3px;
+}
+.msg.is-filter-hidden { display: none; }
+.msg-line {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+  min-width: 0;
+}
+.msg .ts  { color: var(--t-fg2); opacity: .42; font-size: .72rem; flex-shrink: 0; }
+.msg .who { font-weight: 900; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg .who.me   { color: var(--t-ac); }
+.msg .who.them { color: var(--t-ac2, #a78bfa); }
+.msg .body {
+  color: var(--t-fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
+}
+.msg-tools {
+  margin-left: 58px;
+  display: flex;
+  gap: 5px;
+  opacity: 0;
+  transition: opacity .12s;
+}
+.msg:hover .msg-tools { opacity: 1; }
+.msg-action {
+  padding: 2px 6px;
+  font-size: .65rem;
+  border-radius: 5px;
+}
+.reply-box {
+  margin-left: 58px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--t-ac);
+  color: var(--t-fg2);
+  background: var(--t-bg2);
+  border-radius: 6px;
+  font-size: .7rem;
+  max-width: 620px;
+}
+.chat-image {
+  display: block;
+  margin: 6px 0 2px 58px;
+  max-width: min(390px, 78vw);
+  max-height: 280px;
+  border-radius: 8px;
+  border: 1px solid var(--t-bd);
+  object-fit: contain;
+  background: var(--t-bg2);
+}
+#reply-preview, #image-preview {
+  display: none;
+  border-top: 1px solid var(--t-bd);
+  padding: 7px 14px;
+  color: var(--t-fg2);
+  font-size: .72rem;
+  align-items: center;
+  gap: 8px;
+}
+#reply-preview.on, #image-preview.on { display: flex; }
+#image-preview img {
+  width: 44px;
+  height: 34px;
+  border-radius: 5px;
+  object-fit: cover;
+  border: 1px solid var(--t-bd);
+}
+#input-row {
+  padding: 9px 14px;
+  border-top: 1px solid var(--t-bd);
+  display: none;
+  gap: 8px;
+}
+#input-row.on { display: flex; }
+#msgInput {
+  flex: 1;
+  font-size: .85rem;
+}
+#sendBtn {
+  color: var(--t-ac);
+  border-color: var(--t-bda);
+  padding: 7px 14px;
+}
+.empty {
+  padding: 16px;
+  font-size: .78rem;
+  opacity: .38;
+  text-align: center;
+}
+#toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 4000;
+  background: rgba(10,10,14,.94);
+  color: var(--t-fg);
+  border: 1px solid var(--t-bd);
+  border-radius: 9px;
+  padding: 10px 12px;
+  box-shadow: 0 18px 50px rgba(0,0,0,.4);
+  font-size: .78rem;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity .16s, transform .16s;
+  pointer-events: none;
+  max-width: 320px;
+}
+#toast.show {
+  opacity: 1;
+  transform: none;
+}
+#group-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0,0,0,.62);
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+#group-modal.show { display: flex; }
+.modal-card {
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100vh - 32px));
+  display: grid;
+  gap: 10px;
+  background: var(--t-bg);
+  border: 1px solid var(--t-bd);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 28px 90px rgba(0,0,0,.55);
+}
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.modal-head strong {
+  color: var(--t-fg);
+  font-size: .98rem;
+}
+#selected-members {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 28px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--t-bd);
+  border-radius: 999px;
+  background: var(--t-bg2);
+  color: var(--t-fg2);
+  padding: 4px 8px;
+  font-size: .72rem;
+}
+.chip button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+#group-member-list {
+  min-height: 180px;
+  max-height: 310px;
+  overflow-y: auto;
+  border: 1px solid var(--t-bd);
+  border-radius: 8px;
+}
+.pick-row {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  background: transparent;
+  color: var(--t-fg2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  text-align: left;
+}
+.pick-row:hover, .pick-row.on {
+  background: var(--t-bg2);
+  color: var(--t-fg);
+}
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.entry-name.neon_purple { color: #d946ef !important; text-shadow: 0 0 5px rgba(217,70,239,0.3); }
+.entry-name.electric_blue { color: #3b82f6 !important; text-shadow: 0 0 5px rgba(59,130,246,0.3); }
+.entry-name.mint_flash { color: #34d399 !important; text-shadow: 0 0 5px rgba(52,211,153,0.3); }
+.entry-name.rose_spark { color: #fb7185 !important; text-shadow: 0 0 5px rgba(251,113,133,0.3); }
+.entry-name.ember_red { color: #ef4444 !important; text-shadow: 0 0 5px rgba(239,68,68,0.35); }
+.entry-name.void_white { color: #f8fafc !important; text-shadow: 0 0 7px rgba(248,250,252,0.3); }
+.entry-name.gold_glow { color: #f59e0b !important; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+.entry-name.rainbow_name {
+  background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-size: 200% auto;
+  animation: rainbow_move 3s linear infinite;
+  font-weight: 800;
+  text-shadow: 0 0 2px rgba(0,0,0,0.3);
+}
+@keyframes rainbow_move { to { background-position: 200% center; } }
+@media (max-width: 860px) {
+  #app.ready { flex-direction: column; }
+  #sidebar {
+    width: 100%;
+    min-width: 0;
+    height: 42vh;
+    border-right: 0;
+    border-bottom: 1px solid var(--t-bd);
+  }
+  #chat-main { height: 58vh; }
+  #chat-header { flex-wrap: wrap; align-items: flex-start; }
+  .header-tools { width: 100%; flex-wrap: wrap; }
+  #msgSearch { flex: 1; width: auto; }
+  .msg-tools { opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<div id="loading">connecting...</div>
+
+<div id="app">
+  <aside id="sidebar">
+    <div id="sidebar-top">
+      <span id="sidebar-title">SECURE CHAT</span>
+      <button id="new-group-btn" class="small-btn" type="button">New group</button>
+      <button id="notif-btn" class="small-btn" type="button" title="Push notifications">Push</button>
+    </div>
+    <div id="my-identity"></div>
+    <div id="search-wrap">
+      <div class="tabs">
+        <button class="tab active" id="direct-tab" type="button">Direct</button>
+        <button class="tab" id="groups-tab" type="button">Groups</button>
+      </div>
+      <input id="searchInput" placeholder="search people or groups..." autocomplete="off">
+    </div>
+    <div id="user-list"></div>
+    <div class="sidebar-foot">
+      <button class="small-btn" id="refresh-btn" type="button">Refresh</button>
+      <button class="small-btn" id="clear-all-btn" type="button">Clear all</button>
+      <a class="small-btn" id="profile-btn" href="/profile.html">My profile</a>
+    </div>
+  </aside>
+
+  <main id="chat-main">
+    <header id="chat-header">
+      <div class="chat-title-wrap">
+        <div id="chat-title">No chat selected</div>
+        <div id="chat-subtitle">Choose a direct message or group chat.</div>
+      </div>
+      <div class="header-tools">
+        <input id="msgSearch" placeholder="search this chat..." autocomplete="off">
+        <button id="expiry-btn" class="tool-btn" type="button" title="Hide messages locally after a short time">Expire: off</button>
+        <button id="clear-chat-btn" class="tool-btn" type="button">Clear chat</button>
+        <button id="export-chat-btn" class="tool-btn" type="button">Export</button>
+        <button id="leave-group-btn" class="tool-btn" type="button" style="display:none">Leave</button>
+      </div>
+    </header>
+    <div id="no-chat">select a conversation to start chatting</div>
+    <div id="msgs"></div>
+    <div id="reply-preview">
+      <span id="reply-preview-text"></span>
+      <button type="button" class="small-btn" id="reply-cancel-btn" style="margin-left:auto">Cancel</button>
+    </div>
+    <div id="image-preview">
+      <img id="image-preview-img" alt="">
+      <span id="image-preview-name"></span>
+      <button type="button" class="small-btn" id="image-clear-btn" style="margin-left:auto">Remove</button>
+    </div>
+    <div id="input-row">
+      <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
+      <button id="attachBtn" type="button">Image</button>
+      <input type="text" id="msgInput" placeholder="type a message..." autocomplete="off">
+      <button id="sendBtn" type="button">Send</button>
+    </div>
+  </main>
+</div>
+
+<div id="group-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong>Create group chat</strong>
+      <button class="small-btn" type="button" id="close-group-modal">Close</button>
+    </div>
+    <input id="groupName" maxlength="60" placeholder="group name">
+    <input id="groupMemberSearch" placeholder="search members to add...">
+    <div id="selected-members"></div>
+    <div id="group-member-list"></div>
+    <div class="modal-actions">
+      <button class="small-btn" type="button" id="cancel-group-btn">Cancel</button>
+      <button class="small-btn" type="button" id="create-group-btn">Create group</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let myEmail = null, myDisplayName = null, myNick = null, myKP = null;
+let members = [], groups = [], allMessages = [], currentMessages = [];
+let myNickPubKey = null;
+let activeView = 'direct';
+let activeChat = null;
+let unreadDm = {}, unreadGroup = {};
+let dmSince = 0;
+let pushSub = null;
+let pendingImage = null;
+let replyTo = null;
+let selectedGroupMembers = new Set();
+let livePollTimer = null;
+let livePollBusy = false;
+
+const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
+const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
+let msgExpiry = 0;
+try { msgExpiry = parseInt(localStorage.getItem('_chatExpiry') || '0', 10) || 0; } catch {}
+
+const h2b = h => Uint8Array.from(String(h || '').match(/../g).map(x => parseInt(x,16)));
+const b2h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
+
+async function genKP() {
+  return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
+}
+async function exportPub(kp) {
+  return b2h(await crypto.subtle.exportKey('raw', kp.publicKey));
+}
+
+function normEmail(email) {
+  email = String(email || '').toLowerCase().trim();
+  if (!email.includes('@')) return email;
+  const at = email.lastIndexOf('@');
+  let local = email.slice(0, at).split('+')[0].replace(/\./g, '');
+  let domain = email.slice(at + 1);
+  if (domain === 'student.rjuhsd.us') domain = 'student.mitch.pro';
+  return local + '@' + domain;
+}
+function sameEmail(a, b) { return normEmail(a) && normEmail(a) === normEmail(b); }
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function fmtTime(ts) { return new Date(ts || Date.now()).toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' }); }
+function fmtDay(ts) { return new Date(ts || Date.now()).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }); }
+function atBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
+function msgId(m) { return String(m.id || [m.from, m.to, m.groupId, m.ts, m.text].join('|')); }
+
+function toast(text) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+function displayNameFor(email) {
+  if (sameEmail(email, myEmail)) return myDisplayName || myEmail;
+  const m = members.find(x => sameEmail(x.email, email));
+  return (m && m.displayName) || String(email || '').split('@')[0] || 'member';
+}
+
+function memberFor(email) {
+  const m = members.find(x => sameEmail(x.email, email));
+  if (m) return m;
+  if (sameEmail(email, myEmail) && myNickPubKey) return { email: myEmail, pubKey: myNickPubKey };
+  return null;
+}
+
+function roleRank(role) {
+  role = String(role || '');
+  if (role.includes('owner')) return 4;
+  if (role.includes('admin')) return 3;
+  if (role.includes('premium')) return 2;
+  return 1;
+}
+
+function roleInfo(role) {
+  role = String(role || 'member');
+  if (role.includes('owner')) return { label: 'owner', cls: 'owner', title: 'Owner / developer' };
+  if (role.includes('admin')) return { label: 'admin', cls: 'admin', title: 'Admin / developer' };
+  if (role.includes('premium')) return { label: 'premium', cls: 'premium', title: 'Premium member' };
+  return { label: 'member', cls: 'member', title: 'Member' };
+}
+
+function directKey(email) { return normEmail(email); }
+function isDirectBetween(m, email) {
+  return (m.kind || 'dm') !== 'group' &&
+    ((sameEmail(m.from, myEmail) && sameEmail(m.to, email)) ||
+     (sameEmail(m.from, email) && sameEmail(m.to, myEmail)));
+}
+function isActiveMessage(m) {
+  if (!activeChat) return false;
+  if (activeChat.type === 'group') return (m.kind === 'group') && String(m.groupId) === activeChat.id;
+  return isDirectBetween(m, activeChat.id);
+}
+
+let derivedKeysCache = {};
+async function deriveSharedKey(peerPubKeyHex) {
+  if (derivedKeysCache[peerPubKeyHex]) return derivedKeysCache[peerPubKeyHex];
+  const peerPubKey = await crypto.subtle.importKey(
+    'raw',
+    h2b(peerPubKeyHex),
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    []
+  );
+  const sharedKey = await crypto.subtle.deriveKey(
+    { name: 'ECDH', public: peerPubKey },
+    myKP.privateKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+  derivedKeysCache[peerPubKeyHex] = sharedKey;
+  return sharedKey;
+}
+
+async function decryptMessageContent(m) {
+  if (!m || !m.text) return m;
+  try {
+    const payload = JSON.parse(m.text);
+    if (payload && payload.e2e) {
+      if (!myKP) {
+        console.warn("[E2E] Cannot decrypt: My keys are not ready.");
+        return m;
+      }
+      if (payload.group) {
+        if (payload.payloads && payload.payloads[normEmail(myEmail)]) {
+          const innerPayload = payload.payloads[normEmail(myEmail)];
+          const peerEmail = m.from;
+          const peer = memberFor(peerEmail);
+          if (peer && peer.pubKey) {
+            try {
+              const sharedSecret = await deriveSharedKey(peer.pubKey);
+              const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: h2b(innerPayload.iv) },
+                sharedSecret,
+                h2b(innerPayload.ciphertext)
+              );
+              m.text = new TextDecoder().decode(decrypted);
+            } catch (err) {
+              console.error("[E2E] Group decryption failed:", err);
+              m.text = "[Decryption Error]";
+            }
+          } else {
+            m.text = "[E2E encrypted group message - peer key missing]";
+          }
+        } else {
+          m.text = "[E2E encrypted group message - not a recipient]";
+        }
+      } else {
+        const peerEmail = sameEmail(m.from, myEmail) ? m.to : m.from;
+        const peer = memberFor(peerEmail);
+        if (peer && peer.pubKey) {
+          try {
+            const sharedSecret = await deriveSharedKey(peer.pubKey);
+            const decrypted = await crypto.subtle.decrypt(
+              { name: 'AES-GCM', iv: h2b(payload.iv) },
+              sharedSecret,
+              h2b(payload.ciphertext)
+            );
+            m.text = new TextDecoder().decode(decrypted);
+          } catch (err) {
+            console.error("[E2E] Direct decryption failed:", err);
+            m.text = "[Decryption Error]";
+          }
+        } else {
+          m.text = "[E2E encrypted message - peer key missing]";
+        }
+      }
+    }
+  } catch (e) {
+    // legacy message or parse error
+  }
+  return m;
+}
+
+async function init() {
+  let fetchedData = null;
+  try {
+    const r = await fetch('/api/me', { credentials:'include', cache:'no-store' });
+    fetchedData = await r.json();
+    myEmail = (fetchedData.email || '').toLowerCase();
+  } catch (err) {
+    console.error("Fetch /api/me error:", err);
+  }
+  if (!myEmail) {
+    document.getElementById('loading').textContent = 'not signed in';
+    return;
+  }
+
+  try {
+    const pref = JSON.parse(localStorage.getItem('_prefHomepage') || '{}');
+    myDisplayName = pref.greetingName || null;
+  } catch {}
+  myNick = myEmail;
+
+  try {
+    if (fetchedData && fetchedData.jwk) {
+      const pubKey = await crypto.subtle.importKey(
+        'jwk',
+        { kty: 'EC', crv: 'P-256', x: fetchedData.jwk.x, y: fetchedData.jwk.y },
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        []
+      );
+      const privateKey = await crypto.subtle.importKey(
+        'jwk',
+        fetchedData.jwk,
+        { name: 'ECDH', namedCurve: 'P-256' },
+        true,
+        ['deriveKey', 'deriveBits']
+      );
+      myKP = { publicKey: pubKey, privateKey };
+    } else {
+      console.warn("No JWK returned in /api/me response.");
+    }
+    
+    if (myKP) {
+      const pubHex = await exportPub(myKP);
+      myNickPubKey = pubHex;
+      await fetch('/api/e2e/join', {
+        method:'POST',
+        credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ nickname: myNick, pubKey: pubHex })
+      });
+    }
+  } catch (err) {
+    console.error("E2E init error:", err);
+    toast("E2E init error: " + err.message);
+  }
+
+  bindEvents();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').classList.add('ready');
+  document.getElementById('my-identity').textContent = '> ' + (myDisplayName ? `${myDisplayName} (${myEmail})` : myEmail);
+  syncExpiryButton();
+
+  await refreshEverything();
+  setInterval(loadMembers, 7000);
+  setInterval(loadGroups, 8000);
+  startLivePolling();
+  setInterval(heartbeat, 10000);
+  checkNotifStatus();
+}
+
+function bindEvents() {
+  document.getElementById('direct-tab').onclick = () => setView('direct');
+  document.getElementById('groups-tab').onclick = () => setView('groups');
+  document.getElementById('searchInput').oninput = renderList;
+  document.getElementById('msgSearch').oninput = filterCurrentMessages;
+  document.getElementById('new-group-btn').onclick = openGroupModal;
+  document.getElementById('refresh-btn').onclick = refreshEverything;
+  document.getElementById('clear-all-btn').onclick = clearAllChats;
+  document.getElementById('clear-chat-btn').onclick = clearCurrentChat;
+  document.getElementById('export-chat-btn').onclick = exportCurrentChat;
+  document.getElementById('leave-group-btn').onclick = leaveCurrentGroup;
+  document.getElementById('expiry-btn').onclick = cycleExpiry;
+  document.getElementById('notif-btn').onclick = toggleNotif;
+  document.getElementById('attachBtn').onclick = () => document.getElementById('imageInput').click();
+  document.getElementById('imageInput').onchange = handleImagePick;
+  document.getElementById('image-clear-btn').onclick = clearImage;
+  document.getElementById('reply-cancel-btn').onclick = clearReply;
+  document.getElementById('sendBtn').onclick = send;
+  document.getElementById('msgInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) send();
+  });
+  document.getElementById('msgs').addEventListener('click', onMessageAction);
+  document.getElementById('close-group-modal').onclick = closeGroupModal;
+  document.getElementById('cancel-group-btn').onclick = closeGroupModal;
+  document.getElementById('create-group-btn').onclick = createGroup;
+  document.getElementById('groupMemberSearch').oninput = renderGroupPicker;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      pollNewDMs();
+      loadGroups();
+    }
+  });
+  window.addEventListener('focus', () => {
+    pollNewDMs();
+    loadGroups();
+  });
+}
+
+function startLivePolling() {
+  if (livePollTimer) clearInterval(livePollTimer);
+  livePollTimer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return;
+    pollNewDMs();
+  }, 1000);
+  pollNewDMs();
+}
+
+async function refreshEverything() {
+  await loadMembers();
+  await Promise.all([loadGroups(), loadAllMessages()]);
+  renderList();
+  if (activeChat) await reloadActiveChat();
+}
+
+async function loadMembers() {
+  try {
+    const r = await fetch('/api/members', { credentials:'include' });
+    const d = await r.json();
+    members = (d.members || []).filter(m => !sameEmail(m.email, myEmail));
+    renderList();
+  } catch {}
+}
+
+async function loadGroups() {
+  try {
+    const r = await fetch('/api/dm/groups', { credentials:'include' });
+    const d = await r.json();
+    groups = d.groups || [];
+    unreadGroup = {};
+    groups.forEach(g => { if (g.unread) unreadGroup[g.id] = g.unread; });
+    renderList();
+  } catch {}
+}
+
+async function loadAllMessages() {
+  try {
+    const r = await fetch('/api/dm/inbox?since=0', { credentials:'include' });
+    const d = await r.json();
+    const msgs = (d.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    // Optimization: Only decrypt recent messages for previews to avoid heavy lag on load
+    const recent = msgs.slice(-500);
+    await Promise.all(recent.map(decryptMessageContent));
+    allMessages = msgs;
+    unreadDm = {};
+    dmSince = 0;
+    for (const m of allMessages) {
+      dmSince = Math.max(dmSince, m.ts || 0);
+      if (m.kind === 'group') {
+        if (!sameEmail(m.from, myEmail) && !(m.readBy || []).some(e => sameEmail(e, myEmail))) {
+          unreadGroup[m.groupId] = (unreadGroup[m.groupId] || 0) + 1;
+        }
+      } else if (!sameEmail(m.from, myEmail) && sameEmail(m.to, myEmail) && !m.read) {
+        const k = directKey(m.from);
+        unreadDm[k] = (unreadDm[k] || 0) + 1;
+      }
+    }
+  } catch {}
+}
+
+function setView(view) {
+  activeView = view;
+  document.getElementById('direct-tab').classList.toggle('active', view === 'direct');
+  document.getElementById('groups-tab').classList.toggle('active', view === 'groups');
+  renderList();
+}
+
+function lastDirectMessage(email) {
+  return allMessages.filter(m => isDirectBetween(m, email)).sort((a, b) => (b.ts || 0) - (a.ts || 0))[0] || null;
+}
+
+function renderList() {
+  const q = (document.getElementById('searchInput').value || '').toLowerCase();
+  const list = document.getElementById('user-list');
+  if (activeView === 'groups') {
+    const filtered = groups.filter(g => {
+      const hay = [g.name, ...(g.members || [])].join(' ').toLowerCase();
+      return !q || hay.includes(q);
+    });
+    if (!filtered.length) {
+      list.innerHTML = '<div class="empty">No group chats yet. Use New group to start one.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(g => {
+      const unread = unreadGroup[g.id] || g.unread || 0;
+      const membersText = (g.members || []).map(displayNameFor).slice(0, 4).join(', ');
+      return `<button class="user-entry ${activeChat && activeChat.type === 'group' && activeChat.id === g.id ? 'active' : ''}" data-group="${esc(g.id)}">
+        <span class="dot on"></span>
+        <span class="entry-main">
+          <span class="entry-name">${esc(g.name || 'Group chat')}</span>
+          <span class="entry-sub">${esc(g.lastText || membersText || ((g.members || []).length + ' members'))}</span>
+        </span>
+        ${unread ? `<span class="unread">${unread}</span>` : `<span class="role-tag">${(g.members || []).length}</span>`}
+      </button>`;
+    }).join('');
+    list.querySelectorAll('[data-group]').forEach(btn => btn.onclick = () => selectGroup(btn.dataset.group));
+    return;
+  }
+
+  const filtered = members
+    .filter(m => {
+      const hay = [m.email, m.displayName, m.role].join(' ').toLowerCase();
+      return !q || hay.includes(q);
+    })
+    .sort((a, b) => {
+      const la = lastDirectMessage(a.email);
+      const lb = lastDirectMessage(b.email);
+      return (lb ? lb.ts : 0) - (la ? la.ts : 0) ||
+        roleRank(b.role) - roleRank(a.role) ||
+        Number(b.online) - Number(a.online) ||
+        a.email.localeCompare(b.email);
+    });
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty">No users found.</div>';
+    return;
+  }
+  const badgeLabels = {
+    verified_badge: 'OK',
+    og_badge: 'OG',
+    artist_badge: 'ART',
+    chess_badge: 'CHESS',
+    builder_badge: 'BUILD',
+    lucky_badge: 'LUCK',
+    premium_star_badge: 'STAR',
+    owner_fan_badge: 'CROWN'
+  };
+  list.innerHTML = filtered.map(m => {
+    const last = lastDirectMessage(m.email);
+    const unread = unreadDm[directKey(m.email)] || 0;
+    const role = roleInfo(m.role);
+    const name = m.displayName || m.email.split('@')[0];
+    const colorClass = m.color ? esc(m.color) : '';
+    const badge = badgeLabels[m.badge] || '';
+    const sub = last ? (sameEmail(last.from, myEmail) ? 'You: ' : '') + (last.text || (last.image ? 'Sent an image' : '')) : m.email;
+    return `<button class="user-entry ${activeChat && activeChat.type === 'dm' && sameEmail(activeChat.id, m.email) ? 'active' : ''}" data-email="${esc(m.email)}">
+      <span class="dot ${m.online ? 'on' : ''}"></span>
+      <span class="entry-main">
+        <span class="entry-name ${colorClass}">${esc(name)}${badge ? ' <span style="font-size:.62rem;opacity:.55">' + esc(badge) + '</span>' : ''}</span>
+        <span class="entry-sub">${esc(sub).slice(0, 140)}</span>
+      </span>
+      ${unread ? `<span class="unread">${unread}</span>` : `<span class="role-tag ${role.cls}" title="${esc(role.title)}">${esc(role.label)}</span>`}
+    </button>`;
+  }).join('');
+  list.querySelectorAll('[data-email]').forEach(btn => btn.onclick = () => selectDm(btn.dataset.email));
+}
+
+async function selectDm(email) {
+  const member = memberFor(email);
+  activeChat = { type:'dm', id: email };
+  unreadDm[directKey(email)] = 0;
+  document.getElementById('chat-title').textContent = displayNameFor(email);
+  document.getElementById('chat-subtitle').textContent = (member && member.online ? 'online' : 'offline') + ' - ' + email;
+  document.getElementById('leave-group-btn').style.display = 'none';
+  showChatShell();
+  renderList();
+  await reloadActiveChat();
+  markActiveRead();
+}
+
+async function selectGroup(groupId) {
+  const group = groups.find(g => String(g.id) === String(groupId));
+  if (!group) return;
+  activeChat = { type:'group', id: group.id };
+  unreadGroup[group.id] = 0;
+  document.getElementById('chat-title').textContent = group.name || 'Group chat';
+  document.getElementById('chat-subtitle').textContent = (group.members || []).map(displayNameFor).join(', ');
+  document.getElementById('leave-group-btn').style.display = '';
+  showChatShell();
+  setView('groups');
+  await reloadActiveChat();
+  markActiveRead();
+}
+
+function showChatShell() {
+  document.getElementById('no-chat').style.display = 'none';
+  document.getElementById('msgs').classList.add('on');
+  document.getElementById('input-row').classList.add('on');
+  document.getElementById('msgInput').focus();
+  document.getElementById('msgSearch').value = '';
+  clearReply();
+  clearImage();
+}
+
+async function reloadActiveChat() {
+  if (!activeChat) return;
+  const url = activeChat.type === 'group'
+    ? `/api/dm/inbox?group=${encodeURIComponent(activeChat.id)}&since=0`
+    : `/api/dm/inbox?with=${encodeURIComponent(activeChat.id)}&since=0`;
+  try {
+    const r = await fetch(url, { credentials:'include' });
+    const d = await r.json();
+    const msgs = (d.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    // Important: Decrypt messages before rendering in the active chat view
+    await Promise.all(msgs.map(decryptMessageContent));
+    currentMessages = msgs;
+    renderMessages();
+    const el = document.getElementById('msgs');
+    el.scrollTop = el.scrollHeight;
+  } catch {}
+}
+
+function renderMessages() {
+  const el = document.getElementById('msgs');
+  if (!currentMessages.length) {
+    el.innerHTML = '<div class="empty">No messages here yet.</div>';
+    return;
+  }
+  let lastDay = '';
+  el.innerHTML = currentMessages.map(m => {
+    const day = fmtDay(m.ts);
+    const sep = day !== lastDay ? `<div class="day-sep">${esc(day)}</div>` : '';
+    lastDay = day;
+    return sep + messageHtml(m);
+  }).join('');
+  filterCurrentMessages();
+  scheduleLocalExpiry();
+}
+
+function messageHtml(m) {
+  const mine = sameEmail(m.from, myEmail);
+  const name = mine ? (myDisplayName || 'You') : displayNameFor(m.from);
+  const text = String(m.text || '');
+  const safeText = text ? `<span class="body">${esc(text)}</span>` : '<span class="body" style="opacity:.55">sent an image</span>';
+  const imageHtml = m.image && m.image.data
+    ? `<a href="${esc(m.image.data)}" target="_blank" rel="noopener"><img class="chat-image" src="${esc(m.image.data)}" alt="${esc(m.image.name || 'attached image')}"></a>`
+    : '';
+  const reply = m.replyTo && (m.replyTo.text || m.replyTo.from)
+    ? `<div class="reply-box">${esc(displayNameFor(m.replyTo.from || ''))}: ${esc(m.replyTo.text || '')}</div>`
+    : '';
+  const id = esc(msgId(m));
+  const bodyText = esc(text || (m.image ? 'sent an image' : ''));
+  const expiry = msgExpiry > 0 ? ` data-expire="${Date.now() + msgExpiry}"` : '';
+  return `<div class="msg" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
+    ${reply}
+    <div class="msg-line">
+      <span class="ts">${fmtTime(m.ts)}</span>
+      <span class="who ${mine ? 'me' : 'them'}">${esc(name)}</span>
+      ${safeText}
+    </div>
+    ${imageHtml}
+    <div class="msg-tools">
+      <button class="msg-action" data-act="reply" data-id="${id}" type="button">reply</button>
+      <button class="msg-action" data-act="copy" data-id="${id}" type="button">copy</button>
+      <button class="msg-action" data-act="report" data-id="${id}" type="button">report</button>
+    </div>
+  </div>`;
+}
+
+function scheduleLocalExpiry() {
+  if (msgExpiry <= 0) return;
+  document.querySelectorAll('#msgs .msg[data-expire]').forEach(el => {
+    const expireAt = Number(el.dataset.expire || 0);
+    const wait = Math.max(0, expireAt - Date.now());
+    setTimeout(() => {
+      if (el.parentNode) el.remove();
+    }, wait);
+  });
+}
+
+function filterCurrentMessages() {
+  const q = (document.getElementById('msgSearch').value || '').toLowerCase().trim();
+  document.querySelectorAll('#msgs .msg').forEach(msg => {
+    msg.classList.toggle('is-filter-hidden', !!q && !(msg.textContent || '').toLowerCase().includes(q));
+  });
+}
+
+function appendOrRerender(m) {
+  currentMessages.push(m);
+  currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+  renderMessages();
+  const el = document.getElementById('msgs');
+  el.scrollTop = el.scrollHeight;
+}
+
+async function send() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if ((!text && !pendingImage) || !activeChat) return;
+
+  if (!myKP) {
+    toast("E2E keys not initialized yet.");
+    return;
+  }
+
+  let textToSend = text;
+
+  if (text) {
+    if (activeChat.type === 'group') {
+      const group = groups.find(g => g.id === activeChat.id);
+      if (group && group.members) {
+        const payloads = {};
+        const allMembers = [...group.members];
+        if (!allMembers.some(m => sameEmail(m, myEmail))) {
+          allMembers.push(myEmail);
+        }
+
+        for (const memberEmail of allMembers) {
+          let member = sameEmail(memberEmail, myEmail)
+            ? { pubKey: await exportPub(myKP) }
+            : memberFor(memberEmail);
+
+          if (member && member.pubKey) {
+            try {
+              const sharedSecret = await deriveSharedKey(member.pubKey);
+              const iv = crypto.getRandomValues(new Uint8Array(12));
+              const encText = new TextEncoder().encode(text);
+              const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv },
+                sharedSecret,
+                encText
+              );
+              payloads[normEmail(memberEmail)] = {
+                iv: b2h(iv),
+                ciphertext: b2h(ciphertext)
+              };
+            } catch (err) {
+              console.error("Error encrypting for group member:", memberEmail, err);
+            }
+          }
+        }
+        textToSend = JSON.stringify({
+          e2e: true,
+          group: true,
+          payloads
+        });
+      }
+    } else {
+      const peerEmail = activeChat.id;
+      const peer = memberFor(peerEmail);
+      if (peer && peer.pubKey) {
+        try {
+          const sharedSecret = await deriveSharedKey(peer.pubKey);
+          const iv = crypto.getRandomValues(new Uint8Array(12));
+          const encText = new TextEncoder().encode(text);
+          const ciphertext = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            sharedSecret,
+            encText
+          );
+          textToSend = JSON.stringify({
+            e2e: true,
+            iv: b2h(iv),
+            ciphertext: b2h(ciphertext)
+          });
+        } catch (err) {
+          console.error("Error encrypting direct DM:", err);
+          toast("Encryption failed.");
+          return;
+        }
+      } else {
+        toast("Member has not enabled Secure Chat keys yet.");
+        return;
+      }
+    }
+  }
+
+  input.value = '';
+  const imageToSend = pendingImage;
+  clearImage();
+  const body = activeChat.type === 'group'
+    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo }
+    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo };
+  clearReply();
+  try {
+    const r = await fetch('/api/dm/send', {
+      method:'POST',
+      credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.success) {
+      toast(d.error || 'Message failed.');
+      return;
+    }
+    const msg = d.message || {
+      id: String(Date.now()),
+      kind: activeChat.type === 'group' ? 'group' : 'dm',
+      groupId: activeChat.type === 'group' ? activeChat.id : '',
+      from: myEmail,
+      to: activeChat.type === 'dm' ? activeChat.id : '',
+      text: textToSend,
+      image: imageToSend,
+      ts: Date.now(),
+      read: false,
+      readBy: [myEmail]
+    };
+    msg.text = text;
+    dmSince = Math.max(dmSince, msg.ts || 0);
+    allMessages.push(msg);
+    if (isActiveMessage(msg)) appendOrRerender(msg);
+    renderList();
+  } catch {
+    toast('Network error while sending.');
+  }
+}
+
+async function pollNewDMs() {
+  if (!myEmail) return;
+  if (livePollBusy) return;
+  livePollBusy = true;
+  try {
+    const r = await fetch(`/api/dm/inbox?since=${dmSince}`, { credentials:'include' });
+    const d = await r.json();
+    const msgs = (d.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    await Promise.all(msgs.map(decryptMessageContent));
+    let activeAdded = false;
+    for (const m of msgs) {
+      if ((m.ts || 0) <= dmSince) continue;
+      dmSince = Math.max(dmSince, m.ts || 0);
+      if (allMessages.some(existing => msgId(existing) === msgId(m))) continue;
+      allMessages.push(m);
+      if (sameEmail(m.from, myEmail)) continue;
+      if (isActiveMessage(m)) {
+        currentMessages.push(m);
+        activeAdded = true;
+      } else if (m.kind === 'group') {
+        unreadGroup[m.groupId] = (unreadGroup[m.groupId] || 0) + 1;
+        showNotif(m.groupName || 'Group chat', m.text || (m.image ? 'Sent an image' : 'New message'));
+      } else {
+        const k = directKey(m.from);
+        unreadDm[k] = (unreadDm[k] || 0) + 1;
+        showNotif(displayNameFor(m.from), m.text || (m.image ? 'Sent an image' : 'New message'));
+      }
+    }
+    if (activeAdded) {
+      currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+      const el = document.getElementById('msgs');
+      const bottom = atBottom(el);
+      renderMessages();
+      if (bottom) el.scrollTop = el.scrollHeight;
+      markActiveRead();
+    }
+    if (msgs.length) renderList();
+  } catch {}
+  livePollBusy = false;
+}
+
+function markActiveRead() {
+  if (!activeChat) return;
+  const body = activeChat.type === 'group' ? { groupId: activeChat.id } : { from: activeChat.id };
+  fetch('/api/dm/mark-read', {
+    method:'POST',
+    credentials:'include',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  }).catch(()=>{});
+}
+
+async function clearCurrentChat() {
+  if (!activeChat) return toast('Select a chat first.');
+  const label = activeChat.type === 'group'
+    ? (groups.find(g => g.id === activeChat.id)?.name || 'this group')
+    : displayNameFor(activeChat.id);
+  if (!confirm(`Clear ${label} from your view?`)) return;
+  const body = activeChat.type === 'group' ? { groupId: activeChat.id } : { with: activeChat.id };
+  try {
+    const r = await fetch('/api/dm/clear', {
+      method:'POST',
+      credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.success) return toast(d.error || 'Could not clear chat.');
+    currentMessages = [];
+    allMessages = allMessages.filter(m => !isActiveMessage(m));
+    renderMessages();
+    renderList();
+    toast('Cleared from your view.');
+  } catch {
+    toast('Network error while clearing.');
+  }
+}
+
+async function clearAllChats() {
+  if (!confirm('Clear every chat from your view?')) return;
+  try {
+    const r = await fetch('/api/dm/clear', {
+      method:'POST',
+      credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ all: true })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.success) return toast(d.error || 'Could not clear chats.');
+    allMessages = [];
+    currentMessages = [];
+    unreadDm = {};
+    unreadGroup = {};
+    renderMessages();
+    renderList();
+    toast('All chats cleared from your view.');
+  } catch {
+    toast('Network error while clearing chats.');
+  }
+}
+
+function exportCurrentChat() {
+  if (!activeChat) return toast('Select a chat first.');
+  const label = activeChat.type === 'group'
+    ? (groups.find(g => g.id === activeChat.id)?.name || 'group-chat')
+    : displayNameFor(activeChat.id);
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    chat: activeChat,
+    label,
+    messages: currentMessages
+  };
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' }));
+  a.download = 'mitch-chat-' + label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function leaveCurrentGroup() {
+  if (!activeChat || activeChat.type !== 'group') return;
+  const group = groups.find(g => g.id === activeChat.id);
+  if (!confirm(`Leave ${group?.name || 'this group'}?`)) return;
+  try {
+    const r = await fetch('/api/dm/group/leave', {
+      method:'POST',
+      credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ groupId: activeChat.id })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) return toast(d.error || 'Could not leave group.');
+    activeChat = null;
+    currentMessages = [];
+    document.getElementById('chat-title').textContent = 'No chat selected';
+    document.getElementById('chat-subtitle').textContent = 'Choose a direct message or group chat.';
+    document.getElementById('no-chat').style.display = '';
+    document.getElementById('msgs').classList.remove('on');
+    document.getElementById('input-row').classList.remove('on');
+    await loadGroups();
+    toast('Left group.');
+  } catch {
+    toast('Network error while leaving group.');
+  }
+}
+
+function onMessageAction(e) {
+  const btn = e.target.closest('.msg-action');
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const m = currentMessages.find(x => msgId(x) === id);
+  if (!m) return;
+  if (btn.dataset.act === 'reply') {
+    replyTo = { id: msgId(m), from: m.from, text: String(m.text || (m.image ? 'sent an image' : '')).slice(0, 180), ts: m.ts };
+    document.getElementById('reply-preview-text').textContent = 'Replying to ' + displayNameFor(m.from) + ': ' + replyTo.text;
+    document.getElementById('reply-preview').classList.add('on');
+    document.getElementById('msgInput').focus();
+  } else if (btn.dataset.act === 'copy') {
+    navigator.clipboard?.writeText(String(m.text || '')).then(() => toast('Copied message text.'), () => toast('Copy unavailable.'));
+  } else if (btn.dataset.act === 'report') {
+    reportMessage(m);
+  }
+}
+
+async function reportMessage(m) {
+  const reason = prompt('Reason for reporting this message?', 'chat moderation review');
+  if (!reason) return;
+  
+  const context = currentMessages.slice(-10).map(msg => ({
+    from: msg.from,
+    to: msg.to || '',
+    text: msg.text || '',
+    ts: msg.ts || 0,
+    reported: msgId(msg) === msgId(m)
+  }));
+
+  try {
+    const r = await fetch('/api/dm/report', {
+      method:'POST',
+      credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ id: msgId(m), reason, context })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.success) return toast(d.error || 'Could not report message.');
+    toast('Message sent to admin review.');
+  } catch {
+    toast('Network error while reporting.');
+  }
+}
+
+function clearReply() {
+  replyTo = null;
+  document.getElementById('reply-preview').classList.remove('on');
+  document.getElementById('reply-preview-text').textContent = '';
+}
+
+function clearImage() {
+  pendingImage = null;
+  const file = document.getElementById('imageInput');
+  const preview = document.getElementById('image-preview');
+  if (file) file.value = '';
+  preview.classList.remove('on');
+  document.getElementById('image-preview-img').src = '';
+  document.getElementById('image-preview-name').textContent = '';
+}
+
+function handleImagePick() {
+  const file = this.files && this.files[0];
+  if (!file) return clearImage();
+  if (!/^image\/(png|jpe?g|gif|webp)$/i.test(file.type)) {
+    alert('Use PNG, JPG, GIF, or WebP images.');
+    return clearImage();
+  }
+  if (file.size > 650 * 1024) {
+    alert('Image is too large. Keep it under 650 KB.');
+    return clearImage();
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingImage = { data: String(reader.result), mime: file.type, name: file.name };
+    document.getElementById('image-preview-img').src = pendingImage.data;
+    document.getElementById('image-preview-name').textContent = file.name;
+    document.getElementById('image-preview').classList.add('on');
+  };
+  reader.readAsDataURL(file);
+}
+
+function cycleExpiry() {
+  const cur = EXPIRY_OPTIONS.indexOf(msgExpiry);
+  msgExpiry = EXPIRY_OPTIONS[(cur + 1) % EXPIRY_OPTIONS.length];
+  try { localStorage.setItem('_chatExpiry', msgExpiry); } catch {}
+  syncExpiryButton();
+}
+
+function syncExpiryButton() {
+  const idx = Math.max(0, EXPIRY_OPTIONS.indexOf(msgExpiry));
+  document.getElementById('expiry-btn').textContent = 'Expire: ' + EXPIRY_LABELS[idx];
+}
+
+function openGroupModal() {
+  selectedGroupMembers = new Set();
+  document.getElementById('groupName').value = '';
+  document.getElementById('groupMemberSearch').value = '';
+  document.getElementById('group-modal').classList.add('show');
+  renderGroupPicker();
+  document.getElementById('groupName').focus();
+}
+
+function closeGroupModal() {
+  document.getElementById('group-modal').classList.remove('show');
+}
+
+function renderSelectedMembers() {
+  const el = document.getElementById('selected-members');
+  const chosen = [...selectedGroupMembers];
+  if (!chosen.length) {
+    el.innerHTML = '<span class="entry-sub">Select at least one other member.</span>';
+    return;
+  }
+  el.innerHTML = chosen.map(email => `<span class="chip">${esc(displayNameFor(email))}<button type="button" data-remove="${esc(email)}">x</button></span>`).join('');
+  el.querySelectorAll('[data-remove]').forEach(btn => btn.onclick = () => {
+    selectedGroupMembers.delete(btn.dataset.remove);
+    renderGroupPicker();
+  });
+}
+
+function renderGroupPicker() {
+  renderSelectedMembers();
+  const q = (document.getElementById('groupMemberSearch').value || '').toLowerCase();
+  const list = document.getElementById('group-member-list');
+  const filtered = members
+    .filter(m => !q || [m.email, m.displayName, m.role].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => roleRank(b.role) - roleRank(a.role) || a.email.localeCompare(b.email));
+  if (!filtered.length) {
+    list.innerHTML = '<div class="empty">No matching members.</div>';
+    return;
+  }
+  list.innerHTML = filtered.map(m => {
+    const selected = selectedGroupMembers.has(m.email);
+    const role = roleInfo(m.role);
+    return `<button class="pick-row ${selected ? 'on' : ''}" type="button" data-email="${esc(m.email)}">
+      <span class="dot ${m.online ? 'on' : ''}"></span>
+      <span style="flex:1;min-width:0">
+        <span class="entry-name">${esc(m.displayName || m.email.split('@')[0])}</span>
+        <span class="entry-sub">${esc(m.email)}</span>
+      </span>
+      <span class="role-tag ${role.cls}">${esc(selected ? 'added' : role.label)}</span>
+    </button>`;
+  }).join('');
+  list.querySelectorAll('[data-email]').forEach(btn => btn.onclick = () => {
+    if (selectedGroupMembers.has(btn.dataset.email)) selectedGroupMembers.delete(btn.dataset.email);
+    else selectedGroupMembers.add(btn.dataset.email);
+    renderGroupPicker();
+  });
+}
+
+async function createGroup() {
+  const name = document.getElementById('groupName').value.trim();
+  const members = [...selectedGroupMembers];
+  if (!members.length) return toast('Pick at least one member.');
+  try {
+    const r = await fetch('/api/dm/groups', {
+      method:'POST',
+      credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, members })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) return toast(d.error || 'Could not create group.');
+    closeGroupModal();
+    await loadGroups();
+    setView('groups');
+    selectGroup(d.group.id);
+    toast('Group created.');
+  } catch {
+    toast('Network error while creating group.');
+  }
+}
+
+function heartbeat() {
+  if (!myNick) return;
+  fetch('/api/e2e/heartbeat', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ nickname: myNick })
+  }).catch(()=>{});
+}
+
+async function checkNotifStatus() {
+  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+  if (Notification.permission === 'granted') {
+    const reg = await navigator.serviceWorker.getRegistration().catch(()=>null);
+    if (reg) {
+      pushSub = await reg.pushManager.getSubscription().catch(()=>null);
+      if (pushSub) document.getElementById('notif-btn').classList.add('on');
+    }
+  }
+}
+
+function b64ToUint8(b64) {
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function toggleNotif() {
+  const btn = document.getElementById('notif-btn');
+  if (pushSub) {
+    await pushSub.unsubscribe().catch(()=>{});
+    await fetch('/api/push/unsubscribe', { method:'POST', credentials:'include' }).catch(()=>{});
+    pushSub = null;
+    btn.classList.remove('on');
+    return;
+  }
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    alert('Push notifications not supported in this browser.');
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') return;
+  try {
+    const { publicKey } = await fetch('/api/push/vapid-key').then(r=>r.json());
+    let reg = await navigator.serviceWorker.getRegistration('/');
+    if (!reg) reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+    pushSub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(publicKey) });
+    await fetch('/api/push/subscribe', {
+      method:'POST',
+      credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(pushSub)
+    });
+    btn.classList.add('on');
+  } catch(e) {
+    alert('Could not enable notifications: ' + e.message);
+  }
+}
+
+function showNotif(from, text) {
+  if (document.hasFocus()) return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  new Notification('Message from ' + from, { body: String(text || '').slice(0,100), icon: '/favicon.ico' });
+}
+
+init();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

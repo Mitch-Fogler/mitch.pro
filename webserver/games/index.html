@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mitch.pro Games</title>
+<script src="/theme.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800;900&display=swap');
+  html { zoom: 0.82 !important; }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  h1, h2, h3, h4, h5, h6, .side-title, .featured-title {
+    font-family: 'Outfit', sans-serif !important;
+  }
+
+  :root {
+    --arcade-blue: #22d3ee;
+    --arcade-pink: #f472b6;
+    --arcade-yellow: #facc15;
+    --arcade-green: #4ade80;
+    --arcade-red: #fb7185;
+  }
+
+  body {
+    min-height: 100vh;
+    background-color: var(--t-bg);
+    background-image:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px),
+      var(--t-bgr);
+    background-size: 42px 42px, 42px 42px, auto;
+    color: var(--t-fg);
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif !important;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: -15%;
+    left: -15%;
+    width: 60vw;
+    height: 60vw;
+    background: radial-gradient(circle, rgba(124, 58, 237, 0.16) 0%, rgba(99, 102, 241, 0.05) 50%, transparent 70%) !important;
+    z-index: 0 !important;
+    pointer-events: none;
+    filter: blur(90px);
+    animation: aurora-drift-1 28s infinite alternate ease-in-out !important;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    bottom: -15%;
+    right: -15%;
+    width: 70vw;
+    height: 70vw;
+    background: radial-gradient(circle, rgba(6, 182, 212, 0.14) 0%, rgba(139, 92, 246, 0.04) 50%, transparent 70%) !important;
+    z-index: 0 !important;
+    pointer-events: none;
+    filter: blur(110px);
+    animation: aurora-drift-2 34s infinite alternate ease-in-out !important;
+  }
+
+  @keyframes aurora-drift-1 {
+    0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+    100% { transform: translate(12vw, 8vh) scale(1.18) rotate(45deg); }
+  }
+
+  @keyframes aurora-drift-2 {
+    0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+    100% { transform: translate(-10vw, -12vh) scale(1.15) rotate(-45deg); }
+  }
+
+  #mainpage {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    padding: 28px 14px 52px;
+  }
+
+  .games-shell {
+    width: min(1180px, 100%);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .games-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+    gap: 14px;
+    align-items: stretch;
+  }
+
+  .hero-copy,
+  .hero-console,
+  .command-bar,
+  .featured-panel,
+  .content-panel {
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: var(--t-radius, 8px);
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01)),
+      rgba(10, 8, 24, 0.44) !important;
+    box-shadow: 0 20px 70px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
+    backdrop-filter: blur(28px) saturate(190%) !important;
+    -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+  }
+
+  .hero-copy {
+    min-height: 310px;
+    padding: clamp(22px, 5vw, 44px);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+
+  .hero-copy::before {
+    content: '';
+    position: absolute;
+    inset: 16px;
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 8px;
+    pointer-events: none;
+  }
+
+  .hero-copy::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 5px;
+    background: linear-gradient(90deg, var(--arcade-blue), var(--arcade-pink), var(--arcade-yellow), var(--arcade-green));
+  }
+
+  .eyebrow-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .eyebrow-row span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 4px 10px;
+    border: 1px solid rgba(255,255,255,.13);
+    border-radius: 999px;
+    background: rgba(255,255,255,.055);
+    color: var(--t-fg2);
+    font-size: .72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  .eyebrow-row #arcade-day {
+    color: #fff;
+    border-color: rgba(34,211,238,.42);
+    background: rgba(34,211,238,.12);
+  }
+
+  h1 {
+    max-width: 760px;
+    margin: 0;
+    color: #fff;
+    font-size: clamp(3.1rem, 10vw, 7.4rem);
+    line-height: .82;
+    letter-spacing: 0;
+    font-weight: 950;
+    text-transform: uppercase;
+    text-shadow: 0 14px 40px rgba(0,0,0,.48);
+  }
+
+  .hero-copy p {
+    max-width: 620px;
+    margin-top: 18px;
+    color: var(--t-fg2);
+    font-size: clamp(.92rem, 2vw, 1.08rem);
+    line-height: 1.55;
+    font-weight: 650;
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 24px;
+  }
+
+  .hero-btn,
+  .ghost-btn,
+  .clear-btn,
+  .back-btn,
+  #homebtn,
+  .report-link {
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(255,255,255,.06);
+    color: var(--t-fg);
+    font-family: inherit;
+    font-weight: 900;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+  }
+
+  .hero-btn {
+    min-height: 58px;
+    padding: 0 22px;
+    background: linear-gradient(135deg, rgba(34,211,238,.28), rgba(244,114,182,.22), rgba(250,204,21,.18));
+    border-color: rgba(34,211,238,.52);
+    color: #fff;
+    box-shadow: 0 12px 34px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.12);
+    font-size: .98rem;
+  }
+
+  .ghost-btn,
+  #homebtn,
+  .report-link {
+    min-height: 42px;
+    padding: 11px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--t-fg2);
+  }
+
+  .hero-btn:hover,
+  .ghost-btn:hover,
+  .clear-btn:hover,
+  .back-btn:hover,
+  #homebtn:hover,
+  .report-link:hover {
+    transform: translateY(-2px);
+    border-color: var(--t-bda);
+    background: rgba(255,255,255,.095);
+    box-shadow: 0 14px 34px rgba(0,0,0,.25);
+  }
+
+  .hero-console {
+    padding: 14px;
+    display: grid;
+    grid-template-rows: minmax(160px, 1fr) auto;
+    gap: 12px;
+  }
+
+  .console-screen {
+    border: 1px solid rgba(34,211,238,.28);
+    border-radius: var(--t-radius, 8px);
+    background:
+      linear-gradient(180deg, rgba(34,211,238,.13), rgba(5,10,20,.3)),
+      rgba(0,0,0,.18);
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .console-screen span {
+    color: var(--arcade-blue);
+    font-size: .7rem;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .console-screen strong {
+    color: #fff;
+    font-size: 1.55rem;
+    line-height: 1.04;
+    font-weight: 950;
+    overflow-wrap: anywhere;
+  }
+
+  .console-screen small {
+    margin-top: 8px;
+    color: var(--t-fg2);
+    font-weight: 750;
+  }
+
+  .console-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .stat-tile {
+    min-height: 76px;
+    padding: 12px;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(255,255,255,.045);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .stat-tile strong {
+    color: #fff;
+    font-size: 1.35rem;
+    line-height: 1;
+    font-weight: 950;
+  }
+
+  .stat-tile span {
+    color: var(--t-fg2);
+    font-size: .68rem;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  .command-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    padding: 12px;
+    align-items: center;
+  }
+
+  #search-wrap {
+    min-height: 50px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px 0 14px;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(255,255,255,.05);
+  }
+
+  .search-icon {
+    color: var(--arcade-yellow);
+    font-size: 1rem;
+    font-weight: 950;
+  }
+
+  #search {
+    width: 100%;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--t-fg);
+    font: inherit;
+    font-size: .95rem;
+    font-weight: 700;
+  }
+
+  #search::placeholder {
+    color: var(--t-fg2);
+    opacity: .72;
+  }
+
+  .clear-btn {
+    min-height: 32px;
+    padding: 0 10px;
+    color: var(--t-fg2);
+    font-size: .72rem;
+  }
+
+  #abToggleBar {
+    min-height: 50px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 13px;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(255,255,255,.05);
+    white-space: nowrap;
+  }
+
+  #abToggleBar span {
+    font-size: .78rem;
+    color: var(--t-fg2);
+    font-weight: 850;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 42px;
+    height: 23px;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: rgba(255,255,255,.12);
+    border-radius: 999px;
+    transition: .22s;
+    border: 1px solid var(--t-bd);
+  }
+
+  .toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 15px;
+    width: 15px;
+    left: 3px;
+    bottom: 3px;
+    background: rgba(230,235,255,.9);
+    border-radius: 50%;
+    transition: .22s;
+  }
+
+  .toggle-switch input:checked + .toggle-slider {
+    background: linear-gradient(135deg, var(--arcade-blue), var(--arcade-pink));
+    border-color: transparent;
+  }
+
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(19px);
+    background: #fff;
+  }
+
+  .featured-panel,
+  .content-panel {
+    padding: 14px;
+  }
+
+  .section-head {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .section-head span {
+    color: var(--t-fg);
+    font-size: .82rem;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+  }
+
+  .section-head small {
+    color: var(--t-fg2);
+    font-size: .74rem;
+    font-weight: 750;
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .feature-card,
+  .cat-card,
+  a.site-link {
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(255,255,255,.045);
+    color: var(--t-fg);
+    font: inherit;
+    text-align: left;
+    text-decoration: none;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+    transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .feature-card {
+    min-height: 132px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .feature-card::after,
+  .cat-card::after,
+  a.site-link::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--arcade-blue), var(--arcade-pink), var(--arcade-yellow));
+    opacity: .78;
+  }
+
+  .feature-card:hover,
+  .cat-card:hover,
+  a.site-link:hover {
+    transform: translateY(-2px);
+    border-color: var(--t-bda);
+    background: rgba(255,255,255,.075);
+    box-shadow: 0 16px 34px rgba(0,0,0,.25);
+  }
+
+  .feature-rank,
+  .cat-count,
+  .game-visits {
+    color: var(--t-fg2);
+    font-size: .7rem;
+    font-weight: 850;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+
+  .feature-name,
+  .cat-name,
+  .game-name {
+    color: #fff;
+    font-weight: 950;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .feature-name {
+    font-size: 1rem;
+    line-height: 1.12;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+
+  .feature-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .feature-chip,
+  .cat-icon,
+  .game-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(255,255,255,.075);
+  }
+
+  .feature-chip {
+    width: 34px;
+    height: 34px;
+  }
+
+  .view-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .back-btn {
+    min-height: 36px;
+    padding: 0 12px;
+    color: var(--t-fg2);
+    font-size: .78rem;
+  }
+
+  .view-title {
+    color: var(--t-fg);
+    font-size: .86rem;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .cat-card {
+    min-height: 122px;
+    padding: 13px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 11px;
+    align-items: start;
+  }
+
+  .cat-icon {
+    width: 38px;
+    height: 38px;
+    font-size: 1.25rem;
+  }
+
+  .cat-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .cat-name {
+    font-size: .92rem;
+    white-space: nowrap;
+  }
+
+  .cat-blurb {
+    color: var(--t-fg2);
+    font-size: .74rem;
+    line-height: 1.35;
+    font-weight: 700;
+  }
+
+  .all-games-card {
+    border-color: rgba(250,204,21,.36);
+    background: linear-gradient(135deg, rgba(250,204,21,.11), rgba(34,211,238,.08));
+  }
+
+  #most-played {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--t-bd);
+  }
+
+  #most-played-list,
+  #links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+
+  a.site-link {
+    min-height: 68px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .rank-num,
+  .game-icon {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+  }
+
+  .rank-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(255,255,255,.07);
+    color: var(--arcade-yellow);
+    font-size: .72rem;
+    font-weight: 950;
+  }
+
+  .game-name {
+    min-width: 0;
+    white-space: nowrap;
+    font-size: .9rem;
+  }
+
+  .game-visits {
+    white-space: nowrap;
+    opacity: .75;
+  }
+
+  .no-results,
+  .loading-card {
+    grid-column: 1 / -1;
+    border: 1px dashed var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    color: var(--t-fg2);
+    padding: 18px;
+    text-align: center;
+    font-size: .9rem;
+    font-weight: 750;
+  }
+
+  #view-games {
+    display: none;
+  }
+
+  .footer-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px;
+  }
+
+  #fullframe {
+    display: none;
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    z-index: 10;
+  }
+
+  #backbtn {
+    display: none;
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    z-index: 9999;
+    min-height: 38px;
+    padding: 0 14px;
+    background: rgba(0,0,0,.74);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--t-bda);
+    border-radius: 8px;
+    color: var(--t-ac);
+    font-size: .85rem;
+    font-weight: 900;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  #backbtn:hover {
+    background: rgba(255,255,255,.08);
+    color: var(--t-fg);
+  }
+
+  @media (max-width: 920px) {
+    .games-hero,
+    .command-bar {
+      grid-template-columns: 1fr;
+    }
+
+    .feature-grid,
+    .cat-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 620px) {
+    #mainpage {
+      padding: 8px 8px 40px;
+    }
+
+    .hero-copy {
+      min-height: 260px;
+      padding: 20px;
+    }
+
+    .console-stats,
+    .feature-grid,
+    .cat-grid,
+    #most-played-list,
+    #links {
+      grid-template-columns: 1fr;
+    }
+
+    .section-head {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    a.site-link {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .game-visits {
+      grid-column: 2;
+      justify-self: start;
+    }
+  }
+</style>
+<!-- AUTH_INJECT_START -->
+<style>
+  #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
+    padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
+</style>
+<!-- AUTH_INJECT_END -->
+</head>
+<body>
+<div id="mainpage">
+  <main class="games-shell">
+    <section class="games-hero">
+      <div class="hero-copy">
+        <div class="eyebrow-row">
+          <span id="arcade-day">Loading today</span>
+          <span>Game Hub</span>
+        </div>
+        <h1>Games</h1>
+        <p>Pick something good, jump in fast, and make the arcade the main event.</p>
+        <div class="hero-actions">
+          <button class="hero-btn" id="play-featured" type="button" onclick="playFeatured()">Play Featured Game</button>
+          <a class="ghost-btn" href="/">Back to mitch.pro</a>
+        </div>
+      </div>
+
+      <aside class="hero-console">
+        <div class="console-screen">
+          <span>Now Highlighting</span>
+          <strong id="featured-title">Loading games...</strong>
+          <small id="featured-meta">Preparing the arcade.</small>
+        </div>
+        <div class="console-stats">
+          <div class="stat-tile">
+            <strong id="game-total-stat">--</strong>
+            <span>Games</span>
+          </div>
+          <div class="stat-tile">
+            <strong id="category-total-stat">--</strong>
+            <span>Sections</span>
+          </div>
+          <div class="stat-tile">
+            <strong id="hot-total-stat">--</strong>
+            <span>Played</span>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="command-bar">
+      <div id="search-wrap">
+        <span class="search-icon">⌕</span>
+        <input id="search" type="text" placeholder="Search games..." autocomplete="off" oninput="onSearch()">
+        <button class="clear-btn" id="search-clear" type="button">Clear</button>
+      </div>
+      <div id="abToggleBar">
+        <label class="toggle-switch">
+          <input type="checkbox" id="abToggle">
+          <span class="toggle-slider"></span>
+        </label>
+        <span>about:blank</span>
+      </div>
+      <a class="report-link" href="/report-game.html">Report Broken Game</a>
+    </section>
+
+    <section class="featured-panel">
+      <div class="section-head">
+        <span>Featured Picks</span>
+        <small>Jump in quickly</small>
+      </div>
+      <div class="feature-grid" id="feature-grid">
+        <div class="loading-card">Loading games...</div>
+      </div>
+    </section>
+
+    <section class="content-panel">
+      <div id="view-categories">
+        <div class="section-head">
+          <span>Browse Sections</span>
+          <small>Pick a lane</small>
+        </div>
+        <div class="cat-grid" id="cat-grid">
+          <div class="loading-card">Loading categories...</div>
+        </div>
+
+        <div id="most-played">
+          <div class="section-head">
+            <span>Most Played</span>
+        <small>Site favorites</small>
+          </div>
+          <div id="most-played-list"></div>
+        </div>
+      </div>
+
+      <div id="view-games">
+        <div class="view-header">
+          <button class="back-btn" type="button" onclick="showCategories()">← Categories</button>
+          <span class="view-title" id="view-title"></span>
+        </div>
+        <div id="links"></div>
+      </div>
+    </section>
+
+    <div class="footer-actions">
+      <a id="homebtn" href="/">Back to mitch.pro</a>
+    </div>
+  </main>
+</div>
+
+<button id="backbtn" onclick="goBack()">← Back</button>
+<iframe id="fullframe" src="about:blank" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-orientation-lock" allowfullscreen></iframe>
+
+<script>
+var gameStats = {};
+var gameCats = {};
+var currentCat = 'all';
+var currentSearch = '';
+var currentOffset = 0;
+var limitPerPage = 50;
+var hasMoreGames = true;
+var isLoading = false;
+var featuredEntry = null;
+
+var iframeEscape = false;
+
+var CAT_INFO = {
+  action: { label: 'Action', icon: '⚔', blurb: 'Fast, loud, and instant.' },
+  platform: { label: 'Platform', icon: '▰', blurb: 'Jump, dodge, repeat.' },
+  puzzle: { label: 'Puzzle', icon: '◇', blurb: 'Brainy wins and clever moves.' },
+  racing: { label: 'Racing', icon: '◆', blurb: 'Speed runs and tight turns.' },
+  idle: { label: 'Idle / Clicker', icon: '●', blurb: 'Progress while you chill.' },
+  casino: { label: 'Casino / Cards', icon: '♠', blurb: 'Cards, slots, and risk.' },
+  io: { label: '.io Games', icon: '◎', blurb: 'Quick web chaos.' },
+  adventure: { label: 'Adventure', icon: '✦', blurb: 'Explore and discover.' },
+  horror: { label: 'Horror', icon: '!', blurb: 'Spooky picks.' },
+  strategy: { label: 'Strategy', icon: '♟', blurb: 'Plan first, win later.' },
+  simulation: { label: 'Simulation', icon: '▣', blurb: 'Systems and sandboxes.' },
+  sport: { label: 'Sports', icon: '★', blurb: 'Competition and timing.' },
+  retro: { label: 'Retro / Classic', icon: '■', blurb: 'Old-school favorites.' },
+  other: { label: 'Other', icon: '+', blurb: 'Everything else worth playing.' },
+  '3kh0': { label: '3kh0 Collection', icon: '📦', blurb: 'Classic hits.' },
+  'gfiles': { label: 'GFiles Archive', icon: '📁', blurb: 'Retro and web favorites.' }
+};
+
+function catInfo(cat) {
+  return CAT_INFO[cat] || CAT_INFO.other;
+}
+
+function resolveGameHref(href) {
+  href = String(href || '').trim();
+  if (!href) return '#';
+  if (/^(https?:|data:|blob:)/i.test(href)) return href;
+  if (href.charAt(0) === '/') return href;
+  return '/games/' + href.replace(/^\.?\//, '');
+}
+
+function visitsFor(href) {
+  var resolved = resolveGameHref(href);
+  var compact = resolved.replace(/^\/games\//, '');
+  return gameStats[href] || gameStats[resolved] || gameStats[compact] || gameStats['/games/' + compact] || 0;
+}
+
+function categoryForHref(href) {
+  var resolved = resolveGameHref(href);
+  return gameCats[href] || gameCats[resolved] || gameCats[resolved.replace(/^\/games\//, '')] || 'other';
+}
+
+function sortByPopularity(entries) {
+  return entries.slice().sort(function(a, b) {
+    var diff = visitsFor(b.href) - visitsFor(a.href);
+    if (diff) return diff;
+    return a.label.localeCompare(b.label);
+  });
+}
+
+function makeGameAnchor(entry, leadText) {
+  var visits = visitsFor(entry.href);
+  var info = catInfo(entry.cat);
+  var a = document.createElement('a');
+  a.href = '#';
+  a.className = 'site-link';
+  a.innerHTML =
+    '<span class="rank-num">' + escText(leadText || info.icon) + '</span>' +
+    '<span class="game-name">' + escText(entry.label) + '</span>' +
+    '<span class="game-visits">' + (visits ? visits + (visits === 1 ? ' visit' : ' visits') : info.label) + '</span>';
+  a.onclick = function(e) {
+    e.preventDefault();
+    launchEntry(entry);
+  };
+  return a;
+}
+
+function parseGameText(text) {
+  var list = [];
+  text.split('\n').forEach(function(line) {
+    line = line.trim();
+    if (!line) return;
+    var parts = line.split(' ');
+    if (parts.length < 3) return;
+    list.push({
+      type: parts[0],
+      href: parts[1],
+      label: parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim(),
+      cat: categoryForHref(parts[1])
+    });
+  });
+  return list;
+}
+
+async function loadSites(append = false) {
+  if (isLoading) return;
+  if (!append) {
+    currentOffset = 0;
+    document.getElementById('links').innerHTML = '<div class="loading-card">Loading arcade...</div>';
+  }
+  
+  isLoading = true;
+  setArcadeDay();
+  
+  var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
+  var hash = c.get('studentId') || c.get('id') || c.get('password');
+  
+  try {
+    const body = { 
+      hash: hash, 
+      offset: currentOffset, 
+      limit: limitPerPage,
+      q: currentSearch,
+      cat: currentCat
+    };
+
+    var results = await Promise.all([
+      fetch('/api/games', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(function(){ return null; }),
+      fetch('/api/game-stats').catch(function(){ return null; }),
+      fetch('/api/game-categories').catch(function(){ return null; })
+    ]);
+    
+    var gamesRes = results[0];
+    var statsRes = results[1];
+    var catsRes = results[2];
+    
+    if (statsRes && statsRes.ok) {
+      var sd = await statsRes.json().catch(function(){ return {}; });
+      gameStats = sd.stats || {};
+    }
+    if (catsRes && catsRes.ok) {
+      var cd = await catsRes.json().catch(function(){ return {}; });
+      gameCats = cd.categories || {};
+    }
+    
+    if (gamesRes && gamesRes.ok) {
+      var gd = await gamesRes.json().catch(function(){ return {}; });
+      hasMoreGames = gd.hasMore;
+      
+      if (!append) {
+        document.getElementById('game-total-stat').textContent = String(gd.total || 0);
+        renderCategoryGrid();
+        document.getElementById('links').innerHTML = '';
+        
+        if (gd.featured) {
+          var featuredList = parseGameText(gd.featured);
+          featuredEntry = featuredList[0] || null;
+          renderFeaturedGames(featuredList);
+          renderMostPlayed(featuredList);
+        }
+      }
+      
+      parseGamesChunk(gd.content || '', append);
+      currentOffset += limitPerPage;
+      isLoading = false;
+      return;
+    }
+  } catch(e) { console.error(e); }
+  isLoading = false;
+  if (!append) showLoadError();
+}
+
+function renderFeaturedGames(entries) {
+  var grid = document.getElementById('feature-grid');
+  grid.innerHTML = '';
+  if (!entries || !entries.length) {
+    grid.innerHTML = '<div class="loading-card">No featured games yet.</div>';
+    return;
+  }
+  entries.forEach(function(entry, i) {
+    var info = catInfo(entry.cat);
+    var visits = visitsFor(entry.href);
+    var card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'feature-card';
+    card.innerHTML =
+      '<span class="feature-rank">' + (i === 0 ? 'Top Pick' : '#' + (i + 1)) + '</span>' +
+      '<span class="feature-name">' + escText(entry.label) + '</span>' +
+      '<span class="feature-meta"><span class="feature-chip">' + escText(info.icon) + '</span><span class="game-visits">' + (visits ? visits + ' visits' : info.label) + '</span></span>';
+    card.onclick = function() { launchEntry(entry); };
+    grid.appendChild(card);
+  });
+  
+  if (entries[0]) {
+    document.getElementById('featured-title').textContent = entries[0].label;
+    document.getElementById('featured-meta').textContent = catInfo(entries[0].cat).label + ' · Trending now';
+  }
+}
+
+function renderMostPlayed(entries) {
+  var section = document.getElementById('most-played');
+  var list = document.getElementById('most-played-list');
+  if (!entries || !entries.length) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+  list.innerHTML = '';
+  entries.forEach(function(entry, i) {
+    list.appendChild(makeGameAnchor(entry, '#' + (i + 1)));
+  });
+}
+
+function showLoadError() {
+  document.getElementById('featured-title').textContent = 'Games could not load';
+  document.getElementById('featured-meta').textContent = 'Try refreshing in a moment.';
+  document.getElementById('feature-grid').innerHTML = '<div class="loading-card">Games are unavailable right now.</div>';
+  document.getElementById('cat-grid').innerHTML = '<div class="loading-card">Categories are unavailable right now.</div>';
+  document.getElementById('most-played').style.display = 'none';
+}
+
+function parseGamesChunk(text, append) {
+  var container = document.getElementById('links');
+  var lines = text.split('\n').filter(Boolean);
+  
+  if (!lines.length && !append) {
+    container.innerHTML = '<div class="no-results">No games found matching your criteria.</div>';
+    return;
+  }
+
+  lines.forEach(function(line) {
+    var parts = line.split(' ');
+    if (parts.length < 3) return;
+    var entry = {
+      type: parts[0],
+      href: parts[1],
+      label: parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim()
+    };
+    entry.cat = categoryForHref(entry.href);
+    container.appendChild(makeGameAnchor(entry, catInfo(entry.cat).icon));
+  });
+
+  setupInfiniteScroll();
+}
+
+function setupInfiniteScroll() {
+  var container = document.getElementById('links');
+  if (!container.lastElementChild || !hasMoreGames) return;
+  
+  if (window.infiniteObserver) window.infiniteObserver.disconnect();
+  
+  window.infiniteObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && !isLoading && hasMoreGames) {
+      loadSites(true);
+    }
+  }, { threshold: 0.1 });
+  
+  window.infiniteObserver.observe(container.lastElementChild);
+}
+
+function showAllGames() {
+  currentCat = 'all';
+  currentSearch = '';
+  document.getElementById('search').value = '';
+  document.getElementById('view-title').textContent = 'All Games';
+  document.getElementById('view-categories').style.display = 'none';
+  document.getElementById('view-games').style.display = 'block';
+  loadSites();
+}
+
+function showCategory(cat) {
+  currentCat = cat;
+  currentSearch = '';
+  document.getElementById('search').value = '';
+  document.getElementById('view-title').textContent = catInfo(cat).label;
+  document.getElementById('view-categories').style.display = 'none';
+  document.getElementById('view-games').style.display = 'block';
+  loadSites();
+}
+
+function onSearch() {
+  var q = document.getElementById('search').value.trim().toLowerCase();
+  if (q === currentSearch) return;
+  
+  // Debounce search
+  clearTimeout(window.searchTimer);
+  window.searchTimer = setTimeout(() => {
+    currentSearch = q;
+    if (!q) {
+      showCategories();
+      return;
+    }
+    document.getElementById('view-categories').style.display = 'none';
+    document.getElementById('view-games').style.display = 'block';
+    document.getElementById('view-title').textContent = 'Search Results';
+    loadSites();
+  }, 350);
+}
+
+function showCategories() {
+  currentCat = 'all';
+  currentSearch = '';
+  document.getElementById('search').value = '';
+  document.getElementById('view-categories').style.display = 'block';
+  document.getElementById('view-games').style.display = 'none';
+}
+
+function renderCategoryGrid() {
+  var grid = document.getElementById('cat-grid');
+  grid.innerHTML = '';
+  
+  var allCard = document.createElement('div');
+  allCard.className = 'cat-card all-games-card';
+  allCard.innerHTML =
+    '<span class="cat-icon">▶</span>' +
+    '<span class="cat-copy"><span class="cat-name">All Games</span><span class="cat-blurb">The full arcade roster.</span></span>';
+  allCard.onclick = showAllGames;
+  grid.appendChild(allCard);
+
+  Object.keys(CAT_INFO).forEach(function(cat) {
+    var info = catInfo(cat);
+    var card = document.createElement('div');
+    card.className = 'cat-card';
+    card.innerHTML =
+      '<span class="cat-icon">' + escText(info.icon) + '</span>' +
+      '<span class="cat-copy"><span class="cat-name">' + escText(info.label) + '</span><span class="cat-blurb">' + escText(info.blurb) + '</span></span>';
+    card.onclick = function() { showCategory(cat); };
+    grid.appendChild(card);
+  });
+}
+
+function launchEntry(entry) {
+  if (!entry) return;
+  launchGame(entry.type, entry.href);
+}
+
+function launchGame(type, href) {
+  var h = resolveGameHref(href);
+  trackGameLaunch(h);
+  var abToggle = document.getElementById('abToggle');
+  if (abToggle && abToggle.checked) {
+    openAboutBlank(h);
+    return;
+  }
+  if (type === 'iframe') {
+    showIframe(h, false);
+  } else if (type === 'eframe') {
+    showIframe(h, true);
+  } else if (type === 'popup') {
+    showPopup(h);
+  } else if (type === 'tab' || type === 'newtab') {
+    window.open(h, '_blank');
+  } else if (type === 'url' && h.endsWith('/')) {
+    fetch(h + 'index.htm', { method: 'HEAD' }).then(function(r) {
+      window.location.href = r.ok ? h + 'index.htm' : h;
+    }).catch(function() {
+      window.location.href = h;
+    });
+  } else {
+    window.location.href = h;
+  }
+}
+
+function trackGameLaunch(src) {
+  var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
+  var id = c.get('studentId') || c.get('id') || c.get('password') || '';
+  fetch('/api/ping', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: id, page: src, category: 'Games' })
+  }).catch(function(){});
+  var current = visitsFor(src);
+  gameStats[src] = current + 1;
+  gameStats[resolveGameHref(src)] = current + 1;
+}
+
+function showPopup(src) {
+  setTimeout(function() {
+    window.open(src, '_blank', 'width=980,height=680,resizable=yes,scrollbars=yes');
+  }, 0);
+}
+
+function loadDisplayPrefs() {
+  try { return JSON.parse(localStorage.getItem('_prefDisplay') || '{}') || {}; } catch(e) { return {}; }
+}
+
+function saveDisplayPrefs(prefs) {
+  try { localStorage.setItem('_prefDisplay', JSON.stringify(prefs || {})); } catch(e) {}
+}
+
+function setupAboutBlankToggle() {
+  var ab = document.getElementById('abToggle');
+  if (!ab) return;
+  var prefs = loadDisplayPrefs();
+  ab.checked = !!prefs.abAutoLaunch;
+  ab.onchange = function() {
+    var next = loadDisplayPrefs();
+    next.abAutoLaunch = !!ab.checked;
+    saveDisplayPrefs(next);
+  };
+}
+
+function openAboutBlank(target) {
+  var w = window.open('', '_blank', 'width=1000,height=700');
+  if (!w) {
+    alert('Popup blocked! Allow popups for this site.');
+    return;
+  }
+
+  var html = '<!doctype html><html><head><title>New Tab</title><meta charset="utf-8"><style>html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000}iframe{border:0;width:100%;height:100%;display:block}</style></head><body><iframe src="' + escAttr(target) + '" allowfullscreen allow="fullscreen; autoplay; clipboard-read; clipboard-write; encrypted-media"></iframe></body></html>';
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
+
+function showIframe(src, escape) {
+  var id = new URLSearchParams(document.cookie.replaceAll('; ', '&')).get('id');
+  fetch('/api/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, page: src }) }).catch(function(){});
+  document.getElementById('mainpage').style.display = 'none';
+  var frame = document.getElementById('fullframe');
+  frame.src = src;
+  frame.style.display = 'block';
+  document.getElementById('backbtn').style.display = 'block';
+  iframeEscape = !!escape;
+}
+
+function goBack() {
+  document.getElementById('fullframe').src = 'about:blank';
+  document.getElementById('fullframe').style.display = 'none';
+  document.getElementById('mainpage').style.display = 'block';
+  document.getElementById('backbtn').style.display = 'none';
+  iframeEscape = false;
+}
+
+function setupSearchTools() {
+  var search = document.getElementById('search');
+  var clear = document.getElementById('search-clear');
+  if (clear) {
+    clear.onclick = function() {
+      search.value = '';
+      showCategories();
+      search.focus();
+    };
+  }
+}
+
+function setArcadeDay() {
+  var day = document.getElementById('arcade-day');
+  if (!day) return;
+  day.textContent = new Date().toLocaleDateString(undefined, {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+function escText(t) {
+  var d = document.createElement('div');
+  d.textContent = t == null ? '' : String(t);
+  return d.innerHTML;
+}
+
+function escAttr(t) {
+  return escText(t).replace(/"/g, '&quot;');
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === '/' && document.activeElement !== document.getElementById('search')) {
+    e.preventDefault();
+    document.getElementById('search').focus();
+  }
+});
+
+function playFeatured() {
+  if (!featuredEntry) {
+    alert('Pick a game from the list below!');
+    return;
+  }
+  launchEntry(featuredEntry);
+}
+
+window.onload = function() {
+  setupSearchTools();
+  setupAboutBlankToggle();
+  loadSites();
+};
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

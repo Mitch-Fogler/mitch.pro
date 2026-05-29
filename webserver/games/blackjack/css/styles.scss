@@ -1,0 +1,740 @@
+@import "utils";
+
+// Utils ----------------------------------------------
+* { margin: 0; padding: 0; }
+body, html { width: 100%; height: 100%;
+  -webkit-font-smoothing: antialiased;
+}
+.desactivate { opacity: 0.2; }
+
+// Game -----------------------------------------------
+#game {
+  background-color: #466d19; 
+  @include gradient-radial(#65981e, #184d08);
+  overflow: hidden;
+  position: relative;
+  width: 100%; height: 100%;
+  min-height: 480px;
+  font: 400 16px/1.4 'futura-pt', Helvetica, Arial, sans-serif;
+
+  h1 {
+    font: 5em/1.5 'bello-pro','Cooper STD', Georgia, serif;
+    margin: 5% auto;
+    text-align: center;
+    color: #2b5204;
+    text-shadow: 0 -1px 3px rgba(0,0,0,0.2), 0 -1px 0px rgba(0,0,0,0.3), 0 1px 0 rgba(152,184,42,0.15), 0 1px 4px rgba(152,184,42,0.2);
+    text-align: center;
+    -webkit-mask-image: -webkit-gradient(linear, left top, left bottom, from(rgba(0, 0, 0, 0.4)), to(rgba(255,255,255, 1)));
+    -webkit-background-clip: text;
+  }
+  .shortcut {
+    display: block;
+    padding: 1em 0;
+    color: #77a421;
+    font-size: 0.65em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+// UI -------------------------------------------------
+#ui {
+  position: absolute;
+  top: 40%; left: 50%;
+  width: 75%; max-width: 1280px;
+  height: 30%; max-height: 300px;
+  margin: -6.5% 0 0 0;
+  clear: both;
+  color: #dce4c9;
+
+  .zone {
+    position: relative;
+    width: auto;
+    left: -50%;
+    height: 45%; max-height: 110px; min-height: 90px;
+    border: 9px solid #809d29;
+    border-color: rgba(208,209,78,0.3);
+    padding: 2%;
+    @include rounded(30px);
+    
+    div, ul {
+      width: 20%;
+    }
+    
+    .label {
+      position: absolute;
+      top: -37px; left: 5%;
+      font-size: 0.9em;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: rgba(208,209,78,0.3);
+      
+      &.right { left: auto; right: 5%; }
+    }
+    
+    #bankroll {
+      position: absolute;
+      top: 50%; left: 0;
+      font-size: 4.5em;
+      margin: -50px 5% 0 0;
+      text-align: center;
+    }
+
+    #deal, #actions {
+      width: 50%;
+      height: 100%;
+      margin: auto;
+      text-align: center;
+      list-style: none;
+      
+       a, li a {
+          background-color: #ffe000;
+          position: relative;
+          @include gradient-top-bottom(#ffec01,#ffc900);
+          display: block;
+          padding: 5% 5% 3.875% 5%;
+          color: #724a0e;
+          font: 2.5em/1 'bello-pro','Cooper STD', Georgia, serif;
+          text-decoration: none;
+          text-shadow: 0 1px 0px rgba(255,255,255,0.3), 0px -1px 0px rgba(0,0,0,0.2);
+          @include box-shadow(#{
+              inset 0px 2px 0 rgba(255,255,255,0.3), 
+              inset 0px -2px 0 rgba(255,255,255,0.1), 
+              0px 5px 0px 0px #daa206, 
+              0px 5px 0px 2px rgba(0,0,0,0.2)});
+          @include rounded(12px);
+          @include transition(#{box-shadow 150ms ease-out});
+          
+          &:hover, &:focus { @include box-shadow(#{inset 0px 2px 0 rgba(255,255,255,0.3), inset 0px -2px 0 rgba(255,255,255,0.1), 0px 5px 0px 0px #daa206, 0px 5px 0px 2px rgba(0,0,0,0.2), 0 0 30px rgba(255,246,0,0.8)}); };
+          &:active, &.active {
+            top: 2px;
+            @include box-shadow(#{
+              inset 0px 2px 0 rgba(255,255,255,0.3), 
+              inset 0px -2px 0 rgba(255,255,255,0.1), 
+              0px 3px 0px 0px #daa206, 
+              0px 3px 0px 2px rgba(0,0,0,0.2)});
+          }
+        }
+        a.desactivate, a.desactivate:hover {
+          opacity: 1;
+          cursor: default;
+          background-color: #cac6be;
+          @include gradient-top-bottom(#dad7d2,#9c9486);
+          @include transition(none);
+          color: #aaa395;
+          text-shadow: 0 1px 0px rgba(255,255,255,0.2), 0px -1px 0px rgba(0,0,0,0.1);
+          @include box-shadow(#{
+              inset 0px 2px 0 rgba(255,255,255,0.4), 
+              inset 0px -2px 0 rgba(255,255,255,0.1), 
+              0px 5px 0px 0px #898367, 
+              0px 5px 0px 2px rgba(0,0,0,0.2)});
+        }
+
+        li {
+          display: block;
+          width: 29.4%;
+          margin: 0 1%;
+          float: left;
+          a {
+            padding: 22% 5% 20% 5%;
+            font-size: 1.5em;
+          }
+        }
+      }
+    } // #zone
+     
+    .total {
+      position: relative;
+      left: -12.5%;
+      background-color: #809d29;
+      background-color: rgba(208,209,78,0.3);
+      width: 25%;
+      padding: 0.75em 0 0.5em 0;
+      color: #437714;
+      font-size: 1em;
+      letter-spacing: 0.15em;
+      text-align: center;
+      text-transform: uppercase;
+      text-shadow: 0 1px 0 rgba(255,255,255,0.1);
+      @include rounded(9px 9px 0px 0px);
+    }
+    .total.bot {
+      @include rounded( 0 0 9px 9px);
+      padding: 0.5em 0 0.75em 0;
+    }
+  
+    #chips {
+      position: absolute;
+      width: 0;
+      top: 0;
+      right: 0;
+    
+      .chip { position: absolute; top: 0; left: 0; @include transition(all 250ms ease-out); }
+      .chip:nth-child(1) { left: auto; right: 10px; &::before{ display: none; } }
+      .chip:nth-child(2) { left: 10px; top: -70px; &::before{ top: -25%; } }
+      .chip:nth-child(3) { left: 10px; top: 70px; &::before{ top: 115%; } }
+    }
+  
+    #chips.disabled { .chip:nth-child(2), .chip:nth-child(3) { opacity: 0; } }
+    #actions { display: none; }
+  }
+  #player-cards, #dealer-cards {
+    position: absolute;
+    left: 50%;
+    width: 100%; height: 460px;
+    -webkit-transform: translate3d(0,0,0);
+    @include transition(all 200ms ease-out);
+    
+    .card {
+      -webkit-backface-visibility: hidden;
+      background-color: #f9f9f9;
+      position: absolute;
+      top: 0; left: 0;
+      @include transition(all 250ms ease-in-out);
+      @include box-shadow(#{inset 0 0 1px #fff, inset 0 0 60px rgba(139,118,109,0.1), 0 1px 3px rgba(0,0,15,0.3), 0 0 5px rgba(0,0,15,0.1)});
+      @include gradient-top-bottom(#f5f5f5, #edeae6);
+      &.back {
+          background-color: #fd4000;
+          @include box-shadow(#{inset 0 0 50px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,15,0.3), 0 0 5px rgba(0,0,15,0.1)});
+          background: #fd4000 url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAKCAYAAACJxx+AAAAATElEQVQYGWP4/9XN+P///wy4MEQClyKgOEInuiIoH6EAZA1MEYwGiqEqQFYEdRcTAwFAUAGqFTC7YTSKG5AEwWEC5UNMQJeEOhDkKwDfGrdliFgHkAAAAABJRU5ErkJggg==');  
+      }
+    }
+  }
+  #dealer-cards .card > .icons {
+    @include rotate(180deg);
+  }
+  
+  #dealer-cards { top: -200px;
+    .card {
+       @include gradient-top-bottom(#edeae6, #f9f9f9);
+    }
+  }
+  #player-cards { bottom: -120px; }
+  #player-total, #dealer-total { font-size: 1em; color: #fff; }
+}
+
+#message {
+  z-index: 999;
+  position: absolute;
+  bottom: 8%; left: 0;
+  width: 100%;
+  opacity: 1;
+  color: #ffd801;
+  font-size: 5em;
+  font-weight: bold;
+  font-family: 'bello-pro';
+  font-size: 5em;
+  line-height: 1;
+  text-align: center;
+  text-shadow:
+      0px 2px 0px #daa206, 
+      0px 1px 6px rgba(0,0,0,0.1);
+      
+  span {
+    display: block;
+    clear: both;
+    color: #3c2f29;
+    font-family: 'futura-pt', Helvetica, Arial, sans-serif;
+    font-size: 0.5em;
+    font-weight: bold;
+    text-transform: uppercase;
+    text-shadow: none;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  -webkit-animation: fadeIn3d 1000ms ease-in-out;
+  
+  &.game-over {
+    bottom: 45%;
+    -webkit-animation: fadeIn3d 1000ms ease-in-out;
+  }
+}
+#message.lose, #message.lose-busted, #message.lose-blackjack, #message.game-over {
+  color: #f14700;
+  text-shadow:
+      0 -1px 0px #f36c30,
+      0px 2px 0px #cf3600, 
+      0px 4px 21px rgba(60,47,41,0.17);
+    span {
+      color: #3c2f29;
+    }
+}
+#overlay {
+  position: absolute;
+  z-index: 998;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  min-height: 420px;
+  background-color: rgba(0,0,0,0.6);
+}
+@-webkit-keyframes fadeIn3d {
+    0%      { opacity: 0; @include translate3d(#{0,0,0}); }
+    75%     { opacity: 1; }
+    100%    { @include translate3d(#{0,-75px,0}); }
+}
+@-webkit-keyframes messageFade {
+    0%      { opacity: 0; /*letter-spacing: 0em;*/ }
+    10%     { opacity: 1; }    
+    70%     { opacity: 1; }
+    100%    { opacity: 0; /*letter-spacing: 0.6em;*/ }
+}
+@-webkit-keyframes dealPulse {
+      0%  { -webkit-box-shadow: inset 0px 2px 0 rgba(255,255,255,0.3), inset 0px -2px 0 rgba(255,255,255,0.1), 0px 5px 0px 0px #daa206, 0px 5px 0px 2px rgba(0,0,0,0.2), 0 0 6px rgba(255,246,0,0.8); }
+      100% { -webkit-box-shadow: inset 0px 2px 0 rgba(255,255,255,0.3), inset 0px -2px 0 rgba(255,255,255,0.1), 0px 5px 0px 0px #daa206, 0px 5px 0px 2px rgba(0,0,0,0.2), 0 0 40px rgba(255,246,0,0.8); }
+  }
+
+// Chips ----------------------------------------------
+
+#chips:hover .chip { opacity: 0.8; }
+#chips:hover .chip:hover { opacity: 1; }
+.chip {
+  cursor: pointer;
+  float: left;
+  margin: 0 10px 0 0;
+  padding: 4px;
+	background-color: #007cff;
+	position: relative;
+	width: 100px !important;
+	height: 100px;
+	border: 10px dashed #fff;
+	@include box-shadow(#{0 0 0px #0263e6, 0 1px 0px #0263e6, 0 2px 0px #0263e6, 0 3px 0px #0263e6, 0 4px 0px #0263e6, 0 -1px 0px #01afff, 0 4px 9px rgba(0,0,0,0.2)});
+	@include noselect();
+	@include rounded(100px);
+	@include transition(all 100ms ease-out);
+	
+	&:hover{
+    @include rotate(5deg);
+	}
+	span {
+		display: block;
+		width: 100%;
+		height: 100%;
+		color: #fff;
+		font-size: 2em;
+		line-height: 102px;
+		text-align: center;
+		text-shadow: 0 -1px 0px rgba(0,0,0,0.3);
+		background-color: #0261f1;
+		@include rounded(100px);
+    @include gradient-top-bottom(#037ff4, #0274f3);
+    @include box-shadow(#{0 0 0 3px #0277f4, 0 -1px 0 3px #0265f1, 0 1px 0 3px #008dff, inset 0 1px 1px #0784ff, inset 0 -1px 0px #0261f1});
+	}
+	
+	&::before {
+	  position: absolute;
+    color: #77a421;
+    font-size: 0.65em;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    left: 49%;
+	}
+	
+}
+
+.chip.blue {
+  background-color: #007cff;
+  @include box-shadow(#{0 0 0px #0263e6, 0 1px 0px #0263e6, 0 2px 0px #0263e6, 0 3px 0px #0263e6, 0 4px 0px #0263e6, 0 -1px 0px #01afff, 0 3px 9px rgba(0,0,0,0.2)});
+  
+  span {
+    background-color: #0261f1;
+    @include gradient-top-bottom(#037ff4, #0274f3);
+    @include box-shadow(#{0 0 0 3px #0277f4, 0 -1px 0 3px #0265f1, 0 1px 0 3px #008dff, inset 0 1px 1px #0784ff, inset 0 -1px 0px #0261f1});
+  }
+  
+  &::before { content: '2'; }
+}
+
+.chip.red {
+  background-color: #f54800;
+  @include box-shadow(#{0 0 0px #de2e04, 0 1px 0px #de2e04, 0 2px 0px #de2e04, 0 3px 0px #de2e04, 0 4px 0px #de2e04, 0 -1px 0px #ff6d02, 0 3px 9px rgba(0,0,0,0.2)});
+  
+  span {
+    background-color: #eb4603;
+    @include gradient-top-bottom(#ef4d00, #ed4300);
+    @include box-shadow(#{0 0 0 3px #eb4503, 0 -1px 0 3px #de3400, 0 1px 0 3px #ff5100, inset 0 1px 1px #fd5410, inset 0 -1px 0px #de3400});
+  }
+  
+  &::before { content: '1'; }
+}
+
+.chip.yellow {
+  background-color: #f3cf00;
+  @include box-shadow(#{0 0 0px #cdaf00, 0 1px 0px #cdaf00, 0 2px 0px #cdaf00, 0 3px 0px #cdaf00, 0 4px 0px #cdaf00, 0 -1px 0px #fddc00, 0 3px 9px rgba(0,0,0,0.2)});
+  
+  span {
+    background-color: #ebc700;
+    @include gradient-top-bottom(#ecc300, #ebcd00);
+    @include box-shadow(#{0 0 0 3px #eec900, 0 -1px 0 3px #ceaf00, 0 1px 0 3px #e9dc00, inset 0 1px 1px #e9dc00, inset 0 -1px 0px #ceaf00});
+  }
+  
+  &::before { content: '3'; }
+}
+
+
+
+// Cards ----------------------------------------------
+.card {
+  font-size: 1.5em;
+  z-index: 1;
+  position: relative;
+  width: 300px; height: 460px;
+  border-radius: 20px;
+  @include noselect();
+  
+  
+  div {
+    position: absolute;
+    &:first-child { top: 2%; left: 5%; }
+    &:last-child { bottom: 2%; right: 5%; @include rotate(180deg); }
+    
+    span {
+      text-align: center;
+      display: block;
+    }
+    
+    .icons {
+      position: absolute;
+      top: 0; left: 0;
+      width: 1px; height: 1px;
+      
+      & > div { position: relative; }
+    }
+  }
+  
+  .icons {
+    position: absolute;
+    top: 50%; left: 50%;
+    
+    span { position: absolute; font-size: 4em; left: -26px; }
+  }
+}
+
+.card.hearts, .card.diamonds { color: #f14000; }
+.card.spades, .card.clubs { color: #3c2f29; }
+.card.valueA > .icons span { top: -70px; }
+.card.value2 > .icons,
+.card.value3 > .icons {
+  span:nth-child(1) { top: -170px; }
+  span:nth-child(2) { bottom: -170px; }
+  span:nth-child(3) { top: -65px; }
+}
+.card.value4 > .icons,
+.card.value5 > .icons {
+  span:nth-child(1) { top: -170px; left: -90px; }
+  span:nth-child(2) { top: -170px; right: -90px; left: auto; }
+  span:nth-child(3) { bottom: -170px; left: -90px; }
+  span:nth-child(4) { bottom: -170px; right: -90px; left: auto; }
+  span:nth-child(5) { top: -65px; }
+}
+.card.value6 > .icons,
+.card.value7 > .icons,
+.card.value8 > .icons {
+  span:nth-child(1) { top: -170px; left: -90px; }
+  span:nth-child(2) { top: -170px; right: -90px; left: auto; }
+  span:nth-child(3) { bottom: -170px; left: -90px; }
+  span:nth-child(4) { bottom: -170px; right: -90px; left: auto; }
+  span:nth-child(5) { top: -65px; left: -90px; }
+  span:nth-child(6) { top: -65px; right: -90px; left: auto; }
+  span:nth-child(7) { top: -120px; }
+  span:nth-child(8) { bottom: -120px; }
+}
+.card.value9 > .icons {
+  span:nth-child(1) { top: -190px; left: -90px; }
+  span:nth-child(2) { top: -110px; left: -90px; }
+  span:nth-child(3) { bottom: -110px; left: -90px; }
+  span:nth-child(4) { bottom: -190px; left: -90px; }
+  span:nth-child(5) { top: -190px; right: -90px; left: auto; }
+  span:nth-child(6) { top: -110px; right: -90px; left: auto; }
+  span:nth-child(7) { bottom: -110px; right: -90px; left: auto; }
+  span:nth-child(8) { bottom: -190px; right: -90px; left: auto; }
+  span:nth-child(9) { top: -65px; }
+}
+.card.value10 > .icons {
+  span:nth-child(1) { top: -190px; left: -90px; }
+  span:nth-child(2) { top: -110px; left: -90px; }
+  span:nth-child(3) { bottom: -110px; left: -90px; }
+  span:nth-child(4) { bottom: -190px; left: -90px; }
+  span:nth-child(5) { top: -190px; right: -90px; left: auto; }
+  span:nth-child(6) { top: -110px; right: -90px; left: auto; }
+  span:nth-child(7) { bottom: -110px; right: -90px; left: auto; }
+  span:nth-child(8) { bottom: -190px; right: -90px; left: auto; }
+  span:nth-child(9) { top: -155px; }
+  span:nth-child(10) { bottom: -155px; }
+}
+.card.valueJ > .icons > span,
+.card.valueQ > .icons > span,
+.card.valueK > .icons > span {
+  font-size: 6em;
+  top: -100px; left: -70px;
+}
+
+// Browser hacks
+html[browser="Firefox"] {
+  .chip {
+    border-color: rgba(255,255,255,0.1);
+  }
+}
+
+html[browser="Safari"] {
+  #game #ui .zone #deal li, #game #ui .zone #actions li {
+    margin: 0 2%;
+  }
+  
+  #message { bottom: 0; @include translate3d(#{0,-75px,0}); }
+}
+
+html[os="iPhone/iPod"] {
+  #game #player-cards .card, #game #dealer-cards .card {
+    @include transition(none);
+  }
+}
+
+// Media Queries
+@media screen and (max-height: 1024px) {
+  #game {
+    #dealer-cards { top: -260px; }
+    #player-cards { bottom: -240px; }
+  }
+}
+@media screen and (max-height: 910px) {
+  #game {
+    #player-cards { bottom: -300px; }
+  }
+}
+@media screen and (max-height: 768px) {
+  #game {
+    #dealer-cards { top: -270px; }
+  }
+}
+@media screen and (max-height: 660px) {
+  #game {
+    #dealer-cards { top: -350px; }
+  }
+}
+@media screen and (max-height: 550px) and (max-width: 768px) {
+  #game {
+    #dealer-cards { top: -350px; }
+    #player-cards { bottom: -350px; }
+  }
+}
+@media screen and (max-height: 620px) and (max-width: 480px) {
+  #game {
+    #dealer-cards { top: -200px; }
+  }
+}
+@media screen and (max-height: 550px) and (max-width: 320px) {
+  #game {
+    #dealer-cards { top: -150px; }
+  }
+}
+@media screen and (max-height: 320px) and (max-width: 480px) {
+  #game {
+    #dealer-cards { top: -250px; }
+  }
+}
+
+
+@media screen and (max-width: 1024px) {
+  #game {
+    .chip {
+      padding: 4px;
+    	width: 80px !important;
+    	height: 80px;
+    	
+    	span {
+    		font-size: 1.5em;
+    		line-height: 82px;
+    	}
+  	}
+  }
+}
+
+@media screen and (max-width: 768px) { // New #zone layout
+  #game {
+    
+    h1 {
+      margin: 10% auto 0 auto;
+    }
+    
+    #ui {
+      width: 95%; 
+      height: 40%; max-height: 500px;
+      
+      top: 35%;
+      
+      .zone {
+        height: 66%; max-height: 300px;
+        @include rounded(21px);
+        
+        .label { top: -30px; }
+        
+        #deal, #actions {
+          position: absolute;
+          top: auto;
+          bottom: 10%;
+          width: 96%;
+          height: auto;
+          
+        }
+        .shortcut {
+          display: none;
+        }
+        #bankroll {
+          top: 0;
+          margin: 4%;
+        }
+      } //.zone
+      
+      #chips {
+        width: auto;
+        top: 10px; right: 2px;
+        
+        .chip {
+          float: none;
+          opacity: 0.35;
+          top: 0 !important; left: auto !important;
+          
+          &::before { display: none; }
+          &.bet { opacity: 1; }
+          &.red { right: 236px; }
+          &.blue { right: 118px; }
+          &.yellow { right: 0px; }
+        }
+      } // #chips
+    } // #ui
+  } // #gane
+}
+
+@media screen and (max-width: 768px) and (max-height: 825px) {
+  #game {
+    font-size: 12px;
+    
+    #ui .zone #chips .chip {
+      padding: 4px;
+    	width: 50px !important;
+    	height: 50px;
+    	margin: 3px;
+    	border: 4px dashed #fff;
+    	
+    	span {
+    		font-size: 1.4em;
+    		line-height: 52px;
+    	}
+    	
+    	&.red { right: 145px; }
+      &.blue { right: 72px; }
+      &.yellow { right: 0px; }
+  	}
+  }
+}
+
+@media screen and (max-width: 575px) {
+  #game {
+    font-size: 12px;
+    
+    #ui {
+      .zone {
+        #bankroll {
+          font-size: 4em;
+        }
+      }
+    }
+    
+    #ui .zone #chips .chip {
+      padding: 4px;
+    	width: 30px !important;
+    	height: 30px;
+    	border: 3px dashed #fff;
+    	
+    	span {
+    		font-size: 1em;
+    		line-height: 32px;
+    	}
+    	
+    	&.red { right: 98px; }
+      &.blue { right: 49px; }
+      &.yellow { right: 0px; }
+  	}
+  	
+    .card {
+      font-size: 1.5em;
+      position: relative;
+      width: 220px; height: 337.333333px;
+
+      .icons {
+       display: none;
+      }
+    }
+  }
+}
+@media screen and (max-width: 450px) {
+  #github-ribbon { display: none; }
+}
+@media screen and (max-width: 480px) and (max-height: 320px){
+  #game {
+  	h1 {
+  	  margin: 2% auto 0 auto;
+  	}
+   
+    #ui{
+      margin: -15% 0 0 0;
+      .zone {
+        height: 70%
+      }
+    } 
+  }
+}
+
+@media screen and (max-width: 320px) {
+  #game {
+    min-height: 420px;
+    background-image: -webkit-gradient(radial, 50% 50%, 0, 50% 50%, 260, from(#65981e), to(#184d08));
+    
+    h1 {
+      font-size: 4em;
+      margin: 2%;
+      color: #2b4f05;
+    }
+    
+    #ui {
+      margin: -15% 0 0 0;
+      
+      .zone {
+        padding: 1% 2%;
+        height: 75%;
+        max-height: 160px;
+        
+        #bankroll {
+          top: -3px;
+          font-size: 4em;
+        }
+      }
+      
+      #chips .chip {
+        padding: 4px;
+      	width: 30px !important;
+      	height: 30px;
+      	margin: 3px;
+      	border: 3px dashed #fff;
+
+      	span {
+      		font-size: 1em;
+      		line-height: 30px;
+      	}
+
+      	&.red { right: 98px; }
+        &.blue { right: 49px; }
+        &.yellow { right: 0px; }
+    	}
+    }
+    
+    .card {
+      font-size: 1.5em;
+      position: relative;
+      width: 150px; height: 230px;
+
+
+      .icons {
+       display: none;
+      }
+    }
+  }
+}

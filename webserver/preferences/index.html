@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Preferences — mitch.pro</title>
+<script>
+  var _captchaId = null;
+  function onloadCallback() {
+    if (window.grecaptcha && _captchaId === null) {
+      _captchaId = grecaptcha.render('captcha-security', {
+        'sitekey': '6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz', 'theme': 'dark'
+      });
+    }
+  }
+</script>
+<script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer></script>
+<script src="/theme.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg);
+    color: var(--t-fg);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3rem 1rem 4rem;
+  }
+  .card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    padding: 2rem;
+    width: 100%;
+    max-width: 980px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+  }
+  .page-title {
+    font-size: 1.6rem;
+    font-weight: 800;
+    background: var(--t-gr);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: .3rem;
+  }
+  .page-sub {
+    font-size: .82rem;
+    color: var(--t-fg2);
+    opacity: .5;
+    margin-bottom: 2.2rem;
+  }
+  h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--t-fg);
+    margin-bottom: .25rem;
+  }
+  .section-sub {
+    font-size: .78rem;
+    color: var(--t-fg2);
+    opacity: .55;
+    margin-bottom: 1.2rem;
+    line-height: 1.5;
+  }
+  .field { margin-bottom: 1.2rem; }
+  .field label {
+    display: block;
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: var(--t-fg2);
+    opacity: .5;
+    margin-bottom: .4rem;
+  }
+  .field input[type="text"],
+  .field input[type="url"] {
+    width: 100%;
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 9px;
+    padding: .55rem .85rem;
+    color: var(--t-fg);
+    font-size: .9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .field input:focus { border-color: var(--t-ac); }
+  .key-row { display: flex; align-items: center; gap: .5rem; }
+  .key-badge {
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 7px;
+    padding: .5rem .75rem;
+    font-size: .85rem;
+    color: var(--t-fg2);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  #keyCapture {
+    flex: 1;
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 9px;
+    padding: .55rem .85rem;
+    color: var(--t-fg);
+    font-size: .9rem;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color .15s;
+    user-select: none;
+    outline: none;
+    letter-spacing: .05em;
+  }
+  #keyCapture.listening { border-color: var(--t-ac); opacity: .7; }
+  .toggle-row { display: flex; align-items: flex-start; gap: .75rem; }
+  .toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 38px;
+    height: 20px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: rgba(255,255,255,.1);
+    border-radius: 20px;
+    transition: .25s;
+    border: 1px solid var(--t-bd);
+  }
+  .toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 2px;
+    bottom: 2px;
+    background: rgba(200,200,220,.8);
+    border-radius: 50%;
+    transition: .25s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--t-ac); border-color: transparent; }
+  .toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); background: #fff; }
+  .toggle-desc { font-size: .8rem; color: var(--t-fg2); opacity: .6; line-height: 1.5; }
+  #preview-section { margin-top: 1rem; margin-bottom: 1.3rem; }
+  .preview-label {
+    font-size: .7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .09em;
+    color: var(--t-fg2);
+    opacity: .5;
+    margin-bottom: .4rem;
+  }
+  .preview-warn {
+    font-size: .78rem;
+    color: #f59e0b;
+    margin-bottom: .55rem;
+    padding: .45rem .75rem;
+    background: rgba(245,158,11,.07);
+    border: 1px solid rgba(245,158,11,.18);
+    border-radius: 8px;
+    line-height: 1.45;
+  }
+  #previewFrame {
+    width: 100%;
+    height: 200px;
+    border: 1px solid var(--t-bd);
+    border-radius: 10px;
+    background: #111;
+    display: block;
+  }
+  .divider {
+    border: none;
+    border-top: 1px solid var(--t-bd);
+    margin: 2rem 0 1.8rem;
+    opacity: .35;
+  }
+  .chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+    margin-top: .45rem;
+  }
+  .chip {
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 7px;
+    padding: .35rem .8rem;
+    font-size: .82rem;
+    color: var(--t-fg2);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    font-family: inherit;
+  }
+  .chip:hover { border-color: var(--t-ac); }
+  .chip.active {
+    border-color: var(--t-ac);
+    background: rgba(99,102,241,.12);
+    color: var(--t-fg);
+    font-weight: 600;
+  }
+  .sort-item {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .45rem .75rem;
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 8px;
+    cursor: grab;
+    font-size: .82rem;
+    color: var(--t-fg2);
+    user-select: none;
+    transition: border-color .15s, background .15s;
+  }
+  .sort-item::before { content: '⠿'; opacity: .3; font-size: 1.1rem; margin-right: .1rem; }
+  .sort-item.drag-over { border-color: var(--t-ac); background: rgba(99,102,241,.08); }
+  .field-sub {
+    font-size: .76rem;
+    color: var(--t-fg2);
+    opacity: .45;
+    margin-bottom: .55rem;
+    line-height: 1.5;
+  }
+  .chip img {
+    width: 13px;
+    height: 13px;
+    border-radius: 2px;
+    vertical-align: middle;
+    margin-right: .35rem;
+  }
+  .cloak-preview-strip {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 9px;
+    padding: .55rem .85rem;
+    margin-top: .5rem;
+    font-size: .85rem;
+    color: var(--t-fg2);
+  }
+  .cloak-preview-strip img { width: 16px; height: 16px; border-radius: 2px; }
+  #cloakCustomFields { margin-top: 1rem; }
+  .btn-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    margin-top: 2rem;
+  }
+  #saveBtn {
+    flex: 1;
+    background: var(--t-ac);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: .65rem 1.2rem;
+    font-size: .92rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity .15s;
+    font-family: inherit;
+  }
+  #saveBtn:hover { opacity: .82; }
+  #savedMsg { font-size: .82rem; color: #4ade80; display: none; }
+  .danger-btn {
+    width: 100%;
+    background: rgba(239,68,68,.1);
+    border: 1px solid rgba(239,68,68,.25);
+    color: #ef4444;
+    border-radius: 10px;
+    padding: .6rem 1rem;
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, border-color .15s;
+    font-family: inherit;
+    margin-top: .6rem;
+  }
+  .danger-btn:hover { background: rgba(239,68,68,.18); border-color: rgba(239,68,68,.5); }
+  #clearMsg { font-size: .8rem; color: #f87171; margin-top: .5rem; display: none; }
+  .back-link {
+    display: inline-block;
+    margin-top: 1.4rem;
+    font-size: .82rem;
+    color: var(--t-fg2);
+    text-decoration: none;
+    opacity: .5;
+    transition: opacity .15s;
+  }
+  .back-link:hover { opacity: 1; }
+  .pref-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: .7rem;
+    margin: 0 0 1.5rem;
+  }
+  .metric-card {
+    min-height: 76px;
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    padding: .85rem;
+  }
+  .metric-card b {
+    display: block;
+    font-size: .72rem;
+    color: var(--t-fg2);
+    opacity: .7;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: .35rem;
+  }
+  .metric-card span {
+    display: block;
+    color: var(--t-fg);
+    font-size: .95rem;
+    font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pref-section {
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(255,255,255,.025);
+    padding: 1rem;
+    margin: 1rem 0;
+  }
+  .pref-section h2 { margin-bottom: .25rem; }
+  .control-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .control-grid.three {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .field select,
+  .field input[type="color"],
+  .field input[type="number"] {
+    width: 100%;
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 9px;
+    padding: .55rem .85rem;
+    color: var(--t-fg);
+    font-size: .9rem;
+    font-family: inherit;
+    outline: none;
+  }
+  .field input[type="range"] {
+    width: 100%;
+    accent-color: var(--t-ac);
+  }
+  .range-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .7rem;
+  }
+  .range-head output {
+    color: var(--t-ac);
+    font-weight: 800;
+    font-size: .78rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .mini-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem;
+    margin-top: .55rem;
+  }
+  .soft-btn {
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    color: var(--t-fg2);
+    border-radius: 8px;
+    padding: .45rem .75rem;
+    font-size: .78rem;
+    font-weight: 800;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .soft-btn:hover {
+    border-color: var(--t-ac);
+    color: var(--t-fg);
+  }
+  .soft-btn.primary {
+    background: var(--t-ac);
+    border-color: transparent;
+    color: #fff;
+  }
+  .soft-btn.danger {
+    color: #f87171;
+    border-color: rgba(239,68,68,.3);
+    background: rgba(239,68,68,.08);
+  }
+  .inline-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .5rem;
+    align-items: center;
+  }
+  .inline-color {
+    display: grid;
+    grid-template-columns: 54px minmax(0, 1fr) auto;
+    gap: .5rem;
+    align-items: center;
+  }
+  .status-line {
+    min-height: 1.2rem;
+    margin-top: .55rem;
+    color: var(--t-fg2);
+    opacity: .62;
+    font-size: .76rem;
+  }
+  .import-input {
+    display: none;
+  }
+  @media (max-width: 760px) {
+    body { padding: 1rem .6rem 3rem; }
+    .card { padding: 1rem; }
+    .pref-summary,
+    .control-grid,
+    .control-grid.three {
+      grid-template-columns: 1fr;
+    }
+    .inline-row,
+    .inline-color {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="page-title">⚙ Preferences</div>
+  <p class="page-sub">Customize your mitch.pro experience.</p>
+
+  <div class="pref-summary">
+    <div class="metric-card"><b>Theme</b><span id="summaryTheme">Loading</span></div>
+    <div class="metric-card"><b>Homepage</b><span id="summaryHome">Dashboard</span></div>
+    <div class="metric-card"><b>AI</b><span id="summaryAi">Enabled</span></div>
+    <div class="metric-card"><b>Sync</b><span id="summarySync">Enabled</span></div>
+  </div>
+
+  <section class="pref-section">
+    <h2>🎨 Appearance</h2>
+    <p class="section-sub">Control the theme, background, spacing, corners, fonts, and motion across the whole site.</p>
+
+    <div class="field">
+      <label>Theme Preset</label>
+      <div class="chip-row" id="themePresetGrid">
+        <button class="chip" data-theme="void" onclick="selectThemePreset(this)">Void</button>
+        <button class="chip" data-theme="youtube" onclick="selectThemePreset(this)">YouTube</button>
+        <button class="chip" data-theme="discord" onclick="selectThemePreset(this)">Discord</button>
+        <button class="chip" data-theme="spotify" onclick="selectThemePreset(this)">Spotify</button>
+        <button class="chip" data-theme="netflix" onclick="selectThemePreset(this)">Netflix</button>
+        <button class="chip" data-theme="twitch" onclick="selectThemePreset(this)">Twitch</button>
+        <button class="chip" data-theme="github" onclick="selectThemePreset(this)">GitHub</button>
+        <button class="chip" data-theme="classroom" onclick="selectThemePreset(this)">Classroom</button>
+        <button class="chip" data-theme="roblox" onclick="selectThemePreset(this)">Roblox</button>
+        <button class="chip" data-theme="minecraft" onclick="selectThemePreset(this)">Minecraft</button>
+        <button class="chip" data-theme="google" onclick="selectThemePreset(this)">Google</button>
+        <button class="chip" data-theme="ocean" onclick="selectThemePreset(this)">Ocean</button>
+        <button class="chip" data-theme="sunset" onclick="selectThemePreset(this)">Sunset</button>
+      </div>
+    </div>
+
+    <div class="control-grid">
+      <div class="field">
+        <label>Custom Accent</label>
+        <div class="inline-color">
+          <input id="accentColor" type="color" value="#7c3aed">
+          <input id="accentText" type="text" placeholder="#7c3aed">
+          <button class="soft-btn" type="button" id="accentClear">Clear</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Background Image</label>
+        <div class="inline-row">
+          <input id="bgImageInput" type="url" placeholder="https://example.com/background.jpg">
+          <button class="soft-btn" type="button" id="bgImageClear">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="control-grid three">
+      <div class="field">
+        <div class="range-head">
+          <label>Background Dim</label>
+          <output id="bgDimValue">50%</output>
+        </div>
+        <input id="bgDimRange" type="range" min="0" max="0.85" step="0.05">
+      </div>
+      <div class="field">
+        <label>Background Style</label>
+        <select id="bgModeSelect">
+          <option value="cover">Fill screen</option>
+          <option value="contain">Fit whole image</option>
+          <option value="tile">Tile image</option>
+          <option value="stretch">Stretch image</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Background Position</label>
+        <select id="bgPosSelect">
+          <option value="center">Center</option>
+          <option value="top">Top</option>
+          <option value="bottom">Bottom</option>
+          <option value="left center">Left</option>
+          <option value="right center">Right</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="control-grid three">
+      <div class="field">
+        <label>UI Size</label>
+        <select id="densitySelect">
+          <option value="compact">Compact</option>
+          <option value="normal">Normal</option>
+          <option value="comfy">Comfy</option>
+          <option value="huge">Large</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Corner Style</label>
+        <select id="radiusSelect">
+          <option value="sharp">Sharp</option>
+          <option value="soft">Soft</option>
+          <option value="round">Round</option>
+          <option value="bubble">Bubble</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Font Style</label>
+        <select id="fontSelect">
+          <option value="system">Clean system</option>
+          <option value="mono">Terminal mono</option>
+          <option value="rounded">Rounded</option>
+          <option value="serif">Serif</option>
+          <option value="futuristic">Futuristic</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="control-grid">
+      <div class="field">
+        <label>Motion</label>
+        <select id="motionSelect">
+          <option value="on">Animations on</option>
+          <option value="off">Animations off</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Appearance Tools</label>
+        <div class="mini-actions">
+          <button class="soft-btn primary" type="button" id="applyAppearanceBtn">Apply now</button>
+          <button class="soft-btn danger" type="button" id="resetAppearanceBtn">Reset appearance</button>
+        </div>
+        <div class="status-line" id="appearanceStatus"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pref-section">
+    <h2>✨ Visual Effects</h2>
+    <p class="section-sub">Add some flair to your background.</p>
+    <div class="control-grid">
+      <div class="field">
+        <label>Snowfall</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="vfxSnowToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Soft falling snow overlay.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Starfield</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="vfxStarsToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Twinkling stars in the background.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Rain</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="vfxRainToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Calm rain streaks on the glass.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Particles</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="vfxParticlesToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Floating ambient dust particles.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <section class="pref-section">
+    <h2>🛡 Privacy</h2>
+    <p class="section-sub">Control your visibility and data footprints.</p>
+    <div class="control-grid">
+      <div class="field">
+        <label>Online Presence</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="privHideOnlineToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Hide your online status from lists.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Stealth Dashboard</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="privStealthToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Hide social widgets on homepage.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Activity Logging</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="privNoHistoryToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Don't show "Most Played" on your home.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Newsletter</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="privNewsletterToggle" checked>
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Receive email updates about new games.</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Block Profile Lookups</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="privBlockProfileToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Prevent others from viewing your profile.</span>
+        </div>
+      </div>
+      </div>
+      </section>
+
+      <hr class="divider">
+
+      <section class="pref-section">
+      <h2>🔒 Security</h2>
+      <p class="section-sub">Update your account password. This will also update your E2E encryption keys.</p>
+
+      <div class="control-grid">
+      <div class="field">
+        <label>Current Password</label>
+        <input id="currPass" type="password" placeholder="••••••••" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
+      </div>
+      </div>
+
+      <div class="control-grid">
+      <div class="field">
+        <label>New Password (min 6 chars)</label>
+        <input id="newPass" type="password" placeholder="••••••••" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
+      </div>
+      <div class="field">
+        <label>Confirm New Password</label>
+        <input id="confirmPass" type="password" placeholder="••••••••" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
+      </div>
+      </div>
+
+      <div style="display:flex; justify-content:center; margin-top:1.5rem;">
+      <div id="captcha-security"></div>
+      </div>
+
+      <div style="margin-top:1.5rem; text-align:center;">
+      <button class="soft-btn primary" id="changePassBtn" style="padding: 10px 24px; font-weight:700;">Change Password</button>
+      <div id="securityStatus" style="margin-top:10px; font-size:.85rem; font-weight:600;"></div>
+      </div>
+
+      <hr style="border:0; border-top:1px dashed var(--t-bd); margin:1.5rem 0;">
+
+      <div style="text-align:center;">
+        <h3 style="font-family: inherit; font-size:1.1rem; margin-bottom:0.25rem; color:var(--t-fg);">Session Management</h3>
+        <p class="section-sub" style="margin-bottom:1rem; font-size:0.85rem;">Manage your active login sessions on this device and others.</p>
+        <div style="display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 0.5rem;">
+          <button class="soft-btn primary" id="logoutCurrentBtn" style="padding: 10px 24px; font-weight:700; background:#ff453a; border:1px solid #ff453a; color:#fff; border-radius:9px; cursor:pointer; transition: opacity 0.2s;">Log Out</button>
+          <button class="soft-btn secondary" id="logoutOtherBtn" style="padding: 10px 24px; font-weight:700; background:rgba(255, 69, 58, 0.1); border:1px solid rgba(255, 69, 58, 0.3); color:#ff453a; border-radius:9px; cursor:pointer; transition: background 0.2s;">Log Out of All Other Sessions</button>
+        </div>
+        <div id="sessionStatus" style="margin-top:10px; font-size:.85rem; font-weight:600;"></div>
+      </div>
+      </section>
+  <hr class="divider">
+
+  <h2>🤖 AI Assistant</h2>
+  <p class="section-sub">The AI chat widget that appears on every page.</p>
+
+  <div class="field">
+    <label>Enable AI Assistant</label>
+    <div class="toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="aiToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-desc">Show the AI chat button on all pages. Requires a mitch.pro account.</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Personality</label>
+    <div class="chip-row">
+      <button class="chip active" data-personality="friendly" onclick="selectPersonality(this)">😊 Friendly</button>
+      <button class="chip" data-personality="concise" onclick="selectPersonality(this)">⚡ Concise</button>
+      <button class="chip" data-personality="detailed" onclick="selectPersonality(this)">📖 Detailed</button>
+      <button class="chip" data-personality="fun" onclick="selectPersonality(this)">🎉 Fun</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Privacy Mode</label>
+    <div class="toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="aiPrivacyToggle">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-desc">Don't send your email or page contents to the AI. Slightly less context-aware but more private.</span>
+    </div>
+  </div>
+
+  <div class="field" id="premiumAiSection" style="display:none;margin-top:1.5rem;padding-top:1.5rem;border-top:1px solid rgba(255,255,255,0.05);">
+    <label style="color:var(--t-ac);opacity:1;">✨ Custom AI Personality</label>
+    <p class="field-sub">Override the AI's base instructions. Requires Premium.</p>
+    <textarea id="aiCustomPrompt" placeholder="You are a helpful assistant that..." style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);font-size:.9rem;font-family:inherit;min-height:100px;resize:vertical;outline:none;"></textarea>
+  </div>
+
+  <hr class="divider">
+
+  <h2>🏠 Homepage</h2>
+  <p class="section-sub">Customize what appears on your homepage.</p>
+
+  <div class="field">
+    <label>Greeting Name</label>
+    <input id="greetingName" type="text" placeholder="Leave blank to use your email">
+  </div>
+
+  <div class="control-grid">
+    <div class="field">
+      <label>Quick Actions</label>
+      <div class="toggle-row">
+        <label class="toggle-switch">
+          <input type="checkbox" id="homeQuickToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-desc">Show the Start Here shortcut panel on the homepage.</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Member Lists</label>
+      <div class="toggle-row">
+        <label class="toggle-switch">
+          <input type="checkbox" id="homeMembersToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-desc">Show owner, admin, premium, and online member lists around the homepage.</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Compact Homepage</label>
+      <div class="toggle-row">
+        <label class="toggle-switch">
+          <input type="checkbox" id="homeCompactToggle">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-desc">Tightens the middle dashboard for smaller screens and quick scanning.</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Focus Search</label>
+      <div class="toggle-row">
+        <label class="toggle-switch">
+          <input type="checkbox" id="homeSearchFocusToggle">
+          <span class="toggle-slider"></span>
+        </label>
+        <span class="toggle-desc">Automatically place the cursor in homepage search after links load.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Clock Format</label>
+    <div class="chip-row">
+      <button class="chip active" data-clock="12" onclick="selectChip(this,'[data-clock]','activeClock')">12-hour</button>
+      <button class="chip" data-clock="24" onclick="selectChip(this,'[data-clock]','activeClock')">24-hour</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Top Games to Show</label>
+    <div class="chip-row">
+      <button class="chip" data-count="1" onclick="selectCount(this)">1</button>
+      <button class="chip" data-count="3" onclick="selectCount(this)">3</button>
+      <button class="chip active" data-count="5" onclick="selectCount(this)">5</button>
+      <button class="chip" data-count="8" onclick="selectCount(this)">8</button>
+      <button class="chip" data-count="0" onclick="selectCount(this)">Hide</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Pinned Games</label>
+    <p class="field-sub">Always shown at top of Most Played regardless of play count.</p>
+    <input id="pinnedSearch" type="text" placeholder="Search games to pin…" autocomplete="off" style="margin-bottom:.5rem;">
+    <div id="pinnedResults" style="display:none;flex-direction:column;gap:4px;max-height:160px;overflow-y:auto;margin-bottom:.5rem;"></div>
+    <div id="pinnedWrap" class="chip-row"></div>
+  </div>
+
+  <div id="widgetOrderList" style="display:none">
+    <div class="sort-item" draggable="true" data-widget="stats">Stats Bar</div>
+    <div class="sort-item" draggable="true" data-widget="ab">About:Blank Toggle</div>
+    <div class="sort-item" draggable="true" data-widget="games">Most Played</div>
+  </div>
+
+  <hr class="divider">
+
+  <h2>🖥 Display</h2>
+  <p class="section-sub">Visual and layout tweaks.</p>
+
+  <div class="field">
+    <label>Reduce Animations</label>
+    <div class="toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="reduceAnimToggle">
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-desc">Minimizes transitions and motion effects across the site.</span>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Game Launch Mode</label>
+    <div class="chip-row">
+      <button class="chip active" data-launch="default" onclick="selectChip(this,'[data-launch]','activeLaunch')">Default</button>
+      <button class="chip" data-launch="iframe" onclick="selectChip(this,'[data-launch]','activeLaunch')">Always Iframe</button>
+      <button class="chip" data-launch="tab" onclick="selectChip(this,'[data-launch]','activeLaunch')">New Tab</button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Custom CSS</label>
+    <p class="field-sub">Inject your own styles. Be careful!</p>
+    <textarea id="customCSS" placeholder="body { background: red !important; }" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);font-size:.9rem;font-family:inherit;min-height:80px;resize:vertical;outline:none;"></textarea>
+  </div>
+
+  <hr class="divider">
+
+  <h2>☁ Sync</h2>
+  <p class="section-sub">mitch.pro can sync your game saves and settings across devices.</p>
+
+  <div class="field">
+    <label>Auto-Sync</label>
+    <div class="toggle-row">
+      <label class="toggle-switch">
+        <input type="checkbox" id="syncToggle" checked>
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-desc">Automatically sync every 5 minutes and on page close. Requires a mitch.pro account.</span>
+    </div>
+  </div>
+
+  <div id="specialToolsSection" style="display:none">
+    <hr class="divider">
+    <h2>🛠 Special Tools</h2>
+    <p class="section-sub">Features unlocked via the Market.</p>
+    <div class="control-grid">
+      <div class="field" id="toolCanvasLock" style="display:none">
+        <label>Canvas Protection</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="prefCanvasLock">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Lock your own pixels on the canvas.</span>
+        </div>
+      </div>
+      <div class="field" id="toolQuickAccess" style="display:none">
+        <label>Quick Access Bar</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="prefQuickAccess">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Floating shortcuts on every page.</span>
+        </div>
+      </div>
+      <div class="field" id="toolDailyBonus" style="display:none">
+        <label>Daily Bonus Plus</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="prefDailyBonus">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Auto-collect higher login rewards.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2>🗑 Data</h2>
+  <p class="section-sub">Manage your locally stored game saves and settings.</p>
+
+  <div class="field">
+    <label>Preference Backup</label>
+    <p class="field-sub">Export or import only your mitch.pro preference settings. Game saves are not included.</p>
+    <div class="mini-actions">
+      <button class="soft-btn" type="button" id="exportPrefsBtn">Export preferences</button>
+      <button class="soft-btn" type="button" id="importPrefsBtn">Import preferences</button>
+      <button class="soft-btn danger" type="button" id="resetPrefsBtn">Reset preferences</button>
+      <input class="import-input" id="importPrefsInput" type="file" accept="application/json">
+    </div>
+    <div class="status-line" id="prefsDataStatus"></div>
+  </div>
+
+  <button class="danger-btn" onclick="clearGameData()">Clear Game Saves</button>
+  <div id="clearMsg">Game saves cleared.</div>
+
+  <div class="btn-row">
+    <button id="saveBtn" type="button" onclick="saveAll()">Save Preferences</button>
+  </div>
+
+  <div style="text-align:right;margin-top:1rem;font-size:.78rem;color:var(--t-fg2);opacity:.8;height:1.2em;">
+    <span id="savedMsg">✓ Saved</span>
+  </div>
+  <a class="back-link" href="/">← Back to mitch.pro</a>
+</div>
+
+<script>
+var VFX_CONFIG_KEY      = '_prefVFX';
+var PRIVACY_CONFIG_KEY  = '_prefPrivacy';
+var AI_CONFIG_KEY       = '_prefAI';
+var HOME_CONFIG_KEY     = '_prefHomepage';
+var DISPLAY_CONFIG_KEY  = '_prefDisplay';
+var SYNC_CONFIG_KEY     = '_prefSync';
+var TOOLS_CONFIG_KEY    = '_prefTools';
+var PREF_BACKUP_KEYS    = [VFX_CONFIG_KEY, PRIVACY_CONFIG_KEY, AI_CONFIG_KEY, HOME_CONFIG_KEY, DISPLAY_CONFIG_KEY, SYNC_CONFIG_KEY, TOOLS_CONFIG_KEY];
+var THEME_PREF_KEYS     = ['accent','dim','bgmode','bgpos','density','radius','font','motion'];
+
+function load(key, def) {
+  try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || '{}')); }
+  catch(e) { return Object.assign({}, def); }
+}
+
+function getCookieValue(name, fallback) {
+  var m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : fallback;
+}
+
+function setCookieValue(name, value) {
+  document.cookie = name + '=' + encodeURIComponent(value || '') + ';path=/;max-age=31536000';
+}
+
+function getThemePref(key, fallback) {
+  try {
+    var v = localStorage.getItem('theme_' + key);
+    return v === null ? fallback : v;
+  } catch(e) { return fallback; }
+}
+
+function setThemePref(key, value) {
+  try {
+    if (value === '' || value == null) localStorage.removeItem('theme_' + key);
+    else localStorage.setItem('theme_' + key, String(value));
+  } catch(e) {}
+}
+
+function showSaved() {
+  var msg = document.getElementById('savedMsg');
+  msg.style.display = 'inline';
+  msg.style.opacity = '1';
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(function() {
+    msg.style.opacity = '0';
+    setTimeout(function() { msg.style.display = 'none'; }, 180);
+  }, 1500);
+}
+
+function setStatus(id, text) {
+  var el = document.getElementById(id);
+  if (el) el.textContent = text || '';
+}
+
+function updateSummaries() {
+  var theme = getCookieValue('theme', 'void');
+  var ai = load(AI_CONFIG_KEY, { enabled: true });
+  var home = load(HOME_CONFIG_KEY, { showQuickActions: true, showMemberRail: true });
+  var sync = load(SYNC_CONFIG_KEY, { enabled: true });
+  document.getElementById('summaryTheme').textContent = theme;
+  document.getElementById('summaryAi').textContent = ai.enabled === false ? 'Hidden' : 'Enabled';
+  document.getElementById('summaryHome').textContent = (home.showQuickActions === false ? 'Focused' : 'Dashboard');
+  document.getElementById('summarySync').textContent = sync.enabled === false ? 'Manual' : 'Enabled';
+}
+
+function refreshThemeButtons() {
+  var current = getCookieValue('theme', 'void');
+  document.querySelectorAll('#themePresetGrid [data-theme]').forEach(function(btn) {
+    btn.classList.toggle('active', btn.getAttribute('data-theme') === current);
+  });
+}
+
+function applyAppearanceLive(statusText) {
+  if (window.__theme && window.__theme.apply) window.__theme.apply(getCookieValue('theme', 'void'));
+  window.dispatchEvent(new CustomEvent('themecustomize', { detail: { source: 'preferences' } }));
+  refreshThemeButtons();
+  updateSummaries();
+  setStatus('appearanceStatus', statusText || 'Appearance updated.');
+}
+
+function syncAppearanceControls() {
+  refreshThemeButtons();
+  var accent = getThemePref('accent', '');
+  document.getElementById('accentText').value = accent;
+  document.getElementById('accentColor').value = /^#[0-9a-f]{6}$/i.test(accent) ? accent : '#7c3aed';
+  document.getElementById('bgImageInput').value = getCookieValue('bgimg', '');
+  var dim = Number(getThemePref('dim', '0.50'));
+  if (!Number.isFinite(dim)) dim = 0.5;
+  document.getElementById('bgDimRange').value = dim;
+  document.getElementById('bgDimValue').textContent = Math.round(dim * 100) + '%';
+  document.getElementById('bgModeSelect').value = getThemePref('bgmode', 'cover');
+  document.getElementById('bgPosSelect').value = getThemePref('bgpos', 'center');
+  document.getElementById('densitySelect').value = getThemePref('density', 'normal');
+  document.getElementById('radiusSelect').value = getThemePref('radius', 'soft');
+  document.getElementById('fontSelect').value = getThemePref('font', 'system');
+  document.getElementById('motionSelect').value = getThemePref('motion', 'on');
+}
+
+function selectThemePreset(btn) {
+  var theme = btn.getAttribute('data-theme') || 'void';
+  setCookieValue('theme', theme);
+  setCookieValue('bgimg', '');
+  document.getElementById('bgImageInput').value = '';
+  applyAppearanceLive('Theme changed to ' + btn.textContent.trim() + '.');
+  saveAll();
+}
+
+function setupAppearanceControls() {
+  syncAppearanceControls();
+
+  document.getElementById('accentColor').addEventListener('input', function() {
+    document.getElementById('accentText').value = this.value;
+    setThemePref('accent', this.value);
+    applyAppearanceLive('Accent updated.');
+  });
+  document.getElementById('accentText').addEventListener('change', function() {
+    var v = this.value.trim();
+    if (v && !/^#[0-9a-f]{6}$/i.test(v)) {
+      setStatus('appearanceStatus', 'Use a hex color like #7c3aed.');
+      return;
+    }
+    setThemePref('accent', v);
+    syncAppearanceControls();
+    applyAppearanceLive(v ? 'Accent updated.' : 'Accent cleared.');
+  });
+  document.getElementById('accentClear').onclick = function() {
+    setThemePref('accent', '');
+    syncAppearanceControls();
+    applyAppearanceLive('Accent cleared.');
+  };
+
+  document.getElementById('bgImageInput').addEventListener('change', function() {
+    setCookieValue('bgimg', this.value.trim());
+    applyAppearanceLive(this.value.trim() ? 'Background image updated.' : 'Background image cleared.');
+  });
+  document.getElementById('bgImageClear').onclick = function() {
+    document.getElementById('bgImageInput').value = '';
+    setCookieValue('bgimg', '');
+    applyAppearanceLive('Background image cleared.');
+  };
+
+  document.getElementById('bgDimRange').addEventListener('input', function() {
+    setThemePref('dim', this.value);
+    document.getElementById('bgDimValue').textContent = Math.round(Number(this.value) * 100) + '%';
+    applyAppearanceLive('Background dim updated.');
+  });
+
+  ['bgModeSelect','bgPosSelect','densitySelect','radiusSelect','fontSelect','motionSelect'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', function() {
+      var map = {
+        bgModeSelect: 'bgmode',
+        bgPosSelect: 'bgpos',
+        densitySelect: 'density',
+        radiusSelect: 'radius',
+        fontSelect: 'font',
+        motionSelect: 'motion'
+      };
+      setThemePref(map[id], this.value);
+      if (id === 'motionSelect') {
+        var display = load(DISPLAY_CONFIG_KEY, { reduceAnimations: false, gameLaunch: 'default' });
+        display.reduceAnimations = this.value === 'off';
+        localStorage.setItem(DISPLAY_CONFIG_KEY, JSON.stringify(display));
+        document.getElementById('reduceAnimToggle').checked = display.reduceAnimations;
+      }
+      applyAppearanceLive('Appearance updated.');
+      saveAll();
+    });
+  });
+
+  document.getElementById('applyAppearanceBtn').onclick = function() {
+    setCookieValue('bgimg', document.getElementById('bgImageInput').value.trim());
+    applyAppearanceLive('Appearance applied.');
+    saveAll();
+  };
+  document.getElementById('resetAppearanceBtn').onclick = function() {
+    THEME_PREF_KEYS.forEach(function(k) { setThemePref(k, ''); });
+    setCookieValue('bgimg', '');
+    syncAppearanceControls();
+    applyAppearanceLive('Appearance reset.');
+    saveAll();
+  };
+}
+
+var activePersonality = 'friendly';
+
+function selectPersonality(btn) {
+  activePersonality = btn.getAttribute('data-personality');
+  document.querySelectorAll('[data-personality]').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  saveAll();
+}
+
+var activeClock  = '12';
+var activeLaunch = 'default';
+
+function selectChip(btn, selector, varName) {
+  document.querySelectorAll(selector).forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  if (varName === 'activeClock')  activeClock  = btn.getAttribute('data-clock');
+  if (varName === 'activeLaunch') activeLaunch = btn.getAttribute('data-launch');
+  saveAll();
+}
+
+var activeCount = 5;
+
+function selectCount(btn) {
+  activeCount = parseInt(btn.getAttribute('data-count'), 10);
+  document.querySelectorAll('[data-count]').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  saveAll();
+}
+
+var pinnedGames = new Set();
+var _allGames = [];
+
+async function loadPinnedGames() {
+  var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
+  var hash = c.get('studentId') || c.get('password');
+  try {
+    var r = await fetch('/api/games', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({hash})});
+    var d = await r.json();
+    var text = d.content || '';
+    _allGames = [];
+    text.split('\n').forEach(function(line) {
+      line = line.trim();
+      if (!line) return;
+      var parts = line.split(' ');
+      if (parts.length < 3) return;
+      var href = parts[1];
+      var label = parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim();
+      if (!label || href === '/report-game.html') return;
+      _allGames.push({href, label});
+    });
+  } catch(e) {}
+  renderPinnedChips();
+}
+
+function renderPinnedChips() {
+  var wrap = document.getElementById('pinnedWrap');
+  wrap.innerHTML = '';
+  pinnedGames.forEach(function(href) {
+    var g = _allGames.find(function(x) { return x.href === href; });
+    if (!g) return;
+    var chip = document.createElement('button');
+    chip.className = 'chip active';
+    chip.textContent = g.label + ' ✕';
+    chip.onclick = function() { pinnedGames.delete(href); renderPinnedChips(); saveAll(); };
+    wrap.appendChild(chip);
+  });
+}
+
+function renderPinnedResults(query) {
+  var box = document.getElementById('pinnedResults');
+  if (!query) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  var q = query.toLowerCase();
+  var matches = _allGames.filter(function(g) { return g.label.toLowerCase().includes(q) && !pinnedGames.has(g.href); });
+  if (!matches.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  box.innerHTML = '';
+  box.style.display = 'flex';
+  matches.slice(0, 8).forEach(function(g) {
+    var row = document.createElement('button');
+    row.className = 'chip';
+    row.style.cssText = 'text-align:left;width:100%;';
+    row.textContent = g.label;
+    row.onclick = function() {
+      pinnedGames.add(g.href);
+      document.getElementById('pinnedSearch').value = '';
+      box.style.display = 'none'; box.innerHTML = '';
+      renderPinnedChips();
+      saveAll();
+    };
+    box.appendChild(row);
+  });
+}
+
+document.getElementById('pinnedSearch').addEventListener('input', function() {
+  renderPinnedResults(this.value.trim());
+});
+document.getElementById('pinnedSearch').addEventListener('blur', function() {
+  setTimeout(function() { var box = document.getElementById('pinnedResults'); box.style.display = 'none'; }, 150);
+});
+
+var widgetOrder = ['stats', 'ab', 'games'];
+var _dragSrc = null;
+
+function initWidgetOrder() {
+  var list = document.getElementById('widgetOrderList');
+  list.addEventListener('dragstart', function(e) {
+    _dragSrc = e.target.closest('.sort-item');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  list.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    var target = e.target.closest('.sort-item');
+    if (target && target !== _dragSrc) target.classList.add('drag-over');
+  });
+  list.addEventListener('dragleave', function(e) {
+    var target = e.target.closest('.sort-item');
+    if (target) target.classList.remove('drag-over');
+  });
+  list.addEventListener('drop', function(e) {
+    e.preventDefault();
+    var target = e.target.closest('.sort-item');
+    if (!target || target === _dragSrc) return;
+    target.classList.remove('drag-over');
+    var items = Array.from(list.querySelectorAll('.sort-item'));
+    var srcIdx = items.indexOf(_dragSrc), tgtIdx = items.indexOf(target);
+    if (srcIdx < tgtIdx) list.insertBefore(_dragSrc, target.nextSibling);
+    else list.insertBefore(_dragSrc, target);
+    widgetOrder = Array.from(list.querySelectorAll('.sort-item')).map(function(el) { return el.getAttribute('data-widget'); });
+    saveAll();
+  });
+}
+
+var _saveTimer = null;
+function saveAll() {
+  try {
+    localStorage.setItem(VFX_CONFIG_KEY, JSON.stringify({
+      snow:      document.getElementById('vfxSnowToggle').checked,
+      stars:     document.getElementById('vfxStarsToggle').checked,
+      rain:      document.getElementById('vfxRainToggle').checked,
+      particles: document.getElementById('vfxParticlesToggle').checked,
+    }));
+    localStorage.setItem(PRIVACY_CONFIG_KEY, JSON.stringify({
+      hideOnline:   document.getElementById('privHideOnlineToggle').checked,
+      stealthDash:  document.getElementById('privStealthToggle').checked,
+      noHistory:    document.getElementById('privNoHistoryToggle').checked,
+      newsletter:   document.getElementById('privNewsletterToggle').checked,
+      blockProfile: document.getElementById('privBlockProfileToggle').checked,
+    }));
+    localStorage.setItem(AI_CONFIG_KEY, JSON.stringify({
+      enabled:     document.getElementById('aiToggle').checked,
+      personality: activePersonality,
+      privacy:     document.getElementById('aiPrivacyToggle').checked,
+      customPrompt: document.getElementById('aiCustomPrompt').value.trim(),
+    }));
+    localStorage.setItem(HOME_CONFIG_KEY, JSON.stringify({
+      topCount:         activeCount,
+      clockFormat:      activeClock,
+      greetingName:     document.getElementById('greetingName').value.trim(),
+      pinnedGames:      Array.from(pinnedGames),
+      widgetOrder:      widgetOrder,
+      showQuickActions: document.getElementById('homeQuickToggle').checked,
+      showMemberRail:   document.getElementById('homeMembersToggle').checked,
+      compactHome:      document.getElementById('homeCompactToggle').checked,
+      focusSearch:      document.getElementById('homeSearchFocusToggle').checked,
+    }));
+    localStorage.setItem(DISPLAY_CONFIG_KEY, JSON.stringify({
+      reduceAnimations: document.getElementById('reduceAnimToggle').checked,
+      gameLaunch:       activeLaunch,
+      customCSS:        document.getElementById('customCSS').value.trim(),
+    }));
+    localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify({
+      enabled: document.getElementById('syncToggle').checked,
+    }));
+    localStorage.setItem(TOOLS_CONFIG_KEY, JSON.stringify({
+      canvasLock:  document.getElementById('prefCanvasLock').checked,
+      quickAccess: document.getElementById('prefQuickAccess').checked,
+      dailyBonus:  document.getElementById('prefDailyBonus').checked,
+    }));
+    setThemePref('motion', document.getElementById('reduceAnimToggle').checked ? 'off' : document.getElementById('motionSelect').value);
+    if (window.__theme && window.__theme.apply) window.__theme.apply(getCookieValue('theme', 'void'));
+  } catch(e) {}
+
+  updateSummaries();
+  showSaved();
+}
+
+function debouncedSave() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(saveAll, 400);
+}
+
+var _clearPending = false;
+function clearGameData() {
+  if (!_clearPending) {
+    _clearPending = true;
+    var btn = document.querySelector('.danger-btn');
+    btn.textContent = 'Tap again to confirm';
+    setTimeout(function() {
+      _clearPending = false;
+      btn.textContent = 'Clear Game Saves';
+    }, 3000);
+    return;
+  }
+  var keep = [...PREF_BACKUP_KEYS, '_panicReturn', '_sync_ts', '_just_restored'];
+  var toRemove = [];
+  for (var i = 0; i < localStorage.length; i++) {
+    var k = localStorage.key(i);
+    if (keep.indexOf(k) === -1) toRemove.push(k);
+  }
+  toRemove.forEach(function(k) { localStorage.removeItem(k); });
+  var msg = document.getElementById('clearMsg');
+  msg.style.display = 'block';
+  document.querySelector('.danger-btn').textContent = 'Clear Game Saves';
+  _clearPending = false;
+  setTimeout(function() { msg.style.display = 'none'; }, 3000);
+}
+
+function collectPreferenceBackup() {
+  var data = { version: 2, exportedAt: new Date().toISOString(), localStorage: {}, cookies: {} };
+  PREF_BACKUP_KEYS.forEach(function(k) {
+    var v = localStorage.getItem(k);
+    if (v !== null) data.localStorage[k] = v;
+  });
+  THEME_PREF_KEYS.forEach(function(k) {
+    var v = localStorage.getItem('theme_' + k);
+    if (v !== null) data.localStorage['theme_' + k] = v;
+  });
+  data.cookies.theme = getCookieValue('theme', 'void');
+  data.cookies.bgimg = getCookieValue('bgimg', '');
+  return data;
+}
+
+function exportPreferences() {
+  var data = collectPreferenceBackup();
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'mitch-pro-preferences.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  setStatus('prefsDataStatus', 'Preferences exported.');
+}
+
+function importPreferencesFile(file) {
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    try {
+      var data = JSON.parse(String(reader.result || '{}'));
+      var store = data.localStorage || {};
+      Object.keys(store).forEach(function(k) {
+        if (PREF_BACKUP_KEYS.indexOf(k) !== -1 || k.indexOf('theme_') === 0) {
+          localStorage.setItem(k, String(store[k]));
+        }
+      });
+      if (data.cookies) {
+        if ('theme' in data.cookies) setCookieValue('theme', data.cookies.theme);
+        if ('bgimg' in data.cookies) setCookieValue('bgimg', data.cookies.bgimg);
+      }
+      setStatus('prefsDataStatus', 'Preferences imported. Reloading...');
+      setTimeout(function() { location.reload(); }, 600);
+    } catch(e) {
+      setStatus('prefsDataStatus', 'Import failed. Choose a valid mitch.pro preferences JSON file.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function resetPreferencesOnly() {
+  if (!confirm('Reset mitch.pro preferences? Game saves will stay.')) return;
+  PREF_BACKUP_KEYS.forEach(function(k) { localStorage.removeItem(k); });
+  THEME_PREF_KEYS.forEach(function(k) { localStorage.removeItem('theme_' + k); });
+  setCookieValue('theme', 'void');
+  setCookieValue('bgimg', '');
+  setStatus('prefsDataStatus', 'Preferences reset. Reloading...');
+  setTimeout(function() { location.reload(); }, 600);
+}
+
+(function init() {
+  setupAppearanceControls();
+
+  var vk = load(VFX_CONFIG_KEY, { snow: false, stars: false, rain: false, particles: false });
+  document.getElementById('vfxSnowToggle').checked      = !!vk.snow;
+  document.getElementById('vfxStarsToggle').checked     = !!vk.stars;
+  document.getElementById('vfxRainToggle').checked      = !!vk.rain;
+  document.getElementById('vfxParticlesToggle').checked = !!vk.particles;
+
+  var pk = load(PRIVACY_CONFIG_KEY, { hideOnline: false, stealthDash: false, noHistory: false, newsletter: true, blockProfile: false });
+  document.getElementById('privHideOnlineToggle').checked  = !!pk.hideOnline;
+  document.getElementById('privStealthToggle').checked     = !!pk.stealthDash;
+  document.getElementById('privNoHistoryToggle').checked    = !!pk.noHistory;
+  document.getElementById('privNewsletterToggle').checked   = pk.newsletter !== false;
+  document.getElementById('privBlockProfileToggle').checked = !!pk.blockProfile;
+
+  var ai = load(AI_CONFIG_KEY, { enabled: true, personality: 'friendly', privacy: false, customPrompt: '' });
+  document.getElementById('aiToggle').checked = ai.enabled !== false;
+  document.getElementById('aiPrivacyToggle').checked = !!ai.privacy;
+  document.getElementById('aiCustomPrompt').value = ai.customPrompt || '';
+  activePersonality = ai.personality || 'friendly';
+  var ap2 = document.querySelector('[data-personality="' + activePersonality + '"]');
+  if (ap2) { document.querySelectorAll('[data-personality]').forEach(function(b){b.classList.remove('active');}); ap2.classList.add('active'); }
+
+  fetch('/api/me').then(function(r){return r.ok ? r.json() : {};}).then(function(me){
+    if (me.isPremium) document.getElementById('premiumAiSection').style.display = 'block';
+  }).catch(function(){});
+
+  var hc = load(HOME_CONFIG_KEY, {
+    topCount: 5,
+    clockFormat: '12',
+    greetingName: '',
+    showQuickActions: true,
+    showMemberRail: true,
+    compactHome: false,
+    focusSearch: false
+  });
+  activeCount = hc.topCount != null ? hc.topCount : 5;
+  var ac = document.querySelector('[data-count="' + activeCount + '"]');
+  if (ac) { document.querySelectorAll('[data-count]').forEach(function(b){b.classList.remove('active');}); ac.classList.add('active'); }
+  activeClock = hc.clockFormat || '12';
+  pinnedGames = new Set(hc.pinnedGames || []);
+  widgetOrder = hc.widgetOrder || ['stats', 'ab', 'games'];
+  var wlist = document.getElementById('widgetOrderList');
+  widgetOrder.forEach(function(w) {
+    var el = wlist.querySelector('[data-widget="' + w + '"]');
+    if (el) wlist.appendChild(el);
+  });
+  initWidgetOrder();
+  loadPinnedGames();
+  var acl = document.querySelector('[data-clock="' + activeClock + '"]');
+  if (acl) { document.querySelectorAll('[data-clock]').forEach(function(b){b.classList.remove('active');}); acl.classList.add('active'); }
+  document.getElementById('greetingName').value = hc.greetingName || '';
+  document.getElementById('homeQuickToggle').checked = hc.showQuickActions !== false;
+  document.getElementById('homeMembersToggle').checked = hc.showMemberRail !== false;
+  document.getElementById('homeCompactToggle').checked = !!hc.compactHome;
+  document.getElementById('homeSearchFocusToggle').checked = !!hc.focusSearch;
+
+  var dc = load(DISPLAY_CONFIG_KEY, { reduceAnimations: false, gameLaunch: 'default', customCSS: '' });
+  document.getElementById('reduceAnimToggle').checked = !!dc.reduceAnimations;
+  document.getElementById('customCSS').value = dc.customCSS || '';
+  if (dc.reduceAnimations) document.getElementById('motionSelect').value = 'off';
+  activeLaunch = dc.gameLaunch || 'default';
+  var al = document.querySelector('[data-launch="' + activeLaunch + '"]');
+  if (al) { document.querySelectorAll('[data-launch]').forEach(function(b){b.classList.remove('active');}); al.classList.add('active'); }
+
+
+  var sc = load(SYNC_CONFIG_KEY, { enabled: true });
+  document.getElementById('syncToggle').checked = sc.enabled !== false;
+
+  var tc = load(TOOLS_CONFIG_KEY, { canvasLock: false, quickAccess: false, dailyBonus: false });
+  document.getElementById('prefCanvasLock').checked = !!tc.canvasLock;
+  document.getElementById('prefQuickAccess').checked = !!tc.quickAccess;
+  document.getElementById('prefDailyBonus').checked = !!tc.dailyBonus;
+
+  fetch('/api/me/inventory').then(function(r){return r.ok ? r.json() : {};}).then(function(inv){
+    var tools = inv.cosmetics && inv.cosmetics.tools ? inv.cosmetics.tools : [];
+    var any = false;
+    if (tools.includes('canvas_lock_pass')) { document.getElementById('toolCanvasLock').style.display = 'block'; any = true; }
+    if (tools.includes('quick_access_pass')) { document.getElementById('toolQuickAccess').style.display = 'block'; any = true; }
+    if (tools.includes('daily_bonus_plus')) { document.getElementById('toolDailyBonus').style.display = 'block'; any = true; }
+    if (any) document.getElementById('specialToolsSection').style.display = 'block';
+  }).catch(function(){});
+
+  ['vfxSnowToggle','vfxStarsToggle','vfxRainToggle','vfxParticlesToggle',
+   'privHideOnlineToggle','privStealthToggle','privNoHistoryToggle','privNewsletterToggle','privBlockProfileToggle',
+   'aiToggle','aiPrivacyToggle','syncToggle','homeQuickToggle','homeMembersToggle','homeCompactToggle','homeSearchFocusToggle',
+   'prefCanvasLock','prefQuickAccess','prefDailyBonus'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', saveAll);
+  });
+  document.getElementById('reduceAnimToggle').addEventListener('change', function() {
+    document.getElementById('motionSelect').value = this.checked ? 'off' : 'on';
+    setThemePref('motion', document.getElementById('motionSelect').value);
+    applyAppearanceLive(this.checked ? 'Animations reduced.' : 'Animations restored.');
+    saveAll();
+  });
+  ['greetingName','customCSS','aiCustomPrompt'].forEach(function(id) {
+    document.getElementById(id).addEventListener('input', debouncedSave);
+  });
+  document.getElementById('exportPrefsBtn').onclick = exportPreferences;
+  document.getElementById('importPrefsBtn').onclick = function() { document.getElementById('importPrefsInput').click(); };
+  document.getElementById('importPrefsInput').onchange = function() { importPreferencesFile(this.files && this.files[0]); };
+  document.getElementById('resetPrefsBtn').onclick = resetPreferencesOnly;
+
+  async function changePassword() {
+    const currentPassword = document.getElementById('currPass').value;
+    const newPassword = document.getElementById('newPass').value;
+    const confirmPassword = document.getElementById('confirmPass').value;
+    const status = document.getElementById('securityStatus');
+    const btn = document.getElementById('changePassBtn');
+    
+    if (!window.grecaptcha || _captchaId === null) return alert('reCAPTCHA not loaded.');
+    const captcha = grecaptcha.getResponse(_captchaId);
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'All fields required.';
+      return;
+    }
+    if (newPassword.length < 6) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'New password too short.';
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'Passwords do not match.';
+      return;
+    }
+    if (!captcha) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'Please complete reCAPTCHA.';
+      return;
+    }
+
+    btn.disabled = true;
+    status.style.color = 'var(--t-fg2)';
+    status.textContent = 'Updating security...';
+
+    try {
+      const res = await fetch('/api/me/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword, recaptcha_token: captcha })
+      });
+      const data = await res.json();
+      if (data.success) {
+        status.style.color = 'var(--t-ac)';
+        status.textContent = 'Password changed successfully!';
+        document.getElementById('currPass').value = '';
+        document.getElementById('newPass').value = '';
+        document.getElementById('confirmPass').value = '';
+        grecaptcha.reset(_captchaId);
+      } else {
+        status.style.color = 'var(--rose)';
+        status.textContent = data.message || 'Change failed.';
+        grecaptcha.reset(_captchaId);
+      }
+    } catch (e) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'Server error.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById('changePassBtn').onclick = changePassword;
+
+  async function logoutOtherSessions() {
+    const status = document.getElementById('sessionStatus');
+    const btn = document.getElementById('logoutOtherBtn');
+    
+    if (!confirm('Are you sure you want to log out of all other sessions? This will invalidate all other devices and active logins.')) {
+      return;
+    }
+    
+    btn.disabled = true;
+    status.style.color = 'var(--t-fg2)';
+    status.textContent = 'Logging out of other sessions...';
+    
+    try {
+      const res = await fetch('/api/me/logout-other', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+      const data = await res.json();
+      if (data.success && data.id) {
+        document.cookie = "studentId=" + data.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+        status.style.color = 'var(--t-ac)';
+        status.textContent = 'Logged out of all other sessions successfully!';
+      } else {
+        status.style.color = 'var(--rose)';
+        status.textContent = data.message || 'Logout failed.';
+      }
+    } catch (e) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'Server error.';
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function logoutCurrentSession() {
+    if (!confirm('Are you sure you want to log out of this device?')) {
+      return;
+    }
+    document.cookie = "studentId=;path=/;max-age=0;Secure;SameSite=Lax";
+    document.cookie = "id=;path=/;max-age=0;Secure;SameSite=Lax";
+    document.cookie = "password=;path=/;max-age=0;Secure;SameSite=Lax";
+    document.cookie = "adminId=;path=/;max-age=0;Secure;SameSite=Lax";
+    window.location.href = '/enroll/';
+  }
+
+  document.getElementById('logoutCurrentBtn').onclick = logoutCurrentSession;
+  document.getElementById('logoutOtherBtn').onclick = logoutOtherSessions;
+  updateSummaries();
+})();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

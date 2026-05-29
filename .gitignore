@@ -1,0 +1,49 @@
+# Local Secrets & Credentials
+.env
+.env.*
+admin.key
+app-pass
+id_secret.key
+github_deploy_key*
+
+# Local State & Databases (mapped via Docker volumes)
+data/
+logs/
+mail/
+backups/
+.docker-data/
+/*.json
+!/package.json
+!/package-lock.json
+
+# Cache and Package directories
+__pycache__/
+*.pyc
+node_modules/
+proxy/node_modules/
+
+# Oversized Media and Data Recovery items (Host only)
+*.mov
+*.webm
+*.swf
+*.tar.gz
+*.tar
+recovered.html
+photorec.se2
+photorec.ses
+recovery_dir/
+opt_webserver_backup/
+*.log
+old/
+
+# Developer Overrides
+docker-compose.override.yml
+
+# Massive Third-Party Game Libraries (Managed on host to keep git repository under 50MB)
+webserver/games/3kh0/
+webserver/games/gta/
+webserver/games/ddlc/
+webserver/games/gfiles/
+webserver/games/shs/
+webserver/games/sub/
+webserver/games/*.zip

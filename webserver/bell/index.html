@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<!-- SEO Meta Tags -->
+<title>Woodcreek High School Bell Schedule (WHS) — Live Schedule & Period Tracker</title>
+<meta name="description" content="Ultimate live Woodcreek High School bell schedule. WHS block schedules, Collaboration Wednesday late start, real-time period tracking, countdowns, and customizable Lunch 1/Lunch 2 options. Super optimized for Woodcreek High School.">
+<meta name="keywords" content="whs bell schedule, woodcreek bell schedule, woodcreek high school bell schedule, whs schedule, woodcreek block schedule, woodcreek high school block schedule, woodcreek high bell schedule">
+<meta name="author" content="mitch.pro">
+
+<!-- Open Graph / Social Media -->
+<meta property="og:title" content="Woodcreek High School Bell Schedule (WHS) — Live Tracker">
+<meta property="og:description" content="Get the live Woodcreek High School (WHS) bell schedule. Instantly tracks current periods, Collaboration Wednesdays, Lunch 1 vs Lunch 2, and live time countdowns.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mitch.pro/bell/">
+
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --primary: #81b64c;
+    --primary-dim: rgba(129,182,76,0.12);
+    --primary-border: rgba(129,182,76,0.22);
+    --card-bg: rgba(255,255,255,0.03);
+    --card-border: rgba(255,255,255,0.07);
+    --input-bg: rgba(255,255,255,0.04);
+    --input-border: rgba(255,255,255,0.09);
+    --radius: 12px;
+    --gold: #f59e0b;
+    --gold-dim: rgba(245,158,11,0.12);
+    --gold-border: rgba(245,158,11,0.22);
+  }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0d0d0d);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 20px 100px;
+    position: relative;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(129,182,76,0.06) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .wrap { width: 100%; max-width: 750px; position: relative; z-index: 1; }
+  .header { text-align: center; margin-bottom: 40px; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--primary-dim);
+    border: 1px solid var(--primary-border);
+    border-radius: 99px;
+    padding: 4px 14px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin-bottom: 18px;
+  }
+  h1 { font-family: 'Syne', sans-serif; font-size: clamp(2rem, 6vw, 3rem); font-weight: 800; line-height: 1.1; margin-bottom: 12px; }
+  h1 span { color: var(--primary); }
+  .subtitle { font-size: 13px; color: var(--t-fg2, #777); font-style: italic; }
+
+  /* Navigation Shortcuts */
+  .back-btn {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: opacity 0.2s;
+  }
+  .back-btn:hover { opacity: 0.8; }
+
+  /* Main Card styling */
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 24px;
+    backdrop-filter: blur(12px);
+    margin-bottom: 30px;
+  }
+
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Lunch Selector Panel */
+  .lunch-selector {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--card-border);
+    padding: 12px 18px;
+    border-radius: var(--radius);
+    margin-bottom: 24px;
+  }
+  .lunch-selector-label { font-size: 12px; font-weight: 700; color: #aaa; text-transform: uppercase; }
+  .lunch-options { display: flex; gap: 8px; }
+  .lunch-btn {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--card-border);
+    border-radius: 6px;
+    color: #999;
+    padding: 6px 14px;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    transition: all 0.2s;
+  }
+  .lunch-btn.active {
+    background: var(--primary-dim);
+    border-color: var(--primary-border);
+    color: var(--primary);
+    box-shadow: 0 0 12px rgba(129,182,76,0.15);
+  }
+
+  /* Live Tracker Display */
+  .live-tracker {
+    background: linear-gradient(135deg, rgba(129,182,76,0.06), rgba(255,255,255,0.01));
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 24px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .live-tracker-title { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--primary); letter-spacing: 0.15em; margin-bottom: 8px; }
+  .live-period { font-family: 'Syne', sans-serif; font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 800; color: #fff; margin-bottom: 6px; }
+  .live-countdown { font-size: 14px; color: var(--gold); font-weight: 700; }
+
+  /* Schedule Table Display */
+  .period-list { display: flex; flex-direction: column; gap: 10px; }
+  .period-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    transition: all 0.25s ease;
+  }
+  .period-row.active {
+    background: var(--primary-dim);
+    border-color: var(--primary-border);
+    box-shadow: 0 0 15px rgba(129,182,76,0.1);
+  }
+  .period-row.active .period-name { color: var(--primary); font-weight: 700; }
+  .period-name { font-size: 14px; font-weight: 600; color: #fff; font-family: 'Syne', sans-serif; display: flex; align-items: center; gap: 8px; }
+  .period-name .pulse {
+    display: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 8px var(--primary);
+    animation: blink 1.2s infinite;
+  }
+  .period-row.active .period-name .pulse { display: block; }
+  @keyframes blink { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+
+  .period-time { font-size: 13px; color: #aaa; text-align: right; }
+  .period-duration { font-size: 10px; color: #666; font-style: italic; margin-top: 2px; }
+
+  /* Other Days Section */
+  .days-section { margin-top: 40px; }
+  .section-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .day-accordion {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    transition: all 0.2s;
+  }
+  .day-accordion.open { border-color: rgba(255, 255, 255, 0.15); }
+  .day-trigger {
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    transition: background 0.2s;
+  }
+  .day-trigger:hover { background: rgba(255, 255, 255, 0.02); }
+  .day-trigger span.indicator { color: var(--primary); font-weight: 900; transition: transform 0.2s; }
+  .day-accordion.open .day-trigger span.indicator { transform: rotate(90deg); }
+
+  .day-content {
+    display: none;
+    padding: 20px;
+    border-top: 1px solid var(--card-border);
+    background: rgba(0, 0, 0, 0.1);
+  }
+  .day-accordion.open .day-content { display: block; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" class="back-btn">← Back to Hub</a>
+  
+  <header class="header">
+    <div class="badge">Woodcreek WHS Schedule</div>
+    <h1>Bell <span>Schedules.</span></h1>
+    <p class="subtitle">Live tracking & period schedules for Woodcreek High School (WHS)</p>
+  </header>
+
+  <!-- Customizable Lunch Picker -->
+  <section class="lunch-selector">
+    <span class="lunch-selector-label">My Lunch Assignment:</span>
+    <div class="lunch-options">
+      <button id="lunch1Btn" class="lunch-btn active" onclick="setLunch(1)">Lunch 1</button>
+      <button id="lunch2Btn" class="lunch-btn" onclick="setLunch(2)">Lunch 2</button>
+    </div>
+  </section>
+
+  <!-- Live Dynamic Period Tracker -->
+  <section id="liveTracker" class="live-tracker" style="display: none;">
+    <div class="live-tracker-title">Live Tracking</div>
+    <div id="livePeriodName" class="live-period">Period 1</div>
+    <div id="liveTimeLeft" class="live-countdown">14 minutes remaining</div>
+  </section>
+
+  <!-- Today's Schedule -->
+  <main class="card">
+    <div class="card-title">
+      <span id="todayDayName">Today's Schedule</span>
+      <span style="font-size: 11px; color: var(--primary); text-transform: uppercase;" id="todayDateStr">Monday</span>
+    </div>
+    
+    <div id="todayScheduleContainer" class="period-list">
+      <!-- Injected by JS -->
+    </div>
+  </main>
+
+  <!-- Weekly Accordion (Other Days) -->
+  <section class="days-section">
+    <h2 class="section-title">Weekly Schedule Views</h2>
+
+    <div class="day-accordion" id="dayAccordion-1">
+      <div class="day-trigger" onclick="toggleDayAccordion(1)">
+        <span>Monday (Regular Day)</span>
+        <span class="indicator">▶</span>
+      </div>
+      <div class="day-content">
+        <div class="period-list" id="mondayList"></div>
+      </div>
+    </div>
+
+    <div class="day-accordion" id="dayAccordion-2">
+      <div class="day-trigger" onclick="toggleDayAccordion(2)">
+        <span>Tuesday (Regular Day)</span>
+        <span class="indicator">▶</span>
+      </div>
+      <div class="day-content">
+        <div class="period-list" id="tuesdayList"></div>
+      </div>
+    </div>
+
+    <div class="day-accordion" id="dayAccordion-3">
+      <div class="day-trigger" onclick="toggleDayAccordion(3)">
+        <span>Wednesday (Late Start Collaboration)</span>
+        <span class="indicator">▶</span>
+      </div>
+      <div class="day-content">
+        <div class="period-list" id="wednesdayList"></div>
+      </div>
+    </div>
+
+    <div class="day-accordion" id="dayAccordion-4">
+      <div class="day-trigger" onclick="toggleDayAccordion(4)">
+        <span>Thursday (Regular Day)</span>
+        <span class="indicator">▶</span>
+      </div>
+      <div class="day-content">
+        <div class="period-list" id="thursdayList"></div>
+      </div>
+    </div>
+
+    <div class="day-accordion" id="dayAccordion-5">
+      <div class="day-trigger" onclick="toggleDayAccordion(5)">
+        <span>Friday (Regular Day)</span>
+        <span class="indicator">▶</span>
+      </div>
+      <div class="day-content">
+        <div class="period-list" id="fridayList"></div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+  let activeLunch = 1; // 1 or 2
+  let activeOverride = null;
+
+  // Woodcreek High School Bell Schedule definitions
+  const SCHEDULES = {
+    // Monday
+    1: {
+      1: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
+        { name: 'Lunch 1', start: '11:22', end: '11:52', duration: 30 },
+        { name: 'Period 3', start: '12:00', end: '13:22', duration: 82 },
+        { name: 'Period 4', start: '13:30', end: '14:52', duration: 82 },
+        { name: 'Pack', start: '14:52', end: '15:20', duration: 28 }
+      ],
+      2: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
+        { name: 'Period 3', start: '11:30', end: '12:52', duration: 82 },
+        { name: 'Lunch 2', start: '12:52', end: '13:22', duration: 30 },
+        { name: 'Period 4', start: '13:30', end: '14:52', duration: 82 },
+        { name: 'Pack', start: '14:52', end: '15:20', duration: 28 }
+      ]
+    },
+    // Tuesday
+    2: {
+      1: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
+        { name: 'Lunch 1', start: '11:22', end: '11:52', duration: 30 },
+        { name: 'Period 3', start: '12:00', end: '13:22', duration: 82 },
+        { name: 'Pack', start: '13:22', end: '13:50', duration: 28 },
+        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
+      ],
+      2: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
+        { name: 'Period 3', start: '11:30', end: '12:52', duration: 82 },
+        { name: 'Pack', start: '12:52', end: '13:20', duration: 28 },
+        { name: 'Lunch 2', start: '13:20', end: '13:50', duration: 30 },
+        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
+      ]
+    },
+    // Wednesday (Collaboration Late Start)
+    3: {
+      1: [
+        { name: 'Period 1', start: '09:30', end: '10:44', duration: 74 },
+        { name: 'Period 2', start: '10:52', end: '12:06', duration: 74 },
+        { name: 'Period 3', start: '12:14', end: '13:28', duration: 74 },
+        { name: 'Lunch', start: '13:28', end: '13:58', duration: 30 },
+        { name: 'Period 4', start: '14:06', end: '15:20', duration: 74 }
+      ],
+      2: [
+        { name: 'Period 1', start: '09:30', end: '10:44', duration: 74 },
+        { name: 'Period 2', start: '10:52', end: '12:06', duration: 74 },
+        { name: 'Period 3', start: '12:14', end: '13:28', duration: 74 },
+        { name: 'Lunch', start: '13:28', end: '13:58', duration: 30 },
+        { name: 'Period 4', start: '14:06', end: '15:20', duration: 74 }
+      ]
+    },
+    // Thursday
+    4: {
+      1: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
+        { name: 'Pack', start: '11:22', end: '11:50', duration: 28 },
+        { name: 'Lunch 1', start: '11:50', end: '12:20', duration: 30 },
+        { name: 'Period 3', start: '12:28', end: '13:50', duration: 82 },
+        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
+      ],
+      2: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
+        { name: 'Pack', start: '11:22', end: '11:50', duration: 28 },
+        { name: 'Period 3', start: '11:58', end: '13:20', duration: 82 },
+        { name: 'Lunch 2', start: '13:20', end: '13:50', duration: 30 },
+        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
+      ]
+    },
+    // Friday
+    5: {
+      1: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Pack', start: '09:52', end: '10:20', duration: 28 },
+        { name: 'Period 2', start: '10:28', end: '11:50', duration: 82 },
+        { name: 'Lunch 1', start: '11:50', end: '12:20', duration: 30 },
+        { name: 'Period 3', start: '12:28', end: '13:50', duration: 82 },
+        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
+      ],
+      2: [
+        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
+        { name: 'Pack', start: '09:52', end: '10:20', duration: 28 },
+        { name: 'Period 2', start: '10:28', end: '11:50', duration: 82 },
+        { name: 'Period 3', start: '11:58', end: '13:20', duration: 82 },
+        { name: 'Lunch 2', start: '13:20', end: '13:50', duration: 30 },
+        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
+      ]
+    }
+  };
+
+  // Helper: parse hh:mm string into minutes since midnight
+  function parseTimeToMinutes(str) {
+    const [h, m] = str.split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  // Load lunch preference
+  if (localStorage.getItem('whs_lunch_preference')) {
+    activeLunch = parseInt(localStorage.getItem('whs_lunch_preference'));
+  }
+  updateLunchUI();
+
+  function setLunch(num) {
+    activeLunch = num;
+    localStorage.setItem('whs_lunch_preference', num);
+    updateLunchUI();
+    loadTodaySchedule();
+    updateLiveTracker();
+    populateAllWeeks();
+  }
+
+  function updateLunchUI() {
+    document.getElementById('lunch1Btn').classList.toggle('active', activeLunch === 1);
+    document.getElementById('lunch2Btn').classList.toggle('active', activeLunch === 2);
+  }
+
+  function getScheduleForDay(dayOfWeek, lunchNum) {
+    if (activeOverride) {
+      return lunchNum === 1 ? activeOverride.schedule.lunch1 : activeOverride.schedule.lunch2;
+    }
+    // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const d = (dayOfWeek === 0 || dayOfWeek === 6) ? 1 : dayOfWeek;
+    return SCHEDULES[d] ? SCHEDULES[d][lunchNum] : SCHEDULES[1][lunchNum];
+  }
+
+  function getFormattedTime(timeStr) {
+    const [hRaw, m] = timeStr.split(':');
+    const h = parseInt(hRaw);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const displayH = h % 12 || 12;
+    return `${displayH}:${m} ${ampm}`;
+  }
+
+  function toggleDayAccordion(dayNum) {
+    const acc = document.getElementById(`dayAccordion-${dayNum}`);
+    acc.classList.toggle('open');
+  }
+
+  function populateAllWeeks() {
+    const days = [
+      { id: 'mondayList', day: 1 },
+      { id: 'tuesdayList', day: 2 },
+      { id: 'wednesdayList', day: 3 },
+      { id: 'thursdayList', day: 4 },
+      { id: 'fridayList', day: 5 }
+    ];
+
+    days.forEach(d => {
+      const container = document.getElementById(d.id);
+      container.innerHTML = '';
+      
+      // Temporarily clear activeOverride so accordions show standard weeks
+      const tempOverride = activeOverride;
+      activeOverride = null;
+      const schedule = getScheduleForDay(d.day, activeLunch);
+      activeOverride = tempOverride;
+
+      schedule.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'period-row';
+        row.innerHTML = `
+          <span class="period-name">${p.name}</span>
+          <span class="period-time">
+            <div>${getFormattedTime(p.start)} - ${getFormattedTime(p.end)}</div>
+            <div class="period-duration">${p.duration} mins</div>
+          </span>
+        `;
+        container.appendChild(row);
+      });
+    });
+  }
+
+  function loadTodaySchedule() {
+    const now = new Date();
+    const day = now.getDay();
+    const container = document.getElementById('todayScheduleContainer');
+    container.innerHTML = '';
+
+    // Set Header titles
+    const daysArr = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    if (activeOverride) {
+      document.getElementById('todayDayName').textContent = `${activeOverride.name} Schedule`;
+      if (activeOverride.special_event) {
+        const eventNotice = document.createElement('div');
+        eventNotice.style.cssText = 'background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); padding: 12px 16px; border-radius: var(--radius); margin-bottom: 15px; font-size: 12px; color: var(--gold); text-align: center; font-weight: 700;';
+        eventNotice.textContent = `📢 Special Event: ${activeOverride.special_event}`;
+        container.appendChild(eventNotice);
+      }
+    } else {
+      document.getElementById('todayDayName').textContent = day === 0 || day === 6 ? "Monday's Schedule (Weekend Preview)" : `${daysArr[day]}'s Schedule`;
+    }
+    
+    document.getElementById('todayDateStr').textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+    // Show Monday if weekend
+    const activeDayNum = (day === 0 || day === 6) ? 1 : day;
+    const schedule = getScheduleForDay(activeDayNum, activeLunch);
+
+    schedule.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'period-row';
+      row.id = `today-period-${p.name.replace(/ /g, '-')}`;
+      row.innerHTML = `
+        <span class="period-name">
+          <span class="pulse"></span>
+          ${p.name}
+        </span>
+        <span class="period-time">
+          <div>${getFormattedTime(p.start)} - ${getFormattedTime(p.end)}</div>
+          <div class="period-duration">${p.duration} mins</div>
+        </span>
+      `;
+      container.appendChild(row);
+    });
+  }
+
+  function updateLiveTracker() {
+    const now = new Date();
+    const day = now.getDay();
+    const tracker = document.getElementById('liveTracker');
+
+    // Hide on weekends unless override is active for weekend preview (highly unlikely, but lets keep regular rules)
+    if (day === 0 || day === 6) {
+      tracker.style.display = 'none';
+      return;
+    }
+
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const currentSeconds = currentMinutes * 60 + now.getSeconds();
+    const schedule = getScheduleForDay(day, activeLunch);
+    
+    // Clear all highlights
+    document.querySelectorAll('#todayScheduleContainer .period-row').forEach(r => r.classList.remove('active'));
+
+    let activePeriod = null;
+    let nextPeriod = null;
+
+    for (let i = 0; i < schedule.length; i++) {
+      const p = schedule[i];
+      const startMin = parseTimeToMinutes(p.start);
+      const endMin = parseTimeToMinutes(p.end);
+
+      if (currentMinutes >= startMin && currentMinutes < endMin) {
+        activePeriod = p;
+        break;
+      } else if (currentMinutes < startMin) {
+        nextPeriod = p;
+        break;
+      }
+    }
+
+    if (activePeriod) {
+      tracker.style.display = 'block';
+      document.getElementById('livePeriodName').innerHTML = `<span style="color: var(--primary)">● Active:</span> ${activePeriod.name}`;
+      
+      const endMin = parseTimeToMinutes(activePeriod.end);
+      const totalEndSeconds = endMin * 60;
+      const diffSecs = totalEndSeconds - currentSeconds;
+      
+      const displayMins = Math.floor(diffSecs / 60);
+      const displaySecs = diffSecs % 60;
+      
+      document.getElementById('liveTimeLeft').textContent = `${displayMins}m ${displaySecs}s remaining`;
+
+      // Highlight row
+      const activeRow = document.getElementById(`today-period-${activePeriod.name.replace(/ /g, '-')}`);
+      if (activeRow) activeRow.classList.add('active');
+    } else if (nextPeriod) {
+      tracker.style.display = 'block';
+      const startMin = parseTimeToMinutes(nextPeriod.start);
+      const totalStartSeconds = startMin * 60;
+      const diffSecs = totalStartSeconds - currentSeconds;
+      
+      const displayMins = Math.floor(diffSecs / 60);
+      const displaySecs = diffSecs % 60;
+      
+      document.getElementById('livePeriodName').innerHTML = `<span style="color: var(--gold)">Next Class:</span> ${nextPeriod.name}`;
+      document.getElementById('liveTimeLeft').textContent = `Starts in ${displayMins}m ${displaySecs}s (${getFormattedTime(nextPeriod.start)})`;
+    } else {
+      // School completed for the day
+      const lastPeriod = schedule[schedule.length - 1];
+      const endMin = parseTimeToMinutes(lastPeriod.end);
+      if (currentMinutes >= endMin) {
+        tracker.style.display = 'block';
+        document.getElementById('livePeriodName').textContent = 'School Day Concluded';
+        document.getElementById('liveTimeLeft').textContent = 'See you tomorrow!';
+      } else {
+        tracker.style.display = 'none';
+      }
+    }
+  }
+
+  async function checkOverrides() {
+    try {
+      const res = await fetch('/api/bell/override');
+      const data = await res.json();
+      if (data && data.override) {
+        // Match today's date in local time YYYY-MM-DD
+        const now = new Date();
+        const laTimeStr = now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" });
+        const laDate = new Date(laTimeStr);
+        const yyyy = laDate.getFullYear();
+        const mm = String(laDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(laDate.getDate()).padStart(2, '0');
+        const todayStr = `${yyyy}-${mm}-${dd}`;
+
+        if (data.override.date === todayStr) {
+          activeOverride = data.override;
+        }
+      }
+    } catch(e) {}
+  }
+
+  // Init sequence
+  checkOverrides().then(() => {
+    loadTodaySchedule();
+    populateAllWeeks();
+    updateLiveTracker();
+    setInterval(updateLiveTracker, 1000); // refresh every 1s
+  });
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Newsletter Unsubscribe — mitch.pro</title>
+  <meta name="description" content="Safely opt out or manage your subscription preferences for the mitch.pro newsletter. Real-time secure direct processing.">
+  <meta name="keywords" content="mitch.pro unsubscribe, unsubscribe newsletter, student portal unsubscribe">
+  <link rel="canonical" href="https://mitch.pro/unsubscribe/" />
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <style>
+    .glass-card {
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 30px;
+      margin-top: 40px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--line);
+      margin-bottom: 12px;
+    }
+    h1 { font-family: 'Syne', sans-serif; font-size: 1.8rem; margin-bottom: 8px; }
+    p { color: var(--t-fg2); font-size: 0.95rem; line-height: 1.5; margin-bottom: 24px; }
+    .status { margin-top: 16px; font-weight: 600; text-align: center; min-height: 20px; }
+    .status.ok { color: var(--green); }
+    .status.err { color: var(--rose); }
+    .email-display {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--line);
+      padding: 12px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.95rem;
+      text-align: center;
+      margin-bottom: 20px;
+      color: var(--t-ac);
+      font-weight: bold;
+    }
+    .captcha-msg {
+      margin-top: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="enroll-shell">
+    <nav class="topbar">
+      <a class="brand" href="/">
+        <img src="/icon-192.png" alt="">
+        <span>mitch.pro</span>
+      </a>
+    </nav>
+
+    <div class="container" style="max-width: 600px;">
+      <section id="unsub-form" class="glass-card">
+        <div class="badge">Privacy</div>
+        <h1>Unsubscribe</h1>
+        <p>To stop receiving site updates and event notifications, please solve the captcha and verify your account password below.</p>
+        
+        <div id="unsub-email-display" class="email-display" style="display:none;"></div>
+
+        <div style="display:flex; flex-direction:column; align-items:center; margin-bottom: 20px;">
+          <div class="field-label" style="align-self:flex-start; margin-bottom: 8px;">Complete the Captcha</div>
+          <iframe id="captcha-iframe" src="/unsubscribe/worldshardestcaptcha/index.html" style="width:100%; height:450px; border:1px solid var(--line); border-radius:12px; background:#fff; box-shadow: 0 4px 12px rgba(0,0,0,0.15);"></iframe>
+          <div id="captcha-status-msg" class="captcha-msg" style="color:var(--rose);">❌ Captcha not completed yet.</div>
+        </div>
+
+        <div id="pass-field-container">
+          <div class="field-label">Account Password</div>
+          <input type="password" id="passInput" placeholder="••••••••" style="width:100%; margin-bottom: 20px;">
+        </div>
+
+        <button class="btn" id="unsubBtn" onclick="doUnsubscribe()">Remove me from Newsletter</button>
+        <div id="status" class="status"></div>
+      </section>
+
+      <section id="unsub-success" class="glass-card" style="display:none; text-align:center;">
+        <div style="font-size: 3rem; margin-bottom: 1rem;">👋</div>
+        <h1>Unsubscribed</h1>
+        <p>You have been removed from our mailing list. You can re-enable this at any time in your site preferences.</p>
+        <button class="btn" onclick="window.location.href='/'">Return Home</button>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    window.captchaSolved = false;
+
+    // Check captcha iframe completion status
+    setInterval(() => {
+      try {
+        const iframe = document.getElementById('captcha-iframe');
+        if (!iframe) return;
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        const text = iframeDoc.body.innerText || "";
+        if (text.includes("Congratulations") || text.includes("You're human") || text.includes("Success!")) {
+          window.captchaSolved = true;
+          document.getElementById('captcha-status-msg').innerHTML = "<span style='color:var(--green)'>✅ Captcha Solved! You may now unsubscribe.</span>";
+        }
+      } catch (e) {
+        // Handle potential boot delay or cross-origin (should be same origin)
+      }
+    }, 500);
+
+    // Initial query check
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const emailParam = urlParams.get('email') || "";
+      if (emailParam) {
+        document.getElementById('pass-field-container').style.display = 'none';
+        document.getElementById('unsub-email-display').innerText = "Unsubscribing: " + emailParam;
+        document.getElementById('unsub-email-display').style.display = 'block';
+      }
+    });
+
+    async function doUnsubscribe() {
+      const status = document.getElementById('status');
+      const btn = document.getElementById('unsubBtn');
+      
+      if (!window.captchaSolved) {
+        status.className = 'status err';
+        status.textContent = 'Please complete the Captcha first! You must prove you are human.';
+        return;
+      }
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const emailParam = urlParams.get('email') || "";
+
+      btn.disabled = true;
+      status.className = 'status';
+      status.textContent = 'Verifying...';
+
+      let res, data;
+      try {
+        if (emailParam) {
+          // Direct, password-free unsubscription
+          res = await fetch('/api/newsletter/unsubscribe-direct', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: emailParam })
+          });
+        } else {
+          // Normal password-verified unsubscription
+          const password = document.getElementById('passInput').value;
+          if (!password) {
+            status.className = 'status err';
+            status.textContent = 'Please enter your password.';
+            btn.disabled = false;
+            return;
+          }
+          res = await fetch('/api/newsletter/unsubscribe-secure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ password })
+          });
+        }
+
+        data = await res.json();
+        if (data.success) {
+          document.getElementById('unsub-form').style.display = 'none';
+          document.getElementById('unsub-success').style.display = 'block';
+        } else {
+          status.className = 'status err';
+          const msg = data.message || data.error || 'Verification failed.';
+          status.textContent = msg;
+          if (msg.toLowerCase().includes('auth required')) {
+            status.innerHTML += '<br><a href="/enroll/" style="color:var(--t-ac);font-size:0.8rem;">Log in here</a>';
+          }
+          btn.disabled = false;
+        }
+      } catch (e) {
+        status.className = 'status err';
+        status.textContent = 'Connection error.';
+        btn.disabled = false;
+      }
+    }
+  </script>
+  <script src="/cookie-consent.js" defer></script>
+</body>
+</html>

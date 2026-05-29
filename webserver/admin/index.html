@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin - mitch.pro</title>
+  <script src="/theme.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: var(--t-bg);
+      color: var(--t-fg);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: var(--t-bgr);
+    }
+    .panel {
+      position: relative;
+      width: min(440px, 100%);
+      border: 1px solid var(--t-bd);
+      background: rgba(10,10,14,.82);
+      border-radius: 8px;
+      padding: 22px;
+      box-shadow: 0 18px 60px rgba(0,0,0,.32);
+    }
+    h1 { margin: 0 0 8px; font-size: 1.35rem; letter-spacing: 0; }
+    p { margin: 0 0 16px; color: var(--t-fg2); line-height: 1.45; font-size: .9rem; }
+    .status {
+      min-height: 1.4em;
+      color: var(--t-fg2);
+      font-size: .84rem;
+      margin-top: 12px;
+    }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    a, button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      border: 1px solid var(--t-bd);
+      border-radius: 7px;
+      background: var(--t-bg3);
+      color: var(--t-ac);
+      padding: 8px 12px;
+      text-decoration: none;
+      font: inherit;
+      font-size: .84rem;
+      font-weight: 850;
+      cursor: pointer;
+    }
+    a:hover, button:hover { border-color: var(--t-bda); }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>Admin Command Center</h1>
+    <p id="copy">Checking your staff access...</p>
+    <div class="actions">
+      <a href="/advanced-admin/">Open Dashboard</a>
+      <a href="/">Home</a>
+      <button type="button" onclick="checkAccess()">Refresh</button>
+    </div>
+    <div class="status" id="status"></div>
+  </main>
+
+  <script>
+    async function checkAccess() {
+      const status = document.getElementById('status');
+      const copy = document.getElementById('copy');
+      status.textContent = 'Checking...';
+      try {
+        const r = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
+        if (!r.ok) {
+          copy.textContent = 'Sign in with an admin or moderator account to continue.';
+          status.textContent = 'Not signed in.';
+          return;
+        }
+        const me = await r.json();
+        if (me.isAdmin || me.isModerator) {
+          copy.textContent = 'Access verified. Opening the command center...';
+          status.textContent = me.isAdmin ? 'Admin access confirmed.' : 'Moderator approval mode confirmed.';
+          setTimeout(() => { window.location.href = '/advanced-admin/'; }, 350);
+          return;
+        }
+        copy.textContent = 'This area is only for admins, owners, and moderators.';
+        status.textContent = 'Access denied.';
+      } catch (err) {
+        copy.textContent = 'The server did not answer. Try again after restart.';
+        status.textContent = err.message || 'Network error.';
+      }
+    }
+    checkAccess();
+  </script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

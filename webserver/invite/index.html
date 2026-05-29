@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Invite Friends — mitch.pro</title>
+  <meta name="description" content="Invite friends to mitch.pro and earn 2,000 MitchCoins for every signup.">
+  <script src="/theme.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800;900&family=Syne:wght@800&display=swap');
+
+    :root {
+      --brand: #a78bfa;
+      --brand2: #7c3aed;
+      --gold: #f59e0b;
+      --panel: rgba(255,255,255,0.04);
+      --line: rgba(255,255,255,0.09);
+      --green: #4ade80;
+      --red: #f87171;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--t-bg, #07060f);
+      color: var(--t-fg, #f1f0ff);
+      min-height: 100vh;
+      padding: 40px 20px 80px;
+      overflow-x: hidden;
+    }
+
+    #back-btn {
+      position: fixed; top: 20px; left: 20px;
+      background: var(--panel); border: 1px solid var(--line);
+      color: #fff; padding: 8px 16px; border-radius: 10px;
+      text-decoration: none; font-weight: 700; z-index: 100;
+      backdrop-filter: blur(10px);
+    }
+
+    .page-header {
+      text-align: center;
+      margin: 60px auto 48px;
+      max-width: 600px;
+    }
+
+    .page-header h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.2rem, 6vw, 3.5rem);
+      background: linear-gradient(135deg, #a78bfa, #7c3aed, #f59e0b);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+      margin-bottom: 14px;
+    }
+
+    .page-header p {
+      color: rgba(241,240,255,0.65);
+      font-size: 1.05rem;
+      line-height: 1.6;
+    }
+
+    .coin-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      color: #f59e0b;
+      font-weight: 900;
+      font-size: 0.85rem;
+      padding: 6px 14px;
+      border-radius: 99px;
+      margin-bottom: 20px;
+      letter-spacing: 0.03em;
+    }
+
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 28px;
+      backdrop-filter: blur(20px);
+    }
+
+    .card-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--brand);
+      margin-bottom: 18px;
+    }
+
+    .stat-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-box {
+      flex: 1;
+      background: rgba(167,139,250,0.07);
+      border: 1px solid rgba(167,139,250,0.18);
+      border-radius: 14px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-num {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      color: var(--brand);
+      font-weight: 800;
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: rgba(241,240,255,0.5);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-top: 4px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: rgba(241,240,255,0.6);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 8px;
+    }
+
+    .code-display {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-family: monospace;
+      font-size: 1.5rem;
+      font-weight: 900;
+      color: var(--brand);
+      letter-spacing: 0.12em;
+    }
+
+    .code-display .code-text { flex: 1; }
+
+    .copy-btn {
+      background: transparent;
+      border: 1px solid rgba(167,139,250,0.3);
+      color: var(--brand);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Outfit', sans-serif;
+    }
+    .copy-btn:hover { background: rgba(167,139,250,0.15); }
+    .copy-btn.copied { color: var(--green); border-color: rgba(74,222,128,0.4); }
+
+    .link-display {
+      margin-top: 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.78rem;
+      color: rgba(241,240,255,0.55);
+      word-break: break-all;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .link-display .link-text { flex: 1; }
+
+    input[type="text"], input[type="email"] {
+      width: 100%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--line);
+      color: #f1f0ff;
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-size: 0.95rem;
+      font-family: 'Outfit', sans-serif;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(167,139,250,0.12); }
+
+    .btn {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 13px 18px;
+      font-weight: 900;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-family: 'Outfit', sans-serif;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 14px;
+    }
+
+    .btn-primary { background: var(--brand); color: #1a0533; }
+    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-gold { background: var(--gold); color: #1c1004; }
+    .btn-gold:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn-gold:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .msg {
+      min-height: 1.2em;
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-top: 10px;
+      text-align: center;
+    }
+    .msg.ok { color: var(--green); }
+    .msg.err { color: var(--red); }
+
+    .premium-lock {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(245,158,11,0.06);
+      border: 1px solid rgba(245,158,11,0.25);
+      border-radius: 12px;
+      padding: 14px 18px;
+      font-size: 0.85rem;
+      color: rgba(245,158,11,0.85);
+      font-weight: 700;
+    }
+
+    .premium-lock a { color: #f59e0b; }
+
+    .how-it-works {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-top: 4px;
+    }
+
+    .step {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .step-num {
+      width: 32px; height: 32px;
+      background: var(--brand2);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 0.9rem;
+      margin: 0 auto 10px;
+    }
+
+    .step-text { font-size: 0.82rem; color: rgba(241,240,255,0.65); line-height: 1.4; }
+
+    .divider {
+      height: 1px;
+      background: var(--line);
+      margin: 6px 0 18px;
+    }
+
+    #invite-email-wrap { margin-top: 14px; }
+
+    @media (max-width: 600px) {
+      .how-it-works { grid-template-columns: 1fr; }
+      .stat-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <a href="/" id="back-btn">← Home</a>
+
+  <div class="page-header">
+    <div class="coin-badge">🪙 2,000 MitchCoins per signup</div>
+    <h1>Invite Friends</h1>
+    <p>Share your personal invite link. Every time someone signs up using it, you earn <strong>2,000 MitchCoins</strong> — automatically, the moment they verify their email.</p>
+  </div>
+
+  <div class="wrap">
+
+    <!-- Stats card -->
+    <div class="card">
+      <div class="card-title">Your Invite Stats</div>
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="stat-num" id="stat-signups">—</div>
+          <div class="stat-label">Signups</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num" id="stat-coins">—</div>
+          <div class="stat-label">Coins Earned</div>
+        </div>
+      </div>
+
+      <label>Your Invite Code</label>
+      <div class="code-display">
+        <span class="code-text" id="code-text">Loading...</span>
+        <button class="copy-btn" id="copy-code-btn" onclick="copyCode()">Copy</button>
+      </div>
+
+      <div class="link-display">
+        <span class="link-text" id="link-text">Loading your invite link...</span>
+        <button class="copy-btn" id="copy-link-btn" onclick="copyLink()">Copy</button>
+      </div>
+    </div>
+
+    <!-- Custom code (premium) -->
+    <div class="card" id="custom-code-card">
+      <div class="card-title">✨ Custom Invite Code</div>
+      <div id="premium-content" style="display:none;">
+        <p style="font-size:0.85rem;color:rgba(241,240,255,0.6);margin-bottom:16px;">As a Premium member you can set a memorable vanity code.</p>
+        <label for="custom-code-input">New Code (3–20 characters, letters & numbers only)</label>
+        <input type="text" id="custom-code-input" placeholder="e.g. MITCHGANG" maxlength="20" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+        <button class="btn btn-gold" id="set-code-btn" onclick="setCode()">Set Custom Code</button>
+        <div class="msg" id="code-msg"></div>
+      </div>
+      <div id="premium-lock-content">
+        <div class="premium-lock">
+          🔒 Custom codes are a <a href="/shop/">Premium</a> feature. Non-premium users get an auto-generated code.
+        </div>
+      </div>
+    </div>
+
+    <!-- Send invite -->
+    <div class="card">
+      <div class="card-title">📨 Send an Invite Email</div>
+      <p style="font-size:0.85rem;color:rgba(241,240,255,0.6);margin-bottom:16px;">Enter their email below — we'll send them a personalised invite with your code and their email pre-filled in the signup form.</p>
+      <label for="invite-to">Friend's Email Address</label>
+      <input type="email" id="invite-to" placeholder="friend@school.edu">
+      <button class="btn btn-primary" id="send-btn" onclick="sendInvite()">Send Invite Email</button>
+      <div class="msg" id="send-msg"></div>
+    </div>
+
+    <!-- How it works -->
+    <div class="card">
+      <div class="card-title">How It Works</div>
+      <div class="divider"></div>
+      <div class="how-it-works">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-text">Share your invite link or send an email invite to a friend</div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-text">They sign up with their email pre-filled and your code applied</div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-text">The moment they verify their email, you instantly earn 2,000 MitchCoins</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    var myCode = '';
+    var myEmail = '';
+
+    async function loadData() {
+      try {
+        const res = await fetch('/api/invite/my-code', { credentials: 'include' });
+        if (res.status === 401) {
+          document.getElementById('code-text').textContent = 'Sign in to get your code';
+          document.getElementById('link-text').textContent = 'You need to be signed in to use invites.';
+          return;
+        }
+        const d = await res.json();
+        if (!d.success) return;
+
+        myCode = d.code;
+        myEmail = d.email || '';
+
+        document.getElementById('code-text').textContent = d.code;
+        document.getElementById('stat-signups').textContent = d.signups;
+        document.getElementById('stat-coins').textContent = (d.signups * 2000).toLocaleString();
+
+        const baseLink = `https://mitch.pro/enroll?ref=${encodeURIComponent(d.code)}&email=THEIR_EMAIL`;
+        document.getElementById('link-text').textContent = baseLink;
+
+        if (d.isPremium) {
+          document.getElementById('premium-content').style.display = 'block';
+          document.getElementById('premium-lock-content').style.display = 'none';
+        }
+      } catch(e) {}
+    }
+
+    function copyCode() {
+      navigator.clipboard.writeText(myCode).then(() => {
+        const btn = document.getElementById('copy-code-btn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+
+    function copyLink() {
+      const link = document.getElementById('link-text').textContent;
+      navigator.clipboard.writeText(link).then(() => {
+        const btn = document.getElementById('copy-link-btn');
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+      });
+    }
+
+    async function setCode() {
+      const input = document.getElementById('custom-code-input').value.trim();
+      const msg = document.getElementById('code-msg');
+      const btn = document.getElementById('set-code-btn');
+      if (!input || input.length < 3) { msg.className='msg err'; msg.textContent='Code must be at least 3 characters.'; return; }
+      btn.disabled = true;
+      msg.className = 'msg'; msg.textContent = 'Saving...';
+      try {
+        const res = await fetch('/api/invite/set-code', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: input })
+        });
+        const d = await res.json();
+        if (d.success) {
+          myCode = d.code;
+          document.getElementById('code-text').textContent = d.code;
+          document.getElementById('link-text').textContent = `https://mitch.pro/enroll?ref=${encodeURIComponent(d.code)}&email=THEIR_EMAIL`;
+          msg.className = 'msg ok'; msg.textContent = '✓ Code updated!';
+        } else {
+          msg.className = 'msg err'; msg.textContent = d.error || 'Failed to set code.';
+        }
+      } catch(e) { msg.className = 'msg err'; msg.textContent = 'Network error.'; }
+      btn.disabled = false;
+    }
+
+    async function sendInvite() {
+      const to = document.getElementById('invite-to').value.trim();
+      const msg = document.getElementById('send-msg');
+      const btn = document.getElementById('send-btn');
+      if (!to) { msg.className='msg err'; msg.textContent='Enter an email address.'; return; }
+      btn.disabled = true;
+      msg.className = 'msg'; msg.textContent = 'Sending...';
+      try {
+        const res = await fetch('/api/invite/send', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to })
+        });
+        const d = await res.json();
+        if (res.status === 429) {
+          msg.className = 'msg err';
+          msg.textContent = 'Slow down — you can send up to 5 invites per hour.';
+        } else if (d.success) {
+          msg.className = 'msg ok';
+          msg.textContent = d.alreadySent
+            ? '✓ Invite sent again (they already received one before).'
+            : '✓ Invite sent! They\'ll get an email with your link.';
+          document.getElementById('invite-to').value = '';
+        } else {
+          msg.className = 'msg err'; msg.textContent = d.error || 'Failed to send.';
+        }
+      } catch(e) { msg.className = 'msg err'; msg.textContent = 'Network error.'; }
+      btn.disabled = false;
+    }
+
+    loadData();
+  </script>
+  <script src="/cookie-consent.js" defer></script>
+</body>
+</html>

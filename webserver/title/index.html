@@ -1,0 +1,54 @@
+<html>
+<head>
+<title id="title"></title>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- AUTH_INJECT_START -->
+<style>
+  #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
+    padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
+</style>
+<!-- AUTH_INJECT_END -->
+</head>
+<body>
+<textarea rows="5" cols="50" id="text" oninput="render()"></textarea>
+<script>
+const title = document.cookie.split(';').find(c => c.trim().startsWith('title='));
+const titleValue = title ? title.trim().slice('title='.length) : '';
+document.getElementById('text').textContent = titleValue;
+render();
+function render() {
+  document.getElementById('title').textContent = document.getElementById('text').value;
+  document.cookie = "title=" + document.getElementById('text').value;
+}
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

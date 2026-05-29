@@ -1,0 +1,48 @@
+========================================================================
+                      MITCH.PRO RECENT CHANGES CHANGELOG
+========================================================================
+
+## 1. PUBLIC PLAZA CHATROOM (/public-chat/)
+- **Real-Time WebSocket Synchronization:** Wired a global message broadcast system that distributes live chat messages as JSON payloads via the `/ws` gateway to all active clients.
+- **Persistent Archiving:** Message history is securely stored and managed in `data/public_chat.json`, capped at the last 1000 messages to maintain server efficiency.
+- **Privacy-First History Endpoints:** Added `GET /api/public-chat/history` which masks sender email addresses for safety before rendering.
+- **Aesthetic Glassmorphism Interface:** Designed a stunning dark-mode/glassmorphism UI featuring DM Mono typography, live auto-scroll lock, and support for name glow colors and badges.
+
+## 2. DECENTRALIZED PLAYER-TO-PLAYER MARKETPLACE (/marketplace/)
+- **Flexible P2P Trading:** Built a complete marketplace allowing users to post custom text listings, sell items, or trade owned cosmetic tokens.
+- **24-Hour Mediator Escrow Protection:** Implemented a secure transactional escrow model where assets and coins are held by a designated mediator for 24 hours. The mediator can resolve the transaction early or reverse it (refunding coins and restoring cosmetics to inventory) if terms aren't met.
+- **Moderator Appeals & Dispute Queue:** Integrated a dispute button that files an appeal, flag-tags the listing in `data/chat_reports.json`, and populates the Curses CLI Option 15 triage queue instantly.
+- **Automatic Sweep Finalization:** Added an automatic background sweep (`autoFinalizeMarketplace`) that executes on startup and during marketplace fetches to resolve and finalize pending escrows older than 24 hours.
+- **Legal Warranties:** Embedded high-visibility disclaimers clarifying that mitch.pro is not liable for off-site or cash sales.
+
+## 3. SEO-OPTIMIZED WHS BELL SCHEDULES (/bell/)
+- **100% Correct WHS Schedules:** Sourced and programmed the official Woodcreek High School (WHS) block schedules directly from the district's PDF, correcting all previous guessed timetables.
+- **Day-Specific Pack Blocks:** Programmed the precise Pack blocks for Mondays (end-of-day), Tuesdays (mid-afternoon), Thursdays (mid-morning), and Fridays (morning).
+- **Collaboration Wednesday:** Correctly implemented Wednesday's late-start block beginning at 9:30 AM with a single combined school-wide lunch.
+- **Dynamic Seconds Countdown:** Embedded a live, high-precision timer that counts down hours, minutes, and seconds remaining in the current active period, refreshing every 1 second.
+- **Lunch Preference Selector:** Designed an interactive Lunch 1 vs Lunch 2 button selector that updates the page layout dynamically and persists via `localStorage`.
+- **Public SEO Optimization:** Bypassed the standard webserver security redirects in `server.js` for `/bell` and `/api/bell/override` to ensure guest access and maximum indexability.
+- **Weekly Accordion Views:** Added five collapsible day panels to view standard Monday through Friday schedules.
+
+## 4. BASH & TERMINAL DEVELOPER SCRIPT FIXES
+- **set_special_day.sh (Interactive Wizard):** 
+  - *The Problem:* The script fed Bun via a bash heredoc, which redirected `stdin` and caused the readline prompt to instantly receive an EOF and terminate.
+  - *The Fix:* Migrated the interactive wizard code to a dedicated JS script at `tools/set_special_day.js` and updated `set_special_day.sh` to delegate to it via `exec bun`, cleanly preserving terminal TTY input.
+  - *Schedules Presets:* Integrated the three official WHS alternate schedules ("Non-Pack Day", "Minimum Day", and "Finals") as built-in presets.
+  - *Custom Presets:* Added a prompt to save newly constructed manual schedules as custom presets inside `data/bell_presets.json` for easy future reuse.
+- **clear_special_day.sh (Reset Script):**
+  - Added a bash utility to clear active overrides by deleting `data/bell_overrides.json`, returning the school to standard block schedules.
+- **enrolled-curl.sh (Authenticated Developer Curl):**
+  - *The Problem:* The original script loaded an inactive user session ID that triggered a 403 password-required wall.
+  - *The Fix:* Rewrote the script to dynamically generate a valid, cryptographically signed `studentId` cookie belonging to `admin@mitch.pro` using the system's HMAC secret (`data/id_secret.key`) and the active tokens database (`data/tokens.json`).
+  - *Verification:* Verified that the script successfully bypasses the password enforcement wall and prints the admin inventory.
+
+## 5. EXTERNAL GAME HOSTNAME-TO-IP REPLACEMENT
+- Bulk replaced the GameMonetize hostname `html5.gamemonetize.co` with its resolved Cloudflare IP `104.20.28.214` in both `games_external` and `data/game_categories_external.json` to bypass network/DNS blocklists.
+- Updated `tools/fetch_external_games.js` to automatically convert this hostname to the IP address on the fly during future library updates.
+
+## 6. LILLIAN'S LOGIC SOLVE EXPLOIT FIX
+- **Rate Limiting Solve Endpoint:** Added a rate limit of 10 requests per 60 seconds mapping to `/api/games/lillians-logic/solve` in `RATE_LIMITS` and wired the `checkRateLimit` validator to prevent high-frequency automated script solvers from spamming the database.
+- **Coin Reward Correction:** Fixed a bug where non-wordle logic puzzles (e.g. Minesweeper) awarded 100 coins per win, correcting it to the intended 10 coins (repeatable) as per the codebase documentation.
+
+

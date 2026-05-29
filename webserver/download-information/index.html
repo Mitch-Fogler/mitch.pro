@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Download Your Information — mitch.pro</title>
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <style>
+    .info-card {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .data-icon {
+      font-size: 64px;
+      margin-bottom: 24px;
+      display: block;
+    }
+    .dl-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--ac);
+      color: #fff;
+      padding: 14px 28px;
+      border-radius: 12px;
+      font-weight: 800;
+      text-decoration: none;
+      margin-top: 24px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      box-shadow: 0 4px 15px var(--gl);
+    }
+    .dl-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px var(--gl);
+      color: #fff;
+    }
+    .file-meta {
+      margin-top: 32px;
+      font-size: 0.85rem;
+      color: var(--fg-dim);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 15px;
+      border-radius: 8px;
+      text-align: left;
+    }
+    .file-meta b { color: #fff; }
+    .loader {
+      display: none;
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <main class="enroll-shell">
+    <nav class="topbar">
+      <a class="brand" href="/">
+        <img src="/icon-192.png" alt="">
+        <span>mitch.pro</span>
+      </a>
+    </nav>
+
+    <div class="container" style="max-width: 650px;">
+      <div class="glass-card info-card">
+        <span class="data-icon">📦</span>
+        <div class="badge">Data Portability</div>
+        <h1>Download Your Information</h1>
+        <p>Get a copy of everything mitch.pro knows about you. Your file will include your profile details, coin balance, game statistics, friend list, and E2E encryption keys.</p>
+        
+        <a href="/api/download-information" class="dl-btn" id="dlLink" download>
+          <span>Generate JSON Export</span>
+          <div class="loader" id="loader"></div>
+        </a>
+
+        <div class="file-meta">
+          <p><b>Format:</b> JSON (Portable machine-readable format)</p>
+          <p><b>Included:</b> Account Metadata, Profiles, Coins, Stats, Friends, Cosmetics, E2E Keys, Userdata, and DMs.</p>
+          <p style="margin-top:10px; font-size: 11px; opacity: 0.6;">Note: For your security, this file contains sensitive cryptographic keys. Keep it private and never share it with anyone.</p>
+        </div>
+      </div>
+
+      <div style="text-align: center; margin-top: 24px;">
+        <a href="/faq/" class="back-link" style="opacity: 0.7; font-size: 13px; text-decoration: none;">← Back to Help Center</a>
+      </div>
+    </div>
+
+    <div class="footer">
+      &copy; 2026 mitch.pro &middot; <a href="/privacy/">Privacy</a>
+    </div>
+  </main>
+
+  <script>
+    const dlLink = document.getElementById('dlLink');
+    const loader = document.getElementById('loader');
+
+    dlLink.addEventListener('click', function() {
+      // Small UI feedback during the download start
+      loader.style.display = 'block';
+      setTimeout(() => {
+        loader.style.display = 'none';
+      }, 3000);
+    });
+  </script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

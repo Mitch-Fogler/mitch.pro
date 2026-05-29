@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>mitch.pro admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#0a0a12;color:#e0e0f0;min-height:100vh}
+nav{background:rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.08);
+    display:flex;gap:0;padding:0 1rem}
+nav button{background:none;border:none;color:rgba(200,200,220,.6);padding:.7rem 1.1rem;
+    cursor:pointer;font-size:.9rem;border-bottom:2px solid transparent;transition:.15s}
+nav button.active{color:#a78bfa;border-bottom-color:#7c3aed}
+nav button:hover:not(.active){color:#e0e0f0}
+#content{padding:1rem}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th{text-align:left;color:rgba(200,200,220,.5);font-weight:600;padding:.4rem .6rem;
+    border-bottom:1px solid rgba(255,255,255,.07);font-size:.78rem;text-transform:uppercase}
+td{padding:.45rem .6rem;border-bottom:1px solid rgba(255,255,255,.05);vertical-align:top}
+tr.sel td{background:rgba(124,58,237,.15)}
+tr:hover td{background:rgba(255,255,255,.03);cursor:pointer}
+.badge{display:inline-block;padding:.15rem .45rem;border-radius:4px;font-size:.75rem;font-weight:600}
+.badge.add_page{background:rgba(96,165,250,.2);color:#93c5fd}
+.badge.broken_game{background:rgba(251,146,60,.2);color:#fdba74}
+.badge.feedback{background:rgba(74,222,128,.2);color:#86efac}
+.badge.pending{background:rgba(251,191,36,.2);color:#fcd34d}
+.badge.approved{background:rgba(74,222,128,.2);color:#86efac}
+.badge.denied{background:rgba(248,113,113,.2);color:#fca5a5}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:.4rem}
+.dot.online{background:#4ade80} .dot.recent{background:#fbbf24} .dot.old{background:#6b7280}
+.dim{color:rgba(200,200,220,.4)}
+.panel{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;padding:1rem;margin-top:.5rem}
+.panel-grid{display:block}
+.panel h3{font-size:.82rem;text-transform:uppercase;color:rgba(200,200,220,.5);
+    letter-spacing:.05em;margin-bottom:.5rem}
+img.screenshot{width:100%;border-radius:6px;background:#111;min-height:80px;
+    display:block;cursor:zoom-in}
+.keylog{background:#0d0d1a;border:1px solid rgba(255,255,255,.07);border-radius:6px;
+    padding:.6rem;font-family:monospace;font-size:.8rem;height:140px;overflow-y:auto;
+    word-break:break-all;color:#a3e635;white-space:pre-wrap}
+textarea.payload{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+    color:#e0e0f0;border-radius:6px;padding:.5rem;font-family:monospace;font-size:.82rem;
+    height:70px;resize:vertical;outline:none}
+textarea.payload:focus{border-color:#7c3aed}
+.btn-row{display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap}
+button.act{background:#7c3aed;color:#fff;border:none;border-radius:6px;
+    padding:.35rem .8rem;font-size:.82rem;cursor:pointer}
+button.act:hover{background:#6d28d9}
+button.act.red{background:#dc2626} button.act.red:hover{background:#b91c1c}
+button.act.green{background:#16a34a} button.act.green:hover{background:#15803d}
+button.act.grey{background:rgba(255,255,255,.1)} button.act.grey:hover{background:rgba(255,255,255,.15)}
+.rate-row{display:flex;align-items:center;gap:.5rem;font-size:.82rem;margin-top:.3rem}
+.rate-row input{width:80px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);
+    color:#e0e0f0;border-radius:5px;padding:.25rem .5rem;font-size:.82rem;outline:none}
+.detail-body{background:#0d0d1a;border:1px solid rgba(255,255,255,.07);border-radius:6px;
+    padding:.8rem;font-size:.88rem;line-height:1.6;max-height:300px;overflow-y:auto;
+    white-space:pre-wrap;word-break:break-word;margin-top:.5rem}
+.flash{padding:.5rem .8rem;border-radius:6px;font-size:.85rem;margin-bottom:.5rem;
+    background:rgba(74,222,128,.15);color:#86efac}
+.flash.err{background:rgba(248,113,113,.15);color:#fca5a5}
+#loading{text-align:center;padding:3rem;color:rgba(200,200,220,.4)}
+</style>
+</head>
+<body>
+<nav>
+  <button class="active" onclick="showTab('monitor',this)">Monitor</button>
+  <button onclick="showTab('suggestions',this)">Suggestions</button>
+  <button onclick="showTab('requests',this)">Requests</button>
+  <button onclick="showTab('newsletter',this)">Newsletter</button>
+  <button onclick="showTab('heatmap',this)">Heatmap</button>
+  <button onclick="showTab('tools',this)">Tools</button>
+</nav>
+<div id="content">
+  <div id="loading">Loading...</div>
+  <div id="monitor" style="display:none">
+    <div id="mon-panel"></div>
+    <table id="mon-table" style="display:none"><thead><tr><th></th><th>Name</th><th>Most Visited</th><th>Visits</th></tr></thead><tbody id="mon-body"></tbody></table>
+  </div>
+  <div id="suggestions" style="display:none"></div>
+  <div id="requests" style="display:none"></div>
+  <div id="newsletter" style="display:none"></div>
+  <div id="heatmap" style="display:none">
+    <div style="display:flex;gap:1rem;margin-bottom:1rem">
+        <select id="hm-page-select" style="background:#1b1f2a;color:#fff;border:1px solid #3d3a37;padding:.4rem .8rem;border-radius:8px;flex:1"></select>
+        <button class="act" onclick="loadHeatmap()">Refresh</button>
+    </div>
+    <div id="hm-container" style="position:relative;background:#000;border:1px solid #333;border-radius:12px;overflow:hidden;width:100%;height:600px;display:flex;align-items:center;justify-content:center;color:#444">
+        <canvas id="hm-canvas" style="position:absolute;inset:0;width:100%;height:100%"></canvas>
+        <span id="hm-empty">Select a page to view heatmap</span>
+    </div>
+  </div>
+  <div id="tools" style="display:none"></div>
+</div>
+
+<script>
+var PW = sessionStorage.getItem('apw') || '';
+var curTab = 'monitor';
+var monSel = null;
+var sugSel = null;
+var refreshTimer = null;
+
+function showTab(name, btn) {
+  curTab = name;
+  document.querySelectorAll('nav button').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  ['monitor','suggestions','requests','newsletter','heatmap','tools'].forEach(function(t){
+    document.getElementById(t).style.display = t === name ? '' : 'none';
+  });
+  load(name);
+}
+
+async function api(type, extra) {
+  var r = await fetch('/api/admin/data', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(Object.assign({pw: PW, type: type}, extra||{}))
+  });
+  if (r.status === 403) { sessionStorage.removeItem('apw'); location.reload(); return null; }
+  return r.json();
+}
+
+function ago(ts) {
+  if (!ts) return '—';
+  var s = (Date.now()/1000) - ts;
+  if (s < 60) return Math.round(s) + 's ago';
+  if (s < 3600) return Math.round(s/60) + 'm ago';
+  if (s < 86400) return Math.round(s/3600) + 'h ago';
+  return Math.round(s/86400) + 'd ago';
+}
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function dotClass(ts) {
+  if (!ts) return 'old';
+  var s = Date.now()/1000 - ts;
+  if (s < 90)   return 'online';
+  if (s < 900)  return 'recent';
+  return 'old';
+}
+
+var _monUsers = []; // last fetched merged users
+
+// ── Monitor ───────────────────────────────────────────────────────────────────
+async function loadMonitor() {
+  var d = await api('users');
+  if (!d) return;
+  _monUsers = d.users;
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('mon-table').style.display = '';
+  renderMonitorRows(_monUsers);
+}
+
+function renderMonitorRows(users) {
+  var html = '';
+  users.forEach(function(u, i) {
+    var sel = monSel === i;
+    var nameLabel = esc(u.name);
+    var page = (u.mostVisited||'').replace(/https?:\/\/mitch\.(88chan\.me|pro)/,'') || '/';
+    html += '<tr class="'+(sel?'sel':'')+'" onclick="toggleUser('+i+')">';
+    html += '<td><span class="dot '+dotClass(u.lastActive/1000)+'" id="dot-'+i+'"></span></td>';
+    html += '<td><b>'+nameLabel+'</b></td>';
+    html += '<td class="dim" id="page-'+i+'" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(page)+'</td>';
+    html += '<td>'+u.totalCount+'</td>';
+    html += '</tr>';
+  });
+  var body = document.getElementById('mon-body');
+  if (body) body.innerHTML = html;
+}
+
+function refreshMonitorLive() {
+  _monUsers.forEach(function(u, i) {
+    var dot  = document.getElementById('dot-'+i);
+    if (dot)  dot.className  = 'dot '+dotClass(u.lastActive/1000);
+  });
+}
+
+function toggleUser(i) {
+  monSel = (monSel === i) ? null : i;
+  document.querySelectorAll('#mon-body tr').forEach(function(tr, idx){
+    tr.classList.toggle('sel', idx === monSel);
+  });
+  var panel = document.getElementById('mon-panel');
+  if (monSel === null) { panel.innerHTML = ''; return; }
+  var u = _monUsers[i];
+  panel.innerHTML = '<div class="panel"><h3>'+esc(u.name)+' Stats</h3><div class="dim">User ID: '+u.uid+'</div></div>';
+}
+
+// ── Heatmap ───────────────────────────────────────────────────────────────────
+var _hmData = {};
+async function loadHeatmap() {
+  document.getElementById('loading').style.display = 'none';
+  var d = await api('summary'); 
+  if (!d || !d.heatmap) return;
+  _hmData = d.heatmap;
+  
+  var select = document.getElementById('hm-page-select');
+  var current = select.value;
+  select.innerHTML = '';
+  Object.keys(_hmData).sort().forEach(function(pg) {
+    var opt = document.createElement('option');
+    opt.value = pg; opt.textContent = pg + ' (' + _hmData[pg].length + ' clicks)';
+    select.appendChild(opt);
+  });
+  if (current && _hmData[current]) select.value = current;
+  else if (Object.keys(_hmData).length > 0) select.value = Object.keys(_hmData).sort()[0];
+  
+  renderHeatmap();
+}
+
+function renderHeatmap() {
+  var pg = document.getElementById('hm-page-select').value;
+  var canvas = document.getElementById('hm-canvas');
+  var ctx = canvas.getContext('2d');
+  var empty = document.getElementById('hm-empty');
+  
+  var w = canvas.width = canvas.offsetWidth;
+  var h = canvas.height = canvas.offsetHeight;
+  ctx.clearRect(0, 0, w, h);
+  
+  if (!pg || !_hmData[pg] || !_hmData[pg].length) {
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  
+  var points = _hmData[pg];
+  ctx.globalCompositeOperation = 'screen';
+  points.forEach(function(p) {
+    var x = p.x * w; var y = p.y * h; var rad = 30;
+    var grad = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    grad.addColorStop(0, 'rgba(167, 139, 250, 0.5)');
+    grad.addColorStop(1, 'rgba(167, 139, 250, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI*2); ctx.fill();
+  });
+  ctx.globalCompositeOperation = 'lighter';
+  points.forEach(function(p) {
+    var x = p.x * w; var y = p.y * h; var rad = 10;
+    var grad = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    grad.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI*2); ctx.fill();
+  });
+}
+document.getElementById('hm-page-select').onchange = renderHeatmap;
+
+// ── Suggestions ───────────────────────────────────────────────────────────────
+async function loadSuggestions() {
+  var d = await api('suggestions');
+  if (!d) return;
+  var el = document.getElementById('suggestions');
+  document.getElementById('loading').style.display = 'none';
+  var html = '<table><thead><tr><th>Name</th><th>Type</th><th>Time</th><th>Preview</th></tr></thead><tbody>';
+  d.suggestions.forEach(function(s, i) {
+    var sel = sugSel === i;
+    var dt = new Date(s.ts*1000).toLocaleString();
+    html += '<tr class="'+(sel?'sel':'')+'" onclick="toggleSug('+i+')">';
+    html += '<td><b>'+esc(s.name)+'</b></td>';
+    html += '<td><span class="badge '+esc(s.type)+'">'+esc(s.type.replace('_',' '))+'</span></td>';
+    html += '<td class="dim" style="white-space:nowrap">'+esc(dt)+'</td>';
+    html += '<td class="dim">'+esc((s.text||'').replace(/\n/g,' ').slice(0,80))+'</td>';
+    html += '</tr>';
+    if (sel) {
+      html += '<tr><td colspan="4" style="padding:0 .6rem .8rem">';
+      html += '<div class="panel"><pre class="detail-body">'+esc(s.text)+'</pre></div>';
+      html += '</td></tr>';
+    }
+  });
+  if (!d.suggestions.length) html += '<tr><td colspan="4" class="dim" style="text-align:center;padding:2rem">No suggestions yet.</td></tr>';
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+function toggleSug(i) {
+  sugSel = sugSel === i ? null : i;
+  loadSuggestions();
+}
+
+// ── Requests ──────────────────────────────────────────────────────────────────
+async function loadRequests() {
+  var d = await api('requests');
+  if (!d) return;
+  var el = document.getElementById('requests');
+  document.getElementById('loading').style.display = 'none';
+  var html = '';
+
+  // Access requests
+  html += '<h2 style="font-size:.95rem;margin-bottom:.6rem;color:rgba(200,200,220,.7)">Access Requests</h2>';
+  if (d.pending.length) {
+    html += '<table><thead><tr><th>Email</th><th>Name</th><th>IP</th><th>Requested</th><th>Actions</th></tr></thead><tbody>';
+    d.pending.forEach(function(r) {
+      var dt = r.created_at ? new Date(r.created_at*1000).toLocaleString() : '—';
+      html += '<tr><td>'+esc(r.email)+'</td><td class="dim">'+esc(r.name||'—')+'</td>';
+      html += '<td class="dim">'+esc(r.enroll_ip||'—')+'</td>';
+      html += '<td class="dim" style="white-space:nowrap">'+esc(dt)+'</td>';
+      html += '<td><div class="btn-row">';
+      html += '<button class="act green" onclick="doApprove(\''+esc(r.token)+'\',\''+esc(r.email)+'\')">Approve</button>';
+      html += '<button class="act grey" onclick="doApproveTeam(\''+esc(r.token)+'\',\''+esc(r.email)+'\')">Team (Silent)</button>';
+      html += '<button class="act red" onclick="doDeny(\''+esc(r.token)+'\',\''+esc(r.email)+'\')">Deny</button>';
+      html += '<button class="act grey" onclick="doBlacklist(\''+esc(r.token)+'\',\''+esc(r.email)+'\')">Blacklist</button>';
+      html += '</div></td></tr>';
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p class="dim" style="padding:.5rem 0 1rem">No pending requests.</p>';
+  }
+
+  // Appeals
+  if (d.appeals.length) {
+    html += '<h2 style="font-size:.95rem;margin:.8rem 0 .6rem;color:rgba(200,200,220,.7)">Appeals</h2>';
+    html += '<table><thead><tr><th>Email</th><th>Reason</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>';
+    d.appeals.forEach(function(a) {
+      var dt = a.submitted_at ? new Date(a.submitted_at*1000).toLocaleString() : '—';
+      html += '<tr><td>'+esc(a.email)+'</td>';
+      html += '<td class="dim">'+esc((a.reason||a.text||'').slice(0,80))+'</td>';
+      html += '<td class="dim" style="white-space:nowrap">'+esc(dt)+'</td>';
+      html += '<td><div class="btn-row">';
+      html += '<button class="act green" onclick="doApproveAppeal(\''+esc(a.email)+'\',\''+esc(a.submitted_at||'')+'\')">Approve</button>';
+      html += '<button class="act grey" onclick="doDismissAppeal(\''+esc(a.email)+'\',\''+esc(a.submitted_at||'')+'\')">Dismiss</button>';
+      html += '</div></td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // Premium Members
+  if (d.premium_members && d.premium_members.length) {
+    html += '<h2 style="font-size:.95rem;margin:.8rem 0 .6rem;color:#f59e0b">Premium Members</h2>';
+    html += '<table><thead><tr><th>Email</th><th>Since</th><th>Actions</th></tr></thead><tbody>';
+    d.premium_members.forEach(function(m) {
+      var dt = m.approved_at ? new Date(m.approved_at).toLocaleString() : '—';
+      html += '<tr><td>'+esc(m.email)+'</td><td class="dim">'+esc(dt)+'</td>';
+      html += '<td><div class="btn-row">';
+      html += '<button class="act red" onclick="doRevokePremium(\''+esc(m.email)+'\')">Revoke</button>';
+      html += '</div></td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // Unsub requests
+  if (d.unsub_requests.length) {
+    html += '<h2 style="font-size:.95rem;margin:.8rem 0 .6rem;color:rgba(200,200,220,.7)">Unsubscribe Requests</h2>';
+    html += '<table><thead><tr><th>Email</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>';
+    d.unsub_requests.forEach(function(r) {
+      var dt = r.submitted_at ? new Date(r.submitted_at*1000).toLocaleString() : '—';
+      html += '<tr><td>'+esc(r.email)+'</td>';
+      html += '<td class="dim" style="white-space:nowrap">'+esc(dt)+'</td>';
+      html += '<td><div class="btn-row">';
+      html += '<button class="act green" onclick="doApproveUnsub(\''+esc(r.email)+'\',\''+esc(r.submitted_at||'')+'\')">Approve</button>';
+      html += '<button class="act red" onclick="doDenyUnsub(\''+esc(r.email)+'\',\''+esc(r.submitted_at||'')+'\')">Deny</button>';
+      html += '</div></td></tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  el.innerHTML = html;
+}
+
+async function doApprove(token, email) {
+  if (!confirm('Approve ' + email + '?')) return;
+  var d = await api('approve', {token, email, action: 'approve'});
+  showFlash(d && d.ok ? 'Approved — claim email sent.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doApproveTeam(token, email) {
+  if (!confirm('Silent Team Approve ' + email + ' (no email, grants premium)?')) return;
+  var d = await api('approve', {token, email, action: 'approve_team'});
+  showFlash(d && d.ok ? 'Silent Team Approved.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doDeny(token, email) {
+  if (!confirm('Deny ' + email + '?')) return;
+  var d = await api('approve', {token, email, action: 'deny'});
+  showFlash(d && d.ok ? 'Denied.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doBlacklist(token, email) {
+  var reason = prompt('Blacklist reason for ' + email + '?');
+  if (!reason) return;
+  var d = await api('approve', {token, email, action: 'blacklist', reason});
+  showFlash(d && d.ok ? 'Blacklisted.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doApproveAppeal(email, submitted_at) {
+  if (!confirm('Approve appeal for ' + email + '?')) return;
+  var d = await api('appeal', {email, submitted_at, action: 'approve'});
+  showFlash(d && d.ok ? 'Appeal approved.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doDismissAppeal(email, submitted_at) {
+  var d = await api('appeal', {email, submitted_at, action: 'dismiss'});
+  showFlash(d && d.ok ? 'Appeal dismissed.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doApproveUnsub(email, submitted_at) {
+  var d = await api('unsub', {email, submitted_at, action: 'approve'});
+  showFlash(d && d.ok ? 'Unsubscribed.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doDenyUnsub(email, submitted_at) {
+  var d = await api('unsub', {email, submitted_at, action: 'deny'});
+  showFlash(d && d.ok ? 'Unsub denied.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+async function doRevokePremium(email) {
+  if (!confirm('Revoke premium from ' + email + '?')) return;
+  var d = await api('revoke', {email: email});
+  showFlash(d && d.ok ? 'Premium revoked.' : ('Error: '+(d&&d.error)));
+  loadRequests();
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function showFlash(msg, isErr) {
+  var el = document.createElement('div');
+  el.className = 'flash' + (isErr ? ' err' : '');
+  el.textContent = msg;
+  document.getElementById('content').prepend(el);
+  setTimeout(function(){ el.remove(); }, 3000);
+}
+
+// ── Newsletter ────────────────────────────────────────────────────────────────
+async function loadNewsletter() {
+  var d = await api('newsletter_list');
+  if (!d) return;
+  document.getElementById('loading').style.display = 'none';
+  var el = document.getElementById('newsletter');
+  var html = '<div style="max-width:700px">';
+  html += '<h2 style="font-size:.95rem;margin-bottom:.8rem;color:rgba(200,200,220,.7)">Send Newsletter</h2>';
+  html += '<div class="panel" style="margin-bottom:1rem">';
+  html += '<div style="margin-bottom:.6rem"><label style="font-size:.82rem;color:rgba(200,200,220,.5)">Subject</label><br>';
+  html += '<input id="nl-subject" style="width:100%;margin-top:.3rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#e0e0f0;border-radius:6px;padding:.5rem .7rem;font-size:.9rem;outline:none" placeholder="Subject line"></div>';
+  html += '<div style="margin-bottom:.6rem"><label style="font-size:.82rem;color:rgba(200,200,220,.5)">Body</label><br>';
+  html += '<textarea id="nl-body" style="width:100%;margin-top:.3rem;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#e0e0f0;border-radius:6px;padding:.5rem .7rem;font-size:.88rem;height:160px;resize:vertical;outline:none;font-family:system-ui" placeholder="Message body..."></textarea></div>';
+  html += '<div class="btn-row"><button class="act" onclick="sendNewsletter()">Send to All ('+d.count+')</button></div>';
+  html += '<div id="nl-status" style="margin-top:.5rem;font-size:.85rem;color:rgba(200,200,220,.5)"></div>';
+  html += '</div>';
+  html += '<h2 style="font-size:.95rem;margin-bottom:.6rem;color:rgba(200,200,220,.7)">Recipients ('+d.count+') <span class="dim" style="font-size:.78rem;font-weight:400">'+d.unsub+' unsubscribed</span></h2>';
+  html += '<table><thead><tr><th>Email</th><th>Source</th><th>Actions</th></tr></thead><tbody>';
+  d.emails.forEach(function(e) {
+    html += '<tr><td>'+esc(e.email)+'</td><td class="dim">'+esc(e.source)+'</td>';
+    html += '<td><button class="act red" style="padding:.2rem .5rem;font-size:.78rem" onclick="removeNlEmail(\''+esc(e.email)+'\')">Remove</button></td></tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div style="margin-top:.8rem;display:flex;gap:.5rem">';
+  html += '<input id="nl-add" style="flex:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:#e0e0f0;border-radius:6px;padding:.4rem .7rem;font-size:.88rem;outline:none" placeholder="Add email address">';
+  html += '<button class="act green" onclick="addNlEmail()">Add</button></div>';
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+async function sendNewsletter() {
+  var subject = document.getElementById('nl-subject').value.trim();
+  var body    = document.getElementById('nl-body').value.trim();
+  var status  = document.getElementById('nl-status');
+  if (!subject || !body) { status.textContent = 'Subject and body required.'; return; }
+  if (!confirm('Send to all subscribers?')) return;
+  status.textContent = 'Sending...';
+  var d = await api('newsletter_send', {subject, body});
+  if (d) status.textContent = d.message || 'Done.';
+}
+
+async function addNlEmail() {
+  var email = (document.getElementById('nl-add')||{}).value.trim();
+  if (!email) return;
+  await api('newsletter_add', {email});
+  loadNewsletter();
+}
+
+async function removeNlEmail(email) {
+  if (!confirm('Remove '+email+' from newsletter?')) return;
+  await api('newsletter_remove', {email});
+  loadNewsletter();
+}
+
+// ── Tools ─────────────────────────────────────────────────────────────────────
+async function loadTools() {
+  document.getElementById('loading').style.display = 'none';
+  var el = document.getElementById('tools');
+  var html = '<div style="max-width:700px">';
+
+  // Token generator
+  html += '<h2 style="font-size:.95rem;margin-bottom:.6rem;color:rgba(200,200,220,.7)">Generate Unlimited Token</h2>';
+  html += '<div class="panel" style="margin-bottom:1rem">';
+  html += '<div class="btn-row"><button class="act" onclick="genToken()">Generate</button></div>';
+  html += '<div id="token-out" style="margin-top:.6rem;font-family:monospace;font-size:.85rem;color:#a3e635;word-break:break-all"></div>';
+  html += '</div>';
+
+  // Rate limit reset
+  html += '<h2 style="font-size:.95rem;margin-bottom:.6rem;color:rgba(200,200,220,.7)">Rate Limits <button class="act grey" style="padding:.2rem .6rem;font-size:.78rem;margin-left:.5rem" onclick="loadTools()">Refresh</button></h2>';
+  html += '<div class="panel" id="rl-panel"><div class="dim">Loading...</div></div>';
+  html += '</div>';
+  el.innerHTML = html;
+  loadRlBuckets();
+}
+
+async function loadRlBuckets() {
+  var panel = document.getElementById('rl-panel');
+  if (!panel) return;
+  var d = await api('rl_list');
+  if (!d) return;
+  if (!d.endpoints.length) { panel.innerHTML = '<div class="dim">No active rate limit buckets.</div>'; return; }
+  var html = '<table><thead><tr><th>Endpoint</th><th>Keys</th><th>Max Hits</th><th></th></tr></thead><tbody>';
+  d.endpoints.forEach(function(ep) {
+    html += '<tr>';
+    html += '<td style="font-size:.85rem">'+esc(ep.endpoint)+'</td>';
+    html += '<td class="dim">'+ep.keys+'</td>';
+    html += '<td class="dim">'+ep.max_hits+'</td>';
+    html += '<td><button class="act grey" style="padding:.2rem .5rem;font-size:.78rem" onclick="resetEndpoint(\''+esc(ep.endpoint)+'\')">Reset</button></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+  html += '<div class="btn-row" style="margin-top:.6rem"><button class="act red" onclick="resetAllRl()">Reset All</button></div>';
+  panel.innerHTML = html;
+}
+
+async function resetEndpoint(endpoint) {
+  await api('rl_reset', {endpoint});
+  showFlash('Reset: '+endpoint);
+  loadRlBuckets();
+}
+
+async function resetAllRl() {
+  if (!confirm('Reset all rate limit buckets?')) return;
+  var d = await api('rl_reset_all');
+  showFlash(d && d.ok ? 'All rate limits cleared.' : 'Error', !d);
+  loadRlBuckets();
+}
+
+async function genToken() {
+  var d = await api('gen_token');
+  if (!d) return;
+  var el = document.getElementById('token-out');
+  if (el) el.textContent = d.url;
+}
+
+
+function load(tab) {
+  document.getElementById('loading').style.display = '';
+  if (tab === 'monitor') loadMonitor();
+  else if (tab === 'suggestions') loadSuggestions();
+  else if (tab === 'requests') loadRequests();
+  else if (tab === 'newsletter') loadNewsletter();
+  else if (tab === 'tools') loadTools();
+}
+
+// Start
+load('monitor');
+
+// R key = reload current tab (only when not focused on an input/textarea)
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'r' && e.key !== 'R') return;
+  var tag = (document.activeElement || {}).tagName || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  load(curTab);
+});
+
+// Live clock tick for dots/times only (no network)
+setInterval(refreshMonitorLive, 5000);
+</script>
+</body>
+</html>

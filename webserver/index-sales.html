@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>mitch.pro — High-Performance Student Portal & Private Gaming Community</title>
+  <meta name="description" content="Welcome to mitch.pro, the ultimate private student community and high-performance gaming hub. Access real-time school bell schedules, E2E encrypted chat, and 25,000+ unblocked games with custom progress syncing.">
+  <meta name="keywords" content="mitch.pro, mitch pro, woodcreek high school, whs bell schedule, student gaming portal, unblocked games, school bell schedule, private student community">
+  <link rel="canonical" href="https://mitch.pro/" />
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://mitch.pro/" />
+  <meta property="og:title" content="mitch.pro — High-Performance Student Portal & Private Gaming Community" />
+  <meta property="og:description" content="Access live Woodcreek High School bell schedules, 25,000+ unblocked games, secure E2E encrypted chat, and cloud-sync gameplay profiles." />
+  <meta property="og:image" content="https://mitch.pro/icon-512.png" />
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content="https://mitch.pro/" />
+  <meta property="twitter:title" content="mitch.pro — High-Performance Student Portal & Private Gaming Community" />
+  <meta property="twitter:description" content="Access live Woodcreek High School bell schedules, 25,000+ unblocked games, secure E2E encrypted chat, and cloud-sync gameplay profiles." />
+  <meta property="twitter:image" content="https://mitch.pro/icon-512.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Syne:wght@800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #060608;
+      --fg: #e2e2e4;
+      --fg-dim: rgba(200, 200, 220, 0.60);
+      --ac: #22d3ee;
+      --ac-gr: linear-gradient(135deg, #22d3ee, #60a5fa, #facc15);
+      --panel: rgba(255, 255, 255, 0.03);
+      --line: rgba(255, 255, 255, 0.08);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.5;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    body::before {
+      content: ''; position: fixed; inset: 0;
+      background: 
+        radial-gradient(circle at 15% 15%, rgba(34, 211, 238, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(167, 139, 250, 0.08) 0%, transparent 45%),
+        linear-gradient(rgba(255, 255, 255, 0.01) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
+      background-size: auto, auto, 64px 64px, 64px 64px;
+      z-index: -1;
+    }
+    .wrapper { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    nav { display: flex; justify-content: space-between; align-items: center; padding: 24px 0 60px; }
+    .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; color: #fff; }
+    .logo img { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); }
+    .logo span { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.2rem; }
+    .btn-ghost { padding: 8px 20px; border-radius: 10px; border: 1px solid var(--line); color: var(--fg); text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; }
+    .btn-ghost:hover { border-color: var(--ac); background: rgba(34, 211, 238, 0.05); }
+
+    header { text-align: center; padding: 40px 0 100px; }
+    .badge { display: inline-block; padding: 6px 14px; border-radius: 99px; background: rgba(34, 211, 238, 0.08); border: 1px solid rgba(34, 211, 238, 0.2); color: var(--ac); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 24px; }
+    h1 { font-family: 'Syne', sans-serif; font-size: clamp(2.5rem, 8vw, 4.5rem); line-height: 1; letter-spacing: -0.03em; text-transform: uppercase; margin-bottom: 20px; background: var(--ac-gr); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .hero-p { font-size: clamp(1.1rem, 3vw, 1.4rem); color: var(--fg-dim); max-width: 700px; margin: 0 auto 40px; }
+    .btn-primary { display: inline-flex; padding: 16px 40px; border-radius: 14px; background: #fff; color: #000; text-decoration: none; font-weight: 800; font-size: 1.1rem; transition: transform 0.15s; }
+    .btn-primary:hover { transform: scale(1.04); box-shadow: 0 0 30px rgba(255,255,255,0.2); }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 100px; }
+    .feature { padding: 32px; border-radius: 20px; background: var(--panel); border: 1px solid var(--line); transition: border-color 0.3s, background 0.3s; }
+    .feature:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); }
+    .f-icon { font-size: 2rem; margin-bottom: 20px; display: block; }
+    h3 { font-family: 'Syne', sans-serif; font-size: 1.4rem; margin-bottom: 12px; color: #fff; }
+    .feature p { color: var(--fg-dim); font-size: 0.95rem; line-height: 1.6; }
+
+    footer { padding: 60px 0; border-top: 1px solid var(--line); text-align: center; color: var(--fg-dim); font-size: 0.85rem; }
+    footer a { color: var(--fg-dim); margin: 0 10px; text-decoration: none; }
+    footer a:hover { color: #fff; }
+
+    @media (max-width: 600px) {
+      nav { padding-bottom: 40px; }
+      header { padding-bottom: 60px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <nav>
+      <a href="/" class="logo">
+        <img src="/icon-192.png" alt="mitch.pro">
+        <span>mitch.pro</span>
+      </a>
+      <a href="/enroll/" class="btn-ghost">Log In</a>
+    </nav>
+
+    <header>
+      <div class="badge">A Private Social Experience</div>
+      <h1>Beyond Just Gaming</h1>
+      <p class="hero-p">A high-performance hub for private student communities. Access private tools, encrypted communication, and community-driven resources.</p>
+      <a href="/enroll/" class="btn-primary">Join the Community</a>
+    </header>
+
+    <div class="grid">
+      <div class="feature">
+        <span class="f-icon">💬</span>
+        <h3>Secure Social</h3>
+        <p>End-to-end encrypted chat rooms and private messaging. Your conversations are never logged, staying 100% private.</p>
+      </div>
+      <div class="feature">
+        <span class="f-icon">☁️</span>
+        <h3>MitchSync</h3>
+        <p>Never lose your progress. Our proprietary cloud-sync engine keeps your high scores, ELO, and settings safe across any device.</p>
+      </div>
+      <div class="feature">
+        <span class="f-icon">🎮</span>
+        <h3>25,000+ Games</h3>
+        <p>Master 50,000+ chess puzzles and explore a massive library of high-performance games with zero lag.</p>
+      </div>
+      <div class="feature">
+        <span class="f-icon">📅</span>
+        <h3>Student Hub</h3>
+        <p>Access live school schedules, academic tools, and community resources designed specifically for our local student body.</p>
+      </div>
+    </div>
+
+    <footer>
+      &copy; 2026 mitch.pro &middot; <a href="/faq.html">FAQ</a> &middot; <a href="/privacy/">Privacy</a>
+    </footer>
+  </div>
+</body>
+</html>

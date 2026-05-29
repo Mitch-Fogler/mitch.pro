@@ -1,0 +1,2041 @@
+---
+- name: 0verkill
+  info: is bloody 2D action deathmatch-like game.
+  url: https://github.com/hackndev/0verkill
+  screencast: https://asciinema.org/a/486195
+
+- name: "2048"
+  url: https://github.com/mevdschee/2048.c
+  info: is a clone of 2048 game.
+  # shot: https://raw.githubusercontent.com/mevdschee/2048.c/main/screenshot.png
+  screencast: https://asciinema.org/a/486174
+  wikipedia: https://en.wikipedia.org/wiki/2048_(video_game)
+
+- name: 2048-cli
+  url: https://github.com/Tiehuis/2048-cli
+  info: is a clone of 2048 game.
+  screencast: https://asciinema.org/a/34067
+  wikipedia: https://en.wikipedia.org/wiki/2048_(video_game)
+
+- name: 2048-SSH
+  url: https://git.causal.agency/play
+  info: is a clone of 2048 game.
+  play: ssh play@ascii.town
+  wikipedia: https://en.wikipedia.org/wiki/2048_(video_game)
+
+- name: n2048
+  url: http://freshmeat.sourceforge.net/projects/n2048
+  info: |
+    is a clone on the highly addictive sliding puzzle 2048.
+    Slide the tiles together to combine them, until you reach
+    the highest one.
+  screencast: https://asciinema.org/a/35973
+  wikipedia: https://en.wikipedia.org/wiki/2048_(video_game)
+
+- name: ASCII patrol
+  url: http://ascii-patrol.com/
+  info: is a clone of "Moon Patrol" game.
+  play: http://ascii-patrol.com/area51/ascii-patrol-html5.html
+  screencast: http://ascii-patrol.com/ascii-patrol.gif
+  # screenshots http://ascii-patrol.com/gallery.html
+
+- name: aburatan
+  url: http://aburatan.sourceforge.net/
+  info: is a roguelike game of Cowboy Knights and Lurking Horror.
+
+- name: ad astra
+  url: https://code.google.com/archive/p/ad-astra-game/
+  info: is a turn-based space strategy game.
+
+- name: adom
+  url: https://www.adom.de/
+  info: is a roguelike game ADOM (Ancient Domains of Mystery).
+  wikipedia: https://en.wikipedia.org/wiki/Ancient_Domains_of_Mystery
+  screencast: https://upload.wikimedia.org/wikipedia/ru/6/69/Adom_big.gif
+
+# ftp://ftp.simtreas.ru/pub/download/add/adventur.tgz
+- name: adventure
+  url: https://man.openbsd.org/adventure.6
+  info: is an exploration game. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Colossal_Cave_Adventure
+  play: https://grack.com/demos/adventure/
+
+- name: aliens
+  url: https://github.com/troglobit/aliens
+  info: The original UNIX aliens game (Space Invaders clone) by Jude Miller, Cambridge (1979) with curses support by Mark Horton (1981).
+
+- name: alienrl
+  url: https://alien.chaosforge.org/
+  info: is a tactical roguelike game, inspired by the "Aliens" movie.
+
+- name: alienwave
+  url: https://www.alessandropira.org/alienwave/aw.html
+  info: is a clone of Space Invaders game.
+  wikipedia: https://en.wikipedia.org/wiki/Space_Invaders
+  screencast: https://asciinema.org/a/486887
+
+- name: allureofthestars
+  url: http://www.allureofthestars.com/
+  info: is a roguelike and tactical squad combat game.
+  play: http://www.allureofthestars.com/play
+
+- name: angband
+  url: https://rephial.org/
+  info: is a single-player dungeon exploration game.
+  wikipedia: https://en.wikipedia.org/wiki/Angband_(video_game)
+  # shot: https://upload.wikimedia.org/wikipedia/commons/5/54/Angband.png
+
+- name: anonymine
+  url: https://oskog97.com/projects/anonymine/
+  info: |
+    is a clone of Minesweeper game solvable without guessing,
+    and the only with von Neumann neighbourhoods.
+  play: ssh play@anonymine-demo.oskog97.com -p 2222; Password is "play"
+  screencast: https://asciinema.org/a/511454
+
+- name: aop
+  url: https://raffi.at/view/code/aop
+  info: Ambassador of Pain (aop). A very nice and challenging arcade game.
+  screencast: https://asciinema.org/a/34678
+
+- name: Apple Trek
+  url: http://peyre.x10.mx/GWBASIC/index.htm#AppleTrek
+  wikipedia: https://en.wikipedia.org/wiki/Apple_Trek
+  info: is a clone of Star Trek game.
+
+- name: arkanoid-bash
+  url: https://github.com/bolknote/shellgames/blob/master/arcanoid.sh
+  info: is a clone of arcade game Arkanoid.
+  screencast: https://asciinema.org/a/36415
+  wikipedia: https://en.wikipedia.org/wiki/Arkanoid
+
+- name: arkanoid.py
+  url: https://blog.yjl.im/2015/12/arkanoid-example-from-pygamii-ascii.html
+  info: |
+    Arkanoid is an arcade game developed by Taito in 1986.
+    Written in Python.
+  wikipedia: https://en.wikipedia.org/wiki/Arkanoid
+
+- name: arkanoid-sed
+  url: http://sed.sourceforge.net/local/games/arkanoid.sed.html
+  info: |
+    Arkanoid is an arcade game developed by Taito in 1986.
+    Written in Sed.
+  wikipedia: https://en.wikipedia.org/wiki/Arkanoid
+
+- name: arithmetic
+  url: https://man.openbsd.org/arithmetic.6
+  info: Quiz on simple arithmetic. It's a BSD game.
+  screencast: https://asciinema.org/a/486298
+
+- name: asciijump
+  url: http://freshmeat.sourceforge.net/projects/asciijump
+  info: The ski-jumping ASCII game.
+  screencast: https://asciinema.org/a/31340
+
+- name: ASCIIpOrtal
+  url: https://github.com/cymonsgames/ASCIIpOrtal
+  info: |
+    ASCIIpOrtal is a text based puzzle game inspired by
+    the popular video game.
+
+- name: ASCII-Chess
+  url: https://github.com/Parigyan/ASCII-Chess
+  info: |
+    Chess program with AI having a vintage linux terminal
+    interface.
+
+- name: asciisector
+  url: http://www.asciisector.net/
+  info: Free space combat/exploration/trading game.
+
+- name: astwar
+  url: https://savannah.nongnu.org/projects/astwar
+  info: |
+    Astwar is a ncurses based game that features two little ships
+    on each side of the screen shooting each other.
+
+- name: atc
+  url: https://man.openbsd.org/atc.6
+  info: Air traffic controller game. It's a BSD game.
+  screencast: https://asciinema.org/a/486304
+
+- name: avanor
+  url: http://avanor.sourceforge.net/
+  info: Rogue-like game with easy ADOM-like user interface.
+
+- name: awkaster
+  url: https://github.com/TheMozg/awk-raycaster
+  info: |
+    Pseudo-3D shooter written completely in gawk using raycasting
+    technique
+
+- name: backgammon
+  url: https://man.openbsd.org/backgammon.6
+  info: |
+    A backgammon game; you can play against the computer.
+    It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Backgammon
+
+- name: Bash Dungeon
+  url: https://github.com/wolandark/bash-dungeon
+  info: A dungeon crawler game in bash where the dungeons are directories.
+
+- name: bashmaze
+  url: https://github.com/phoemur/bashmaze
+  info: A maze game written completely in shell-script.
+  screencast: https://asciinema.org/a/486297
+
+- name: basic-highnoon
+  url: https://github.com/mad4j/basic-highnoon
+  info: Early mainframe game originally written in 1970 by Christopher Gaylo.
+
+- name: bastet
+  url: http://fph.altervista.org/prog/bastet.html
+  info: Bastet (short for Bastard Tetris).
+  screencast: https://asciinema.org/a/486931
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: batnum
+  url: https://github.com/kosaku-damashii/BASIC_Computer_Games-Batnum
+  info: Written in BASIC in 1970, Batnum is a "battle of numbers" against the computer.
+
+- name: battleships
+  url: http://www.catb.org/~esr/bs/
+  info: |
+    Uses character-cell graphics with a visual point-and-shoot
+    interface.
+  wikipedia: https://en.wikipedia.org/wiki/Battleship_(game)
+  screencast: https://asciinema.org/a/486229
+
+- name: battlestar
+  url: https://man.openbsd.org/battlestar.6
+  info: A tropical adventure game. It's a BSD game.
+
+- name: bcd
+  url: https://man.openbsd.org/bcd.6
+  wikipedia: https://en.wikipedia.org/wiki/Punched_card
+  info: Punched card. It's a BSD game.
+  screencast: https://asciinema.org/a/486305
+
+- name: beasts
+  url: https://peteg.org/beasts/beasts.html
+  info: |
+    The game Beasts is a Linux version of the old DOS game
+    called Beast.
+  wikipedia: https://en.wikipedia.org/wiki/Beast_(video_game)
+
+- name: Behacked
+  url: https://github.com/Pentachoron-Labs/Behacked
+  info: |
+    Matching game with the goal of getting a group of four
+    connected gems, written with ncurses.
+  wikipedia: https://en.wikipedia.org/wiki/Bejeweled
+
+- name: beyond the tesseract
+  url: https://www.wurb.com/if.php/game/211
+  info: |
+    A highly conceptual game in which you interact with abstract
+    concepts and mathematical entities as if they were tangible.
+  play: telnet or ssh on sdf.org
+
+- name: blocks
+  info: A block-based puzzle game.
+
+- name: bluemoon
+  url: http://www.catb.org/~esr/bluemoon/
+  info: The Blue Moon card solitaire.
+  screencast: https://asciinema.org/a/486306
+
+- name: bj
+  info: a black-jack card game.
+  play: telnet or ssh on sdf.org
+  # play: telnet mud.darkerrealms.org 2000
+
+- name: BootMine
+  url: https://github.com/io12/BootMine
+  info: Bootable minesweeper game in a 512-byte boot sector.
+  wikipedia: https://en.wikipedia.org/wiki/Minesweeper_(video_game)
+  screencast: https://raw.githubusercontent.com/io12/BootMine/master/demo.gif
+
+- name: BootRogue
+  url: https://github.com/nanochess/bootRogue
+  info: is a roguelike game that fits in a boot sector (510 bytes).
+  screencast: https://asciinema.org/a/487008
+
+- name: boggle
+  url: https://man.openbsd.org/boggle.6
+  info: Word search game. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Boggle
+  play: telnet mud.darkerrealms.org 2000
+
+- name: bombardier
+  url: https://packages.debian.org/en/sid/i386/games/bombardier
+  info: Clone of the old Blitz16 game on Commodore 16/Plus 4.
+  screencast: https://asciinema.org/a/486231
+
+# See comments above Cavez of Phear
+- name: boulder dash
+  info: |
+    A Boulder Dash game clone for your favorite terminal. You are
+    trapped in the CAVEZ of PHEAR, your mission is to escape
+    through all the caves and make it out alive. To escape
+    through a cave you will have to find all the diamonds located
+    in it. Once you've found all the diamonds, their powers
+    combined will help you get to the next cave, one step
+    closer to freedom.
+  wikipedia: https://en.wikipedia.org/wiki/Boulder_Dash
+
+- name: bowling
+  url: https://github.com/haliphax/pybowl
+  info: Python bowling game using the Blessed terminal library.
+  screencast: https://asciinema.org/a/41475
+
+- name: braincurses
+  url: https://sourceforge.net/projects/braincurses/
+  info: A nice version of the mastermind game.
+  screencast: https://asciinema.org/a/486307
+
+- name: Bricks
+  url: https://github.com/nanochess/bricks
+  info: A game of bricks and paddle on one boot sector (510 bytes).
+  screencast: https://asciinema.org/a/487020
+
+- name: Bricks
+  url: https://github.com/jaens/bricks-cport
+  info: Port of the Bricks boot sector game to (16-bit) C.
+
+- name: brogue
+  url: https://sites.google.com/site/broguegame/
+  info: Brogue is a Roguelike game.
+
+- name: bs
+  url: https://man.openbsd.org/bs.6
+  info: Battleships game. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Battleship_%28game%29
+
+- name: caesar
+  info: decrypt caesar cyphers
+  url: https://man.openbsd.org/caesar.6
+  wikipedia: https://en.wikipedia.org/wiki/Caesar_cipher
+
+- name: canfield
+  url: https://man.openbsd.org/canfield.6
+  info: "The solitaire card game canfield. It's a BSD game."
+  wikipedia: https://en.wikipedia.org/wiki/Canfield_%28solitaire%29
+
+- name: Caribbean Stud
+  info: a multi-player card game, written by Hero
+  play: telnet mud.darkerrealms.org 2000
+
+- name: cataclysm
+  url: https://web.archive.org/web/20190209031801/http://en.cataclysmdda.com/
+  info: is a roguelike set in a post-apocalyptic world.
+  wikipedia: https://en.wikipedia.org/wiki/Cataclysm:_Dark_Days_Ahead
+
+# Boulder Dash / Cavez of Phear
+# URL:
+# 3 Candidates:
+#
+# Title doesn't match: https://github.com/martez81/ascii-dash
+#
+# Requires graphics: http://www.bd-fans.com/FreewareUnix.html
+#
+# Cavez of Phear
+#   Just a downloads list: https://pkgs.org/download/cavezofphear
+#   Site broken: http://www.x86.no/cavezofphear/
+#   https://web.archive.org/web/20160523182502/http://www.x86.no/cavezofphear/
+- name: cavez of phear
+  url: http://web.archive.org/web/20140627005101/http://www.x86.no/cavezofphear/
+  info: is a boulder dash / digger like game.
+
+- name: cbattleship
+  url: https://github.com/gnomengineer/cBattleship
+  info: is a clone of the classic Battleship game.
+
+- name: cblocks
+  url: https://www.muppetlabs.com/~breadbox/software/cgames.html
+  info: is a set of sliding-block puzzles.
+
+- name: checkers
+  info: is a two-player board game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: chess
+  url: https://github.com/bolknote/SedChess
+  info: is a chess game implemented in sed utility.
+
+- name: conix
+  url: https://bitbucket.org/garnold/conix/
+  info: is a clone of Xonix game.
+  wikipedia: https://en.wikipedia.org/wiki/Xonix
+
+- name: gnuchess
+  url: https://www.gnu.org/software/chess/
+  info: is a chess-playing program.
+  play: telnet freechess.org 5000 (login guest)
+
+- name: chs
+  url: https://github.com/nickzuber/chs
+  info: is a chess game against the Stockfish engine.
+
+- name: chimaera
+  url: https://www.mipmip.org/C_games/
+  info: is a highly unusual "infinite" adventure game.
+
+- name: chroma
+  url: http://www.level7.org.uk/chroma/
+  info: is a challenging puzzle game.
+  play: http://www.level7.org.uk/chroma/chroma.html
+  screencast: https://asciinema.org/a/486998
+
+- name: ckhet
+  url: https://mbays.freeshell.org/ckhet/
+  info: is a clone of Khet laser board game.
+  play: "ssh ckhet@sshgames.thegonz.net; password: ckhet"
+  # shot: https://mbays.freeshell.org/ckhet/ckhet.png
+
+- name: clines
+  url: http://web.archive.org/web/20190327173340/http://manticore.2y.net/prj/clines-a.html
+  info: is a clone of Color Lines game.
+  wikipedia: https://ru.wikipedia.org/wiki/Color_Lines
+  screencast: https://asciinema.org/a/486945
+
+- name: clines
+  url: https://github.com/veselov/clines
+  info: is a clone of Color Lines game.
+  screencast: https://asciinema.org/a/486233
+  wikipedia: https://ru.wikipedia.org/wiki/Color_Lines
+
+- name: cmines
+  url: https://www.muppetlabs.com/~breadbox/software/cgames.html
+  info: is a clone of Minesweeper game.
+  wikipedia: https://en.wikipedia.org/wiki/Minesweeper_(video_game)
+  screencast: https://asciinema.org/a/486954
+
+- name: cnibbles
+  url: http://cnibbles.sourceforge.net
+  info: is a clone of Nibbles game with good and smooth animations.
+  wikipedia: https://en.wikipedia.org/wiki/Nibbles_(video_game)
+  screencast: https://asciinema.org/a/486713
+
+- name: Connect Four
+  info: is a two-player slot game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: connect4
+  url: https://github.com/badescunicu/connect4
+  info: is a clone of Connect4 game.
+  wikipedia: https://en.wikipedia.org/wiki/Connect_Four
+  screencast: https://asciinema.org/a/486711
+
+- name: beejjorgensen-conquest
+  url: https://github.com/beejjorgensen/conquest
+  info: is a clone of the old Amiga Conquest text-based game.
+
+- name: jtrulson-conquest
+  url: https://github.com/jtrulson/conquest/
+  info: is a real-time, multi-player space warfare game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: gnu-conquest
+  url: https://sourceforge.net/projects/gnu-conquest/
+  info: is a multiplayer galactic game.
+
+- name: corewar
+  url: http://www.corewar.info/
+  info: |
+    is a programming game in which two or more battle programs
+    (called “warriors”) compete for control of a virtual computer.
+
+- name: cpat
+  url: http://cpat.sourceforge.net/
+  info: is a card game; it is a collection of many solitaire/patience games.
+  screencast: https://asciinema.org/a/487001
+
+- name: crawl
+  url: https://crawl.develz.org/wordpress/
+  info: |
+    is a single-player, role-playing roguelike game of exploration
+    and treasure-hunting in dungeons filled with dangerous and
+    unfriendly monsters in a quest to rescue the mystifyingly
+    fabulous Orb of Zot.
+  screencast: https://asciinema.org/a/524
+
+- name: cribbage
+  url: https://man.openbsd.org/cribbage.6
+  info: is a card game cribbage. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Cribbage
+
+- name: cryptrover
+  url: https://code.google.com/archive/p/cryptrover/
+  info: Escape From The Crypt.
+
+- name: csol
+  url: https://github.com/nielssp/csol
+  info: |
+     is a small collection of solitaire/patience games
+     (Klondike, FreeCell, Spider, Yukon, etc.).
+  wikipedia: https://en.wikipedia.org/wiki/Solitaire
+  screencast: https://asciinema.org/a/486707
+
+- name: ctris
+  url: https://github.com/dominikhackl/ctris
+  info: is a clone of Tetris game.
+  # https://vadim.oversigma.com/Tetris.htm
+  screencast: https://asciinema.org/a/486703
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: cursedmate
+  url: https://web.archive.org/web/20130804035452/http://www.uberwall.org/~dash/
+  info: is a game with a hacking atmosphere.
+
+- name: curse-of-war
+  url: https://a-nikolaev.github.io/curseofwar/
+  info: is a fast-paced action strategy game.
+  screencast: https://asciinema.org/a/486446
+
+
+- name: ascii-dash
+  url: https://sourceforge.net/projects/ascii-dash/
+  info: is a famous Boulder Dash game for the Atari 800 from 1984.
+  screencast: https://asciinema.org/a/486442
+  wikipedia: https://en.wikipedia.org/wiki/Boulder_Dash
+
+- name: dab
+  url: https://man.netbsd.org/dab.6
+  info: is a Dots and Boxes game.
+
+- name: dango
+  url: https://github.com/gsobell/dango
+  info: is a tui Go (baduk) board written in python
+
+- name: decwars
+  info: is a multiplayer clone of Star Trek game.
+  play: telnet decwars.com 1701
+  wikipedia: https://en.wikipedia.org/wiki/Star_Trek_%28text_game%29
+
+- name: diablorl
+  url: https://diablo.chaosforge.org/
+  info: is a roguelike "unmake" of the popular Blizzard game Diablo.
+
+- name: dMagnetic
+  url: https://www.dettus.net/dMagnetic
+  info: |
+    is a number of games (The Pawn, The Guild of Thieves,
+    Jinxter, Fish!, Myth, Corruption and Wonderland).
+  screencast: https://asciinema.org/a/281636
+
+- name: doomrl
+  url: https://drl.chaosforge.org/
+  info: |
+    is a fast and furious coffee-break Roguelike game,
+    that is heavily inspired by the popular FPS game Doom
+    by ID Software.
+  wikipedia: https://en.wikipedia.org/wiki/DRL_(video_game)
+
+- name: dopewars
+  url: https://dopewars.sourceforge.io/
+  info: is a clone of Drug Wars game about trading drugs.
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Drug_Wars_(video_game)
+
+- name: dsol
+  url: https://feld.me/pub/vga_cardgames-1.3.1.tgz
+  info: is a solitaire card game.
+
+- name: duel commander
+  url: https://sourceforge.net/projects/duelcommander/
+  info: is a turn based command line fighting game.
+
+- name: dukedomrb
+  url: https://github.com/infews/dukedomrb
+  info: Yet another port of the classic mainframe game from 1976
+  wikipedia: https://en.wikipedia.org/wiki/Dukedom_(video_game)
+
+- name: dungeon crawl
+  url: http://www.dungeoncrawl.org/
+  info: is a text-based roguelike game.
+
+- name: dwarf fortress
+  url: https://www.bay12games.com/dwarves/
+  info: is a single-player fantasy game.
+
+- name: emacs
+  url: https://www.emacswiki.org/emacs/CategoryGames
+  info: |
+    it is not a game, but text editor with a bunch of text games
+    like chess, sokoban, pong etc.
+
+- name: encircled
+  url: http://www.roguebasin.com/index.php?title=Encircled
+  info: is a roguelike game.
+
+- name: enigma
+  url: https://www.chiark.greenend.org.uk/~sgtatham/enigma/
+  info: is a puzzle game where items have to be collected in the right order.
+
+- name: eyangband
+  url: http://eyangband.sourceforge.net/
+  info: is a clone of Angband.
+  wikipedia: https://en.wikipedia.org/wiki/Angband_(video_game)
+
+- name: elite
+  url: https://www.bbcelite.com/
+  wikipedia: https://en.wikipedia.org/wiki/Elite_(video_game)
+
+- name: factor
+  url: https://man.openbsd.org/factor.6
+  info: is a factor a number, generate primes.
+  wikipedia: https://en.wikipedia.org/wiki/Factorization
+
+- name: fbird
+  url: https://github.com/nanochess/fbird
+  info: is a text bootsector game.
+  screencast: https://asciinema.org/a/487025
+
+- name: fearOfView
+  url: http://mbays.sdf.org/fov/
+  info: is a constrained roguelike (broughlike) about manipulating vision.
+  play: "ssh fov@sshgames.thegonz.net; password: fov"
+
+- name: Fifteen Puzzle
+  url: http://tldp.org/LDP/abs/html/contributed-scripts.html#FIFTEEN
+  info: |
+    is a sliding puzzle that consists of a frame of numbered
+    square tiles in random order with one tile missing.
+
+- name: fish
+  url: https://man.openbsd.org/fish.6
+  info: is a traditional children's card game. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Go_Fish
+
+- name: fiTD
+  url: https://github.com/odditica/fiTD
+  info: A basic console-based tower defense game/engine.
+
+- name: FloodIt
+  url: https://github.com/smmspiers/FloodIt
+  info: Simple game in terminal to flood a grid of colours to one colour.
+  wikipedia: https://en.wikipedia.org/wiki/7_Colors
+- name: flying-robots
+  url: https://github.com/bunburya/flying-robots
+  info: is based on the BSD robots game, but with a third dimension of movement.
+  screencast: https://asciinema.org/a/486448
+
+- name: fortune
+  wikipedia: https://en.wikipedia.org/wiki/Fortune_%28Unix%29
+  info: print a random, hopefully interesting, adage.
+  url: https://man.openbsd.org/fortune.6
+
+- name: freecell
+  url: https://www.linusakesson.net/software/freecell.php
+  info: is a clone of the popular and addictive solitaire game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: freecell-ng
+  url: https://github.com/ostrosablin/freecell
+  info: |
+    Fork with improvements over ncurses freecell implementation
+    by Linus Akesson (solver support, better metamoves, various
+    usability improvements).
+
+- name: freesweep
+  url: https://code.google.com/archive/p/freesweep/
+  info: is a clone of Minesweeper game.
+  wikipedia: https://en.wikipedia.org/wiki/Minesweeper_(video_game)
+  screencast: https://asciinema.org/a/486999
+
+- name: freesweep-rwestlund
+  url: https://github.com/rwestlund/freesweep
+  info: is a clone of Minesweeper game.
+  wikipedia: https://en.wikipedia.org/wiki/Minesweeper_(video_game)
+
+- name: fkmines
+  url: https://sourceforge.net/projects/fkmines/
+  info: is a clone of Minesweeper game.
+  wikipedia: https://en.wikipedia.org/wiki/Minesweeper_(video_game)
+  screencast: https://asciinema.org/a/486970
+
+- name: frozen depths
+  url: https://frozendepths.net/
+  info: is a roguelike game with an entertaining atmosphere.
+
+- name: frotz
+  url: https://davidgriffith.gitlab.io/frotz/
+  info: is an interpreter for Infocom games and other Z-machine games.
+  screencast: https://asciinema.org/a/372170
+
+- name: ft_retro
+  url: https://gitlab.com/Heagan/ft_retro
+  info: is a shooting game.
+  screencast: https://asciinema.org/a/487578
+  # shot: https://gitlab.com/Heagan/ft_retro/-/raw/master/p_retro.png
+
+- name: galaxis
+  url: http://www.catb.org/esr/galaxis/
+  info: Find the lost lifeboats from an interstellar liner.
+
+- name: gameroom
+  info: 11 arcade games
+  play: ssh gameroom@bitreich.org
+
+- name: gearhead
+  url: http://www.gearheadrpg.com/
+  info: is the first roguelike to explore the world of “mechas” (giant robots).
+
+- name: ascii-snake
+  info: is a clone of a Snake game.
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+  url: https://github.com/cyphar/ascii-snake
+  screencast: https://asciinema.org/a/487004
+
+- name: gnugo
+  url: https://www.gnu.org/software/gnugo/
+  info: is the game of Go.
+  screencast: https://asciinema.org/a/486319
+  wikipedia: https://en.wikipedia.org/wiki/Go_(game)
+
+- name: gnuski
+  url: https://sourceforge.net/projects/gnuski/
+  info: is a clone of Skifree, the old Windows game.
+  screencast: https://asciinema.org/a/485510
+
+- name: goblinhack
+  url: https://github.com/goblinhack/goblinhack
+  info: is a roguelike OpenGL-based smooth-scrolling ASCII graphics game.
+
+- name: gomoku
+  url: https://man.openbsd.org/gomoku.6
+  info: |
+    is a game where the object is to get 5 in a row horizontally,
+    vertically or diagonally on a 19 by 19 grid. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Gomoku
+  screencast: https://asciinema.org/a/486510
+
+- name: gopnik2
+  url: https://github.com/bolknote/gopnik2
+  info: |
+    «Гопник-2» - это продолжение культовой текстовой игры «Гопник»,
+    жанр которой наиболее близок к жанру Hack and Slash RPG.
+    Во второй части полностью сохранена изначальная концепция,
+    улучшен алгоритм генерирования противников в соответствии
+    с текущим состоянием главного героя, выровнен баланс прохождения
+    и прокачки, добавлено три уровня сложности.
+  screencast: https://asciinema.org/a/631712
+
+- name: gorched
+  url: https://github.com/zladovan/gorched
+  info: is a a clone of "Scorched Earth" game.
+
+- name: gpcslots2
+  url: https://sourceforge.net/projects/gpcslots2/
+  info: |
+    is a casino game with 5 slot machines, 3 roulette tables
+    including russian roulette, 2 dice games, a bank and
+    stock market.
+
+- name: grdc
+  url: https://man.openbsd.org/grdc.6
+  info: is a grand digital clock.
+
+- name: greed
+  url: http://www.catb.org/~esr/greed/
+  info: |
+    is a puzzle game with numbers. You must remove as many numbers
+    as you can according to the rules.
+  play: telnet or ssh on sdf.org
+  screencast: https://asciinema.org/a/486320
+
+- name: hack
+  url: https://man.openbsd.org/hack.6
+  info: is an Exploring The Dungeons of Doom. It's a BSD game.
+  play: telnet or ssh on sdf.org
+
+- name: hack of life
+  url: http://www.roguebasin.com/index.php?title=HackOfLife
+  info: is a roguelike game based on Conway’s Game of Life.
+
+- name: halls of mist
+  url: https://web.archive.org/web/20170530185753/http://www.mikkolehtinen.net/mist/
+  info: is a roguelike game, clone of Angband game.
+  wikipedia: https://en.wikipedia.org/wiki/Angband_(video_game)
+
+- name: hamurabi
+  url: https://github.com/blt/hamurabi
+  info: |
+    is a 1969 text-based game of land and resource management and
+    is one of the earliest computer games.
+  wikipedia: https://en.wikipedia.org/wiki/Hamurabi
+
+- name: hammurabi
+  url: https://github.com/wzhishen/hammurabi
+  info: |
+    is a very old computer game, in which you are the ruler of
+    ancient Samaria, trying to increase the wealth of your country.
+    Here is the 21st century version of it, which is implemented
+    in Python!
+  wikipedia: https://en.wikipedia.org/wiki/Hamurabi
+
+- name: hangman
+  url: https://man.openbsd.org/hangman.6
+  info: is a computer version of the game hangman. It's a BSD game.
+  screencast: https://asciinema.org/a/35801
+  wikipedia: https://en.wikipedia.org/wiki/Hangman_(game)
+
+- name: hellband
+  url: http://freshmeat.sourceforge.net/projects/hellband
+  info: |
+    is a rogue-like game in which you descend through the nine
+    circles of Hell and find an even more dangerous Hell beyond
+    the city of Dis.
+
+- name: hinversi
+  url: https://sourceforge.net/projects/hinversi/
+  info: is a implementation of Reversi (a.k.a. Othello), a board game.
+  screencast: https://asciinema.org/a/486222
+
+- name: Horserace
+  url: https://pastebin.com/3KvCBg57
+  info: is a very simple horserace simulation.
+
+- name: hrd
+  info: the puzzle game of HuaRongDao
+
+- name: hunt
+  url: https://man.openbsd.org/hunt.6
+  info: |
+    The object of the game hunt is to kill off the other players.
+    There are no rooms, no treasures, and no monsters. Instead,
+    you wander around a maze, find grenades, trip mines, and
+    shoot down walls and players. It's a BSD game.
+  play: telnet or ssh on sdf.org
+
+- name: hunt-ng
+  url: http://mbays.sdf.org/hunt-ng/
+  info: is a fork of BSD hunt with colour and realtime processing.
+  play: "ssh hunt@sshgames.thegonz.net; password: kalte"
+
+- name: hydra slayer
+  url: http://www.roguetemple.com/z/hydra/
+  info: is a roguelike game.
+
+- name: imperium
+  url: https://empiredirectory.net/
+  info: |
+    is a game of intergalactic exploration, warfare, and
+    economics. Imperium has no set goal, and fairly flexible
+    rules about what you can do, thus, while a single player
+    could run their own game just for the fun of exploration,
+    they would be missing out on most of the aspects of the game
+    with no one to compete against.
+
+- name: Infinite Cave Adventure
+  url: http://www.dungeon.name
+  info: is a roguelike game.
+  play: telnet dungeon.name 20028
+
+- name: intricacy
+  url: http://mbays.sdf.org/intricacy/
+  info: |
+    is game of competitive puzzle-design. At its core, this is
+    an abstract turn-based puzzle game in which you pick a lock
+    by co-ordinating a pair of tools to manipulate its mechanism.
+    The locks you pick are designed by other players; once you
+    have figured out the secret of how to pick a lock, you must
+    secure that secret behind a lock of your own devising.
+  play: "ssh intricacy@sshgames.thegonz.net; password: intricacy"
+
+- name: Invaders
+  url: https://github.com/nanochess/invaders
+  info: is a clone of Space Invaders game in 512 bytes (boot sector).
+  screencast: https://www.youtube.com/watch?v=pC976eejfms
+  wikipedia: https://en.wikipedia.org/wiki/Space_Invaders
+  # shot: https://raw.githubusercontent.com/nanochess/Invaders/master/invaders.png
+
+- name: just-asteroids
+  url: https://github.com/gabrielvictorcf/just-asteroids
+  info: is a clone of Asteroids game.
+  wikipedia: https://en.wikipedia.org/wiki/Asteroids_(video_game)
+
+- name: ascii-invaders
+  url: https://github.com/macdice/ascii-invaders
+  info: is a clone of Space Invaders game.
+  screencast: https://asciinema.org/a/34018
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Space_Invaders
+
+- name: ninvaders
+  url: http://ninvaders.sourceforge.net/
+  info: is a clone of Space Invaders game.
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Space_Invaders
+
+- name: lagrogue
+  url: http://mbays.sdf.org/lagrogue/
+  info: |
+    is a roguelike game in which your commands are enacted after
+    a few turns' delay.
+  play: "ssh lagrogue@sshgames.thegonz.net; password: lag"
+
+- name: larn
+  url: https://man.netbsd.org/larn.6
+  info: Exploring the caverns of Larn. It's a BSD game.
+
+- name: Legend of the Red Dragon
+  url: http://lord.lordlegacy.com/
+  info: is a text-based online role-playing game.
+  wikipedia: https://en.wikipedia.org/wiki/Legend_of_the_Red_Dragon
+  play: telnet darkrealms.ca
+
+- name: LeTrain
+  url: https://github.com/antoniovazquezaraujo/LeTrain
+  info: An ascii railroad simulator in Java
+  screencast: https://asciinema.org/a/8E4ZEyw26SgdgGZoCrxS2CW2J
+
+- name: lights
+  url: https://github.com/nanochess/lights
+  info: is a boot sector game.
+  screencast: https://asciinema.org/a/487018
+
+- name: Lunar Landing
+  url: https://www.cs.brandeis.edu/~storer/LunarLander/LunarLander.html
+  info: |
+    The game where your mission is to safely maneuver your lunar
+    module onto the moon's surface.
+  play: https://lunar69.uber.space/
+  screencast: https://asciinema.org/a/605229
+
+- name: landing-rust
+  url: https://github.com/sergev/landing-rust
+  info: |
+    The game where your mission is to safely maneuver your lunar
+    module onto the moon's surface. This is a port to BESM-6,
+    rewritten from Pascal into C++ into Rust module onto the moon's surface.
+
+- name: katamascii
+  url: https://github.com/taviso/katamascii
+  info: |
+    is a puzzle game, roll around your terminal collecting
+    ASCII-art objects.
+  screencast: https://asciinema.org/a/486171
+  # shot: https://raw.githubusercontent.com/taviso/katamascii/main/screenshot.png
+
+- name: keeperrl
+  url: https://keeperrl.com/
+  info: Ambitious dungeon simulator with roguelike elements.
+
+- name: LeTrain
+  url: https://github.com/antoniovazquezaraujo/LeTrain
+  info: |
+    a train simulator consisting of creating tracks and stations
+    along a virtually infinite map, and creating trains and
+    earning money by carrying passengers between them.
+
+- name: Let it Ride
+  info: is a multi-player card game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: lexter
+  url: https://www.kyne.com.au/~mark/software/lexter.php
+  info: |
+    is a real-time word puzzle. Arrange the falling letters into
+    words to score points.
+  screencast: https://asciinema.org/a/35970
+
+- name: liberal crime squad
+  url: http://lcs.wikidot.com/start
+  info: |
+    is a game where you have to fight with your friends against
+    conservative laws.
+
+- name: Mafia-Werewolf
+  url: https://github.com/servusDei2018/Mafia-Werewolf
+  info: OpenMafia/Werewolf Multiplayer social game with AI to fill in the rest!
+  wikipedia: https://en.wikipedia.org/wiki/Mafia_(party_game)
+
+- name: Magnetic Scrolls games
+  url: https://magneticscrolls.net/
+  info: |
+    Play interactive fiction text adventure games developed by
+    Magnetic Scrolls, including The Pawn, The Guild of Thieves,
+    Jinxter, Curruption, Fish!, Myth, and Wonderland
+  play: ssh -p 8080 -l magnetic magneticscrolls.net
+
+- name: mancala
+  url: https://shh.thathost.com/pub-unix/#Mancala
+  info: is a clone of a simple board game called Mancala.
+
+- name: mangband
+  url: https://www.mangband.org/
+  info: is a multiplayer clone of Angband game.
+  wikipedia: https://en.wikipedia.org/wiki/Angband_(video_game)
+
+- name: manhunt
+  play: telnet on twenex.org
+
+- name: memwatch
+  info: |
+    memwatch contains an easter egg - a game with a pinguin that
+    jumps between holes in a pipelines.
+  url: https://github.com/0x501D/memwatch
+  screencast: https://asciinema.org/a/486217
+
+- name: vim-mario
+  url: https://github.com/rbtnn/vim-mario
+  info: is a clone of Super Mario game inside Vim (text editor).
+
+- name: Dr. Mario
+  url: ftp://ftp.ibiblio.org/pub/historic-linux/ftp-archives/sunsite.unc.edu/Nov-06-1994/games/dr_mario.tar.Z
+  info: is a clone of Nintendo’s Dr. Mario.
+  wikipedia: https://en.wikipedia.org/wiki/Dr._Mario
+
+- name: mastermind-nc
+  url: https://sourceforge.net/projects/mastermind-nc/
+  info: is a clone of the Mastermind game.
+
+- name: matanza
+  info: is a space war game.
+
+- name: mgt
+  info: |
+    Go is an ancient oriental strategy game based on the
+    capturing of territory.
+
+- name: mille
+  url: https://man.openbsd.org/mille.6
+  info: |
+    is a racing card game based on the Parker Brothers game
+    Mille Bornes. It's a BSD game.
+
+- name: minecurses
+  url: https://github.com/christosmarg/minecurses
+  info: |
+    is a clone of Minesweeper game but instead of having to
+    uncover all non-mine cells, the player has to defuse
+    all the mines.
+  wikipedia: https://en.wikipedia.org/wiki/Minesweeper_(video_game)
+
+- name: minesVIiper
+  url: https://gir.st/mines.html
+  info: |
+    is a clone of Minesweeper game with extensive vi(1) keybindings
+    (not just hjkl), mouse control.
+  # displays broken due to https://github.com/asciinema/asciinema-player/issues/34
+  screencast: https://asciinema.org/a/486236
+  wikipedia: https://en.wikipedia.org/wiki/Minesweeper_(video_game)
+
+- name: miscom
+  url: ftp://ftp.slackware.org.uk/sbosrcarch/by-name/games/miscom/miscom.tar.gz
+  info: |
+    is a game where you must defend cities from missile attack.
+    It’s essentially a clone of Atari’s "Missile Command".
+  wikipedia: https://en.wikipedia.org/wiki/Missile_Command
+
+- name: monop
+  url: https://man.openbsd.org/monop.6
+  info: is a Monopoly game. It's a BSD game.
+
+- name: monousa
+  url: https://ibiblio.org/pub/linux/games/multiplayer/monoUSA2.0.tgz
+  info: A sort of monopoly game. At least two players are needed.
+
+- name: moo
+  url: https://www.mipmip.org/C_games/
+  info: Moo (a.k.a. Mastermind) supervisor and a very powerful Moo player.
+
+- name: moon-buggy
+  url: https://www.seehuhn.de/pages/moon-buggy
+  info: is a game where you drive some kind of car across the moon's surface.
+  screencast: https://asciinema.org/a/34071
+  play: telnet or ssh on sdf.org
+
+- name: moria
+  url: http://web.archive.org/web/20190731112356/http://www-math.bgsu.edu/~grabine/moria.html
+  info: is a game where the goal is to kill off the balrog.
+
+- name: morpion solitaire
+  url: https://github.com/gre/morpion-solitaire
+  info: A morpion solitaire game implementation in C using ncurses.
+  wikipedia: https://en.wikipedia.org/wiki/Join_five
+
+- name: msnake
+  url: https://github.com/mogria/msnake
+  info: is a clone of Snake game.
+  screencast: https://asciinema.org/a/35971
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+
+- name: microsnake
+  url: http://freshmeat.sourceforge.net/projects/micro-snake
+  info: is a clone of Snake game.
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+
+- name: mtrek
+  info: is a game inspired by Star Trek.
+  play: telnet mtrek.com 170
+  wikipedia: https://en.wikipedia.org/wiki/Star_Trek_%28text_game%29
+
+- name: mutant aliens
+  url: http://www.roguebasin.com/index.php?title=Mutant_Aliens!
+  info: |
+    Mutant Aliens! sees a spaceship 'dock safely' into the forest
+    of a hostile alien world.
+
+- name: myman
+  url: https://myman.sourceforge.io/
+  info: is a game in the genre of Namco's Pac-Man.
+  screencast: https://asciinema.org/a/487037
+
+- name: nbsdgames
+  url: https://github.com/abakh/nbsdgames
+  info: New BSD Games is a package of 18 text-based modern games.
+
+- name: nclife
+  url: https://github.com/mikepierce/ncLife
+  info: is a Conway's Game of Life.
+  screencast: https://asciinema.org/a/486901
+  wikipedia: https://en.wikipedia.org/wiki/Conway%27s_Game_of_Life
+
+- name: nethack
+  url: https://www.nethack.org/
+  info: is a single player dungeon exploration game.
+  screencast: https://asciinema.org/a/34687
+  play: telnet on nethack.alt.org
+
+- name: netris
+  url: https://ftp.fr.openbsd.org/pub/OpenBSD/distfiles/netris-0.52.tar.gz
+  info: is a networked version of t*tris.
+
+- name: go-netris
+  url: http://web.archive.org/web/20200112024309/https://git.sr.ht/~tslocum/netris
+  info: is a clone of Tetris game featuring competitive online multiplayer.
+  play: ssh netris.rocketnine.space
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: c-netris
+  url: https://github.com/naclander/netris
+  info: is a clone of Tetris game featuring competitive online multiplayer.
+  screencast: https://asciinema.org/a/486899
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: nettoe
+  url: http://nettoe.sourceforge.net/
+  info: is a clone of Tic Tac Toe game.
+  screencast: https://asciinema.org/a/35969
+  wikipedia: https://en.wikipedia.org/wiki/Tic-tac-toe
+
+- name: nibbles
+  url: https://www.earth.li/projectpurple/progs/nibbles.html
+  info: is a remake of the classic Snake/Nibbles game.
+
+- name: nim
+  url: http://tldp.org/LDP/abs/html/contributed-scripts.html#NIM
+  info: is a mathematical game of strategy.
+
+- name: nlarn
+  url: http://freshmeat.sourceforge.net/projects/nlarn
+  info: |
+    is an enhanced and improved rewrite of the historic roguelike
+    game Larn. It tries to maintain the atmosphere and story
+    of the last version of Larn (12.3) while improving gameplay
+    and the user experience.
+
+- name: npush
+  url: http://npush.sourceforge.net/
+  info: is a logic game similar to Sokoban and Boulder Dash.
+
+- name: nsnake
+  url: https://sourceforge.net/projects/nsnake/
+  info: is a clone of Snake game.
+  screencast: https://asciinema.org/a/35976
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+
+- name: nsudoku
+  url: https://www.tbmatuka.com/nsudoku/
+  info: is a clone of Sudoku game.
+  screencast: https://asciinema.org/a/34688
+  wikipedia: https://en.wikipedia.org/wiki/Sudoku
+
+- name: nsuds
+  url: https://sourceforge.net/projects/nsuds/
+  info: is a clone of Sudoku game.
+  wikipedia: https://en.wikipedia.org/wiki/Sudoku
+
+- name: nudoku
+  url: https://jubalh.github.io/nudoku/
+  info: is a clone of Sudoku game.
+  screencast: https://asciinema.org/a/34070
+  wikipedia: https://en.wikipedia.org/wiki/Sudoku
+
+- name: nuzzle
+  url: https://github.com/dead-end/nuzzle
+  info: is a puzzle game collection (N-curses p-UZZLE).
+  screencast: https://asciinema.org/a/486907
+
+- name: lightcycle
+  url: https://github.com/gsobell/lightcycle
+  info: a classic Tron game, for your terminal.
+  screencast: https://asciinema.org/a/597924
+  wikipedia: https://en.wikipedia.org/wiki/Tron_(video_game)#Gameplay
+
+- name: okiworld
+  url: http://freshmeat.sourceforge.net/projects/okiworld
+  info: is a host-to-host strategy game.
+
+- name: oldrunner
+  url: http://culot.org/public/Code/oldrunner.html
+  info: is a remake of Broderbund’s Loderunner.
+  # shot: http://culot.org/images/oldrunner/screen1.jpg
+  # shot: http://culot.org/images/oldrunner/screen2.jpg
+  # shot: http://culot.org/images/oldrunner/screen3.jpg
+  # shot: http://culot.org/images/oldrunner/screen4.jpg
+
+- name: omega
+  url: http://www.alcyone.com/max/projects/omega/
+  info: is a rogue-style game of dungeon exploration.
+
+- name: Open Adventure
+  url: https://gitlab.com/esr/open-adventure
+  info: |
+    Colossal Cave Adventure (also known as ADVENT, Colossal Cave,
+    or Adventure) is one of the earliest computer adventure games
+    and a precursor form of role playing video game. The original
+    version was designed by Will Crowther, a programmer and caving
+    enthusiast who based the layout on part of the Mammoth Cave
+    system in Kentucky.
+
+- name: Oregon-Trail
+  url: https://github.com/yudonglin/Oregon-Trail
+  info: Recreation of the Oregon Trail game, written in Python.
+  wikipedia: https://en.wikipedia.org/wiki/The_Oregon_Trail_(1971_video_game)
+
+- name: othello
+  url: https://web.archive.org/web/20130607084226/http://david.weekly.org/othello/index.php3
+  info: is a two-player board game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: ox3d
+  url: https://www.mipmip.org/C_games/
+  info: is an aggressive 3D Noughts & Crosses player.
+  screencast: https://asciinema.org/a/487029
+
+- name: pacman
+  url: http://slaout.linux62.org/pacman/index.html
+  info: is a clone of Pacman game.
+  screencast: https://asciinema.org/a/34686
+  play: https://www.google.com/doodles/30th-anniversary-of-pac-man
+
+- name: pacman
+  url: http://freshmeat.sourceforge.net/projects/asciipacman/
+  info: is a clone of Pacman game.
+
+- name: pacman
+  url: https://sites.google.com/site/doctormike/pacman.html
+  info: is a clone of Pacman.
+  screencast: https://asciinema.org/a/34685
+
+- name: pacman
+  url: http://antimirov.net/it/pacman/
+  info: is a clone of Pacman game.
+  play: ssh pacman:pacman@antimirov.net
+
+- name: PAG
+  url: https://pkgsrc.se/games/pag & http://ftp.lip6.fr/pub/minix/distfiles/local/3.3.0/pag-0.92.tar.gz
+  info: |
+    Platform Arcade Game is an ncurses based game that allows you
+    to create your own maps and play with them, including features
+    such as moving-platforms,enemies, rules to open/close doors,
+    and items.
+
+- name: Penney's Game
+  url: https://github.com/sepandhaghighi/penney
+  info: A binary (head/tail) sequence generating game between two or more players.
+  wikipedia: https://en.wikipedia.org/wiki/Penney%27s_game
+
+- name: Petals Around The Rose
+  url: http://tldp.org/LDP/abs/html/contributed-scripts.html#PETALS
+  info: is a dice-based puzzle game.
+
+- name: petris
+  url: https://packages.debian.org/sid/games/petris
+  info: is a clone of Tetris game.
+  # https://vadim.oversigma.com/Tetris.htm
+
+- name: phantasia
+  url: https://man.openbsd.org/phantasia.6
+  info: is a interterminal fantasy game. It's a BSD game.
+
+- name: pillman
+  url: https://github.com/nanochess/pillman
+  info: is a clone of Pacman game in 512 bytes (boot sector or COM file).
+  screencast: https://www.youtube.com/watch?v=ALBgsXOq11o
+  # shot: https://raw.githubusercontent.com/nanochess/Pillman/master/pillman.png
+
+- name: Ping-Pong-like
+  url: https://github.com/tsoding/pinpog
+  info: is game in Assembly that works without OS.
+  screencast: https://i.imgur.com/AKEjIKw.gif
+
+- name: pinochle
+  info: is a three-player card game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: piskworks
+  url: https://github.com/berk76/piskworks
+  info: is a clone of Gomoku game.
+
+- name: piu-piu-SH
+  url: https://github.com/vaniacer/piu-piu-SH
+  info: is an old school horizontal scroller 'Shoot Them All' game.
+  screencast: https://asciinema.org/a/487583
+
+- name: plonx
+  url: https://web.archive.org/web/20080704073046/http://bilious.homelinux.org/~paxed/plonx/
+  info: is a small puzzle game.
+  screencast: https://asciinema.org/a/487041
+
+- name: Poker
+  info: is a multi-player five-card draw.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: pokete
+  url: https://github.com/lxgr-linux/pokete
+  info: A terminal-based Pokemon-like game.
+
+- name: pong
+  url: ftp://80.92.105.240/ftp.ibiblio.org/ibiblio_linux_archive/games/arcade/gnupong-0.14.tar.gz
+  info: is an old and very poor version of the old pong game.
+
+- name: portile
+  url: https://www.increpare.com/2008/11/portile/
+  info: is a 2D, tile-based take on narbacular drop.
+
+- name: Proxima 5
+  url: https://github.com/gdamore/proxima5
+  info: A curses-style space shooter written in Go, using the Tcell package.
+
+- name: Puyo on Vim
+  url: https://github.com/rbtnn/vim-puyo
+  info: is a clone of Puyo Puyo game, inside Vim.
+  wikipedia: https://en.wikipedia.org/wiki/Puyo_Puyo_(video_game)
+
+- name: puzzl
+  url: https://github.com/pravj/puzzl
+  info: is an intelligent version of the sliding-puzzle game.
+
+- name: Scrabble
+  info: is a two-to-four-player board game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: Sgt. Major
+  info: is a four-player card game.
+  play: telnet mud.darkerrealms.org 2000
+
+- name: shogi
+  url: http://users.cms.caltech.edu/~mvanier/hacking/gnushogi/gnushogi.html
+  info: is a Japanese chess.
+
+- name: sshtron
+  url: http://sshtron.zachlatta.com/
+  info: is a multiplayer lightcycle game.
+  play: ssh sshtron.zachlatta.com
+
+- name: Starlanes
+  url: https://web.archive.org/web/20200129140943/http://www.barnsdle.demon.co.uk/game/starlanes.html & https://web.archive.org/web/20150804022307/http://www.barnsdle.demon.co.uk/game/starlanes-1.3.0.tar.gz
+  info: |
+    A game of interstellar commerce for 1 to 4 players,
+    written with ncurses.
+
+- name: pyro
+  url: http://pyrogue.sourceforge.net/
+  info: is a rogue-like game.
+
+- name: pythrees
+  url: https://github.com/yth/pythrees
+  info: is a clone of Threes! game.
+  screencast: https://asciinema.org/a/487042
+
+- name: pytris
+  url: http://freshmeat.sourceforge.net/projects/pytris
+  info: is a two-player networked console Tetris clone.
+
+- name: Quacky
+  url: http://tldp.org/LDP/abs/html/contributed-scripts.html#QKY
+  info: is a Perquackey-type word game.
+
+- name: reversi
+  info: is a clone of Othello (Reversi) game.
+
+- name: rhex
+  url: https://github.com/dpc/rhex
+  info: is a hexagonal map rogue-like.
+  screencast: https://asciinema.org/a/34224
+  play: ssh rhex:rhex123@rhex.dpc.pw
+
+- name: robots
+  url: https://man.openbsd.org/robots.6
+  info: is a game with fight off villainous robots. It's a BSD game.
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Robots_%28BSD_game%29
+  screencast: https://asciinema.org/a/486323
+
+- name: gnu-robots
+  url: https://www.gnu.org/software/gnurobots/readme.html
+  info: |
+    is a game/diversion where you construct a program for
+    a little robot, then watch him explore a world. The world is
+    filled with baddies that can hurt you, objects that you can
+    bump into, and food that you can eat. The goal of the game
+    is to collect as many prizes as possible before are killed
+    by a baddie or you run out of energy.
+  wikipedia: https://en.wikipedia.org/wiki/Robots_%28BSD_game%29
+
+- name: robotfindskitten
+  url: http://robotfindskitten.org/
+  info: Yet another zen simulation.
+
+- name: rogue
+  url: https://man.netbsd.org/rogue.6
+  info: Exploring The Dungeons of Doom. It's a BSD game.
+  screencast: https://asciinema.org/a/35802
+  play: telnet or ssh on sdf.org
+
+- name: roguelike gallery
+  url: https://rlgallery.org
+  info: A living museum of roguelike games
+  play: ssh rodney@rlgallery.org - password is yendor
+
+- name: the rougelike!
+  url: https://common-lisp.net/project/lifp/rouge.htm
+  info: is a roguelike game.
+
+- name: rr
+  url: https://oskog97.com/archive/awesome-ttygames/rr/
+  info: is a russian roulette.
+  wikipedia: https://en.wikipedia.org/wiki/Russian_roulette
+
+- name: rummy
+  url: https://github.com/ljc2154/Rummy
+  info: is clone the card game Rummy with competitive Computer Agent.
+
+- name: sail
+  url: https://man.openbsd.org/sail.6
+  info: is a multi-user wooden ships and iron men. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Wooden_Ships_and_Iron_Men
+  screencast: https://asciinema.org/a/486324
+
+- name: scrap
+  url: https://web.archive.org/web/20130524032130/http://www.math.leidenuniv.nl/~mommen/scrap/
+  info: is an easy to play roguelike game.
+
+- name: scroll
+  url: https://joeyh.name/code/scroll/
+  info: |
+    You're a bookworm that's stuck on a scroll. You have
+    to dodge between words and use spells to make your way down
+    the page as the scroll is read. Go too slow and you'll get
+    wound up in the scroll and crushed.
+
+- name: seabattle
+  url: http://www.deater.net/weave/vmwprod/seabattle.html
+  info: is a clone of the classical battleships game.
+  screencast: https://asciinema.org/a/34680
+
+- name: seatris
+  url: https://www.earth.li/projectpurple/progs/seatris.html
+  info: is a clone of Tetris game.
+  # https://vadim.oversigma.com/Tetris.htm
+
+- name: the sewer massacre
+  url: https://common-lisp.net/project/lifp/sewers.htm
+  info: is a roguelike game.
+  # shot: https://lifp.common-lisp.dev/shot1.png
+
+- name: shell-tanks
+  url: https://github.com/annacrombie/shell-tanks
+  info: |
+    is a tank game with randomly generated terrain in which
+    the object is to destroy your opponent.
+  screencast: https://asciinema.org/a/485506
+  # shot: https://raw.githubusercontent.com/annacrombie/shell-tanks/master/img/title.png
+
+- name: shellshock
+  url: https://dhampir.no/stuff/bash/shellshock
+  info: is a top-down space shooter.
+  screencast: https://asciinema.org/a/485508
+
+- name: shogi
+  url: https://www.gnu.org/software/gnushogi/
+  info: |
+    is a computer program that plays the game of Shogi,
+    also known as Japanese Chess.
+
+- name: sil
+  url: http://www.amirrorclear.net/flowers/game/sil/
+  info: is a roguelike game.
+
+- name: simulchess
+  url: https://mbays.freeshell.org/simulchess/
+  info: is a simultaneous-move chess.
+  play: "ssh simulchess@sshgames.thegonz.net; password: simulchess"
+
+- name: singleplayer pong
+  url: https://github.com/Birkenstab/SSH-Pong
+  info: is a dockerized pong for one.
+  play: ssh pong.brk.st
+
+- name: ski
+  url: http://catb.org/~esr/ski/
+  info: is a hotdogging game, evade the deadly Yeti on your jet-powered skis.
+  screencast: https://asciinema.org/a/485509
+
+- name: slashem
+  url: http://slashem.sourceforge.net/
+  info: is a clone of the roguelike Nethack game.
+
+- name: slashem.me
+  info: Variant of nethack and others
+  play: ssh slashem@slashem.me
+
+- name: slider
+  url: ftp://80.92.105.240/ftp.ibiblio.org/ibiblio_linux_archive/games/strategy/slider-1.0.c.gz
+  info: is a slider game.
+
+- name: BootSlide
+  url: https://github.com/XlogicX/BootSlide
+  info: is a clone of the slider puzzle game in a boot sector.
+  # shot: https://raw.githubusercontent.com/XlogicX/BootSlide/master/15slider.png
+
+- name: snake
+  url: https://man.openbsd.org/snake.6
+  info: |
+    is a turn-based survival game; you have to move without being
+    caught by a snake. It's a BSD game.
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+  screencast: https://asciinema.org/a/486325
+
+- name: snake
+  url: ftp://ftp.simtreas.ru/pub/my/snake.c.gz
+  info: is a clone of Snake game.
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+
+- name: snake
+  url: https://github.com/begoon/stuff/blob/master/games/snake/c%2B%2B/snake.cpp
+  info: is a clone of Snake game.
+  screencast: https://asciinema.org/a/1715
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+
+- name: asm_snake
+  url: https://gitlab.com/pmikkelsen/asm_snake
+  info: |
+    is a clone of Snake game written in x86 assembly.
+    It runs in real mode directly from the bootsector of a drive.
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+  screencast: https://asciinema.org/a/487046
+
+- name: soccer
+  url: https://www.cs.cmu.edu/~trb/soccer/
+  info: |
+    is a tool for investigating how groups of simple agents
+    interact while playing a soccer-like game.
+
+- name: sokoban
+  url: ftp://ftp.simtreas.ru/pub/download/pusher.tar.gz
+  info: |
+    is a logical game, where you must solve problems with pushing
+    packets in labirints. The problem is to push packets to saving
+    positions by moving around and pushing only one packet at
+    a time if possible.
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Sokoban
+
+- name: sokoban
+  info: is a clone of Sokoban game.
+  play: telnet or ssh on sdf.org
+  wikipedia: https://en.wikipedia.org/wiki/Sokoban
+
+- name: sokoban-bootsector
+  url: https://ish.works/bootsector/bootsector.html
+  info: is a clone of Sokoban game in a boot sector.
+  # play: https://ish.works/bootsector/bootsector.html#play_online
+  # screencast: https://ish.works/bootsector/sokoban_v1.0.gif
+  wikipedia: https://en.wikipedia.org/wiki/Sokoban
+  screencast: https://asciinema.org/a/487049
+
+- name: solVItaire
+  url: https://gir.st/sol.html
+  info: |
+    Freecell, Spider Solitare and Klondike Solitaire with
+    extensive vi(1) style keybindings, do-what-I-mean movement
+    operations, beautiful Unicode character schemes. Does not
+    depend on ncurses.
+  # displays slightly broken due to https://github.com/asciinema/asciinema-player/issues/34
+  screencast: https://asciinema.org/a/486179
+  # shot: https://gir.st/img/solvitaire-spider.png
+
+- name: spacezero
+  url: http://spacezero.sourceforge.net/
+  info: |
+    is a real time strategy 2D space combat game for two players
+    over a network.
+
+- name: sporkhack
+  url: https://github.com/NHTangles/sporkhack
+  info: is a clone of Nethack game.
+
+- name: sqlite-hangman
+  url: https://github.com/mateusza/sqlite-hangman
+  info: |
+    is a clone of Hangman game implemented as an extension
+    for SQLite database.
+  screencast: https://asciinema.org/a/485496
+  wikipedia: https://en.wikipedia.org/wiki/Hangman_(game)
+
+- name: sst2k
+  url: https://sourceforge.net/projects/sst2k/
+  info: is a clone of Super Star Trek game.
+  wikipedia: https://en.wikipedia.org/wiki/Star_Trek_%28text_game%29
+  # shot: https://a.fsdn.com/con/app/proj/sst2k/screenshots/sst.png/max/max/1
+
+- name: st
+  url: https://github.com/mohd-akram/st
+  info: This is a C port of Ken Thompson's Space Travel, ported from PDP-7 assembly, which simulates travel in the Solar System.
+  wikipedia: https://en.wikipedia.org/wiki/Space_Travel_(video_game)
+
+- name: stardork
+  url: http://stardork.sourceforge.net/
+  info: is a maze game.
+
+- name: starlanes
+  url: http://www.barnsdle.demon.co.uk/game/starlanes.html
+  info: is a game of interstellar commerce for 1 to 4 players.
+
+- name: startrek
+  url: ftp://ftp.simtreas.ru/pub/download/add/TREK.tgz
+  info: is a clone of Star Trek game.
+  wikipedia: https://en.wikipedia.org/wiki/Star_Trek_%28text_game%29
+
+- name: steamband
+  url: http://angband.oook.cz/steamband/steamband.html
+  info: is a roguelike dungeon exploration simulation game.
+
+- name: stugan
+  url: https://github.com/jhbaarnh/stugan
+  info: The Cottage ("Stugan" in Swedish) is an adventure video game that was initially made available in 1978 for the DEC-10 mainframe computer Oden in Stockholm.
+  wikipedia: https://en.wikipedia.org/wiki/The_Cottage_(video_game)
+
+- name: sumeria
+  url: https://www.mipmip.org/C_games/
+  info: |
+    This is the good old “Govern Ancient Sumeria”, with
+    a 1983 ecology re-write.
+
+- name: sunfish
+  url: https://github.com/thomasahle/sunfish
+  info: is a chess engine in 111 lines of code.
+  screencast: https://asciinema.org/a/485498
+
+
+- name: taipan
+  url: http://www.ibiblio.org/pub/linux/games/textrpg
+  info: |
+    is a modern version of Art Canfil's classic, Taipan.
+    Sail the South Pacific and accumulate wealth while
+    avoiding pirates.
+
+- name: telnet-games
+  url: https://github.com/Milek7/telnet-games
+  info: Several arcade games.
+  play: telnet milek7.gq 23
+
+- name: termAsteroids
+  url: https://github.com/NoiseByNorthwest/term-asteroids
+  info: A horizontal scrolling arcade shooter for the terminal featuring early 90s style 2D graphics
+
+- name: terminal-frogger
+  url: https://github.com/mfey619/Terminal-Frogger
+  info: is a frogger-themed game.
+  screencast: https://asciinema.org/a/487030
+
+- name: terminal_gem_match
+  url: https://github.com/ATBennett/terminal_gem_match
+  info: A simple match 3 game in the terminal, using the ncurses library.
+
+- name: terminal-phase
+  url: https://gitlab.com/dustyweb/terminal-phase
+  info: is a space shooter game.
+  screencast: https://dustycloud.org/gfx/goodies/terminal-phase-parallax-starfield.gif
+
+- name: tinytetris
+  url: https://github.com/taylorconor/tinytetris
+  info: is a 80x23 terminal tetris
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+  screencast: https://asciinema.org/a/485499
+  # screencast: https://raw.githubusercontent.com/taylorconor/tinytetris/master/animation.gif
+  # https://vadim.oversigma.com/Tetris.htm
+
+- name: tetris
+  url: https://man.openbsd.org/tetris.6
+  info: is a clone of Tetris game. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+  # https://vadim.oversigma.com/Tetris.htm
+  screencast: https://asciinema.org/a/486892
+
+- name: tetranglix
+  url: https://github.com/nanochess/tetranglix
+  info: is a clone of Tetris game.
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+  # https://vadim.oversigma.com/Tetris.htm
+  screencast: https://asciinema.org/a/487013
+
+- name: berk76-tetris
+  url: https://github.com/berk76/tetris
+  info: is a clone of Tetris game.
+  screencast: https://asciinema.org/a/485501
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+  # https://vadim.oversigma.com/Tetris.htm
+
+- name: ascii-tetris
+  url: https://github.com/Gregwar/ASCII-Tetris
+  info: is a clone of Tetris game.
+  # https://vadim.oversigma.com/Tetris.htm
+  screencast: https://asciinema.org/a/485503
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: tetrix
+  url: http://freshmeat.sourceforge.net/projects/tetrix
+  info: is a clone of Tetris game.
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: tint
+  info: is a clone of Tetris game (Tint Is Not Tetris).
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+  screencast: https://asciinema.org/a/486879
+
+- name: TinyCols
+  url: https://github.com/zedr/tinycols
+  info: is a clone of the Columns game.
+  screencast: https://asciinema.org/a/562766
+
+- name: threes
+  url: https://github.com/harshjv/threes-c
+  info: is a clone of Threes! game.
+  screencast: https://asciinema.org/a/18135
+
+- name: tictactoe
+  url: ftp://ftp.ibiblio.org/pub/linux/games/strategy/tictac2-0.6.tgz
+  info: is a clone of Tic Tac Toe game.
+  wikipedia: https://en.wikipedia.org/wiki/Tic-tac-toe
+
+- name: tictac4
+  url: ftp://ftp.ibiblio.org/pub/linux/games/strategy/tictac4-1.0.tar.gz
+  info: |
+    is a clone of Tic Tac Toe game where you have to align four
+    symbols (instead of three).
+  wikipedia: https://en.wikipedia.org/wiki/Tic-tac-toe
+
+- name: Toledo-Atomchess
+  url: https://github.com/nanochess/Toledo-Atomchess
+  info: is the world's smallest chess program in x86 assembly code.
+  screencast: https://asciinema.org/a/487011
+
+- name: Tom Bombem
+  url: http://www.deater.net/weave/vmwprod/tb1/
+  info: is an arcade game where you have to shoot on inanimate objects.
+  screencast: https://asciinema.org/a/485505
+  # screencast: https://asciinema.org/a/485504
+  # shot: http://www.deater.net/weave/vmwprod/tb1/tbasm_action.png
+
+- name: tornado
+  url: https://github.com/kouya/tornado
+  info: is the clone of a Tornado, C64 game.
+  wikipedia: https://en.wikipedia.org/wiki/Tornado_(1993_video_game)
+
+- name: torus
+  url: ftp://ftp.nvg.org/pub/mirrors/metalab.unc.edu/games/arcade/torus-src.tar.gz
+  info: is a variant of the robots game.
+  play: telnet or ssh on sdf.org
+
+- name: tossug-arena
+  url: https://github.com/tossug/tossug-arena
+  info: Board-Gamelets Arena for poor AI Players.
+
+- name: tower-of-mediocrity
+  url: https://web.archive.org/web/20131205100524/http://www.cavein.org/~chris/code/tower/
+  info: |
+   is a tower defense game. Unfortunately, the game is quite
+   easy to win.
+
+- name: trek
+  url: https://man.openbsd.org/trek.6
+  info: is a Trekkie game. It's a BSD game.
+  wikipedia: https://en.wikipedia.org/wiki/Star_Trek_%28text_game%29
+
+- name: trek73
+  url: https://kermitmurray.com/trek73/
+  info: is an old but rather elaborated game inspired by the Star Trek series.
+  wikipedia: https://en.wikipedia.org/wiki/Star_Trek_%28text_game%29
+
+- name: trog
+  url: https://github.com/JohnAnthony/TROG
+  info: is a roguelike game with simple commands.
+
+- name: the-slimy-lichmummy
+  url: http://www.happyponyland.net/the-slimy-lichmummy
+  info: is a difficult roguelike in a traditional style.
+
+- name: tt
+  url: http://www.miketaylor.org.uk/tech/tt/#gsc.tab=0
+  info: is a clone of Tetris game.
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: tty-solitaire
+  url: https://github.com/mpereira/tty-solitaire
+  info: is a clone of Klondike solitaire game.
+  screencast: https://asciinema.org/a/6519
+  play: telnet mud.darkerrealms.org 2000
+
+- name: typespeed
+  url: http://typespeed.sourceforge.net/
+  # https://web.archive.org/web/20100904205305/http://tobias.eyedacor.org/typespeed/
+  info: Type words that are flying by from left to right as fast as you can.
+  # shot: https://web.archive.org/web/20070720193312if_/http://tobias.eyedacor.org/typespeed/typespeed-large-1.png
+  screencast: https://asciinema.org/a/485492
+
+- name: tzar
+  url: http://freshmeat.sourceforge.net/projects/tzar
+  info: is a roguelike game.
+
+- name: udd
+  url: https://github.com/mtklr/udd
+  info: |
+    A minimally updated version of Chuck Cranor's UNIX port of
+    the game "dnd", which was originally released on the PLATO
+    system in 1975.
+  wikipedia: https://en.wikipedia.org/wiki/Dnd_(1975_video_game)
+
+- name: ularn
+  info: is a roguelike game.
+  url: https://github.com/joshbressers/ularn
+
+- name: ultrarogue
+  url: https://web.archive.org/web/20180216113810/http://rogue.rogueforge.net/ultrarogue-1-07/
+  info: is a roguelike game.
+
+- name: umoria
+  url: http://remarque.org/~grabiner/moria.html
+  info: is an old and easy to play roguelike game.
+
+- name: Unnamed Fiefdom Game
+  url: https://github.com/Sheeves11/UnnamedFiefdomGame/
+  info: |
+    is a text-based MMO about controlling fiefdoms, farming gold,
+    and stealing from your enemies!
+  screencast: https://asciinema.org/a/486908
+
+- name: unnethack
+  url: https://sourceforge.net/projects/unnethack/
+  info: |
+    is a fork of NetHack, originally based on the hugely popular
+    roguelike game NetHack.
+  screencast: https://asciinema.org/a/485489
+
+- name: urban warfare
+  url: https://common-lisp.net/project/lifp/sewers.htm
+  info: is a roguelike game written in Lisp.
+
+- name: vadorz
+  url: https://code.google.com/archive/p/vadorz/
+  info: is a clone of Space Invaders game with simple graphics.
+  screencast: https://asciinema.org/a/486872
+  wikipedia: https://en.wikipedia.org/wiki/Space_Invaders
+
+- name: vagabondo
+  url: ftp://ftp.simtreas.ru/pub/my/vagabondo.c.gz
+
+- name: vapors of insanity
+  url: https://www.roguetemple.com/z/vapors/
+  info: is a roguelike game set on a paradise island of Fortarica.
+
+- name: venzone
+  url: http://ariis.it/static/articles/venzone/page.html
+  info: is a platform/adventure game.
+  screencast: https://asciinema.org/a/486868
+
+- name: VIper
+  url: https://gir.st/viper.html
+  info: is a clone of Snake game with hjkl (vi) and cursor key control.
+  # displays slightly broken due to https://github.com/asciinema/asciinema-player/issues/34
+  screencast: https://asciinema.org/a/486867
+
+- name: vitetris
+  url: http://victornils.net/tetris/
+  info: |
+    is a clone of Tetris. Gameplay is much like the early Tetris
+    games by Nintendo.
+  screencast: https://asciinema.org/a/34069
+  wikipedia: https://en.wikipedia.org/wiki/Tetris
+
+- name: vms-empire
+  url: http://www.catb.org/~esr/vms-empire/
+  info: |
+    Empire is a simulation of a full-scale war between two
+    emperors, the computer and you.
+
+- name: wallyplus
+  url: ftp://ftp.ibiblio.org/pub/linux/games/strategy/wallyplus-0.1.2.tar.gz
+  info: is a game for playing Go.
+
+# https://ahopeful.wordpress.com/2015/04/22/wander-1974-a-lost-mainframe-game-is-found/comment-page-1/
+- name: Wander
+  url: https://github.com/shmup/wander
+  info: |
+    is probably the first computer game that is recognisable as
+    what came to be known as a “text adventure”.
+  play: https://s3.amazonaws.com/wander1974/wander.html
+
+- name: wanderer
+  url: https://www.e271.net/~marina/wanderer.html
+  info: is a game similar to Boulderdash, Repton, XOR and others.
+  play: telnet or ssh on sdf.org
+
+- name: wargames
+  wikipedia: https://en.wikipedia.org/wiki/WarGames
+  info: Would you like to play a game?
+
+- name: Wolfentext3D
+  url: https://github.com/AtomicPair/wolfentext3d
+  info: is a 3-D dungeon crawling game.
+
+- name: worm
+  url: https://man.openbsd.org/worm.6
+  info: |
+    is a version of the arcade game Worm (sometimes called snake
+    or nibbles). It's a BSD game.
+  play: telnet on twenex.org
+  wikipedia: https://en.wikipedia.org/wiki/Snake_(video_game_genre)
+  screencast: https://asciinema.org/a/486326
+
+- name: clidle
+  url: https://github.com/ajeetdsouza/clidle
+  info: is a clone of Wordle, Wordle over SSH.
+  play: ssh clidle.ddns.net -p 3000
+  screencast: https://asciinema.org/a/485486
+
+- name: wordle-cli
+  url: https://github.com/nimblebun/wordle-cli
+  info: is a clone of Wordle.
+  screencast: https://asciinema.org/a/485484
+
+- name: wump
+  url: https://man.openbsd.org/wump.6
+  info: in an underground cave. It's a BSD game.
+  screencast: https://asciinema.org/a/35800
+  wikipedia: https://en.wikipedia.org/wiki/Hunt_the_Wumpus
+
+- name: wumpus
+  url: http://www.catb.org/esr/wumpus/
+  info: is a clone of the very old game called Hunt the Wumpus.
+
+- name: xorcurses
+  url: http://web.archive.org/web/20200807032528/http://www.jwm-art.net/dark.php?p=XorCurses
+  info: is a puzzle game set inside a series of mazes.
+  screencast: https://asciinema.org/a/34065
+
+- name: xonitix
+  url: https://github.com/garu/Xonitix
+  info: |
+    is an action-packed game, where you gain points by claiming
+    space on the line while avoiding the moving dots.
+  wikipedia: https://en.wikipedia.org/wiki/Xonix
+
+- name: yahtzee
+  url: ftp://ftp.ibiblio.org/pub/linux/games/strategy/yahtzee-src.tar.Z
+  info: is a game where you can play against humans or against the computer.
+
+- name: yahtzee-color
+  url: ftp://ftp.ibiblio.org/pub/linux/games/strategy/colour-yahtzee.tgz
+  info: is a game where you can play against humans or against the computer.
+
+- name: yetris
+  url: https://alexdantas.github.io/yetris/
+  info: is a clone of Tetris.
+
+- name: yuxtapa
+  url: http://freshmeat.sourceforge.net/projects/yuxtapa
+  info: is a multiplayer real-time game.
+
+- name: zangband
+  url: http://www.zangband.org/
+  info: is a roguelike game.
+
+- name: zapm
+  url: http://zapm.org/
+  info: is a science fiction roguelike game.
+
+- name: Z-Code games
+  url: http://telehack.com/telehack.html
+  info: z-code games
+  wikipedia: https://en.wikipedia.org/wiki/Z-machine
+  play: telnet telehack.com (or http://telehack.com/)
+
+- name: z-day
+  url: http://sheep.art.pl/Z-Day
+  info: |
+    is an easy to play roguelike game. You have to kill zombies
+    in a supermarket.
+
+- name: zis
+  url: https://sourceforge.net/projects/zis/
+  info: |
+    is a clone of Konquest (a turn based strategy; you send ships
+    from planet to planet to conquer them).
+
+- name: znake
+  url: https://sourceforge.net/projects/znake-ulven/
+  info: is a clone of Snake but with an extraordinary feature.
+
+- name: zombies
+  url: http://www.thistledown.com.au/software/
+  info: is a game in the same style as robots.
+  play: telnet or ssh on sdf.org
+
+- name: zombies
+  url: http://distractionandnonsense.com/zombies/
+  info: is a roguelike game.
+
+- name: zork
+  url: https://web.archive.org/web/20130121064934/http://www.csd.uwo.ca/Infocom/games.html
+  info: |
+    The Zork Trilogy is set in the ruins of an ancient empire
+    lying far underground. You, a dauntless treasure-hunter,
+    are venturing into this dangerous land in search of wealth
+    and adventure. Many strange tales have been told of
+    the fabulous treasure, exotic creatures, and diabolical
+    puzzles in the Great Underground Empire.
+  play: telnet or ssh on sdf.org
+
+- name: zracer
+  url: http://freshmeat.sourceforge.net/projects/zracer
+  info: |
+    is a console car racing game. The rules are simple -
+    the higher on the screen, the faster you ride. Don't crash
+    into rocks, curbs, or your opponent, and be the first across
+    the finish line.
+
+- name: ztrack
+  url: https://ibiblio.org/pub/linux/games/arcade/ztrack-1.0.tar.gz
+  info: is a pseudo-3D driving game.
+  screencast: https://asciinema.org/a/486500
+
+- name: typr
+  info: python based typing test game.
+  url: https://github.com/DriftingOtter/Typr
+  screencast: https://asciinema.org/a/617774
+
+- name: zztgo
+  info: a port of Adrian Siekierka’s source code reconstruction of ZZT to Go.
+  url: https://github.com/benhoyt/zztgo
+  wikipedia: https://en.wikipedia.org/wiki/ZZT

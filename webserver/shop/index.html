@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Market - mitch.pro</title>
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0d0d0d);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', monospace;
+    padding: 42px 18px 88px;
+    overflow-x: hidden;
+  }
+  .wrap { width: 100%; max-width: 1180px; margin: 0 auto; }
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 18px;
+    align-items: end;
+    margin-bottom: 22px;
+  }
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2rem, 4vw, 3.8rem);
+    line-height: 1;
+    font-weight: 800;
+    background: var(--t-gr);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 0;
+  }
+  .subline { color: var(--t-fg2, #aaa); font-size: .82rem; margin-top: 10px; max-width: 680px; line-height: 1.55; }
+  .balance-panel {
+    min-width: 260px;
+    background: var(--t-bg2, #151515);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.25);
+  }
+  .balance-label { color: var(--t-fg2, #aaa); font-size: .7rem; text-transform: uppercase; letter-spacing: .08em; }
+  .balance-value { color: #f59e0b; font-size: 1.55rem; font-weight: 800; margin-top: 4px; }
+  .state-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: var(--t-bg3, #202020);
+    border: 1px solid var(--t-bd, #333);
+    color: var(--t-fg2, #aaa);
+    font-size: .68rem;
+    font-weight: 700;
+  }
+  .pill.good { color: #34d399; border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.08); }
+  .pill.gold { color: #f59e0b; border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.08); }
+  .pill.rare { color: #60a5fa; border-color: rgba(96,165,250,.35); background: rgba(96,165,250,.08); }
+  .pill.elite { color: #c084fc; border-color: rgba(192,132,252,.4); background: rgba(192,132,252,.1); }
+  .pill.legendary { color: #facc15; border-color: rgba(250,204,21,.45); background: rgba(250,204,21,.1); }
+  .tabs {
+    display: flex;
+    gap: 8px;
+    margin: 18px 0 24px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .tab-btn, .mini-btn {
+    background: var(--t-bg2, #151515);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    color: var(--t-fg2, #aaa);
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: .82rem;
+    transition: border-color .15s, background .15s, color .15s, transform .15s;
+    white-space: nowrap;
+  }
+  .tab-btn { padding: 10px 14px; }
+  .tab-btn:hover, .mini-btn:hover { border-color: var(--t-ac, #8b5cf6); color: var(--t-fg, #fff); }
+  .tab-btn.active { background: var(--t-ac, #8b5cf6); color: #fff; border-color: transparent; }
+  .section { margin: 26px 0 34px; }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--t-bd, #333);
+    padding-bottom: 10px;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--t-fg, #fff);
+  }
+  .section-count { color: var(--t-fg2, #aaa); font-size: .72rem; }
+  .market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--t-bg2, #151515);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    padding: 16px;
+    min-height: 246px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    box-shadow: 0 10px 28px rgba(0,0,0,.25);
+  }
+  .card.owned { border-color: rgba(52,211,153,.38); }
+  .card.active { border-color: rgba(139,92,246,.75); box-shadow: 0 10px 32px rgba(139,92,246,.12); }
+  .item-kicker { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; min-height: 24px; }
+  .item-title { font-family: 'Syne', sans-serif; font-size: 1.08rem; font-weight: 800; color: var(--t-fg, #fff); line-height: 1.2; }
+  .item-desc { font-size: .78rem; color: var(--t-fg2, #aaa); line-height: 1.48; margin-top: 9px; }
+  .item-perk {
+    margin-top: 10px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(245,158,11,.07);
+    border: 1px solid rgba(245,158,11,.18);
+    color: #fbbf24;
+    font-size: .72rem;
+    line-height: 1.42;
+  }
+  .price-row {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .price { color: #f59e0b; font-size: 1.18rem; font-weight: 900; white-space: nowrap; }
+  .price del { color: var(--t-fg2, #888); font-size: .78rem; margin-right: 5px; opacity: .75; }
+  .btn-buy {
+    background: var(--t-bg3, #202020);
+    color: var(--t-fg, #fff);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    min-height: 42px;
+    padding: 9px 11px;
+    font-family: 'Syne', sans-serif;
+    font-size: .86rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform .15s, border-color .15s, background .15s;
+    width: 100%;
+    margin-top: 12px;
+  }
+  .btn-buy:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--t-ac, #8b5cf6); }
+  .btn-buy:disabled { opacity: .45; cursor: default; }
+  .btn-buy.primary { background: var(--t-gr); border-color: transparent; color: #fff; }
+  .btn-buy.active { background: rgba(139,92,246,.2); border-color: rgba(139,92,246,.7); }
+  .admin-box {
+    display: none;
+    margin-top: 34px;
+    background: rgba(239,68,68,.06);
+    border: 1px solid rgba(239,68,68,.24);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .admin-grid { display: grid; grid-template-columns: 1fr 120px auto; gap: 10px; margin-top: 12px; }
+  .admin-domains { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .admin-domains button {
+    width: auto;
+    min-height: 28px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    font-size: .68rem;
+  }
+  .admin-domains button:first-child {
+    color: #fbbf24;
+    border-color: rgba(251,191,36,.4);
+    background: rgba(251,191,36,.08);
+  }
+  input {
+    background: var(--t-bg, #0d0d0d);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    color: var(--t-fg, #fff);
+    min-height: 40px;
+    padding: 8px 10px;
+    font-family: 'DM Mono', monospace;
+  }
+  .mini-btn { padding: 0 14px; min-height: 40px; color: #fff; }
+  .empty {
+    color: var(--t-fg2, #aaa);
+    border: 1px dashed var(--t-bd, #333);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+  }
+  #status-msg {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-weight: 800;
+    z-index: 1000;
+    display: none;
+    max-width: min(420px, calc(100vw - 36px));
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  }
+  #status-msg.ok { background: #16a34a; color: #fff; display: block; }
+  #status-msg.err { background: #dc2626; color: #fff; display: block; }
+  @media (max-width: 760px) {
+    body { padding-top: 28px; }
+    .topbar { grid-template-columns: 1fr; }
+    .balance-panel { min-width: 0; }
+    .admin-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>The Market</h1>
+      <p class="subline" id="shop-note">Loading the shop catalog...</p>
+    </div>
+    <div class="balance-panel">
+      <div class="balance-label">Your Balance</div>
+      <div class="balance-value"><span id="balance">...</span> coins</div>
+      <div class="state-row">
+        <span class="pill" id="premium-pill">checking premium</span>
+        <span class="pill" id="admin-pill" style="display:none;">admin owns all</span>
+        <span class="pill" id="discount-pill" style="display:none;"></span>
+      </div>
+    </div>
+  </div>
+
+  <div id="tabs" class="tabs"></div>
+  <div id="market"></div>
+
+  <div id="admin-section" class="admin-box">
+    <div class="section-title">Admin Coin Gift</div>
+    <p class="subline">Admins already own every shop item. This tool is only for sending coins to a user.</p>
+    <div class="admin-grid">
+      <input id="admin-email" type="email" placeholder="user@email.com" autocomplete="off">
+      <input id="admin-amt" type="number" min="1" step="1" placeholder="Coins">
+      <button class="mini-btn" id="gift-btn" type="button">Gift</button>
+    </div>
+    <div class="admin-domains">
+      <button type="button" onclick="setAdminGiftDomain('mitch.pro')">@mitch.pro</button>
+      <button type="button" onclick="setAdminGiftDomain('student.rjuhsd.us')">@student.rjuhsd.us</button>
+      <button type="button" onclick="setAdminGiftDomain('gmail.com')">@gmail.com</button>
+      <button type="button" onclick="setAdminGiftDomain('outlook.com')">@outlook.com</button>
+      <button type="button" onclick="setAdminGiftDomain('hotmail.com')">@hotmail.com</button>
+      <button type="button" onclick="setAdminGiftDomain('linux.com')">@linux.com</button>
+    </div>
+  </div>
+</div>
+
+<div id="status-msg"></div>
+
+<script>
+  const typeToActive = {
+    name_color: 'activeColor',
+    chat_badge: 'activeBadge',
+    chat_effect: 'activeChatEffect',
+    profile_effect: 'activeProfileEffect',
+    site_theme: 'activeTheme',
+    canvas_tool: 'activeTool',
+    ai_personality: 'activeAi'
+  };
+  const typeToBucket = {
+    name_color: 'colors',
+    chat_badge: 'badges',
+    chat_effect: 'chatEffects',
+    profile_effect: 'profileEffects',
+    site_theme: 'themes',
+    canvas_tool: 'tools'
+  };
+
+  const badgeIcons = {
+    verified_badge: '✔',
+    og_badge: '📜',
+    artist_badge: '🎨',
+    chess_badge: '♟',
+    builder_badge: '🛠',
+    lucky_badge: '🍀',
+    premium_star_badge: '⭐',
+    owner_fan_badge: '👑'
+  };
+
+  let coins = 0;
+  let isPremium = false;
+  let isAdmin = false;
+  let vipUntil = 0;
+  let activeTab = 'all';
+  let items = [];
+  let inventory = defaultInventory();
+  let premiumDiscountPct = 0;
+
+  function defaultInventory() {
+    return {
+      cosmetics: {
+        colors: [],
+        badges: [],
+        chatEffects: [],
+        profileEffects: [],
+        themes: [],
+        tools: [],
+        activeColor: '',
+        activeBadge: '',
+        activeChatEffect: '',
+        activeProfileEffect: '',
+        activeTheme: '',
+        activeTool: '',
+        activeAi: ''
+      },
+      ai: []
+    };
+  }
+
+  function esc(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    }[ch]));
+  }
+
+  function slug(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  function showStatus(text, ok) {
+    const el = document.getElementById('status-msg');
+    el.textContent = text;
+    el.className = ok ? 'ok' : 'err';
+    el.style.display = 'block';
+    clearTimeout(showStatus.timer);
+    showStatus.timer = setTimeout(() => { el.style.display = 'none'; }, 3200);
+  }
+
+  function sections() {
+    return [...new Set(items.map(item => item.section || 'Other'))];
+  }
+
+  function setTab(tab) {
+    activeTab = tab;
+    renderTabs();
+    render();
+  }
+
+  function owns(item) {
+    if (isAdmin) return true;
+    if (item.type === 'premium') return isPremium;
+    if (item.costType === 'vip_casino_pass') return vipUntil > Date.now();
+    if (item.costType === 'ai_personality') return (inventory.ai || []).includes(item.id);
+    const bucket = typeToBucket[item.costType];
+    return !!bucket && (inventory.cosmetics[bucket] || []).includes(item.id);
+  }
+
+  function activeFor(item) {
+    const activeKey = typeToActive[item.costType];
+    if (!activeKey) return false;
+    return inventory.cosmetics[activeKey] === item.id;
+  }
+
+  function toggleable(item) {
+    return !!typeToActive[item.costType];
+  }
+
+  function locked(item) {
+    return item.premiumOnly && !isPremium && !isAdmin;
+  }
+
+  function canAfford(item) {
+    return coins >= Number(item.cost || 0);
+  }
+
+  function priceHtml(item) {
+    if (isAdmin) return 'Admin';
+    const original = Number(item.originalCost || item.cost || 0);
+    const cost = Number(item.cost || 0);
+    if (original > cost) return `<del>${original}</del>${cost}`;
+    return String(cost);
+  }
+
+  function renderTabs() {
+    const tabs = document.getElementById('tabs');
+    const entries = [{ key: 'all', label: 'All Items' }].concat(sections().map(section => ({ key: slug(section), label: section })));
+    tabs.innerHTML = entries.map(tab => (
+      `<button class="tab-btn ${activeTab === tab.key ? 'active' : ''}" data-tab="${esc(tab.key)}">${esc(tab.label)}</button>`
+    )).join('');
+    tabs.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => setTab(btn.dataset.tab)));
+  }
+
+  function buttonLabel(item, owned, active) {
+    if (locked(item)) return 'Premium Only';
+    if (item.costType === 'vip_casino_pass' && owned) return 'Active';
+    if (active) return 'Turn Off';
+    if (owned && toggleable(item)) return 'Turn On';
+    if (owned) return 'Owned';
+    if (!canAfford(item) && !isAdmin) return 'Need More Coins';
+    return item.type === 'premium' ? 'Buy Premium' : 'Buy';
+  }
+
+  function renderItem(item) {
+    const owned = owns(item);
+    const active = activeFor(item);
+    const disabled = locked(item) || (!owned && !canAfford(item) && !isAdmin) || (owned && !toggleable(item));
+    const classes = ['card'];
+    if (owned) classes.push('owned');
+    if (active) classes.push('active');
+    const tags = [];
+    if (item.tier) tags.push(`<span class="pill ${esc(item.tier)}">${esc(item.tier)}</span>`);
+    if (item.premiumOnly) tags.push('<span class="pill gold">premium only</span>');
+    if (owned) tags.push('<span class="pill good">owned</span>');
+    if (active) tags.push('<span class="pill">active</span>');
+    if (item.discountPct && !isAdmin) tags.push(`<span class="pill gold">${item.discountPct}% off</span>`);
+    const primary = item.type === 'premium' || (!owned && !locked(item));
+    return `
+      <article class="${classes.join(' ')}">
+        <div>
+          <div class="item-kicker">${tags.join('')}</div>
+          <div class="item-title">${badgeIcons[item.id] ? `<span style="margin-right:8px; opacity:0.8;">${badgeIcons[item.id]}</span>` : ''}${esc(item.name)}</div>
+          <div class="item-desc">${esc(item.desc)}</div>
+          ${item.perk ? `<div class="item-perk">${esc(item.perk)}</div>` : ''}
+        </div>
+        <div>
+          <div class="price-row">
+            <div class="price">${priceHtml(item)}${isAdmin ? '' : ' coins'}</div>
+          </div>
+          <button class="btn-buy ${primary ? 'primary' : ''} ${active ? 'active' : ''}" data-item="${esc(item.id)}" ${disabled ? 'disabled' : ''}>
+            ${buttonLabel(item, owned, active)}
+          </button>
+          ${item.id === 'premium' ? `
+          <div style="margin-top: 15px; border-top: 1px solid #222; padding-top: 12px;">
+            <div style="font-size: 0.72rem; font-weight: 800; color: #a78bfa; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.05em;">Gift Premium (Limit 1 ever)</div>
+            <div style="display: flex; gap: 6px;">
+              <input type="email" id="gift-target-email" placeholder="friend@school.com" style="padding: 6px 8px; font-size: 0.8rem; border-radius: 6px; border: 1px solid #333; background: #111; color: #fff; width: 100%; min-width: 0;">
+              <button onclick="giftPremium()" style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; font-weight: 700; background: #7c3aed; color: #fff; border: none; cursor: pointer; white-space: nowrap; transition: background 0.2s;" onmouseover="this.style.background='#8b5cf6'" onmouseout="this.style.background='#7c3aed'">Gift</button>
+            </div>
+          </div>
+          ` : ''}
+        </div>
+      </article>
+    `;
+  }
+
+  function render() {
+    renderTabs();
+    const market = document.getElementById('market');
+    const filtered = activeTab === 'all' ? items : items.filter(item => slug(item.section) === activeTab);
+    if (!filtered.length) {
+      market.innerHTML = '<div class="empty">No items in this section yet.</div>';
+      return;
+    }
+    const grouped = {};
+    filtered.forEach(item => {
+      const section = item.section || 'Other';
+      if (!grouped[section]) grouped[section] = [];
+      grouped[section].push(item);
+    });
+    market.innerHTML = Object.entries(grouped).map(([section, sectionItems]) => `
+      <section class="section">
+        <div class="section-head">
+          <div class="section-title">${esc(section)}</div>
+          <div class="section-count">${sectionItems.length} item${sectionItems.length === 1 ? '' : 's'}</div>
+        </div>
+        <div class="market-grid">${sectionItems.map(renderItem).join('')}</div>
+      </section>
+    `).join('');
+    market.querySelectorAll('.btn-buy[data-item]').forEach(btn => {
+      btn.addEventListener('click', () => handleItem(btn.dataset.item));
+    });
+  }
+
+  async function handleItem(itemId) {
+    const item = items.find(entry => entry.id === itemId);
+    if (!item) return;
+    if (item.type === 'premium') return buyPremium();
+    if (owns(item) && toggleable(item)) {
+      return toggleItem(item, activeFor(item) ? '' : item.id);
+    }
+    return buyItem(item);
+  }
+
+  async function buyItem(item) {
+    try {
+      const r = await fetch('/api/shop/buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId: item.id })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return showStatus(data.error || 'Purchase failed', false);
+      showStatus(data.message || 'Purchase successful', true);
+      await load();
+    } catch {
+      showStatus('Network error while buying item', false);
+    }
+  }
+
+  async function toggleItem(item, itemId) {
+    try {
+      const r = await fetch('/api/me/cosmetics/equip', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, type: item.costType })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return showStatus(data.error || 'Could not update item', false);
+      showStatus(itemId ? 'Turned on' : 'Turned off', true);
+      await load();
+    } catch {
+      showStatus('Network error while updating item', false);
+    }
+  }
+
+  async function buyPremium() {
+    try {
+      const r = await fetch('/api/coins/buy-premium', { method: 'POST' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return showStatus(data.error || 'Premium purchase failed', false);
+      showStatus(data.message || 'Welcome to Premium', true);
+      setTimeout(() => load(), 800);
+    } catch {
+      showStatus('Network error while buying premium', false);
+    }
+  }
+
+  async function giftPremium() {
+    const targetEmail = document.getElementById('gift-target-email').value.trim();
+    if (!targetEmail) return showStatus('Please enter a friend\'s email address', false);
+    if (!confirm(`Are you sure you want to gift Lifetime Premium to ${targetEmail}? This costs 5,000 coins and is limited to one gift ever.`)) return;
+    try {
+      const r = await fetch('/api/coins/gift-premium', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetEmail })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return showStatus(data.error || 'Gifting premium failed', false);
+      showStatus(data.message || 'Premium gifted successfully!', true);
+      const input = document.getElementById('gift-target-email');
+      if (input) input.value = '';
+      setTimeout(() => load(), 800);
+    } catch {
+      showStatus('Network error while gifting premium', false);
+    }
+  }
+
+  async function adminGift() {
+    const targetEmail = document.getElementById('admin-email').value.trim();
+    const amount = Number(document.getElementById('admin-amt').value);
+    if (!targetEmail || !amount) return showStatus('Enter an email and coin amount', false);
+    try {
+      const r = await fetch('/api/admin/gift-coins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetEmail, amount, reason: 'Admin manual shop gift' })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return showStatus(data.error || 'Gift failed', false);
+      showStatus('Coins gifted', true);
+      document.getElementById('admin-email').value = '';
+      document.getElementById('admin-amt').value = '';
+      await load();
+    } catch {
+      showStatus('Network error while gifting coins', false);
+    }
+  }
+
+  function setAdminGiftDomain(domain) {
+    const input = document.getElementById('admin-email');
+    const local = (input.value || '').split('@')[0].trim() || 'user';
+    input.value = local + '@' + domain;
+    input.focus();
+    input.setSelectionRange(0, input.value.indexOf('@'));
+  }
+
+  async function load() {
+    try {
+      const [rMe, rCoins, rInv, rItems] = await Promise.all([
+        fetch('/api/me'),
+        fetch('/api/me/coins'),
+        fetch('/api/me/inventory'),
+        fetch('/api/shop/items')
+      ]);
+      const me = await rMe.json();
+      const coinData = await rCoins.json();
+      const invData = await rInv.json();
+      const itemData = await rItems.json();
+      coins = Number(coinData.coins || 0);
+      isPremium = !!me.isPremium;
+      isAdmin = !!me.isAdmin;
+      vipUntil = Number(me.vipUntil || 0);
+      inventory = Object.assign(defaultInventory(), invData || {});
+      inventory.cosmetics = Object.assign(defaultInventory().cosmetics, inventory.cosmetics || {});
+      items = Array.isArray(itemData.items) ? itemData.items : [];
+      premiumDiscountPct = Number(itemData.premiumDiscountPct || 0);
+      document.getElementById('balance').textContent = coins.toFixed(2);
+      document.getElementById('premium-pill').textContent = isPremium ? 'premium active' : 'standard member';
+      document.getElementById('premium-pill').className = isPremium ? 'pill good' : 'pill';
+      document.getElementById('admin-pill').style.display = isAdmin ? '' : 'none';
+      document.getElementById('admin-section').style.display = isAdmin ? 'block' : 'none';
+      const discount = document.getElementById('discount-pill');
+      discount.style.display = isPremium ? '' : 'none';
+      discount.textContent = isPremium ? (itemData.premiumDiscountNote || 'premium discounts vary by item') : '';
+      document.getElementById('shop-note').textContent = isAdmin
+        ? 'Admin accounts automatically own every shop item and can toggle supported items on or off.'
+        : 'Prices now scale by rarity and usefulness. Premium discounts vary per item, so cooler perks keep their own special pricing.';
+      render();
+    } catch (err) {
+      console.error(err);
+      document.getElementById('market').innerHTML = '<div class="empty">Failed to load the shop. Try refreshing.</div>';
+      showStatus('Failed to load shop data', false);
+    }
+  }
+
+  document.getElementById('gift-btn').addEventListener('click', adminGift);
+  load();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

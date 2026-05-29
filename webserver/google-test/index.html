@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Google SSO Test</title>
+<script src="https://accounts.google.com/gsi/client" async></script>
+</head>
+<body style="font-family:sans-serif;padding:2rem">
+<h2>Google SSO Test</h2>
+<p id="status">Not signed in</p>
+<div id="g_id_onload"
+  data-client_id="561391673402-eufe4daah7oinpq0ddb7v2l6gspr01gh.apps.googleusercontent.com"
+  data-callback="onSignIn"
+  data-auto_select="false">
+</div>
+<div class="g_id_signin" data-type="standard"></div>
+
+<script>
+function onSignIn(response) {
+  const payload = JSON.parse(atob(response.credential.split('.')[1]));
+  const email = payload.email;
+  const status = document.getElementById('status');
+  if (email.endsWith('@student.mitch.pro')) {
+    status.style.color = 'green';
+    status.textContent = '✓ Signed in as ' + email;
+  } else {
+    status.style.color = 'red';
+    status.textContent = '✗ Wrong account: ' + email + ' (need @student.mitch.pro)';
+  }
+  console.log('Full payload:', payload);
+}
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

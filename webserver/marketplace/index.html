@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player Marketplace — mitch.pro</title>
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --primary: #81b64c;
+    --primary-dim: rgba(129,182,76,0.1);
+    --primary-border: rgba(129,182,76,0.2);
+    --card-bg: rgba(255,255,255,0.02);
+    --card-border: rgba(255,255,255,0.06);
+    --input-bg: rgba(255,255,255,0.04);
+    --input-border: rgba(255,255,255,0.08);
+    --radius: 12px;
+    --gold: #f59e0b;
+    --gold-dim: rgba(245,158,11,0.1);
+  }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0d0d0d);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 60px 20px 100px;
+    position: relative;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(129,182,76,0.05) 0%, transparent 60%);
+    pointer-events: none;
+  }
+  .wrap { width: 100%; max-width: 1000px; position: relative; z-index: 1; }
+  .header { text-align: center; margin-bottom: 40px; }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--primary-dim);
+    border: 1px solid var(--primary-border);
+    border-radius: 99px;
+    padding: 4px 14px;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin-bottom: 18px;
+  }
+  h1 { font-family: 'Syne', sans-serif; font-size: clamp(2rem, 6vw, 2.8rem); font-weight: 800; line-height: 1.1; margin-bottom: 12px; }
+  h1 span { color: var(--primary); }
+  .subtitle { font-size: 13px; color: var(--t-fg2, #777); font-style: italic; }
+
+  /* Warnings Disclaimer Styling */
+  .warning-banner {
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.25);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 30px;
+    display: flex;
+    gap: 15px;
+    align-items: flex-start;
+  }
+  .warning-icon { font-size: 24px; line-height: 1; }
+  .warning-text h4 { font-family: 'Syne', sans-serif; color: #f87171; font-size: 14px; margin-bottom: 5px; font-weight: 700; }
+  .warning-text p { font-size: 12px; color: rgba(248, 113, 113, 0.85); line-height: 1.5; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+  @media (min-width: 768px) {
+    .layout { grid-template-columns: 320px 1fr; }
+  }
+
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 24px;
+    backdrop-filter: blur(12px);
+    height: fit-content;
+  }
+
+  .card-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--card-border);
+    padding-bottom: 12px;
+  }
+
+  /* Form Styling */
+  .form-group { margin-bottom: 16px; }
+  .form-group label { display: block; font-size: 11px; color: #999; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
+  input, select, textarea {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    border-radius: var(--radius);
+    color: var(--t-fg, #e8e8e8);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    transition: all 0.2s;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--primary); background: rgba(129,182,76,0.03); }
+  .btn {
+    width: 100%;
+    background: var(--primary);
+    color: #0d0d0d;
+    border: none;
+    border-radius: var(--radius);
+    padding: 12px;
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+  }
+  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(129,182,76,0.25); }
+  .btn:active { transform: translateY(0); }
+  .btn.sec { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid var(--card-border); }
+  .btn.sec:hover { background: rgba(255,255,255,0.12); }
+  .btn.danger { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+  .btn.danger:hover { background: rgba(239, 68, 68, 0.3); }
+
+  /* Balance Bar */
+  .balance-bar {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 20px;
+  }
+
+  /* Feeds & Listings */
+  .feed-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+  .feed-tab {
+    padding: 8px 16px;
+    background: transparent;
+    border: 1px solid var(--card-border);
+    border-radius: 99px;
+    color: #888;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: 'Syne', sans-serif;
+    transition: all 0.2s;
+  }
+  .feed-tab.active { background: var(--primary-dim); border-color: var(--primary-border); color: var(--primary); }
+
+  .listings-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (min-width: 900px) {
+    .listings-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  .listing-item {
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--card-border);
+    border-radius: 14px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    transition: all 0.2s;
+  }
+  .listing-item:hover { border-color: rgba(129,182,76,0.3); background: rgba(129,182,76,0.005); }
+
+  .listing-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+  .listing-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: #fff; }
+  .listing-price { font-size: 13px; font-weight: 700; color: var(--gold); background: var(--gold-dim); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(245,158,11,0.15); }
+  
+  .listing-desc { font-size: 12px; color: #aaa; line-height: 1.5; margin-bottom: 16px; }
+  .listing-meta { font-size: 10px; color: #666; display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; border-top: 1px solid rgba(255,255,255,0.03); padding-top: 10px; }
+  .listing-meta span strong { color: #888; }
+
+  /* Badges inside listings */
+  .item-display-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    background: rgba(255,255,255,0.05);
+    color: #ccc;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .status-tag {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    width: fit-content;
+  }
+  .status-active { background: rgba(129,182,76,0.15); color: var(--primary); border: 1px solid var(--primary-border); }
+  .status-pending { background: rgba(245,158,11,0.15); color: var(--gold); border: 1px solid rgba(245,158,11,0.25); }
+  .status-finalized { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+  .status-undone { background: rgba(255,255,255,0.06); color: #888; border: 1px solid rgba(255,255,255,0.1); }
+  .status-disputed { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
+
+  .empty-state { text-align: center; padding: 60px 20px; color: #555; font-style: italic; font-size: 13px; }
+
+  .back-btn {
+    display: inline-block;
+    margin-bottom: 20px;
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    transition: opacity 0.2s;
+  }
+  .back-btn:hover { opacity: 0.8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a href="/" class="back-btn">← Back to Hub</a>
+  
+  <div class="header">
+    <div class="badge">mitch.pro market</div>
+    <h1>Player <span>Marketplace.</span></h1>
+    <p class="subtitle">Decentralized, player-to-player escrow system.</p>
+  </div>
+
+  <!-- Prominent Warranty and Safety Warnings -->
+  <div class="warning-banner">
+    <div class="warning-icon">⚠️</div>
+    <div class="warning-text">
+      <h4>LEGAL WARRANTY & SAFETY DISCLAIMER</h4>
+      <p>Mitch.pro does not verify, warrant, or assume any liability/responsibility for off-site sales, real-world money transactions, physical trade handovers, or account sharing. Keep transactions in-game. Virtual goods and MitchCoins hold no real-world monetary value. For high-stakes transactions, always specify a trusted mediator email to protect your trade!</p>
+    </div>
+  </div>
+
+  <div class="balance-bar">
+    <span>My Balance: <strong style="color: var(--gold)" id="myCoins">0.00</strong> Coins</span>
+    <span style="color: #666">Instant trade or 24h Escrow Protection</span>
+  </div>
+
+  <div class="layout">
+    <!-- Sidebar: Create Listing -->
+    <div class="card">
+      <div class="card-title">Create Listing</div>
+      <form id="createListingForm">
+        <div class="form-group">
+          <label>Listing Type</label>
+          <select id="listingType" required>
+            <option value="text">Custom Text / Services</option>
+            <option value="cosmetic">Owned Shop Cosmetic</option>
+          </select>
+        </div>
+
+        <div id="textDetailsGroup" class="form-group">
+          <label>Listing Description / Text</label>
+          <textarea id="listingDesc" rows="4" placeholder="e.g. Selling goldfish, helping with algebra homework, custom pixel art design..." maxlength="500"></textarea>
+        </div>
+
+        <div id="cosmeticsDetailsGroup" class="form-group" style="display: none;">
+          <label>Select Cosmetic Item</label>
+          <select id="listingItem">
+            <option value="">-- Choose Owned Cosmetic --</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Price (MitchCoins)</label>
+          <input type="number" id="listingPrice" min="0" placeholder="0" required>
+        </div>
+
+        <div class="form-group">
+          <label>Mediator Email (Optional)</label>
+          <input type="email" id="listingMediator" placeholder="mediator@student.mitch.pro">
+          <p style="font-size: 9px; color: #666; margin-top: 4px; line-height: 1.3">Specifying a mediator holds coins in escrow for 24h. The mediator can resolve the trade or refund the coins if rules are breached.</p>
+        </div>
+
+        <button type="submit" class="btn" style="margin-top: 10px;">Post Listing</button>
+      </form>
+    </div>
+
+    <!-- Main Content: Feeds -->
+    <div>
+      <div class="feed-tabs">
+        <button class="feed-tab active" data-tab="active">Active Market</button>
+        <button class="feed-tab" data-tab="my-trades">My Transactions</button>
+        <button class="feed-tab" data-tab="mediate-inbox">Mediation Inbox (<span id="mediationCount">0</span>)</button>
+      </div>
+
+      <div id="listingsFeed" class="listings-grid">
+        <!-- Dynamically injected -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let activeTab = 'active';
+  let myInventory = { cosmetics: {} };
+  let myEmail = '';
+  let fullListings = [];
+
+  const createForm = document.getElementById('createListingForm');
+  const listingType = document.getElementById('listingType');
+  const textDetails = document.getElementById('textDetailsGroup');
+  const cosmeticsDetails = document.getElementById('cosmeticsDetailsGroup');
+  const listingItem = document.getElementById('listingItem');
+
+  listingType.onchange = () => {
+    if (listingType.value === 'cosmetic') {
+      textDetails.style.display = 'none';
+      cosmeticsDetails.style.display = 'block';
+    } else {
+      textDetails.style.display = 'block';
+      cosmeticsDetails.style.display = 'none';
+    }
+  };
+
+  async function loadData() {
+    try {
+      const meRes = await fetch('/api/me');
+      const meData = await meRes.json();
+      myEmail = meData.email;
+      if (!myEmail) location.href = '/enroll/';
+
+      const r = await fetch('/api/marketplace/items');
+      const d = await r.json();
+      document.getElementById('myCoins').textContent = Number(d.coins).toFixed(2);
+      myInventory = d.inventory;
+      fullListings = d.listings || [];
+
+      // Populate owned cosmetics dropdown
+      listingItem.innerHTML = '<option value="">-- Choose Owned Cosmetic --</option>';
+      const cosm = myInventory.cosmetics || {};
+      
+      // Merge all cosmetic arrays
+      const allOwned = [
+        ...(cosm.colors || []),
+        ...(cosm.badges || []),
+        ...(cosm.chatEffects || []),
+        ...(cosm.profileEffects || []),
+        ...(cosm.themes || []),
+        ...(cosm.tools || [])
+      ];
+
+      allOwned.forEach(itemId => {
+        const opt = document.createElement('option');
+        opt.value = itemId;
+        opt.textContent = itemId.replace(/_/g, ' ').toUpperCase();
+        listingItem.appendChild(opt);
+      });
+
+      renderFeed();
+    } catch (e) {}
+  }
+
+  function renderFeed() {
+    const feed = document.getElementById('listingsFeed');
+    feed.innerHTML = '';
+
+    let items = [];
+    if (activeTab === 'active') {
+      items = fullListings.filter(l => l.status === 'active');
+    } else if (activeTab === 'my-trades') {
+      items = fullListings.filter(l => l.isSeller || l.isBuyer);
+    } else if (activeTab === 'mediate-inbox') {
+      items = fullListings.filter(l => l.isMediator && l.status === 'pending');
+    }
+
+    document.getElementById('mediationCount').textContent = fullListings.filter(l => l.isMediator && l.status === 'pending').length;
+
+    if (items.length === 0) {
+      feed.innerHTML = '<div class="empty-state">No listings found in this feed.</div>';
+      return;
+    }
+
+    items.forEach(l => {
+      const card = document.createElement('div');
+      card.className = 'listing-item';
+
+      let itemLabel = l.type === 'cosmetic' ? l.itemId.replace(/_/g, ' ').toUpperCase() : 'CUSTOM LISTING';
+      let displayTag = l.type === 'cosmetic' ? `<span class="item-display-badge">Cosmetic</span>` : `<span class="item-display-badge" style="border-color: rgba(129,182,76,0.3); color: var(--primary);">Text Trade</span>`;
+      
+      let statusTag = '';
+      if (activeTab !== 'active') {
+        const statuses = {
+          active: 'status-active',
+          pending: 'status-pending',
+          finalized: 'status-finalized',
+          undone: 'status-undone',
+          disputed: 'status-disputed'
+        };
+        statusTag = `<span class="status-tag ${statuses[l.status]}">${l.status}</span>`;
+      }
+
+      let metaSection = `
+        <div class="listing-meta">
+          <span><strong>Seller:</strong> ${l.seller}</span>
+          ${l.buyer ? `<span><strong>Buyer:</strong> ${l.buyer}</span>` : ''}
+          ${l.mediator ? `<span><strong>Mediator:</strong> ${l.mediator}</span>` : ''}
+          ${l.bought_at ? `<span><strong>Traded:</strong> ${new Date(l.bought_at).toLocaleString()}</span>` : ''}
+        </div>
+      `;
+
+      let actionBtn = '';
+      if (activeTab === 'active') {
+        if (l.isSeller) {
+          actionBtn = `<button class="btn sec" disabled>Your Listing</button>`;
+        } else {
+          actionBtn = `<button class="btn" onclick="buyListing('${l.id}')">Buy for ${l.price} Coins</button>`;
+        }
+      } else if (activeTab === 'my-trades') {
+        if (l.status === 'pending' || l.status === 'finalized' || l.status === 'undone') {
+          actionBtn = `<button class="btn danger" onclick="appealListing('${l.id}')">Dispute / Appeal to Admin</button>`;
+        } else {
+          actionBtn = `<button class="btn sec" disabled>${l.status.toUpperCase()}</button>`;
+        }
+      } else if (activeTab === 'mediate-inbox') {
+        actionBtn = `
+          <div style="display:flex; gap:10px;">
+            <button class="btn" onclick="mediateListing('${l.id}', 'resolve')" style="font-size:11px;">Finalize & Release</button>
+            <button class="btn danger" onclick="mediateListing('${l.id}', 'undo')" style="font-size:11px;">Refund & Reverse</button>
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div>
+          ${statusTag}
+          <div class="listing-header">
+            <span class="listing-title">${itemLabel}</span>
+            <span class="listing-price">${l.price} Coins</span>
+          </div>
+          ${displayTag}
+          <p class="listing-desc">${l.description || 'Virtual shop cosmetic trade.'}</p>
+          ${metaSection}
+        </div>
+        <div>
+          ${actionBtn}
+        </div>
+      `;
+      feed.appendChild(card);
+    });
+  }
+
+  // Action listeners
+  async function buyListing(id) {
+    if (!confirm('Are you sure you want to purchase this listing? Coins will be deducted immediately.')) return;
+    const r = await fetch('/api/marketplace/buy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ listingId: id })
+    });
+    const d = await r.json();
+    alert(d.message || d.error);
+    loadData();
+  }
+
+  async function appealListing(id) {
+    const reason = prompt('Please describe the dispute or why you are appealing this trade to admins:');
+    if (!reason || !reason.trim()) return;
+    const r = await fetch('/api/marketplace/appeal', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ listingId: id, reason })
+    });
+    const d = await r.json();
+    alert(d.message || d.error);
+    loadData();
+  }
+
+  async function mediateListing(id, action) {
+    const confirmMsg = action === 'resolve' 
+      ? 'Resolve trade: release virtual coins/items to respective parties?' 
+      : 'Undo trade: refund coins back to buyer and restore any cosmetic items back to seller?';
+    if (!confirm(confirmMsg)) return;
+
+    const r = await fetch('/api/marketplace/mediate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ listingId: id, action })
+    });
+    const d = await r.json();
+    alert(d.message || d.error);
+    loadData();
+  }
+
+  // Create listing submit
+  createForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const type = listingType.value;
+    const itemId = listingItem.value;
+    const description = document.getElementById('listingDesc').value;
+    const price = document.getElementById('listingPrice').value;
+    const mediator = document.getElementById('listingMediator').value;
+
+    if (type === 'cosmetic' && !itemId) {
+      alert('Please choose a cosmetic item from your inventory to sell.');
+      return;
+    }
+
+    if (mediator && typeof myEmail === 'string' && mediator.trim().toLowerCase() === myEmail.trim().toLowerCase()) {
+      alert('You cannot choose yourself as the mediator for your own listing!');
+      return;
+    }
+
+    const r = await fetch('/api/marketplace/list', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ type, itemId, description, price, mediator })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      alert('Listing posted successfully!');
+      createForm.reset();
+      listingType.onchange();
+      loadData();
+    } else {
+      alert(d.error || 'Failed to create listing.');
+    }
+  };
+
+  // Tab listeners
+  document.querySelectorAll('.feed-tab').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.feed-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeTab = tab.dataset.tab;
+      renderFeed();
+    };
+  });
+
+  loadData();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

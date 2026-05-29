@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>Support Inbox — mitch.pro</title>
+<script src="/theme.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--t-bg);
+  color: var(--t-fg);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#auth-screen {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 0;
+}
+.auth-wordmark {
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  color: var(--t-fg2);
+  opacity: .35;
+  margin-bottom: 1.6rem;
+}
+.auth-card {
+  background: var(--t-bg2);
+  border: 1px solid var(--t-bd);
+  border-radius: 18px;
+  padding: 2.2rem 2rem;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.55);
+}
+.auth-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  margin-bottom: .35rem;
+}
+.auth-sub {
+  font-size: .78rem;
+  color: var(--t-fg2);
+  opacity: .5;
+  margin-bottom: 1.4rem;
+  line-height: 1.5;
+}
+.auth-input {
+  width: 100%;
+  background: var(--t-bg3);
+  border: 1px solid var(--t-bd);
+  border-radius: 9px;
+  padding: .6rem .9rem;
+  color: var(--t-fg);
+  font-size: .85rem;
+  font-family: 'Consolas', 'Menlo', monospace;
+  outline: none;
+  margin-bottom: .8rem;
+  transition: border-color .15s;
+}
+.auth-input:focus { border-color: var(--t-ac); }
+.auth-err {
+  font-size: .74rem;
+  color: #ef4444;
+  margin-top: .5rem;
+  text-align: center;
+  display: none;
+}
+
+#app {
+  display: none;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#sidebar {
+  width: 300px;
+  min-width: 300px;
+  border-right: 1px solid var(--t-bd);
+  background: var(--t-bg2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.sidebar-hd {
+  padding: .85rem 1rem .85rem 1.1rem;
+  border-bottom: 1px solid var(--t-bd);
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+}
+.sidebar-title {
+  flex: 1;
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--t-fg2);
+  opacity: .55;
+}
+.filter-bar {
+  display: flex;
+  gap: 3px;
+  padding: .5rem .75rem;
+  border-bottom: 1px solid var(--t-bd);
+}
+.ftab {
+  flex: 1;
+  padding: .32rem .5rem;
+  font-size: .72rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: none;
+  background: none;
+  color: var(--t-fg2);
+  cursor: pointer;
+  opacity: .45;
+  font-family: inherit;
+  transition: all .15s;
+  text-align: center;
+}
+.ftab.active { background: var(--t-bg3); opacity: 1; color: var(--t-fg); border: 1px solid var(--t-bd); }
+.email-list { flex: 1; overflow-y: auto; }
+.eitem {
+  padding: .7rem 1.1rem;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  cursor: pointer;
+  transition: background .1s;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: .15rem .5rem;
+  position: relative;
+}
+.eitem:hover { background: var(--t-bg3); }
+.eitem.sel { background: rgba(99,102,241,.08); border-left: 2px solid var(--t-ac); padding-left: calc(1.1rem - 2px); }
+.eitem.handled { opacity: .42; }
+.erow1 { display: flex; align-items: center; gap: .35rem; overflow: hidden; }
+.efrom {
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--t-fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.edate {
+  font-size: .67rem;
+  color: var(--t-fg2);
+  opacity: .45;
+  white-space: nowrap;
+  align-self: center;
+}
+.esubj {
+  font-size: .75rem;
+  color: var(--t-fg2);
+  opacity: .55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  grid-column: 1 / -1;
+  margin-top: .05rem;
+}
+.udot {
+  width: 5px; height: 5px;
+  background: var(--t-ac);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.hcheck { font-size: .65rem; color: #22c55e; flex-shrink: 0; }
+
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: .5rem;
+  color: var(--t-fg2);
+  opacity: .25;
+  font-size: .85rem;
+  user-select: none;
+}
+.empty-icon { font-size: 2rem; }
+
+.eview { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.emeta {
+  padding: 1.1rem 1.6rem 1rem;
+  border-bottom: 1px solid var(--t-bd);
+  background: var(--t-bg2);
+  flex-shrink: 0;
+}
+.esubj-big {
+  font-size: .97rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  margin-bottom: .6rem;
+  line-height: 1.3;
+}
+.mrow {
+  display: flex;
+  gap: .6rem;
+  font-size: .73rem;
+  color: var(--t-fg2);
+  margin-bottom: .18rem;
+  align-items: baseline;
+  line-height: 1.4;
+}
+.mlabel {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: .6rem;
+  width: 28px;
+  flex-shrink: 0;
+  opacity: .5;
+  padding-top: .05rem;
+}
+.thread-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: .9rem;
+}
+.msg-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+}
+.msg-bubble.out { align-items: flex-end; }
+.msg-meta {
+  font-size: .65rem;
+  color: var(--t-fg2);
+  opacity: .45;
+  padding: 0 .2rem;
+}
+.msg-body {
+  background: var(--t-bg2);
+  border: 1px solid var(--t-bd);
+  border-radius: 10px;
+  padding: .7rem .95rem;
+  font-family: 'Consolas', 'Menlo', 'Courier New', monospace;
+  font-size: .77rem;
+  line-height: 1.68;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 90%;
+  color: var(--t-fg);
+  opacity: .88;
+}
+.msg-bubble.out .msg-body {
+  background: rgba(99,102,241,.1);
+  border-color: rgba(99,102,241,.25);
+}
+.eactions {
+  padding: .65rem 1.6rem;
+  border-top: 1px solid var(--t-bd);
+  background: var(--t-bg2);
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-shrink: 0;
+}
+.uid-tag {
+  font-size: .65rem;
+  color: var(--t-fg2);
+  opacity: .25;
+  margin-left: auto;
+  font-family: monospace;
+}
+
+.compose {
+  border-top: 1px solid var(--t-bd);
+  background: var(--t-bg);
+  flex-shrink: 0;
+}
+.compose-hd {
+  padding: .5rem 1.6rem;
+  font-size: .62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--t-fg2);
+  opacity: .3;
+  border-bottom: 1px solid var(--t-bd);
+}
+#reply-text {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--t-fg);
+  font-family: inherit;
+  font-size: .82rem;
+  line-height: 1.62;
+  padding: .85rem 1.6rem;
+  resize: none;
+  min-height: 88px;
+}
+.compose-div {
+  height: 1px;
+  background: var(--t-bd);
+  margin: 0 1.6rem;
+  opacity: .4;
+}
+#footer-text {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: var(--t-bg3);
+  color: var(--t-fg2);
+  font-family: 'Consolas', 'Menlo', 'Courier New', monospace;
+  font-size: .7rem;
+  line-height: 1.6;
+  padding: .7rem 1.6rem;
+  resize: none;
+  opacity: .45;
+  min-height: 72px;
+  transition: opacity .15s;
+}
+#footer-text:focus { opacity: .7; outline: none; }
+.compose-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .55rem 1.6rem;
+  border-top: 1px solid var(--t-bd);
+  background: var(--t-bg2);
+}
+.from-tag { font-size: .7rem; color: var(--t-fg2); opacity: .35; }
+
+.btn {
+  padding: .4rem .85rem;
+  border-radius: 8px;
+  border: 1px solid var(--t-bd);
+  background: var(--t-bg3);
+  color: var(--t-fg2);
+  font-size: .78rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all .15s;
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--t-bda); color: var(--t-fg); }
+.btn-primary {
+  background: var(--t-ac);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+.btn-primary:hover { opacity: .87; }
+.btn-primary:disabled { opacity: .35; cursor: default; pointer-events: none; }
+.btn-handled { border: 1px solid var(--t-bd); }
+.btn-handled.on { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,.07); }
+.icon-btn {
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: .3rem .45rem;
+  color: var(--t-fg2);
+  cursor: pointer;
+  font-size: .82rem;
+  transition: all .15s;
+  font-family: inherit;
+  line-height: 1;
+}
+.icon-btn:hover { background: var(--t-bg3); border-color: var(--t-bd); }
+
+.spinner {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 2px solid var(--t-bd);
+  border-top-color: var(--t-ac);
+  border-radius: 50%;
+  animation: spin .55s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.center-spin { display: flex; align-items: center; justify-content: center; padding: 2.5rem; }
+
+#toast {
+  position: fixed;
+  bottom: 1.4rem;
+  right: 1.4rem;
+  padding: .55rem 1rem;
+  background: var(--t-bg2);
+  border: 1px solid var(--t-bd);
+  border-radius: 10px;
+  font-size: .78rem;
+  box-shadow: 0 8px 28px rgba(0,0,0,.45);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: all .18s;
+  pointer-events: none;
+  z-index: 200;
+  max-width: 280px;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+#toast.err { border-color: #ef4444; color: #ef4444; }
+
+#ai-panel {
+  border-top: 1px solid var(--t-bd);
+  background: linear-gradient(135deg, rgba(99,102,241,.03), rgba(167,139,250,.04));
+  padding: .85rem 1.6rem;
+  font-size: .8rem;
+  flex-shrink: 0;
+  animation: aiFade .18s ease;
+}
+@keyframes aiFade { from { opacity:0; transform:translateY(-3px); } to { opacity:1; } }
+.ai-hd { display:flex; align-items:center; gap:.5rem; margin-bottom:.65rem; flex-wrap:wrap; }
+.ai-title {
+  font-size:.68rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em;
+  background: linear-gradient(90deg,#a78bfa,#60a5fa);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+}
+.ai-badge {
+  padding:.13rem .45rem; border-radius:5px; font-size:.65rem; font-weight:600; text-transform:capitalize;
+}
+.badge-positive,.badge-low  { background:rgba(34,197,94,.1);  color:#4ade80; }
+.badge-neutral             { background:rgba(99,102,241,.1); color:#a5b4fc; }
+.badge-negative,.badge-high { background:rgba(239,68,68,.1);  color:#f87171; }
+.badge-frustrated          { background:rgba(249,115,22,.1); color:#fb923c; }
+.badge-urgent              { background:rgba(239,68,68,.18); color:#ef4444; }
+.badge-medium              { background:rgba(234,179,8,.1);  color:#facc15; }
+.ai-summary { color:var(--t-fg); line-height:1.55; margin-bottom:.55rem; opacity:.9; }
+.ai-points  { margin:.2rem 0 .5rem; padding:0; }
+.ai-points li { list-style:none; padding-left:.9rem; position:relative; color:var(--t-fg2); line-height:1.75; }
+.ai-points li::before { content:'·'; position:absolute; left:0; color:var(--t-ac); font-weight:700; }
+.ai-action { margin-top:.5rem; padding:.35rem .7rem; border-radius:6px; background:rgba(167,139,250,.1); color:var(--t-ac); font-size:.74rem; display:inline-block; }
+.btn-ai { color:#a78bfa !important; border-color:rgba(167,139,250,.35) !important; }
+.btn-ai:hover { background:rgba(167,139,250,.1) !important; border-color:#a78bfa !important; }
+
+.back-row { display: none; }
+@media (max-width: 680px) {
+  #app { position: relative; }
+  #sidebar { width: 100%; min-width: 0; position: absolute; inset: 0; z-index: 2; }
+  #sidebar.slide-out { display: none; }
+  #main { position: absolute; inset: 0; z-index: 1; }
+  #main.slide-in { z-index: 3; }
+  .back-row {
+    display: flex;
+    align-items: center;
+    padding: .55rem .8rem;
+    border-bottom: 1px solid var(--t-bd);
+    background: var(--t-bg2);
+    flex-shrink: 0;
+  }
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--t-bd); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div id="toast"></div>
+
+<div id="auth-screen">
+  <div class="auth-wordmark">mitch.pro</div>
+  <div class="auth-card">
+    <div class="auth-title">Team Access</div>
+    <div class="auth-sub">Enter your team token to access the support inbox.</div>
+    <input class="auth-input" id="token-input" type="password" placeholder="Paste token…" autocomplete="off">
+    <button class="btn btn-primary" style="width:100%;padding:.58rem;justify-content:center;" onclick="submitToken()">Access Inbox</button>
+    <div class="auth-err" id="auth-err">Invalid token. Try again.</div>
+  </div>
+</div>
+
+<div id="app">
+
+  <div id="sidebar">
+    <div class="sidebar-hd">
+      <div class="sidebar-title" id="sidebar-title">Support Inbox</div>
+      <button class="icon-btn" id="gmail-toggle-btn" onclick="toggleGmailScraping()" title="Pause/resume Gmail scraping" style="display:none;font-size:.7rem;padding:.3rem .5rem;">⏸</button>
+      <button class="icon-btn" id="refresh-btn" onclick="refreshCurrent()" title="Refresh">↺</button>
+    </div>
+    <div class="filter-bar">
+      <button class="ftab active" data-filter="unread" onclick="setFilter('unread',this)">Unread</button>
+      <button class="ftab" data-filter="all" onclick="setFilter('all',this)">All</button>
+      <button class="ftab" data-filter="gmail" onclick="setFilter('gmail',this)">Gmail</button>
+    </div>
+    <div class="email-list" id="email-list">
+      <div class="center-spin"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-icon">✉</div>
+      <div>Select an email to read</div>
+    </div>
+
+    <div class="eview" id="eview" style="display:none;">
+
+      <div class="back-row" id="back-row">
+        <button class="icon-btn" onclick="goBack()" style="font-size:.78rem;gap:.3rem;">← Back</button>
+      </div>
+
+      <div class="emeta">
+        <div class="esubj-big" id="v-subject"></div>
+        <div class="mrow"><span class="mlabel">From</span><span id="v-from"></span></div>
+        <div class="mrow"><span class="mlabel">To</span><span id="v-to"></span></div>
+        <div class="mrow"><span class="mlabel">Date</span><span id="v-date"></span></div>
+      </div>
+
+      <div class="thread-wrap" id="thread-wrap"></div>
+
+      <div id="ai-panel" style="display:none"></div>
+
+      <div class="eactions">
+        <button class="btn btn-handled" id="handled-btn" onclick="toggleHandled()">
+          <span id="handled-icon">○</span><span id="handled-lbl">Mark handled</span>
+        </button>
+        <button class="btn btn-ai" id="ai-btn" onclick="aiReview()">✦ AI Review</button>
+        <button class="btn" id="unsub-btn" onclick="unsubscribeSender()" title="Unsubscribe sender from newsletter">Unsubscribe</button>
+        <span class="uid-tag" id="uid-tag"></span>
+      </div>
+
+      <div class="compose">
+        <div class="compose-hd">Reply</div>
+        <textarea id="reply-text" placeholder="Write your reply…" rows="4" spellcheck="true"></textarea>
+        <div class="compose-div"></div>
+        <textarea id="footer-text" rows="4" spellcheck="false"></textarea>
+        <div class="compose-ft">
+          <span class="from-tag" id="from-tag">from support@mitch.pro</span>
+          <button class="btn" onclick="resetFooter()" title="Restore default footer" style="font-size:.72rem;">↺ Footer</button>
+          <button class="btn btn-ai" id="draft-btn" onclick="aiDraft()">✦ Draft</button>
+          <button class="btn btn-primary" id="send-btn" onclick="sendReply()">Send Reply</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+const FOOTER_DEFAULT = `---\nVisit https://mitch.pro/unsubscribe.html, or email support@mitch.pro to unsubscribe\nAlso available at https://mitch.88chan.me/unsubscribe.html\n2014 Capitol Ave #100, Sacramento, CA 95811`;
+const CACHE_KEY        = '_teamInboxCache';
+const GMAIL_CACHE_KEY  = '_teamGmailCache';
+const FOOTER_KEY       = '_teamFooter';
+
+let gmailSent = {};
+
+function gmailThreadKey(m) {
+  return m.messageId || (m.sender + '|' + m.subject);
+}
+
+async function loadGmailSent() {
+  const r = await api('GET', '/api/team/gmail-sent').catch(() => null);
+  if (r && r.ok) gmailSent = await r.json().catch(() => ({}));
+}
+
+let emails = [];
+let gmailEmails = [];
+let selected = null;
+let filterMode = 'all';
+
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso), now = new Date();
+    if (d.toDateString() === now.toDateString())
+      return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    if (d.getFullYear() === now.getFullYear())
+      return d.toLocaleDateString([], {month:'short',day:'numeric'});
+    return d.toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'});
+  } catch { return iso; }
+}
+
+let _toastTimer;
+function toast(msg, isErr) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (isErr ? ' err' : '');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 2800);
+}
+
+function api(method, path, body) {
+  const tok = localStorage.getItem('_teamToken') || '';
+  return fetch(path, {
+    method,
+    headers: {
+      'Authorization': 'Bearer ' + tok,
+      ...(body ? {'Content-Type':'application/json'} : {}),
+    },
+    ...(body ? {body: JSON.stringify(body)} : {}),
+  });
+}
+
+
+function showAuth() {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+}
+
+function showApp() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+}
+
+async function submitToken() {
+  const val = document.getElementById('token-input').value.trim();
+  if (!val) return;
+  const errEl = document.getElementById('auth-err');
+  errEl.style.display = 'none';
+  const r = await fetch('/api/team/inbox', {headers:{'Authorization':'Bearer '+val}}).catch(()=>null);
+  if (!r || r.status === 401) {
+    errEl.style.display = 'block';
+    return;
+  }
+  localStorage.setItem('_teamToken', val);
+  showApp();
+  const data = await r.json().catch(()=>({}));
+  emails = data.messages || [];
+  renderList();
+}
+
+document.getElementById('token-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitToken();
+});
+
+document.getElementById('footer-text').addEventListener('input', function() {
+  localStorage.setItem(FOOTER_KEY, this.value);
+});
+
+function resetFooter() {
+  localStorage.removeItem(FOOTER_KEY);
+  document.getElementById('footer-text').value = FOOTER_DEFAULT;
+}
+
+
+(function init() {
+  const params = new URLSearchParams(location.search);
+  const t = params.get('t');
+  if (t) {
+    localStorage.setItem('_teamToken', t);
+    params.delete('t');
+    history.replaceState({}, '', location.pathname + (params.toString() ? '?' + params : ''));
+  }
+  if (!localStorage.getItem('_teamToken')) { showAuth(); return; }
+  showApp();
+
+  try {
+    const cached = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    if (cached) { emails = cached; renderList(); }
+  } catch {}
+  loadInbox();
+  loadGmail();
+  loadGmailSent();
+
+  setInterval(refreshCurrent, 5_000);
+})();
+
+
+function refreshCurrent() {
+  if (filterMode === 'gmail') loadGmail();
+  else loadInbox();
+}
+
+async function loadInbox() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) btn.textContent = '…';
+  if (!emails.length)
+    document.getElementById('email-list').innerHTML = '<div class="center-spin"><div class="spinner"></div></div>';
+  try {
+    const r = await api('GET', '/api/team/inbox' + (filterMode === 'all' ? '?all=1' : ''));
+    if (r.status === 401) { showAuth(); return; }
+    const data = await r.json();
+    emails = data.messages || [];
+    localStorage.setItem(CACHE_KEY, JSON.stringify(emails));
+    if (filterMode !== 'gmail') {
+      renderList();
+      if (selected && selected.uid && selected.dir === 'in') refreshThreadWrap();
+    }
+  } catch {
+    if (!emails.length && filterMode !== 'gmail')
+      document.getElementById('email-list').innerHTML =
+        '<div style="padding:2rem;text-align:center;font-size:.78rem;color:#ef4444;">Failed to load</div>';
+  }
+  if (btn) btn.textContent = '↺';
+}
+
+async function loadGmail() {
+  const btn = document.getElementById('refresh-btn');
+  if (btn) btn.textContent = '…';
+  if (!gmailEmails.length && filterMode === 'gmail')
+    document.getElementById('email-list').innerHTML = '<div class="center-spin"><div class="spinner"></div></div>';
+  try {
+    const r = await api('GET', '/api/team/gmail');
+    if (r.status === 401) { showAuth(); return; }
+    const data = await r.json();
+    gmailEmails = data.messages || [];
+    localStorage.setItem(GMAIL_CACHE_KEY, JSON.stringify(gmailEmails));
+    if (filterMode === 'gmail') {
+      renderList();
+    }
+  } catch {
+    if (!gmailEmails.length && filterMode === 'gmail')
+      document.getElementById('email-list').innerHTML =
+        '<div style="padding:2rem;text-align:center;font-size:.78rem;color:#ef4444;">Failed to load</div>';
+  }
+  if (btn) btn.textContent = '↺';
+}
+
+let gmailPaused = false;
+
+function updateGmailToggleBtn() {
+  const btn = document.getElementById('gmail-toggle-btn');
+  btn.textContent = gmailPaused ? '▶' : '⏸';
+  btn.title = gmailPaused ? 'Resume Gmail scraping' : 'Pause Gmail scraping';
+  btn.style.color = gmailPaused ? '#ef4444' : '';
+}
+
+async function toggleGmailScraping() {
+  const r = await api('POST', '/api/team/gmail-toggle').catch(() => null);
+  if (!r || !r.ok) { toast('Failed to toggle', true); return; }
+  const d = await r.json();
+  gmailPaused = d.paused;
+  updateGmailToggleBtn();
+  toast(gmailPaused ? 'Gmail scraping paused' : 'Gmail scraping resumed');
+}
+
+async function fetchGmailStatus() {
+  const r = await api('GET', '/api/team/gmail-status').catch(() => null);
+  if (r && r.ok) { gmailPaused = (await r.json()).paused; updateGmailToggleBtn(); }
+}
+
+function setFilter(mode, btn) {
+  filterMode = mode;
+  document.querySelectorAll('.ftab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('sidebar-title').textContent = mode === 'gmail' ? 'Gmail Inbox' : 'Support Inbox';
+  document.getElementById('gmail-toggle-btn').style.display = mode === 'gmail' ? '' : 'none';
+  if (mode === 'gmail') fetchGmailStatus();
+  selected = null;
+  document.getElementById('empty-state').style.display = '';
+  document.getElementById('eview').style.display = 'none';
+  renderList();
+  if (mode === 'gmail') loadGmail(); else loadInbox();
+}
+
+function gmailSenderName(sender) {
+  const m = sender?.match(/^(.+?)\s*<[^>]+>/);
+  return m ? m[1].trim() : (sender || '');
+}
+
+function gmailThreads() {
+  const map = {};
+  for (const m of gmailEmails) {
+    const key = m.threadId || m.messageId || (m.sender + '|' + m.subject);
+    if (!map[key]) map[key] = [];
+    map[key].push(m);
+  }
+  return Object.entries(map).map(([key, msgs]) => {
+    msgs.sort((a, b) => new Date(a.date) - new Date(b.date));
+    return { key, msgs, latest: msgs[msgs.length - 1] };
+  }).sort((a, b) => new Date(b.latest.date) - new Date(a.latest.date));
+}
+
+function renderList() {
+  const list = document.getElementById('email-list');
+  if (filterMode === 'gmail') {
+    const threads = gmailThreads();
+    if (!threads.length) {
+      list.innerHTML = `<div style="padding:2.5rem 1rem;text-align:center;font-size:.78rem;color:var(--t-fg2);opacity:.3;">Gmail inbox empty</div>`;
+      return;
+    }
+    list.innerHTML = threads.map(({ key, msgs, latest }, i) => `
+      <div class="eitem${selected?._gmailThread===key?' sel':''}"
+           onclick="openGmailThread(${i})" data-gthread="${esc(key)}">
+        <div class="erow1">
+          <span class="efrom">${esc(gmailSenderName(msgs[0].sender))}</span>
+          ${msgs.length > 1 ? `<span style="font-size:.65rem;color:var(--t-fg2);opacity:.5;margin-left:auto">${msgs.length}</span>` : ''}
+        </div>
+        <span class="edate">${fmtDate(latest.date)}</span>
+        <div class="esubj">${esc(msgs[0].subject || '(no subject)')}</div>
+      </div>
+    `).join('');
+    return;
+  }
+  const inbox = emails.filter(e => e.dir === 'in');
+  const items = filterMode === 'unread' ? inbox.filter(e => !e.seen) : inbox;
+  if (!items.length) {
+    list.innerHTML = `<div style="padding:2.5rem 1rem;text-align:center;font-size:.78rem;color:var(--t-fg2);opacity:.3;">
+      ${filterMode === 'unread' ? 'No unread emails' : 'Inbox empty'}
+    </div>`;
+    return;
+  }
+  list.innerHTML = items.map(m => `
+    <div class="eitem${m.handled?' handled':''}${selected?.uid===m.uid?' sel':''}"
+         onclick="openEmail(${m.uid})" data-uid="${m.uid}">
+      <div class="erow1">
+        ${!m.seen ? '<span class="udot"></span>' : ''}
+        <span class="efrom">${esc(m.fromName || m.from)}</span>
+        ${m.senderPremium ? '<span title="Premium member" style="color:#f59e0b;font-size:9px;letter-spacing:.05em">✦ premium</span>' : ''}
+        ${m.handled ? '<span class="hcheck">✓</span>' : ''}
+      </div>
+      <span class="edate">${fmtDate(m.date)}</span>
+      <div class="esubj">${esc(m.subject || '(no subject)')}</div>
+    </div>
+  `).join('');
+}
+
+
+function refreshThreadWrap() {
+  const m = emails.find(e => e.uid === selected.uid && e.dir === 'in');
+  if (!m) return;
+  selected = m;
+  setHandledUI(m.handled);
+  const thread = emails
+    .filter(e => e.threadKey === m.threadKey)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  const wrap = document.getElementById('thread-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = thread.map(msg => `
+    <div class="msg-bubble ${msg.dir}">
+      <div class="msg-meta">${msg.dir === 'in' ? esc(msg.fromName || msg.from) : 'support@mitch.pro'} · ${fmtDate(msg.date)}</div>
+      <div class="msg-body">${esc(msg.body || '(empty)')}</div>
+    </div>
+  `).join('');
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function refreshGmailWrap() {
+  const m = gmailEmails[selected._gmailIdx];
+  if (!m) return;
+  const senderMatch = m.sender?.match(/^(.+?)\s*<([^>]+)>/);
+  const fromName = senderMatch ? senderMatch[1].trim() : m.sender || '';
+  const wrap = document.getElementById('thread-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = `<div class="msg-bubble in">
+    <div class="msg-meta">${esc(fromName)} · ${esc(m.date || '')}</div>
+    <div class="msg-body">${esc(m.body || '(empty)')}</div>
+  </div>`;
+}
+
+function openEmail(uid) {
+  const m = emails.find(e => e.uid === uid && e.dir === 'in');
+  if (!m) return;
+  selected = m;
+
+  if (window.innerWidth <= 680) {
+    document.getElementById('sidebar').classList.add('slide-out');
+    document.getElementById('main').classList.add('slide-in');
+    document.getElementById('back-row').style.display = 'flex';
+  }
+
+  document.querySelectorAll('.eitem').forEach(el => {
+    el.classList.toggle('sel', +el.dataset.uid === uid);
+  });
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('eview').style.display = 'flex';
+  document.querySelector('.eactions').style.display = '';
+  document.getElementById('handled-btn').style.display = '';
+  document.querySelector('.compose').style.display = '';
+  document.getElementById('send-btn').textContent = 'Send Reply';
+  document.getElementById('from-tag').textContent = 'from support@mitch.pro';
+
+  document.getElementById('v-subject').textContent = m.subject || '(no subject)';
+  document.getElementById('v-from').textContent = m.fromName ? `${m.fromName} <${m.from}>` : (m.from || '');
+  document.getElementById('v-to').textContent = m.to || 'support@mitch.pro';
+  document.getElementById('v-date').textContent = m.date ? new Date(m.date).toLocaleString() : '';
+  document.getElementById('uid-tag').textContent = `uid ${uid}`;
+
+  setHandledUI(m.handled);
+
+  const unsubBtn = document.getElementById('unsub-btn');
+  unsubBtn.disabled = false;
+  unsubBtn.textContent = 'Unsubscribe';
+  unsubBtn.style.color = '';
+
+  document.getElementById('reply-text').value = '';
+  document.getElementById('footer-text').value = localStorage.getItem(FOOTER_KEY) || FOOTER_DEFAULT;
+  document.getElementById('ai-panel').style.display = 'none';
+  document.getElementById('ai-btn').textContent = '✦ AI Review';
+
+  const thread = emails
+    .filter(e => e.threadKey === m.threadKey)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const wrap = document.getElementById('thread-wrap');
+  wrap.innerHTML = thread.map(msg => `
+    <div class="msg-bubble ${msg.dir}">
+      <div class="msg-meta">${msg.dir === 'in' ? esc(msg.fromName || msg.from) : 'support@mitch.pro'} · ${fmtDate(msg.date)}</div>
+      <div class="msg-body">${esc(msg.body || '(empty)')}</div>
+    </div>
+  `).join('');
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function openGmailThread(i) { openGmail(gmailThreads()[i]?.key); }
+
+function openGmail(threadKey) {
+  const thread = gmailThreads().find(t => t.key === threadKey);
+  if (!thread) return;
+  const { msgs, latest } = thread;
+  const first = msgs[0];
+
+  selected = { _gmailThread: threadKey, messageId: latest.messageId || '', _replyTo: first.sender };
+
+  if (window.innerWidth <= 680) {
+    document.getElementById('sidebar').classList.add('slide-out');
+    document.getElementById('main').classList.add('slide-in');
+    document.getElementById('back-row').style.display = 'flex';
+  }
+
+  document.querySelectorAll('.eitem').forEach(el => {
+    el.classList.toggle('sel', el.dataset.gthread === threadKey);
+  });
+
+  document.getElementById('empty-state').style.display = 'none';
+  document.getElementById('eview').style.display = 'flex';
+
+  document.getElementById('v-subject').textContent = first.subject || '(no subject)';
+  document.getElementById('v-from').textContent = first.sender || '';
+  document.getElementById('v-to').textContent = 'mitchell.fogler@student.mitch.pro';
+  document.getElementById('v-date').textContent = fmtDate(first.date) || '';
+  document.getElementById('uid-tag').textContent = '';
+
+  document.querySelector('.eactions').style.display = '';
+  document.getElementById('handled-btn').style.display = 'none';
+  document.querySelector('.compose').style.display = '';
+  document.getElementById('send-btn').textContent = 'Send via Gmail';
+  document.getElementById('from-tag').textContent = 'from mitchell.fogler@student.mitch.pro';
+  document.getElementById('reply-text').value = '';
+  document.getElementById('footer-text').value = localStorage.getItem(FOOTER_KEY) || FOOTER_DEFAULT;
+  document.getElementById('ai-panel').style.display = 'none';
+  document.getElementById('ai-btn').textContent = '✦ AI Review';
+
+  const unsubBtn = document.getElementById('unsub-btn');
+  unsubBtn.disabled = false; unsubBtn.textContent = 'Unsubscribe'; unsubBtn.style.color = '';
+
+  const sentReplies = gmailSent[threadKey] || [];
+
+  const allMsgs = [
+    ...msgs.map(m => ({ dir: 'in', sender: m.sender, body: m.body, date: m.date })),
+    ...sentReplies.map(r => ({ dir: 'out', sender: 'mitchell.fogler@student.mitch.pro', body: r.body, date: r.date })),
+  ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const wrap = document.getElementById('thread-wrap');
+  wrap.innerHTML = allMsgs.map(msg => {
+    const name = msg.dir === 'in' ? esc(gmailSenderName(msg.sender)) : 'mitchell.fogler@student.mitch.pro';
+    return `<div class="msg-bubble ${msg.dir}">
+      <div class="msg-meta">${name} · ${fmtDate(msg.date)}</div>
+      <div class="msg-body">${esc(msg.body || '(empty)')}</div>
+    </div>`;
+  }).join('');
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function goBack() {
+  document.getElementById('sidebar').classList.remove('slide-out');
+  document.getElementById('main').classList.remove('slide-in');
+  document.getElementById('back-row').style.display = 'none';
+}
+
+
+function setHandledUI(on) {
+  const btn = document.getElementById('handled-btn');
+  btn.classList.toggle('on', !!on);
+  document.getElementById('handled-icon').textContent = on ? '✓' : '○';
+  document.getElementById('handled-lbl').textContent = on ? 'Handled' : 'Mark handled';
+}
+
+async function toggleHandled() {
+  if (!selected) return;
+  const next = !selected.handled;
+  try {
+    const r = await api('POST', '/api/team/handled', {uid: selected.uid, handled: next});
+    if (!r.ok) throw new Error();
+    selected.handled = next;
+    const m = emails.find(e => e.uid === selected.uid);
+    if (m) m.handled = next;
+    setHandledUI(next);
+    renderList();
+    toast(next ? 'Marked as handled' : 'Unmarked');
+  } catch { toast('Update failed', true); }
+}
+
+async function sendGmailReply() {
+  if (!selected?._gmailThread) return;
+  const thread = gmailThreads().find(t => t.key === selected._gmailThread);
+  if (!thread) return;
+  const body = document.getElementById('reply-text').value.trim();
+  const footer = document.getElementById('footer-text').value;
+  if (!body) { toast('Reply is empty', true); return; }
+
+  const senderMatch = selected._replyTo?.match(/<([^>]+)>/);
+  const to = senderMatch ? senderMatch[1].trim() : (selected._replyTo || '');
+  if (!to) { toast('Cannot determine recipient', true); return; }
+
+  const subj = (thread.msgs[0].subject || '').startsWith('Re:')
+    ? thread.msgs[0].subject : 'Re: ' + (thread.msgs[0].subject || '');
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const r = await api('POST', '/api/team/gmail-reply', {
+      to, subject: subj,
+      body: body + '\n\n' + footer,
+      messageId: selected.messageId || '',
+      threadKey: selected._gmailThread,
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(()=>({}));
+      throw new Error(d.error || 'Send failed');
+    }
+    toast('Sent via Gmail ✓');
+    const sentBody = body + '\n\n' + footer;
+    const tk = selected._gmailThread;
+    if (!gmailSent[tk]) gmailSent[tk] = [];
+    gmailSent[tk].push({ body: sentBody, date: new Date().toISOString() });
+    const wrap = document.getElementById('thread-wrap');
+    const bubble = document.createElement('div');
+    bubble.className = 'msg-bubble out';
+    bubble.innerHTML = `<div class="msg-meta">mitchell.fogler@student.mitch.pro · ${new Date().toLocaleString()}</div><div class="msg-body">${esc(sentBody)}</div>`;
+    wrap.appendChild(bubble);
+    wrap.scrollTop = wrap.scrollHeight;
+    document.getElementById('reply-text').value = '';
+    document.getElementById('footer-text').value = localStorage.getItem(FOOTER_KEY) || FOOTER_DEFAULT;
+  } catch (e) {
+    toast(e.message || 'Failed to send', true);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Send via Gmail';
+}
+
+
+async function unsubscribeSender() {
+  if (!selected) return;
+  let email;
+  if (selected._gmailThread !== undefined) {
+    const match = selected._replyTo?.match(/<([^>]+)>/);
+    email = match ? match[1].trim() : (selected._replyTo || '');
+  } else {
+    email = selected.from;
+  }
+  if (!email) return;
+  if (!confirm(`Unsubscribe ${email} from the newsletter?`)) return;
+  const btn = document.getElementById('unsub-btn');
+  btn.disabled = true;
+  btn.textContent = 'Unsubscribing…';
+  try {
+    const r = await api('POST', '/api/team/unsubscribe', { email });
+    if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || 'Failed');
+    toast(`${email} unsubscribed ✓`);
+    btn.textContent = 'Unsubscribed ✓';
+    btn.style.color = '#22c55e';
+  } catch (e) {
+    toast(e.message || 'Failed', true);
+    btn.disabled = false;
+    btn.textContent = 'Unsubscribe';
+  }
+}
+
+
+async function sendReply() {
+  if (selected?._gmailThread !== undefined) { sendGmailReply(); return; }
+
+  if (!selected) return;
+  const body = document.getElementById('reply-text').value.trim();
+  const footer = document.getElementById('footer-text').value;
+  if (!body) { toast('Reply is empty', true); return; }
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const subj = (selected.subject || '').startsWith('Re:')
+      ? selected.subject
+      : 'Re: ' + (selected.subject || '');
+
+    const r = await api('POST', '/api/team/reply', {
+      to: selected.from,
+      subject: subj,
+      body: body + '\n\n' + footer,
+      inReplyTo: selected.messageId || '',
+    });
+
+    if (!r.ok) {
+      const d = await r.json().catch(()=>({}));
+      throw new Error(d.error || 'Send failed');
+    }
+
+    toast('Reply sent ✓');
+
+    document.getElementById('reply-text').value = '';
+    document.getElementById('footer-text').value = localStorage.getItem(FOOTER_KEY) || FOOTER_DEFAULT;
+
+    await loadInbox();
+    openEmail(selected.uid);
+
+    if (!selected.handled) {
+      selected.handled = true;
+      const m = emails.find(e => e.uid === selected.uid);
+      if (m) m.handled = true;
+      setHandledUI(true);
+      renderList();
+      api('POST', '/api/team/handled', {uid: selected.uid, handled: true}).catch(()=>{});
+    }
+  } catch (e) {
+    toast(e.message || 'Failed to send', true);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Send Reply';
+}
+
+
+function getEmailContext() {
+  if (!selected) return null;
+  if (selected._gmailThread !== undefined) {
+    const t = gmailThreads().find(t => t.key === selected._gmailThread);
+    if (!t) return null;
+    const sentReplies = gmailSent[selected._gmailThread] || [];
+    const allMsgs = [
+      ...t.msgs.map(m => ({ dir: 'in', body: m.body })),
+      ...sentReplies.map(r => ({ dir: 'out', body: r.body })),
+    ].sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+    return { subject: t.msgs[0]?.subject, emailBody: t.msgs[0]?.body, sender: t.msgs[0]?.sender, thread: allMsgs };
+  } else {
+    const threadMsgs = emails
+      .filter(e => e.threadKey === selected.threadKey)
+      .sort((a, b) => new Date(a.date) - new Date(b.date))
+      .map(m => ({ dir: m.dir, body: m.body }));
+    return { subject: selected.subject, emailBody: selected.body, sender: selected.from, thread: threadMsgs };
+  }
+}
+
+async function aiReview() {
+  const ctx = getEmailContext();
+  if (!ctx) return;
+  const btn = document.getElementById('ai-btn');
+  const panel = document.getElementById('ai-panel');
+  btn.disabled = true; btn.textContent = '✦ Reviewing…';
+  panel.style.display = 'none';
+  try {
+    const r = await api('POST', '/api/team/ai', { mode: 'review', ...ctx });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'AI failed');
+    const d = await r.json();
+    panel.innerHTML = `
+      <div class="ai-hd">
+        <span class="ai-title">✦ AI Review</span>
+        ${d.tone     ? `<span class="ai-badge badge-${d.tone}">${d.tone}</span>` : ''}
+        ${d.priority ? `<span class="ai-badge badge-${d.priority}">${d.priority} priority</span>` : ''}
+      </div>
+      ${d.summary ? `<div class="ai-summary">${esc(d.summary)}</div>` : ''}
+      ${d.keyPoints?.length ? `<ul class="ai-points">${d.keyPoints.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}
+      ${d.suggestedAction ? `<div class="ai-action">→ ${esc(d.suggestedAction)}</div>` : ''}
+    `;
+    panel.style.display = 'block';
+  } catch (e) {
+    toast(e.message || 'AI review failed', true);
+  }
+  btn.disabled = false; btn.textContent = '✦ AI Review';
+}
+
+async function aiDraft() {
+  const ctx = getEmailContext();
+  if (!ctx) return;
+  const btn = document.getElementById('draft-btn');
+  btn.disabled = true; btn.textContent = '✦ Drafting…';
+  try {
+    const r = await api('POST', '/api/team/ai', { mode: 'draft', ...ctx });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'AI failed');
+    const d = await r.json();
+    if (d.draft) {
+      document.getElementById('reply-text').value = d.draft;
+      document.getElementById('reply-text').focus();
+      toast('Draft ready — review before sending');
+    }
+  } catch (e) {
+    toast(e.message || 'Draft failed', true);
+  }
+  btn.disabled = false; btn.textContent = '✦ Draft';
+}
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

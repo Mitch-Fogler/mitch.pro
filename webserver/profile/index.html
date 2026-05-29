@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile — mitch.pro</title>
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0d0d0d);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 48px 20px 80px;
+    background-size: cover; background-position: center; background-attachment: fixed;
+  }
+  .wrap { 
+    width: 100%; max-width: 520px; 
+    background: rgba(13,13,13,0.85); backdrop-filter: blur(12px);
+    padding: 32px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  }
+
+  .badge-premium {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(245,158,11,0.12); border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 99px; padding: 3px 12px; font-size: 10px;
+    font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #f59e0b; margin-bottom: 18px;
+  }
+  .badge-premium::before { content: '✦'; font-size: 8px; }
+  .badge-admin {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.3);
+    border-radius: 99px; padding: 3px 12px; font-size: 10px;
+    font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase;
+    color: #ef4444; margin-bottom: 18px;
+  }
+  .badge-admin::before { content: '⚑'; font-size: 8px; }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+  .badge-row .badge-premium,
+  .badge-row .badge-admin { margin-bottom: 0; }
+
+  .avatar {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: var(--t-ac, #a78bfa); display: flex; align-items: center;
+    justify-content: center; font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 2rem; color: #fff;
+    margin-bottom: 16px; flex-shrink: 0;
+    overflow: hidden; border: 2px solid rgba(255,255,255,0.1);
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+  
+  .display-name {
+    font-family: 'Syne', sans-serif; font-size: 1.6rem;
+    font-weight: 800; margin-bottom: 4px;
+  }
+  .display-name.neon_purple { color: #d946ef !important; text-shadow: 0 0 10px rgba(217,70,239,0.5); }
+  .display-name.electric_blue { color: #3b82f6 !important; text-shadow: 0 0 10px rgba(59,130,246,0.5); }
+  .display-name.mint_flash { color: #34d399 !important; text-shadow: 0 0 10px rgba(52,211,153,0.45); }
+  .display-name.rose_spark { color: #fb7185 !important; text-shadow: 0 0 10px rgba(251,113,133,0.45); }
+  .display-name.ember_red { color: #ef4444 !important; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
+  .display-name.void_white { color: #f8fafc !important; text-shadow: 0 0 12px rgba(248,250,252,0.45); }
+  .display-name.gold_glow { color: #f59e0b !important; text-shadow: 0 0 15px rgba(245,158,11,0.8); }
+  .display-name.rainbow_name {
+    background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-size: 200% auto; animation: rainbow_move 3s linear infinite;
+    font-weight: 900;
+    display: inline-block;
+    text-shadow: 0 0 2px rgba(0,0,0,0.3);
+  }  @keyframes rainbow_move { to { background-position: 200% center; } }
+  
+  .profile-badge { font-size: 14px; margin-left: 8px; vertical-align: middle; }
+  .badge-verified { color: #3b82f6; }
+  .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 1px 4px; border-radius: 4px; font-weight: 800; text-transform: uppercase; font-size: 9px; }
+  .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 1px 4px; border-radius: 4px; font-weight: 800; text-transform: uppercase; font-size: 9px; }
+
+  .email-line { font-size: 11px; color: var(--t-fg2, #666); margin-bottom: 20px; }
+  .bio { font-size: 13px; color: var(--t-fg, #ccc); line-height: 1.7; margin-bottom: 20px; font-style: italic; font-weight: 300; }
+  .website a { font-size: 12px; color: var(--t-ac, #a78bfa); text-decoration: none; }
+  .website a:hover { text-decoration: underline; }
+
+  .divider { height: 1px; background: rgba(255,255,255,0.08); margin: 28px 0; }
+
+  .edit-section h2 {
+    font-family: 'Syne', sans-serif; font-size: 13px;
+    font-weight: 700; margin-bottom: 20px; color: var(--t-fg2, #888);
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 10px; font-weight: 500; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--t-fg2, #666); margin-bottom: 7px; }
+  input, textarea {
+    width: 100%; background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+    color: var(--t-fg, #e8e8e8); font-family: 'DM Mono', monospace;
+    font-size: 13px; padding: 10px 13px; outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input:focus, textarea:focus {
+    border-color: var(--t-ac, #a78bfa);
+    box-shadow: 0 0 0 3px rgba(167,139,250,0.08);
+  }
+  textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
+  input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); font-style: italic; }
+
+  .save-btn {
+    width: 100%; background: var(--t-ac, #a78bfa); color: #fff;
+    border: none; border-radius: 8px; padding: 12px;
+    font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+    cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+  }
+  .save-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+  .save-btn:disabled { opacity: 0.4; cursor: default; }
+
+  #msg { margin-top: 10px; font-size: 12px; text-align: center; font-style: italic; min-height: 1.4em; }
+  #msg.ok { color: #4ade80; } #msg.err { color: #f87171; }
+
+  .not-found { text-align: center; padding: 60px 20px; }
+  .not-found h1 { font-family: 'Syne', sans-serif; font-size: 1.4rem; font-weight: 800; margin-bottom: 8px; }
+  .not-found p { font-size: 13px; color: var(--t-fg2, #777); }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .stat-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 12px; text-align: center; }
+  .stat-val { font-size: 1.2rem; font-weight: 800; color: var(--t-ac); }
+  .stat-lbl { font-size: 9px; text-transform: uppercase; opacity: 0.5; margin-top: 4px; }
+  .achs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+  .ach-badge { font-size: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 6px; color: var(--t-fg2); }
+  
+  .premium-label { font-size: 9px; color: #f59e0b; margin-left: 5px; font-weight: 700; }
+</style>
+</head>
+<body>
+<div class="wrap" id="wrap">
+  <div style="color:var(--t-fg2,#666);font-size:13px">Loading…</div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const targetEmail = params.get('u') || null;
+const isOwnProfile = !targetEmail && !window.PUBLIC_PROFILE;
+
+function esc(t) { return (t||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function Fmt(n) {
+  if (n < 1000) return Math.floor(n);
+  const s = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+  const t = Math.floor(Math.log10(n) / 3);
+  if (t < s.length) return (n / Math.pow(10, t * 3)).toFixed(1) + s[t];
+  return n.toExponential(1);
+}
+
+async function load() {
+  const wrap = document.getElementById('wrap');
+  let profile = null;
+  let stats = {}, achs = [];
+
+  if (window.PUBLIC_PROFILE) {
+    profile = window.PUBLIC_PROFILE;
+    stats = profile.stats || {};
+    achs = profile.achievements || [];
+  } else {
+    try {
+      if (targetEmail) {
+        const r = await fetch('/api/profile/' + encodeURIComponent(targetEmail));
+        if (!r.ok) { showNotFound(wrap); return; }
+        profile = await r.json();
+        stats = profile.stats || {};
+        achs = profile.achievements || [];
+      } else {
+        const r = await fetch('/api/profile');
+        if (r.status === 401) { location.href = '/enroll.html'; return; }
+        profile = await r.json();
+        stats = profile.stats || {};
+        achs = profile.achievements || [];
+      }
+    } catch { showNotFound(wrap); return; }
+  }
+
+  if (profile.background) {
+    document.body.style.backgroundImage = `url('${profile.background}')`;
+  } else {
+    document.body.style.backgroundImage = '';
+  }
+
+  document.title = (profile.displayName || profile.email || 'Profile') + ' — mitch.pro';
+  const initials = (profile.displayName || profile.email || '?').slice(0, 1).toUpperCase();
+  
+  const badgeLabels = {
+    verified_badge: { text: '✔', cls: 'badge-verified' },
+    og_badge: { text: '📜', cls: 'badge-og' },
+    artist_badge: { text: '🎨', cls: 'badge-shop' },
+    chess_badge: { text: '♟', cls: 'badge-shop' },
+    builder_badge: { text: '🛠', cls: 'badge-shop' },
+    lucky_badge: { text: '🍀', cls: 'badge-shop' },
+    premium_star_badge: { text: '⭐', cls: 'badge-shop' },
+    owner_fan_badge: { text: '👑', cls: 'badge-shop' },
+  };
+  const badge = badgeLabels[profile.activeBadge];
+  let badgeHtml = badge ? `<span class="profile-badge ${badge.cls}" title="${badge.title}">${badge.text}</span>` : '';
+
+  let html = `
+    <div style="display:flex;flex-direction:column;align-items:flex-start;margin-bottom:32px">
+      <div class="avatar">
+        ${profile.pfp ? `<img src="${esc(profile.pfp)}" onerror="this.style.display='none';this.parentElement.textContent='${initials}'">` : initials}
+      </div>
+      ${(profile.isPremium || profile.isAdmin) ? `<div class="badge-row">
+        ${profile.isPremium ? '<span class="badge-premium">Premium member</span>' : ''}
+        ${profile.isAdmin ? '<span class="badge-admin">Admin</span>' : ''}
+      </div>` : ''}
+      <div class="display-name ${profile.activeColor || ''}">${esc(profile.displayName || profile.email || 'mitch.pro user')}${badgeHtml}</div>
+      ${!window.PUBLIC_PROFILE ? `<div class="email-line">${esc(profile.email || '')}</div>` : ''}
+      ${profile.bio ? `<div class="bio">${esc(profile.bio)}</div>` : ''}
+      ${profile.website ? `<div class="website"><a href="${esc(profile.website)}" target="_blank" rel="noopener">${esc(profile.website)}</a></div>` : ''}
+      
+      <div class="stats-grid" style="width:100%">
+        <div class="stat-card"><div class="stat-val">${stats.pixels || 0}</div><div class="stat-lbl">Pixels</div></div>
+        <div class="stat-card"><div class="stat-val">${stats.chess_wins || 0}</div><div class="stat-lbl">Chess Wins</div></div>
+        <div class="stat-card"><div class="stat-val">${Fmt(stats.clicker_points || 0)}</div><div class="stat-lbl">Clicker Pts</div></div>
+        <div class="stat-card"><div class="stat-val">${stats.typing_races || 0}</div><div class="stat-lbl">Keyboard Races</div></div>
+        <div class="stat-card"><div class="stat-val">${stats.logic_puzzles || 0}</div><div class="stat-lbl">Logic Puzzles</div></div>
+        <div class="stat-card"><div class="stat-val">${(Number(stats.clicker_coins || 0) + Number(stats.typing_coins || 0) + Number(stats.logic_coins || 0)).toFixed(1)}</div><div class="stat-lbl">MitchCoins</div></div>
+      </div>
+      
+      <div class="achs">
+        ${achs.map(a => `<span class="ach-badge">🏆 ${esc(a.replace(/_/g, ' '))}</span>`).join('')}
+      </div>
+    </div>`;
+
+  if (isOwnProfile) {
+    html += `
+      <div class="divider"></div>
+      <div class="edit-section">
+        <h2>Edit Profile</h2>
+        <div class="field"><label>Display Name</label>
+          <input id="displayName" maxlength="40" placeholder="Your name" value="${esc(profile.displayName || '')}"></div>
+        
+        <div class="field"><label>Bio <span style="opacity:.5;font-size:9px;text-transform:none;letter-spacing:0">(max 300 chars)</span></label>
+          <textarea id="bio" maxlength="300" placeholder="A little about yourself…">${esc(profile.bio || '')}</textarea></div>
+        
+        <div class="field"><label>Website</label>
+          <input id="website" maxlength="100" placeholder="https://…" value="${esc(profile.website || '')}"></div>
+
+        <div class="field"><label>Profile Picture URL</label>
+          <input id="pfp" maxlength="200" placeholder="https://…/image.png" value="${esc(profile.pfp || '')}"></div>
+        
+        <div class="field">
+          <label>Background Image URL ${profile.isPremium ? '' : '<span class="premium-label">PREMIUM ONLY</span>'}</label>
+          <input id="background" maxlength="200" placeholder="https://…/bg.jpg" value="${esc(profile.background || '')}" ${profile.isPremium ? '' : 'disabled'}>
+        </div>
+
+        <button class="save-btn" id="save-btn" onclick="save()">Save profile</button>
+        <div id="msg"></div>
+
+        <div class="divider"></div>
+        <div class="edit-section" style="margin-top: 40px; border: 1px solid rgba(248, 113, 113, 0.2); padding: 20px; border-radius: 12px; background: rgba(248, 113, 113, 0.03);">
+          <h2 style="color: #f87171;">Danger Zone</h2>
+          <p style="font-size: 11px; margin-bottom: 16px;">Permanently delete your account and all associated data. This action is irreversible.</p>
+          <button class="save-btn" style="background: #f87171;" id="delete-btn" onclick="deleteAccount()">Delete Account</button>
+        </div>
+      </div>`;
+  }
+
+  wrap.innerHTML = html;
+}
+
+async function deleteAccount() {
+  if (!confirm("Are you ABSOLUTELY sure you want to delete your account? All coins, stats, and E2E keys will be permanently lost.")) return;
+  const password = prompt("Please enter your current password to confirm deletion:");
+  if (!password) return;
+
+  const btn = document.getElementById('delete-btn');
+  btn.disabled = true; btn.textContent = 'Deleting...';
+  try {
+    const r = await fetch('/api/delete-account', { 
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      throw new Error(d.error || 'Failed to delete account');
+    }
+    alert("Account deleted successfully. You have been logged out.");
+    location.href = '/';
+  } catch (e) {
+    alert("Error: " + e.message);
+    btn.disabled = false; btn.textContent = 'Delete Account';
+  }
+}
+
+function showNotFound(wrap) {
+  wrap.innerHTML = '<div class="not-found"><h1>404</h1><p>Profile not found.</p><a href="/" style="color:var(--t-ac);font-size:12px;text-decoration:none;">← Home</a></div>';
+}
+
+async function save() {
+  const btn = document.getElementById('save-btn');
+  const msg = document.getElementById('msg');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  msg.className = ''; msg.textContent = '';
+  try {
+    const payload = {
+      displayName: document.getElementById('displayName').value,
+      bio: document.getElementById('bio').value,
+      website: document.getElementById('website').value,
+      pfp: document.getElementById('pfp').value,
+    };
+    
+    const bgInput = document.getElementById('background');
+    if (bgInput && !bgInput.disabled) {
+      payload.background = bgInput.value;
+    }
+
+    const r = await fetch('/api/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Failed');
+    msg.className = 'ok'; msg.textContent = 'Saved!';
+    setTimeout(() => load(), 1000);
+  } catch (e) {
+    msg.className = 'err'; msg.textContent = e.message;
+  }
+  btn.disabled = false; btn.textContent = 'Save profile';
+}
+
+load();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

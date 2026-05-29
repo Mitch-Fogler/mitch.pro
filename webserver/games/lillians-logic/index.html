@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lillian's Logic — mitch.pro</title>
+  <script src="/theme.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Syne:wght@800&display=swap');
+    
+    :root {
+      --ac: #ec4899;
+      --panel: rgba(255, 255, 255, 0.03);
+      --line: rgba(255, 255, 255, 0.08);
+      --correct: #22c55e;
+      --present: #eab308;
+      --absent: #3f3f46;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--t-bg, #060608);
+      color: var(--t-fg, #fff);
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 40px 20px; overflow-x: hidden;
+      user-select: none;
+    }
+
+    .container { width: min(600px, 100%); text-align: center; }
+    
+    /* Tabs */
+    .tabs { display: flex; gap: 10px; margin-bottom: 30px; justify-content: center; }
+    .tab-btn {
+      background: var(--panel); border: 1px solid var(--line); color: #fff;
+      padding: 10px 24px; border-radius: 12px; cursor: pointer; font-weight: 700;
+      transition: all 0.2s;
+    }
+    .tab-btn.active { background: var(--ac); border-color: var(--ac); box-shadow: 0 0 20px rgba(236, 72, 153, 0.2); }
+
+    /* Mitch-le UI */
+    .wordle-board { display: grid; gap: 6px; margin: 20px auto; width: fit-content; }
+    .wordle-row { display: grid; grid-template-columns: repeat(5, 54px); gap: 6px; }
+    .tile {
+      width: 54px; height: 54px; border: 2px solid var(--line);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2rem; font-weight: 800; text-transform: uppercase;
+      border-radius: 6px; transition: transform 0.1s;
+      background: rgba(0,0,0,0.2);
+    }
+    .tile.filled { border-color: var(--t-fg2); transform: scale(1.05); }
+    .tile.correct { background: var(--correct) !important; border-color: var(--correct) !important; color: #fff; }
+    .tile.present { background: var(--present) !important; border-color: var(--present) !important; color: #fff; }
+    .tile.absent { background: var(--absent) !important; border-color: var(--absent) !important; color: #fff; }
+
+    .keyboard { display: grid; gap: 8px; margin-top: 30px; width: 100%; max-width: 500px; margin-left: auto; margin-right: auto; }
+    .key-row { display: flex; justify-content: center; gap: 4px; width: 100%; }
+    .key {
+      background: var(--panel); border: 1px solid var(--line); color: #fff;
+      padding: 18px 0; border-radius: 6px; cursor: pointer; font-weight: 700;
+      font-size: 0.9rem; flex: 1; min-width: 20px; transition: all 0.15s;
+    }
+    .key.wide { flex: 1.5; }
+    .key:active { transform: scale(0.95); }
+    .key.correct { background: var(--correct); }
+    .key.present { background: var(--present); }
+    .key.absent { background: var(--absent); opacity: 0.5; }
+
+    /* Minesweeper UI */
+    .mine-container {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+      padding: 20px; display: inline-block;
+    }
+    .mine-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-family: 'Syne', sans-serif; font-weight: 800; }
+    .mine-board {
+      display: grid; grid-template-columns: repeat(10, 34px); gap: 2px;
+      background: var(--line); border: 2px solid var(--line); border-radius: 4px;
+    }
+    .mine-cell {
+      width: 34px; height: 34px; background: var(--t-bg, #060608); border: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; cursor: pointer; font-size: 1.1rem;
+    }
+    .mine-cell.unrevealed { background: var(--panel); }
+    .mine-cell.unrevealed:hover { background: rgba(255,255,255,0.08); }
+    .mine-cell.revealed { background: transparent; cursor: default; }
+    .mine-cell.mine { background: #ef4444; color: #fff; }
+    .mine-cell.mine-hit { background: #dc2626; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
+    .n1 { color: #60a5fa; } .n2 { color: #4ade80; } .n3 { color: #f87171; } .n4 { color: #a78bfa; }
+
+    .btn-action {
+      background: var(--ac); color: #fff; border: none; padding: 12px 28px; border-radius: 12px;
+      font-weight: 900; cursor: pointer; text-transform: uppercase; margin-top: 20px; transition: all 0.2s;
+    }
+    .btn-action:hover { transform: scale(1.05); filter: brightness(1.1); }
+    .btn-action:active { transform: scale(0.95); }
+
+    #back-btn { position: fixed; top: 20px; left: 20px; background: var(--panel); border: 1px solid var(--line); color: #fff; padding: 8px 16px; border-radius: 10px; text-decoration: none; font-weight: 700; z-index: 100; }
+    h1 { font-family: 'Syne', sans-serif; letter-spacing: -1px; }
+    
+    .hidden { display: none !important; }
+    .shake { animation: shake 0.4s; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+  </style>
+</head>
+<body>
+  <a href="/games/" id="back-btn">← Back</a>
+
+  <div class="container">
+    <h1 style="margin-bottom: 5px;">Lillian's Logic</h1>
+    <p style="opacity:0.6; margin-bottom: 30px; font-weight: 600;">The Daily Mind Grind. Earn Massive MitchCoins.</p>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="btn-tab-wordle" onclick="switchTab('wordle')">Mitch-le</button>
+      <button class="tab-btn" id="btn-tab-mines" onclick="switchTab('mines')">Minesweeper</button>
+    </div>
+
+    <!-- Mitch-le (Wordle) -->
+    <div id="tab-wordle">
+      <div class="wordle-board" id="wordle-board"></div>
+      <div class="keyboard" id="keyboard"></div>
+      <div id="wordle-msg" style="margin-top: 25px; font-weight: 800; font-size: 1.1rem; min-height: 1.5em;"></div>
+      <button class="btn-action hidden" id="new-wordle-btn" onclick="initWordle(true)">Next Word</button>
+    </div>
+
+    <!-- Minesweeper -->
+    <div id="tab-mines" class="hidden">
+      <div class="mine-container">
+        <div class="mine-header">
+           <div id="mine-count">💣 015</div>
+           <button style="background:none; border:none; font-size:1.5rem; cursor:pointer;" onclick="initMines()">🙂</button>
+           <div id="mine-timer">⏱ 000</div>
+        </div>
+        <div class="mine-board" id="mine-board"></div>
+      </div>
+      <div id="mine-msg" style="margin-top: 20px; font-weight: 800; font-size: 1.1rem;"></div>
+      <button class="btn-action" onclick="initMines()">Reset Grid</button>
+    </div>
+
+  </div>
+
+  <script>
+    const WORDS = ["APPLE","BREAD","CLOUD","DANCE","EARTH","FIELD","GREEN","HEART","IMAGE","JUICE","LIGHT","MUSIC","NIGHT","OCEAN","PAPER","QUEEN","RIVER","STONE","TABLE","VOICE","WATER","WORLD","SPACE","STARS","PIXEL","GAMES","DREAM","LEVEL","BUILD","ROBOT","POWER","LUCKY","CHESS","BOARD","CLICK","WEAVE","FINAL","TRUTH","GALAXY","SUPER","SMART","FASTY"];
+    
+    let wState = { word: "", row: 0, col: 0, guesses: ["","","","","",""], over: false, keyColors: {} };
+    let mState = { board: [], size: 10, mines: 15, over: false, rev: 0, flagged: new Set(), first: true, timer: 0, ticker: null };
+
+    function switchTab(t) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.getElementById('btn-tab-' + t).classList.add('active');
+      document.getElementById('tab-wordle').classList.toggle('hidden', t !== 'wordle');
+      document.getElementById('tab-mines').classList.toggle('hidden', t !== 'mines');
+    }
+
+    /* --- Mitch-le Logic --- */
+    async function initWordle(isNext = false) {
+      let word = "";
+      if (isNext) {
+        try {
+          const res = await fetch('/api/games/lillians-logic/next-wordle', {
+            method: 'POST',
+            credentials: 'include'
+          });
+          const data = await res.json();
+          if (data.success) {
+            word = data.word;
+          } else {
+            document.getElementById('wordle-msg').innerText = "Error loading next puzzle: " + (data.error || "Unknown error");
+            return;
+          }
+        } catch (e) {
+          document.getElementById('wordle-msg').innerText = "Network error loading next puzzle.";
+          return;
+        }
+      } else {
+        const today = new Date();
+        let seed = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+        word = WORDS[Math.floor(seed % WORDS.length)];
+      }
+
+      wState = { 
+        word: word, 
+        row: 0, col: 0, 
+        guesses: ["","","","","",""], 
+        over: false, 
+        keyColors: {} 
+      };
+      
+      document.getElementById('wordle-msg').innerText = "";
+      document.getElementById('new-wordle-btn').classList.add('hidden');
+      renderWordle();
+      renderKeyboard();
+    }
+
+    function renderWordle() {
+      const board = document.getElementById('wordle-board');
+      board.innerHTML = '';
+      for (let r = 0; r < 6; r++) {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'wordle-row';
+        for (let c = 0; c < 5; c++) {
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+          tile.id = `w-tile-${r}-${c}`;
+          rowDiv.appendChild(tile);
+        }
+        board.appendChild(rowDiv);
+      }
+    }
+
+    function renderKeyboard() {
+      const keys = [['Q','W','E','R','T','Y','U','I','O','P'],['A','S','D','F','G','H','J','K','L'],['ENTER','Z','X','C','V','B','N','M','BACK']];
+      const container = document.getElementById('keyboard');
+      container.innerHTML = '';
+      keys.forEach(row => {
+        const div = document.createElement('div');
+        div.className = 'key-row';
+        row.forEach(k => {
+          const btn = document.createElement('button');
+          btn.className = 'key' + (k.length > 1 ? ' wide' : '') + (wState.keyColors[k] ? ' ' + wState.keyColors[k] : '');
+          btn.innerText = k;
+          btn.onclick = () => handleWordleKey(k);
+          div.appendChild(btn);
+        });
+        container.appendChild(div);
+      });
+    }
+
+    function handleWordleKey(k) {
+      if (wState.over) return;
+      if (k === 'BACK') {
+        if (wState.col > 0) {
+          wState.col--;
+          wState.guesses[wState.row] = wState.guesses[wState.row].slice(0, -1);
+          updateWordleRow();
+        }
+      } else if (k === 'ENTER') {
+        if (wState.col === 5) submitWordle();
+      } else if (wState.col < 5) {
+        wState.guesses[wState.row] += k;
+        wState.col++;
+        updateWordleRow();
+      }
+    }
+
+    function updateWordleRow() {
+      for (let c = 0; c < 5; c++) {
+        const tile = document.getElementById(`w-tile-${wState.row}-${c}`);
+        tile.innerText = wState.guesses[wState.row][c] || "";
+        tile.classList.toggle('filled', !!wState.guesses[wState.row][c]);
+      }
+    }
+
+    async function submitWordle() {
+      const guess = wState.guesses[wState.row];
+      
+      // Dictionary check
+      const vRes = await fetch('/api/games/lillians-logic/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ word: guess })
+      });
+      const vData = await vRes.json();
+      if (!vData.valid) {
+        document.getElementById('wordle-msg').innerText = "Not in word list.";
+        const row = document.querySelector('.wordle-row:nth-child(' + (wState.row + 1) + ')');
+        row.classList.add('shake');
+        setTimeout(() => row.classList.remove('shake'), 400);
+        return;
+      }
+      document.getElementById('wordle-msg').innerText = "";
+
+      const target = wState.word;
+      for (let i = 0; i < 5; i++) {
+        const tile = document.getElementById(`w-tile-${wState.row}-${i}`);
+        const char = guess[i];
+        let colorClass = 'absent';
+        if (target[i] === char) colorClass = 'correct';
+        else if (target.includes(char)) colorClass = 'present';
+        
+        tile.classList.add(colorClass);
+        if (!wState.keyColors[char] || colorClass === 'correct') wState.keyColors[char] = colorClass;
+      }
+      
+      renderKeyboard();
+
+      if (guess === target) {
+        wState.over = true;
+        const res = await fetch('/api/games/lillians-logic/solve', { 
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ type: 'wordle', word: guess })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          const coins = data.coinsEarned || 0;
+          document.getElementById('wordle-msg').innerHTML = `<span style='color:var(--correct)'>✨ CORRECT! +${coins} MitchCoins.</span>`;
+        } else {
+          const msg = data.error || "Failed to submit solution.";
+          document.getElementById('wordle-msg').innerHTML = `<span style='color:var(--rose)'>❌ ERROR: ${msg}</span>`;
+        }
+        document.getElementById('new-wordle-btn').classList.remove('hidden');
+      } else if (wState.row === 5) {
+        wState.over = true;
+        document.getElementById('wordle-msg').innerText = "Word was " + target;
+        document.getElementById('new-wordle-btn').classList.remove('hidden');
+      } else {
+        wState.row++;
+        wState.col = 0;
+      }
+    }
+
+    /* --- Minesweeper Logic --- */
+    function initMines() {
+      clearInterval(mState.ticker);
+      mState = { board: [], size: 10, mines: 15, over: false, rev: 0, flagged: new Set(), first: true, timer: 0, ticker: null };
+      document.getElementById('mine-msg').innerText = "";
+      document.getElementById('mine-timer').innerText = "⏱ 000";
+      document.getElementById('mine-count').innerText = "💣 015";
+      
+      const boardEl = document.getElementById('mine-board');
+      boardEl.innerHTML = '';
+      for (let i = 0; i < 100; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'mine-cell unrevealed';
+        cell.id = 'm-' + i;
+        cell.onclick = () => {
+          if (mState.board[i].revealed && mState.board[i].count > 0) chordMine(i);
+          else revealMine(i);
+        };
+        cell.oncontextmenu = (e) => { e.preventDefault(); flagMine(i); };
+        boardEl.appendChild(cell);
+        mState.board.push({ mine: false, count: 0, revealed: false });
+      }
+    }
+
+    function flagMine(i) {
+      if (mState.over || mState.board[i].revealed) return;
+      const el = document.getElementById('m-' + i);
+      if (mState.flagged.has(i)) {
+        mState.flagged.delete(i);
+        el.innerText = '';
+      } else {
+        mState.flagged.add(i);
+        el.innerText = '🚩';
+      }
+      document.getElementById('mine-count').innerText = '💣 ' + (mState.mines - mState.flagged.size).toString().padStart(3, '0');
+    }
+
+    function revealMine(i) {
+      if (mState.over || mState.flagged.has(i) || mState.board[i].revealed) return;
+      
+      if (mState.first) {
+        mState.first = false;
+        placeMines(i);
+        mState.ticker = setInterval(() => {
+            mState.timer++;
+            document.getElementById('mine-timer').innerText = '⏱ ' + mState.timer.toString().padStart(3, '0');
+        }, 1000);
+      }
+
+      const cell = mState.board[i];
+      const el = document.getElementById('m-' + i);
+      cell.revealed = true;
+      el.classList.remove('unrevealed');
+      el.classList.add('revealed');
+
+      if (cell.mine) {
+        mState.over = true;
+        clearInterval(mState.ticker);
+        el.classList.add('mine-hit');
+        showAllMines();
+        document.getElementById('mine-msg').innerText = "💥 BOOM!";
+        return;
+      }
+
+      mState.rev++;
+      if (cell.count > 0) {
+        el.innerText = cell.count;
+        el.classList.add('n' + cell.count);
+      } else {
+        getNeighbors(i).forEach(revealMine);
+      }
+
+      if (mState.rev === 100 - mState.mines) {
+        mState.over = true;
+        clearInterval(mState.ticker);
+        winMines();
+      }
+    }
+
+    function placeMines(safeIdx) {
+      let placed = 0;
+      while (placed < mState.mines) {
+        let idx = Math.floor(Math.random() * 100);
+        if (idx === safeIdx || mState.board[idx].mine || getNeighbors(safeIdx).includes(idx)) continue;
+        mState.board[idx].mine = true;
+        placed++;
+      }
+      // Calc counts
+      for (let i = 0; i < 100; i++) {
+        if (mState.board[i].mine) continue;
+        mState.board[i].count = getNeighbors(i).filter(n => mState.board[n].mine).length;
+      }
+    }
+
+    function getNeighbors(i) {
+      const n = [], r = Math.floor(i / 10), c = i % 10;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        let nr = r + dr, nc = c + dc;
+        if (nr >= 0 && nr < 10 && nc >= 0 && nc < 10 && !(dr === 0 && dc === 0)) n.push(nr * 10 + nc);
+      }
+      return n;
+    }
+
+    function chordMine(i) {
+      if (mState.over || !mState.board[i].revealed || mState.board[i].count === 0) return;
+      const neighbors = getNeighbors(i);
+      let flags = 0;
+      neighbors.forEach(n => { if (mState.flagged.has(n)) flags++; });
+      if (flags === mState.board[i].count) {
+        neighbors.forEach(n => {
+          if (!mState.flagged.has(n) && !mState.board[n].revealed) revealMine(n);
+        });
+      }
+    }
+
+    function showAllMines() {
+      mState.board.forEach((c, i) => {
+        if (c.mine) {
+          const el = document.getElementById('m-' + i);
+          el.innerText = '💣';
+          el.classList.remove('unrevealed');
+          el.classList.add('mine');
+        }
+      });
+    }
+
+    async function winMines() {
+      const res = await fetch('/api/games/lillians-logic/solve', { 
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ type: 'mines', board: mState.board, timer: mState.timer })
+      });
+      const data = await res.json();
+      document.getElementById('mine-msg').innerHTML = `<span style='color:var(--correct)'>✨ CLEARED! +${data.coinsEarned} MitchCoins.</span>`;
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (!document.getElementById('tab-wordle').classList.contains('hidden')) {
+          if (e.key === 'Enter') handleWordleKey('ENTER');
+          else if (e.key === 'Backspace') handleWordleKey('BACK');
+          else if (/^[a-zA-Z]$/.test(e.key)) handleWordleKey(e.key.toUpperCase());
+        }
+    });
+
+    initWordle();
+    initMines();
+  </script>
+</body>
+</html>

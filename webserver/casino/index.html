@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Casino</title>
+<script src="/theme.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg);
+    color: var(--t-fg);
+    font-family: var(--t-font, "Segoe UI", system-ui, -apple-system, sans-serif);
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
+      radial-gradient(circle at 18% 20%, rgba(250,204,21,.16), transparent 32%),
+      radial-gradient(circle at 80% 12%, rgba(56,189,248,.13), transparent 30%),
+      radial-gradient(circle at 50% 92%, rgba(74,222,128,.12), transparent 34%);
+    background-size: 42px 42px, 42px 42px, auto, auto, auto;
+  }
+  button, input, select { font: inherit; }
+  a { color: inherit; text-decoration: none; }
+  .shell {
+    position: relative;
+    z-index: 1;
+    width: min(1320px, 100%);
+    margin: 0 auto;
+    padding: 22px 14px 46px;
+  }
+  .topbar {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .home, .wallet, .hero, .betbox, .card, .panel {
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.025)), rgba(6,8,14,.78);
+    box-shadow: 0 18px 55px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.06);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+  .home {
+    min-height: 42px;
+    padding: 0 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--t-fg2);
+    font-weight: 900;
+  }
+  .brand {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    color: #fff;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .mark {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 9px;
+    color: #111;
+    background: linear-gradient(135deg, #facc15, #fff6a8);
+    box-shadow: 0 0 28px rgba(250,204,21,.34);
+  }
+  .wallet {
+    min-height: 42px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 12px;
+  }
+  .wallet span {
+    color: var(--t-fg2);
+    font-size: .75rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .wallet strong { color: #fff; }
+  .hero {
+    overflow: hidden;
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(310px, .42fr);
+    gap: 16px;
+    padding: 28px;
+    margin-bottom: 14px;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 5px;
+    background: linear-gradient(90deg, #facc15, #4ade80, #38bdf8, #fb7185);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .pill {
+    min-height: 29px;
+    padding: 5px 10px;
+    border: 1px solid rgba(255,255,255,.13);
+    border-radius: 999px;
+    color: var(--t-fg2);
+    background: rgba(255,255,255,.055);
+    font-size: .72rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  h1 {
+    color: #fff;
+    font-size: 6rem;
+    line-height: .86;
+    font-weight: 950;
+    text-transform: uppercase;
+    letter-spacing: 0;
+    text-shadow: 0 18px 45px rgba(0,0,0,.44);
+  }
+  .hero p {
+    max-width: 660px;
+    margin-top: 16px;
+    color: var(--t-fg2);
+    font-size: 1.04rem;
+    line-height: 1.55;
+    font-weight: 650;
+  }
+  .betbox {
+    padding: 16px;
+    display: grid;
+    align-content: start;
+    gap: 12px;
+  }
+  .kicker {
+    color: var(--t-fg2);
+    font-size: .72rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  .betbox h2, .panel h2 {
+    color: #fff;
+    font-size: 1.22rem;
+    line-height: 1.15;
+  }
+  label {
+    display: block;
+    color: var(--t-fg2);
+    font-size: .8rem;
+    font-weight: 850;
+    margin-bottom: 6px;
+  }
+  input, select {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(0,0,0,.28);
+    color: var(--t-fg);
+    padding: 9px 11px;
+    outline: none;
+  }
+  input:focus, select:focus {
+    border-color: #facc15;
+    box-shadow: 0 0 0 3px rgba(250,204,21,.13);
+  }
+  .chip-row, .choice-row, .quick-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .btn, .choice, .keno-cell {
+    min-height: 38px;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(255,255,255,.06);
+    color: var(--t-fg);
+    padding: 8px 12px;
+    font-weight: 900;
+    cursor: pointer;
+    transition: transform .15s ease, border-color .15s ease, background .15s ease, opacity .15s ease;
+  }
+  .btn:hover, .choice:hover, .home:hover, .keno-cell:hover {
+    transform: translateY(-1px);
+    border-color: var(--t-bda);
+    background: rgba(255,255,255,.095);
+  }
+  .btn.primary {
+    width: 100%;
+    color: #15110a;
+    border-color: rgba(250,204,21,.55);
+    background: linear-gradient(135deg, #facc15, #fff4ad);
+  }
+  .btn.secondary {
+    width: 100%;
+    color: #eafcff;
+    border-color: rgba(56,189,248,.42);
+    background: rgba(56,189,248,.12);
+  }
+  .choice.active {
+    color: #fff;
+    border-color: rgba(56,189,248,.58);
+    background: rgba(56,189,248,.16);
+  }
+  button:disabled { opacity: .55; cursor: wait; transform: none !important; }
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, .34fr);
+    gap: 14px;
+    align-items: start;
+  }
+  .games {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .card {
+    min-height: 245px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .card.wide { grid-column: span 2; }
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .card-options {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .opt-btn {
+    width: 28px;
+    height: 28px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.05);
+    color: var(--t-fg2);
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .opt-btn:hover {
+    color: #fff;
+    border-color: var(--t-bda);
+    background: rgba(255,255,255,0.1);
+    transform: translateY(-1px);
+  }
+  .opt-btn.help { color: #facc15; }
+
+  #fullscreen-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: var(--t-bg);
+    padding: 20px;
+    overflow: auto;
+  }
+  #fullscreen-overlay.active { display: block; }
+  .fs-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 24px;
+    align-items: start;
+  }
+  .fs-main {
+    background: rgba(0,0,0,.25);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 12px;
+    padding: 24px;
+    min-height: 480px;
+  }
+  .fs-side {
+    display: grid;
+    gap: 16px;
+  }
+  .fs-wallet {
+    padding: 16px;
+    background: rgba(250,204,21,0.08);
+    border: 1px solid rgba(250,204,21,0.2);
+    border-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .fs-wallet span { font-weight: 900; color: #facc15; text-transform: uppercase; font-size: 0.75rem; }
+  .fs-wallet strong { font-size: 1.1rem; color: #fff; }
+  
+  .fs-results-box {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--t-bd);
+    border-radius: 12px;
+    padding: 20px;
+    min-height: 240px;
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+
+  .fs-controls-box {
+    padding: 20px;
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 12px;
+  }
+
+  @media (max-width: 900px) {
+    .fs-layout { grid-template-columns: 1fr; }
+    .fs-main { min-height: auto; }
+  }
+
+  .fs-close {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 10001;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--t-bd);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-weight: 900;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.15s;
+  }
+  .fs-close:hover { background: rgba(255,255,255,0.15); border-color: var(--t-bda); }
+
+  .card h2 {
+    color: #fff;
+    font-size: 1.2rem;
+    line-height: 1.12;
+    margin-top: 4px;
+  }
+  .icon {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.14);
+    background: rgba(255,255,255,.07);
+    color: #fff3bd;
+    font-size: .9rem;
+    font-weight: 950;
+  }
+  .card p {
+    color: var(--t-fg2);
+    font-size: .9rem;
+    line-height: 1.45;
+  }
+  .controls {
+    display: grid;
+    gap: 10px;
+    margin-top: auto;
+  }
+  .two {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .side {
+    display: grid;
+    gap: 14px;
+    position: sticky;
+    top: 14px;
+  }
+  .panel { padding: 16px; }
+  .result {
+    min-height: 220px;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    border: 1px dashed rgba(255,255,255,.16);
+    border-radius: var(--t-radius, 8px);
+    padding: 18px;
+    background: rgba(0,0,0,.23);
+  }
+  .title {
+    color: #fff;
+    font-size: 1.28rem;
+    font-weight: 950;
+  }
+  .meta {
+    margin-top: 8px;
+    color: var(--t-fg2);
+    font-size: .9rem;
+    line-height: 1.45;
+  }
+  .net {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 34px;
+    margin-top: 14px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.13);
+    font-weight: 950;
+  }
+  .good { color: #bbf7d0; }
+  .bad { color: #fecdd3; }
+  .neutral { color: #fde68a; }
+  .net.good { background: rgba(74,222,128,.12); border-color: rgba(74,222,128,.34); }
+  .net.bad { background: rgba(251,113,133,.12); border-color: rgba(251,113,133,.34); }
+  .net.neutral { background: rgba(250,204,21,.11); border-color: rgba(250,204,21,.32); }
+  .items {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .item {
+    min-width: 46px;
+    min-height: 46px;
+    display: inline-grid;
+    place-items: center;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 9px;
+    background: rgba(255,255,255,.07);
+    color: #fff;
+    font-weight: 950;
+  }
+  .carditem { min-width: 54px; min-height: 70px; }
+  .hit { color: #bbf7d0; border-color: rgba(74,222,128,.42); background: rgba(74,222,128,.13); }
+  .scratch {
+    display: grid;
+    grid-template-columns: repeat(3, 48px);
+    justify-content: center;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .keno {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .keno-cell {
+    min-height: 32px;
+    padding: 0;
+  }
+  .keno-cell.active {
+    color: #10140e;
+    border-color: rgba(74,222,128,.62);
+    background: linear-gradient(135deg, #4ade80, #c6ffda);
+  }
+  .history {
+    display: grid;
+    gap: 8px;
+    max-height: 370px;
+    overflow: auto;
+    padding-right: 3px;
+  }
+  .hist {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(0,0,0,.2);
+  }
+  .hist strong { color: #fff; font-size: .9rem; }
+  .hist span { display: block; color: var(--t-fg2); font-size: .76rem; }
+  .empty { color: var(--t-fg2); text-align: center; padding: 18px; }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    z-index: 20;
+    transform: translateX(-50%) translateY(20px);
+    max-width: min(520px, calc(100vw - 28px));
+    padding: 11px 14px;
+    border: 1px solid rgba(251,113,133,.38);
+    border-radius: var(--t-radius, 8px);
+    background: rgba(22, 8, 12, .95);
+    color: #fecdd3;
+    box-shadow: 0 18px 50px rgba(0,0,0,.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  @media (max-width: 1100px) {
+    .games { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .layout { grid-template-columns: 1fr; }
+    .side { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 780px) {
+    .topbar, .hero { grid-template-columns: 1fr; }
+    .brand { justify-content: flex-start; }
+    .wallet { justify-content: space-between; }
+    .side { grid-template-columns: 1fr; }
+    h1 { font-size: 4.2rem; }
+  }
+  @media (max-width: 620px) {
+    .shell { padding: 12px 10px 38px; }
+    .hero { padding: 20px; }
+    .games { grid-template-columns: 1fr; }
+    .card.wide { grid-column: span 1; }
+    .keno { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    h1 { font-size: 3.25rem; }
+  }
+</style>
+</head>
+<body>
+<main class="shell">
+  <nav class="topbar">
+    <a class="home" href="/">Back Home</a>
+    <div class="brand"><span class="mark">$</span><span>The Casino</span></div>
+    <div class="wallet"><span>Balance</span><strong id="balance">Loading...</strong></div>
+  </nav>
+
+  <section class="hero">
+    <div>
+      <div class="chips">
+        <span class="pill">Virtual coins only</span>
+        <span class="pill">Live games</span>
+        <span class="pill">History saved</span>
+      </div>
+      <h1>Casino</h1>
+      <p>Play with site coins, watch your wallet, and check recent rounds before the next spin, draw, roll, or hand.</p>
+    </div>
+    <aside class="betbox">
+      <div class="kicker">Bankroll</div>
+      <h2>Set your wager.</h2>
+      <div>
+        <label for="bet">Bet amount</label>
+        <input id="bet" type="number" min="1" step="1" value="50" inputmode="numeric">
+      </div>
+      <div class="chip-row">
+        <button class="btn" data-bet="25" type="button">25</button>
+        <button class="btn" data-bet="50" type="button">50</button>
+        <button class="btn" data-bet="100" type="button">100</button>
+        <button class="btn" data-bet="250" type="button">250</button>
+        <button class="btn" data-bet="500" type="button">500</button>
+        <button class="btn" data-bet="1000" type="button">1000</button>
+      </div>
+      <div class="meta">You can wager any amount you have. Keno picks: <strong id="keno-count">0 / 10</strong>.</div>
+    </aside>
+  </section>
+
+  <section class="layout">
+    <div class="games">
+      <article class="card wide" id="card-slots">
+        <div class="card-head"><div><div class="kicker">Reels</div><h2>Slots</h2></div><div class="card-options"><a href="/casino-guide.html#slots" class="opt-btn help" title="How to play">?</a><div class="icon">777</div></div></div>
+        <p>Classic reels with doubles, triples, sevens, bells, and diamond jackpots.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-slots')" type="button">Play Slots</button>
+          <div style="display:none;">
+            <button class="btn primary" id="slots" type="button">Spin Classic Slots</button>
+            <button class="btn secondary" id="vip-slots" type="button">Spin VIP Slots</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-roulette">
+        <div class="card-head"><div><div class="kicker">Table</div><h2>Roulette</h2></div><div class="card-options"><a href="/casino-guide.html#roulette" class="opt-btn help" title="How to play">?</a><div class="icon">36</div></div></div>
+        <p>Bet red, black, green, or a single number from 0 to 36.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-roulette')" type="button">Play Roulette</button>
+          <div style="display:none;">
+            <div class="two">
+              <div><label for="roulette-type">Bet</label><select id="roulette-type"><option value="red">Red</option><option value="black">Black</option><option value="green">Green</option><option value="number">Number</option></select></div>
+              <div><label for="roulette-number">Number</label><input id="roulette-number" type="number" min="0" max="36" value="7"></div>
+            </div>
+            <button class="btn primary" id="roulette" type="button">Spin Roulette</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-blackjack">
+        <div class="card-head"><div><div class="kicker">Cards</div><h2>Blackjack</h2></div><div class="card-options"><a href="/casino-guide.html#blackjack" class="opt-btn help" title="How to play">?</a><div class="icon">21</div></div></div>
+        <p>Beat the dealer without going over 21.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-blackjack')" type="button">Play Blackjack</button>
+          <div style="display:none;">
+            <button class="btn primary" id="blackjack-start" type="button">Deal Blackjack</button>
+            <div class="quick-row">
+              <button class="btn" id="blackjack-hit" type="button" disabled>Hit</button>
+              <button class="btn" id="blackjack-stand" type="button" disabled>Stand</button>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-poker">
+        <div class="card-head"><div><div class="kicker">Cards</div><h2>Five Card Poker</h2></div><div class="card-options"><a href="/casino-guide.html#poker" class="opt-btn help" title="How to play">?</a><div class="icon">A K</div></div></div>
+        <p>Draw one hand and get paid for jacks or better and rare hands.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-poker')" type="button">Play Poker</button>
+          <div style="display:none;"><button class="btn primary" id="poker" type="button">Draw Poker Hand</button></div>
+        </div>
+      </article>
+
+      <article class="card" id="card-coinflip">
+        <div class="card-head"><div><div class="kicker">Quick</div><h2>Coin Flip</h2></div><div class="card-options"><a href="/casino-guide.html#coinflip" class="opt-btn help" title="How to play">?</a><div class="icon">H/T</div></div></div>
+        <p>Pick heads or tails and flip.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-coinflip')" type="button">Play Coin Flip</button>
+          <div style="display:none;">
+            <div class="choice-row" data-group="coin"><button class="choice active" data-side="heads" type="button">Heads</button><button class="choice" data-side="tails" type="button">Tails</button></div>
+            <button class="btn primary" id="coinflip" type="button">Flip Coin</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-dice">
+        <div class="card-head"><div><div class="kicker">Dice</div><h2>Dice Duel</h2></div><div class="card-options"><a href="/casino-guide.html#dice" class="opt-btn help" title="How to play">?</a><div class="icon">1-100</div></div></div>
+        <p>Roll a 100-sided die and predict under or over.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-dice')" type="button">Play Dice Duel</button>
+          <div style="display:none;">
+            <div class="choice-row" data-group="dice"><button class="choice active" data-dice="under" type="button">Under</button><button class="choice" data-dice="over" type="button">Over</button></div>
+            <button class="btn primary" id="dice" type="button">Roll Dice</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-crash">
+        <div class="card-head"><div><div class="kicker">Multiplier</div><h2>Crash</h2></div><div class="card-options"><a href="/casino-guide.html#crash" class="opt-btn help" title="How to play">?</a><div class="icon">x</div></div></div>
+        <p>Pick a cashout target and don't bust.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-crash')" type="button">Play Crash</button>
+          <div style="display:none;">
+            <div><label for="crash-target">Cashout target</label><input id="crash-target" type="number" min="1.2" max="6" step="0.05" value="1.8"></div>
+            <button class="btn primary" id="crash" type="button">Launch Crash</button>
+          </div>
+        </div>
+      </article>
+
+      <article class="card" id="card-wheel">
+        <div class="card-head"><div><div class="kicker">Wheel</div><h2>Prize Wheel</h2></div><div class="card-options"><a href="/casino-guide.html#wheel" class="opt-btn help" title="How to play">?</a><div class="icon">20x</div></div></div>
+        <p>Most spaces are modest. A rare jackpot wedge pays hard.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-wheel')" type="button">Play Prize Wheel</button>
+          <div style="display:none;"><button class="btn primary" id="wheel" type="button">Spin Wheel</button></div>
+        </div>
+      </article>
+
+      <article class="card" id="card-scratch">
+        <div class="card-head"><div><div class="kicker">Instant</div><h2>Scratch Card</h2></div><div class="card-options"><a href="/casino-guide.html#scratch" class="opt-btn help" title="How to play">?</a><div class="icon">9</div></div></div>
+        <p>Reveal a 3 by 3 card and hunt for matches.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-scratch')" type="button">Play Scratch Card</button>
+          <div style="display:none;"><button class="btn primary" id="scratch" type="button">Scratch Card</button></div>
+        </div>
+      </article>
+
+      <article class="card wide" id="card-keno">
+        <div class="card-head"><div><div class="kicker">Numbers</div><h2>Keno Rush</h2></div><div class="card-options"><a href="/casino-guide.html#keno" class="opt-btn help" title="How to play">?</a><div class="icon">40</div></div></div>
+        <p>Pick 3 to 10 numbers and watch the draw.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-keno')" type="button">Play Keno Rush</button>
+          <div style="display:none;">
+            <div id="keno-board" class="keno"></div>
+            <div class="quick-row">
+              <button class="choice" id="keno-clear" type="button">Clear Picks</button>
+              <button class="btn primary" id="keno" type="button">Play Keno</button>
+            </div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <aside class="side">
+      <section class="panel">
+        <h2>Global Gambling Feed</h2>
+        <div id="global-feed" class="history"><div class="empty">Loading feed...</div></div>
+      </section>
+      <section class="panel">
+        <h2>Recent History</h2>
+        <div id="history" class="history"><div class="empty">Loading history...</div></div>
+      </section>
+    </aside>
+  </section>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="result" class="result" style="display:none;"><div><div class="title">Choose a room.</div><div class="meta">Results, payouts, cards, numbers, and symbols show here.</div></div></div>
+<div id="blackjack-table" class="panel" style="display:none;"><div class="empty">No active hand.</div></div>
+
+<script>
+(function () {
+  var state = { coinSide: "heads", diceSide: "under", keno: new Set(), bjBet: 0, busy: false };
+  var $ = function (sel, root) { return (root || document).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.from((root || document).querySelectorAll(sel)); };
+
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function coins(v) {
+    var n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 2 }) : "--";
+  }
+  function bet() {
+    var n = Number($("#bet").value);
+    if (!Number.isFinite(n) || n < 1) throw new Error("Enter a bet of at least 1 coin.");
+    return Number(n.toFixed(2));
+  }
+  function showToast(msg) {
+    var t = $("#toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(function () { t.classList.remove("show"); }, 4200);
+  }
+  function setBusy(on) {
+    state.busy = on;
+    $$(".btn.primary, .btn.secondary").forEach(function (b) { b.disabled = on; });
+    $("#blackjack-hit").disabled = on || state.bjBet <= 0;
+    $("#blackjack-stand").disabled = on || state.bjBet <= 0;
+  }
+  async function readJson(res) {
+    var text = await res.text();
+    if (!text) return {};
+    try { return JSON.parse(text); } catch (_) { return { error: text }; }
+  }
+  async function post(path, body) {
+    setBusy(true);
+    try {
+      var res = await fetch(path, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {})
+      });
+      var data = await readJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || "Casino request failed.");
+      if (typeof data.newBalance === "number") updateBalance(data.newBalance);
+      return data;
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function refreshBalance() {
+    try {
+      var res = await fetch("/api/me/coins", { credentials: "include" });
+      var data = await readJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || "Sign in required.");
+      updateBalance(data.coins);
+    } catch (err) {
+      $("#balance").textContent = "Sign in required";
+    }
+  }
+  function updateBalance(v) { $("#balance").textContent = coins(v) + " coins"; }
+  async function refreshHistory() {
+    try {
+      var res = await fetch("/api/casino/history", { credentials: "include" });
+      var data = await readJson(res);
+      if (!res.ok || data.error) throw new Error(data.error || "Could not load history.");
+      renderHistory(data.history || []);
+    } catch (err) {
+      $("#history").innerHTML = '<div class="empty">' + esc(err.message) + '</div>';
+    }
+  }
+  function tone(n) { n = Number(n); return n > 0 ? "good" : n < 0 ? "bad" : "neutral"; }
+  function renderHistory(history) {
+    if (!history.length) {
+      $("#history").innerHTML = '<div class="empty">No casino rounds yet.</div>';
+      return;
+    }
+    $("#history").innerHTML = history.map(function (h) {
+      var amount = Number(h.amount || 0);
+      var sign = amount > 0 ? "+" : "";
+      var date = h.ts ? new Date(h.ts).toLocaleString() : "";
+      return '<div class="hist"><div><strong>' + esc(h.game || "Casino") + '</strong><span>' +
+        esc(h.outcome || "") + " " + esc(date) + '</span></div><strong class="' + tone(amount) + '">' +
+        sign + coins(amount) + '</strong></div>';
+    }).join("");
+  }
+  function itemRow(items, cls, hits) {
+    var hitSet = new Set((hits || []).map(Number));
+    return '<div class="items">' + (items || []).map(function (x) {
+      var hit = hitSet.has(Number(x)) ? " hit" : "";
+      return '<span class="item ' + (cls || "") + hit + '">' + esc(x) + '</span>';
+    }).join("") + '</div>';
+  }
+  function cardRow(cards) {
+    return itemRow((cards || []).map(function (c) { return c.v + c.s; }), "carditem");
+  }
+  function result(title, meta, net, extra) {
+    var n = Number(net || 0);
+    var sign = n > 0 ? "+" : "";
+    $("#result").innerHTML = '<div><div class="title">' + esc(title) + '</div><div class="meta">' +
+      meta + '</div>' + (extra || "") + '<div class="net ' + tone(n) + '">' + sign + coins(n) + ' net</div></div>';
+  }
+  async function play(fn) {
+    try { await fn(); await refreshHistory(); }
+    catch (err) { showToast(err.message); }
+  }
+
+  function bindChoices() {
+    $$('[data-group="coin"] .choice').forEach(function (btn) {
+      btn.onclick = function () {
+        state.coinSide = btn.dataset.side;
+        $$('[data-group="coin"] .choice').forEach(function (b) { b.classList.toggle("active", b === btn); });
+      };
+    });
+    $$('[data-group="dice"] .choice').forEach(function (btn) {
+      btn.onclick = function () {
+        state.diceSide = btn.dataset.dice;
+        $$('[data-group="dice"] .choice').forEach(function (b) { b.classList.toggle("active", b === btn); });
+      };
+    });
+  }
+  function buildKeno() {
+    var board = $("#keno-board");
+    for (var n = 1; n <= 40; n++) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "keno-cell";
+      b.textContent = n;
+      (function (num, btn) {
+        btn.onclick = function () {
+          if (state.keno.has(num)) {
+            state.keno.delete(num);
+            btn.classList.remove("active");
+          } else if (state.keno.size < 10) {
+            state.keno.add(num);
+            btn.classList.add("active");
+          } else {
+            showToast("Keno allows up to 10 picks.");
+          }
+          $("#keno-count").textContent = state.keno.size + " / 10";
+        };
+      })(n, b);
+      board.appendChild(b);
+    }
+  }
+  function handValue(cards) {
+    var total = 0, aces = 0;
+    (cards || []).forEach(function (c) {
+      if (c.v === "A") aces++;
+      else if (["J", "Q", "K"].includes(c.v)) total += 10;
+      else total += Number(c.v) || 0;
+    });
+    for (var i = 0; i < aces; i++) total += total + 11 <= 21 ? 11 : 1;
+    return total;
+  }
+  function renderBj(data, status) {
+    var player = data.playerHand || [];
+    var dealer = data.dealerHand || (data.dealerUpCard ? [data.dealerUpCard] : []);
+    $("#blackjack-table").innerHTML =
+      '<div class="hist"><div><strong>Player ' + (player.length ? "(" + handValue(player) + ")" : "") + '</strong>' + cardRow(player) + '</div></div>' +
+      '<div class="hist"><div><strong>Dealer ' + (data.dealerHand ? "(" + handValue(dealer) + ")" : "") + '</strong>' + cardRow(dealer) + '</div></div>' +
+      '<div class="meta">' + esc(status || "") + '</div>';
+  }
+  function clearBj() {
+    state.bjBet = 0;
+    $("#blackjack-hit").disabled = true;
+    $("#blackjack-stand").disabled = true;
+  }
+
+  $$("[data-bet]").forEach(function (btn) {
+    btn.onclick = function () { $("#bet").value = btn.dataset.bet; };
+  });
+  bindChoices();
+  buildKeno();
+
+  $("#slots").onclick = function () { play(async function () {
+    var d = await post("/api/casino/slots", { amount: bet() });
+    result("Slots: " + d.rank, "Payout " + coins(d.win) + " coins at " + coins(d.mult) + "x.", d.net, itemRow(d.results));
+  }); };
+  $("#vip-slots").onclick = function () { play(async function () {
+    var d = await post("/api/casino/vip/slots", { amount: bet() });
+    result("VIP Slots: " + d.rank, "Payout " + coins(d.win) + " coins at " + coins(d.mult) + "x.", d.net, itemRow(d.results));
+  }); };
+  $("#roulette").onclick = function () { play(async function () {
+    var type = $("#roulette-type").value;
+    if (type === "number") {
+      type = Number($("#roulette-number").value);
+      if (!Number.isInteger(type) || type < 0 || type > 36) throw new Error("Roulette number must be 0 through 36.");
+    }
+    var d = await post("/api/casino/roulette", { amount: bet(), type: type });
+    result(d.won ? "Roulette: Hit" : "Roulette: Miss", "Landed " + d.number + " " + esc(d.color) + ". Payout " + coins(d.win) + " coins.", d.net, itemRow([d.number]));
+  }); };
+  $("#poker").onclick = function () { play(async function () {
+    var d = await post("/api/casino/poker/start", { amount: bet() });
+    result("Poker: " + d.rank, "Payout " + coins(d.win) + " coins at " + coins(d.mult) + "x.", d.net, cardRow(d.hand));
+  }); };
+  $("#coinflip").onclick = function () { play(async function () {
+    var d = await post("/api/casino/coinflip", { amount: bet(), side: state.coinSide });
+    result(d.won ? "Coin Flip: Win" : "Coin Flip: Lose", "You picked " + state.coinSide + ". Result: " + d.result + ".", d.net);
+  }); };
+  $("#dice").onclick = function () { play(async function () {
+    var d = await post("/api/casino/dice", { amount: bet(), side: state.diceSide });
+    result(d.won ? "Dice Duel: Win" : "Dice Duel: Lose", "You picked " + state.diceSide + ". Roll: " + d.roll + ".", d.net, itemRow([d.roll]));
+  }); };
+  $("#crash").onclick = function () { play(async function () {
+    var d = await post("/api/casino/crash", { amount: bet(), target: Number($("#crash-target").value) });
+    result(d.won ? "Crash: Cashed Out" : "Crash: Busted", "Target " + coins(d.target) + "x. Crashed at " + coins(d.crashAt) + "x.", d.net);
+  }); };
+  $("#wheel").onclick = function () { play(async function () {
+    var d = await post("/api/casino/wheel", { amount: bet() });
+    result("Prize Wheel: " + d.segment, "Multiplier " + coins(d.mult) + "x. Payout " + coins(d.win) + " coins.", d.net);
+  }); };
+  $("#scratch").onclick = function () { play(async function () {
+    var d = await post("/api/casino/scratch", { amount: bet() });
+    var extra = '<div class="scratch">' + (d.tiles || []).map(function (s) { return '<span class="item">' + esc(s) + '</span>'; }).join("") + '</div>';
+    result("Scratch: " + d.rank, "Payout " + coins(d.win) + " coins at " + coins(d.mult) + "x.", d.net, extra);
+  }); };
+  $("#keno").onclick = function () { play(async function () {
+    var picks = Array.from(state.keno).sort(function (a, b) { return a - b; });
+    var d = await post("/api/casino/keno", { amount: bet(), picks: picks });
+    result("Keno Rush", "Hits: " + d.hits.length + " of " + d.picks.length + ". Multiplier " + coins(d.mult) + "x.", d.net, itemRow(d.drawn, "", d.hits));
+  }); };
+  $("#keno-clear").onclick = function () {
+    state.keno.clear();
+    $$(".keno-cell").forEach(function (b) { b.classList.remove("active"); });
+    $("#keno-count").textContent = "0 / 10";
+  };
+  $("#blackjack-start").onclick = function () { play(async function () {
+    state.bjBet = bet();
+    var d = await post("/api/casino/blackjack/start", { amount: state.bjBet });
+    renderBj(d, "Hand started. Hit or stand.");
+    $("#blackjack-hit").disabled = false;
+    $("#blackjack-stand").disabled = false;
+    result("Blackjack: Hand Started", "Bet placed. Finish the hand from the blackjack panel.", -state.bjBet, cardRow(d.playerHand));
+    await refreshBalance();
+  }); };
+  $("#blackjack-hit").onclick = function () { play(async function () {
+    var d = await post("/api/casino/blackjack/hit", {});
+    renderBj(d, d.gameOver ? "Busted." : "Card dealt. Hit or stand.");
+    if (d.gameOver) {
+      result("Blackjack: Bust", "You went over 21.", -state.bjBet, cardRow(d.playerHand));
+      clearBj();
+      await refreshBalance();
+    }
+  }); };
+  $("#blackjack-stand").onclick = function () { play(async function () {
+    var d = await post("/api/casino/blackjack/stand", {});
+    var net = Number(d.winAmt || 0) - state.bjBet;
+    renderBj(d, "Final result: " + (d.status || "done") + ".");
+    result("Blackjack: " + String(d.status || "Done").toUpperCase(), "Payout " + coins(d.winAmt || 0) + " coins.", net, cardRow(d.playerHand));
+    clearBj();
+    await refreshBalance();
+  }); };
+
+  async function refreshGlobalFeed() {
+    try {
+      var res = await fetch("/api/casino/global-feed", { credentials: "include" });
+      var data = await readJson(res);
+      if (!res.ok || data.error) return;
+      renderGlobalFeed(data.feed || []);
+    } catch (e) {}
+  }
+  function renderGlobalFeed(feed) {
+    var wrap = $("#global-feed");
+    if (!feed.length) {
+      wrap.innerHTML = '<div class="empty">No live bets yet.</div>';
+      return;
+    }
+    wrap.innerHTML = feed.map(function (b) {
+      var amount = Number(b.amount || 0);
+      var sign = b.outcome === 'WIN' || amount > 0 ? "+" : "-";
+      var t = b.outcome === 'WIN' ? 'good' : (b.outcome === 'LOSE' || b.outcome === 'BUST' || b.outcome === 'CRASH' ? 'bad' : 'neutral');
+      var cardId = 'card-' + b.game.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z-]/g, '');
+      if (b.game.includes('Slots')) cardId = 'card-slots';
+      if (b.game.includes('Poker')) cardId = 'card-poker';
+      
+      return '<div class="hist"><div><strong>' + esc(b.user) + '</strong><span style="cursor:pointer;text-decoration:underline;" onclick="goFullscreen(\'' + cardId + '\')">' +
+        esc(b.game) + " (" + esc(b.outcome) + ')</span></div><strong class="' + t + '">' +
+        sign + coins(Math.abs(amount)) + '</strong></div>';
+    }).join("");
+  }
+
+  window.goFullscreen = function(id) {
+    var card = document.getElementById(id);
+    if (!card) return;
+    var overlay = document.getElementById('fullscreen-overlay');
+    
+    // Clear and build console layout
+    overlay.innerHTML = '<button class="fs-close" id="fs-close-btn">← Back to Casino</button>' +
+      '<div class="fs-layout" style="width: min(1200px, 100%); margin: 60px auto;">' +
+        '<div class="fs-main"></div>' +
+        '<div class="fs-side">' +
+          '<div class="fs-wallet"><span>Your Bankroll</span><strong class="fs-bal-val"></strong></div>' +
+          '<div class="fs-results-box"><div class="kicker">Session Outcome</div><div class="fs-res-target" style="margin-top:20px;"></div><div class="fs-bj-target" style="margin-top:20px;"></div></div>' +
+          '<div class="fs-controls-box"></div>' +
+        '</div>' +
+      '</div>';
+
+    overlay.querySelector('#fs-close-btn').onclick = window.closeFullscreen;
+
+    // Save state for returning
+    state.fsOrigin = id;
+    var head = card.querySelector('.card-head');
+    var desc = card.querySelector('p');
+    var ctrl = card.querySelector('.controls');
+    
+    // Move elements
+    overlay.querySelector('.fs-main').appendChild(head);
+    overlay.querySelector('.fs-main').appendChild(desc);
+    overlay.querySelector('.fs-controls-box').appendChild(ctrl);
+    overlay.querySelector('.fs-res-target').appendChild(document.getElementById('result'));
+    overlay.querySelector('.fs-bj-target').appendChild(document.getElementById('blackjack-table'));
+    
+    // Show hidden controls and hide play button
+    var gameControls = ctrl.querySelector('div');
+    if (gameControls) gameControls.style.display = 'block';
+    
+    var playBtn = ctrl.querySelector('button[onclick*="goFullscreen"]');
+    if (playBtn) playBtn.style.display = 'none';
+    
+    document.getElementById('result').style.display = 'block';
+    document.getElementById('blackjack-table').style.display = 'block';
+
+    // Sync balance and results
+    const sync = () => { 
+      var bal = document.getElementById('balance');
+      var fsBal = overlay.querySelector('.fs-bal-val');
+      if (bal && fsBal) fsBal.textContent = bal.textContent; 
+    };
+    sync();
+    state.fsInterval = setInterval(sync, 50);
+
+    overlay.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  };
+
+  window.closeFullscreen = function() {
+    var overlay = document.getElementById('fullscreen-overlay');
+    var card = document.getElementById(state.fsOrigin);
+    if (!card) { overlay.classList.remove('active'); return; }
+    
+    clearInterval(state.fsInterval);
+    var main = overlay.querySelector('.fs-main');
+    var side = overlay.querySelector('.fs-controls-box');
+    
+    var head = main.querySelector('.card-head');
+    var desc = main.querySelector('p');
+    var ctrl = side.querySelector('.controls');
+    
+    // Reset visibility
+    var gameControls = ctrl.querySelector('div');
+    if (gameControls) gameControls.style.display = 'none';
+    
+    var playBtn = ctrl.querySelector('button[onclick*="goFullscreen"]');
+    if (playBtn) playBtn.style.display = 'block';
+    
+    document.getElementById('result').style.display = 'none';
+    document.getElementById('blackjack-table').style.display = 'none';
+
+    // Move back in correct order
+    card.appendChild(head);
+    card.appendChild(desc);
+    card.appendChild(ctrl);
+    document.body.appendChild(document.getElementById('result'));
+    document.body.appendChild(document.getElementById('blackjack-table'));
+
+    overlay.classList.remove('active');
+    overlay.innerHTML = '';
+    document.body.style.overflow = '';
+    refreshHistory();
+  };
+
+  refreshBalance();
+  refreshHistory();
+  refreshGlobalFeed();
+  setInterval(refreshGlobalFeed, 3000);
+})();
+</script>
+<div id="fullscreen-overlay"></div>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

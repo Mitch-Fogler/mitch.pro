@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leaderboard — mitch.pro</title>
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0d0d0d);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 60px 20px 80px;
+  }
+  .wrap { width: 100%; max-width: 800px; }
+  h1 { font-family: 'Syne', sans-serif; font-size: 2.5rem; font-weight: 800; margin-bottom: 30px; text-align: center; background: var(--t-gr); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  
+  .card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: 16px;
+    padding: 20px;
+    overflow-x: auto;
+  }
+  
+  table { width: 100%; border-collapse: collapse; min-width: 500px; }
+  th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--t-fg2); padding: 12px 10px; border-bottom: 1px solid var(--t-bd); }
+  td { padding: 14px 10px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  tr:last-child td { border-bottom: none; }
+  
+  .rank { font-weight: 800; color: var(--t-ac); width: 50px; }
+  .name { font-weight: 600; color: var(--t-fg); }
+  .name a { color: inherit; text-decoration: none; }
+  .name a:hover { color: var(--t-ac); text-decoration: underline; }
+  .coins { color: #f59e0b; font-weight: 700; }
+  .val { opacity: 0.8; }
+  
+  .loading { text-align: center; padding: 40px; color: var(--t-fg2); font-style: italic; }
+
+  .name.neon_purple a { color: #d946ef !important; text-shadow: 0 0 5px rgba(217,70,239,0.3); }
+  .name.electric_blue a { color: #3b82f6 !important; text-shadow: 0 0 5px rgba(59,130,246,0.3); }
+  .name.mint_flash a { color: #34d399 !important; text-shadow: 0 0 5px rgba(52,211,153,0.3); }
+  .name.rose_spark a { color: #fb7185 !important; text-shadow: 0 0 5px rgba(251,113,133,0.3); }
+  .name.ember_red a { color: #ef4444 !important; text-shadow: 0 0 5px rgba(239,68,68,0.35); }
+  .name.void_white a { color: #f8fafc !important; text-shadow: 0 0 7px rgba(248,250,252,0.3); }
+  .name.gold_glow a { color: #f59e0b !important; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
+  .name.rainbow_name a { 
+    background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-size: 200% auto; animation: rainbow_move 3s linear infinite;
+    font-weight: 800;
+  }
+  @keyframes rainbow_move { to { background-position: 200% center; } }
+  
+  .l-badge { font-size: 10px; margin-left: 5px; vertical-align: middle; }
+  .badge-verified { color: #3b82f6; }
+  .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
+  .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Leaderboard</h1>
+  <div class="card">
+    <div id="loading" class="loading">Fetching rankings...</div>
+    <table id="table" style="display:none">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>User</th>
+          <th>Coins</th>
+          <th>Wins</th>
+          <th>Puzzles</th>
+          <th>Pixels</th>
+          <th>Clicker</th>
+          <th>Keyboard</th>
+          <th>Logic</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  async function load() {
+    try {
+      const r = await fetch('/api/leaderboard');
+      const d = await r.json();
+      const tbody = document.getElementById('tbody');
+      tbody.innerHTML = '';
+      
+      d.top.forEach((u, i) => {
+        const tr = document.createElement('tr');
+        const profileUrl = '/profile.html?u=' + encodeURIComponent(u.email || u.name);
+        
+        const badgeLabels = {
+    verified_badge: { text: '✔', cls: 'badge-verified' },
+    og_badge: { text: '📜', cls: 'badge-og' },
+    artist_badge: { text: '🎨', cls: 'badge-shop' },
+    chess_badge: { text: '♟', cls: 'badge-shop' },
+    builder_badge: { text: '🛠', cls: 'badge-shop' },
+    lucky_badge: { text: '🍀', cls: 'badge-shop' },
+    premium_star_badge: { text: '⭐', cls: 'badge-shop' },
+    owner_fan_badge: { text: '👑', cls: 'badge-shop' },
+  };
+        const badge = badgeLabels[u.badge];
+        let badgeHtml = badge ? `<span class="l-badge ${badge.cls}">${badge.text}</span>` : '';
+
+        const colorClass = u.color || '';
+
+        tr.innerHTML = `
+          <td class="rank">${i + 1}</td>
+          <td class="name ${colorClass}"><a href="${profileUrl}">${esc(u.name)}${badgeHtml}</a></td>
+          <td class="coins">${u.coins.toFixed(2)}</td>
+          <td class="val">${u.wins}</td>
+          <td class="val">${u.puzzles}</td>
+          <td class="val">${u.pixels}</td>
+          <td class="val">${Fmt(u.clicker_pts)}</td>
+          <td class="val">${u.typing_races}</td>
+          <td class="val">${u.logic_puzzles}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+      
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('table').style.display = 'table';
+    } catch (e) {
+      document.getElementById('loading').innerText = 'Failed to load leaderboard.';
+    }
+  }
+
+  function esc(t) { 
+    return (t||'').replace(/[&<>"']/g, m => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[m])); 
+  }
+  function Fmt(n) {
+    if (n < 1000) return Math.floor(n);
+    const s = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const t = Math.floor(Math.log10(n) / 3);
+    if (t < s.length) return (n / Math.pow(10, t * 3)).toFixed(1) + s[t];
+    return n.toExponential(1);
+  }
+
+  
+  load();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

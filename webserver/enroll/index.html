@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login & Registration — mitch.pro</title>
+<meta name="description" content="Request access or log into mitch.pro, the secure student portal. Access live Woodcreek High School bell schedules, custom games, cloud-sync, and encrypted social channels.">
+<meta name="keywords" content="mitch.pro login, mitch pro enroll, student login, woodcreek high login, secure student portal">
+<link rel="canonical" href="https://mitch.pro/enroll/" />
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://mitch.pro/enroll/" />
+<meta property="og:title" content="Login & Registration — mitch.pro" />
+<meta property="og:description" content="Log into or request access for mitch.pro. High-performance gaming, live High School block schedule tracker, and encrypted communications." />
+<meta property="og:image" content="https://mitch.pro/icon-512.png" />
+
+<link rel="stylesheet" href="/open.css">
+<script src="/theme.js"></script>
+<script>
+  var _captchaId = null;
+  function onloadCallback() {
+    if (window.grecaptcha && _captchaId === null) {
+      _captchaId = grecaptcha.render('captcha-shared', {
+        'sitekey': '6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz', 'theme': 'dark'
+      });
+    }
+  }
+</script>
+<script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --panel: rgba(255,255,255,.03);
+    --panel-strong: rgba(255,255,255,.07);
+    --line: rgba(255,255,255,.08);
+    --line-hot: rgba(96,165,250,.42);
+    --cyan: #22d3ee;
+    --green: #4ade80;
+    --gold: #facc15;
+    --rose: #fb7185;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0a0a0c);
+    color: var(--t-fg, #e2e2e4);
+    font-family: 'Outfit', sans-serif;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(circle at 12% 18%, rgba(34, 211, 238, 0.08) 0%, transparent 45%),
+      radial-gradient(circle at 88% 82%, rgba(167, 139, 250, 0.07) 0%, transparent 45%),
+      linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px),
+      var(--t-bgr, #0a0a0c);
+    background-size: auto, auto, 48px 48px, 48px 48px, auto;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.45));
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .enroll-shell {
+    position: relative;
+    z-index: 1;
+    width: min(1160px, calc(100vw - 24px));
+    margin: 0 auto;
+    padding: 24px 0 44px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 24px;
+    background: rgba(10, 10, 12, 0.5);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    margin-bottom: 30px;
+    gap: 12px;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--t-fg, #fff);
+    text-decoration: none;
+  }
+
+  .brand span {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.01em;
+  }
+
+  .brand img {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,.05);
+  }
+
+  .top-links {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .top-links a {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: rgba(255,255,255,.03);
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    text-decoration: none;
+    font-size: .8rem;
+    font-weight: 700;
+    transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+  }
+
+  .top-links a:hover {
+    color: var(--t-fg, #fff);
+    border-color: var(--line-hot);
+    background: rgba(255,255,255,.05);
+    text-decoration: none;
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr);
+    gap: 20px;
+    align-items: stretch;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+
+  .intro,
+  .signup-panel,
+  .token-panel,
+  .benefits,
+  .flow-strip {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background:
+      linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.01)),
+      var(--panel);
+    box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .intro:hover,
+  .signup-panel:hover,
+  .token-panel:hover,
+  .benefits:hover {
+    border-color: rgba(255,255,255,0.15);
+    box-shadow: 0 24px 68px rgba(0,0,0,.45);
+  }
+
+  .intro {
+    min-height: 640px;
+    padding: clamp(24px, 5vw, 48px);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: center;
+    text-align: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .intro > :not(.signal-board) {
+    position: relative;
+    z-index: 2;
+  }
+
+  .intro::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 4px;
+    background: linear-gradient(90deg, var(--cyan), #8b5cf6, var(--rose));
+  }
+
+  .signal-board {
+    order: 2;
+    position: relative;
+    width: min(100%, 720px);
+    min-height: 200px;
+    margin-top: auto;
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 12px;
+    background: rgba(0,0,0,.22);
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .signal-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 12px;
+    min-height: 80px;
+    padding: 14px;
+    border: 1px solid rgba(255,255,255,.05);
+    border-radius: 10px;
+    background: rgba(255,255,255,.02);
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: .88rem;
+    font-weight: 700;
+  }
+
+  .signal-icon {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(34,211,238,.1);
+    color: var(--cyan);
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 1.1rem;
+  }
+
+  .signal-row strong {
+    color: var(--t-fg, #fff);
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+  }
+
+  .signal-row small {
+    color: var(--green);
+    font-size: .72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .kicker {
+    order: 1;
+    width: fit-content;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 14px;
+    border: 1px solid rgba(34,211,238,.28);
+    border-radius: 999px;
+    background: rgba(34,211,238,.08);
+    color: var(--cyan);
+    font-size: .72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 20px;
+  }
+
+  h1 {
+    order: 1;
+    font-family: 'Syne', sans-serif;
+    max-width: 720px;
+    margin: 0 auto;
+    color: #fff;
+    font-size: clamp(2.4rem, 6vw, 4.4rem);
+    line-height: .92;
+    letter-spacing: -0.02em;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .intro-copy {
+    order: 1;
+    max-width: 670px;
+    margin: 20px auto 0;
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: clamp(.92rem, 1.8vw, 1.02rem);
+    line-height: 1.55;
+    font-weight: 400;
+  }
+
+  .trust-row {
+    order: 1;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 24px;
+  }
+
+  .trust-row span {
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 12px;
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 999px;
+    background: rgba(255,255,255,.03);
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: .72rem;
+    font-weight: 700;
+  }
+
+  .side-stack {
+    display: grid;
+    gap: 20px;
+    align-content: start;
+    justify-items: stretch;
+    width: 100%;
+    max-width: 460px;
+    margin: 0 auto;
+  }
+
+  .signup-panel,
+  .token-panel {
+    padding: 28px 30px;
+    width: 100%;
+  }
+
+  .panel-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 22px;
+  }
+
+  .side-stack .panel-head {
+    align-items: center;
+  }
+
+  .side-stack .panel-head > div {
+    flex: 1;
+    text-align: left;
+  }
+
+  .panel-head h2 {
+    margin: 0;
+    font-family: 'Syne', sans-serif;
+    color: var(--t-fg, #fff);
+    font-size: 1.25rem;
+    line-height: 1.15;
+    font-weight: 800;
+  }
+
+  .panel-head p {
+    margin: 6px 0 0;
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: .84rem;
+    line-height: 1.4;
+  }
+
+  .step-badge {
+    flex: 0 0 auto;
+    min-width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    border: 1px solid rgba(250,204,21,.25);
+    background: rgba(250,204,21,.08);
+    color: var(--gold);
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 0.9rem;
+  }
+
+  .field-label {
+    display: block;
+    width: 100%;
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 7px;
+    text-align: left;
+  }
+
+  input[type=email],
+  input[type=text] {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 48px;
+    margin-bottom: 16px;
+    border-radius: 10px;
+    background: rgba(0,0,0,.3);
+    border: 1px solid var(--line);
+    color: var(--t-fg, #fff);
+    font-weight: 600;
+    padding: 12px 14px;
+    outline: none;
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+  }
+
+  input[type=email]:focus,
+  input[type=text]:focus {
+    border-color: var(--line-hot);
+    background: rgba(255,255,255,.04);
+    box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
+  }
+
+  .recaptcha-wrap {
+    display: flex;
+    justify-content: center;
+    margin: 6px 0 16px;
+    overflow: hidden;
+  }
+
+  .agree-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 14px;
+    background: rgba(34,211,238,.05);
+    border: 1px solid rgba(34,211,238,.16);
+    border-radius: 10px;
+    text-align: left;
+  }
+
+  .agree-row input {
+    width: auto;
+    margin-top: 3px;
+    flex-shrink: 0;
+    cursor: pointer;
+    accent-color: var(--cyan);
+  }
+
+  .agree-row label {
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    cursor: pointer;
+    font-size: .8rem;
+    line-height: 1.45;
+  }
+
+  .agree-row a {
+    color: var(--cyan);
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .agree-row a:hover {
+    text-decoration: underline;
+  }
+
+  .btn {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(34,211,238,.95), rgba(96,165,250,.95), rgba(250,204,21,.85));
+    color: #061018;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    box-shadow: 0 12px 28px rgba(0,0,0,.25);
+    transition: transform 0.15s, filter 0.15s, box-shadow 0.15s;
+  }
+
+  .btn:hover:not(:disabled) {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+    box-shadow: 0 14px 34px rgba(34,211,238,0.2);
+  }
+  
+  .btn:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  .secondary-btn {
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--line);
+    color: var(--t-fg, #fff);
+    box-shadow: none;
+  }
+  
+  .secondary-btn:hover:not(:disabled) {
+    background: rgba(255,255,255,.08);
+    border-color: rgba(255,255,255,0.25);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(255,255,255,0.05);
+  }
+
+  #msg,
+  #tmsg, #rtmsg, #login-msg {
+    min-height: 22px;
+    margin-top: 12px;
+    font-size: .84rem;
+    text-align: center;
+    font-weight: 700;
+  }
+  .ok { color: var(--green); }
+  .err { color: #f87171; }
+
+  .benefits {
+    margin-top: 12px;
+    padding: 36px 40px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .section-title {
+    margin-bottom: 24px;
+  }
+
+  .section-title h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #fff;
+    margin-bottom: 4px;
+  }
+
+  .section-title small {
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .benefit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+  }
+
+  .benefit {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,.04);
+    border-radius: 12px;
+    background: rgba(255,255,255,.01);
+    align-items: start;
+  }
+
+  .benefit-icon {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(255,255,255,.04);
+    color: var(--cyan);
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 0.95rem;
+  }
+
+  .benefit strong {
+    color: var(--t-fg, #fff);
+    font-size: .92rem;
+    line-height: 1.25;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .benefit span {
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: .8rem;
+    line-height: 1.45;
+  }
+
+  .flow-strip {
+    margin-top: 20px;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    width: 100%;
+  }
+
+  .flow-step {
+    min-height: 80px;
+    padding: 16px;
+    border: 1px solid rgba(255,255,255,.04);
+    border-radius: 12px;
+    background: rgba(255,255,255,.01);
+    text-align: left;
+  }
+
+  .flow-step b {
+    display: block;
+    font-family: 'Syne', sans-serif;
+    color: var(--t-fg, #fff);
+    font-size: .9rem;
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+
+  .flow-step span {
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-size: .8rem;
+    line-height: 1.4;
+  }
+
+  .footer {
+    position: relative;
+    z-index: 1;
+    border-top: 1px solid var(--line);
+    margin-top: 40px;
+    padding: 30px 12px 40px;
+    opacity: .55;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+  }
+
+  .footer a {
+    color: var(--cyan);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .footer a:hover {
+    text-decoration: underline;
+  }
+
+  @media (max-width: 920px) {
+    .hero,
+    .benefit-grid,
+    .flow-strip {
+      grid-template-columns: 1fr;
+    }
+
+    .intro {
+      min-height: 520px;
+    }
+
+    .signal-board {
+      width: 100%;
+      margin-top: 28px;
+    }
+
+    .side-stack {
+      max-width: 100%;
+    }
+  }
+
+  @media (max-width: 620px) {
+    .enroll-shell {
+      width: min(100%, calc(100vw - 12px));
+      padding-top: 8px;
+    }
+
+    .topbar {
+      align-items: stretch;
+      flex-direction: column;
+      padding: 16px;
+      border-radius: 12px;
+    }
+
+    .panel-head {
+      align-items: center;
+      flex-direction: column;
+      text-align: center;
+      gap: 8px;
+    }
+    
+    .panel-head > div {
+      text-align: center !important;
+    }
+
+    .field-label {
+      text-align: center;
+    }
+
+    .top-links {
+      justify-content: center;
+      margin-top: 4px;
+    }
+
+    .intro,
+    .signup-panel,
+    .token-panel,
+    .benefits,
+    .flow-strip {
+      padding: 20px 16px;
+    }
+
+    .intro {
+      min-height: auto;
+      padding-top: 24px;
+    }
+
+    .recaptcha-wrap {
+      transform: scale(.88);
+      transform-origin: center;
+      margin-left: -20px;
+      margin-right: -20px;
+    }
+
+    .signal-board {
+      grid-template-columns: 1fr;
+      min-height: auto;
+    }
+
+    .signal-row {
+      min-height: 66px;
+    }
+  }
+
+  /* Premium Tabs and Warnings */
+  .auth-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 24px;
+    gap: 4px;
+    background: rgba(0, 0, 0, 0.25);
+    padding: 4px;
+    border-radius: 12px;
+  }
+
+  .auth-tab-btn {
+    flex: 1;
+    min-height: 40px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--t-fg2, rgba(200,200,220,0.6));
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .auth-tab-btn:hover {
+    color: var(--t-fg, #fff);
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  .auth-tab-btn.active {
+    color: #061018;
+    background: linear-gradient(135deg, var(--cyan), #8b5cf6);
+    box-shadow: 0 4px 12px rgba(34, 211, 238, 0.25);
+  }
+
+  .tab-pane {
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+
+  .tab-pane.active {
+    display: block;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .warning-alert {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 14px;
+    background: rgba(251, 113, 133, 0.08);
+    border: 1px solid rgba(251, 113, 133, 0.25);
+    border-radius: 10px;
+    text-align: left;
+    align-items: flex-start;
+  }
+
+  .warning-alert svg {
+    flex-shrink: 0;
+    color: var(--rose);
+    margin-top: 2px;
+  }
+
+  .warning-alert span {
+    color: var(--t-fg2, rgba(200,200,220,0.7));
+    font-size: 0.8rem;
+    line-height: 1.45;
+  }
+
+  .warning-alert strong {
+    color: var(--rose);
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+  <main class="enroll-shell">
+    <nav class="topbar">
+      <a class="brand" href="/">
+        <img src="/icon-192.png" alt="">
+        <span>mitch.pro</span>
+      </a>
+      <div class="top-links">
+        <a href="/faq.html">FAQ</a>
+        <a href="/use-agreement.html">Use Agreement</a>
+        <a href="/privacy/">Privacy</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div class="intro">
+        <div class="signal-board" aria-hidden="true">
+          <div class="signal-row"><span class="signal-icon">G</span><strong>Games hub</strong><small>live</small></div>
+          <div class="signal-row"><span class="signal-icon">C</span><strong>Canvas + profiles</strong><small>open</small></div>
+          <div class="signal-row"><span class="signal-icon">M</span><strong>Market + coins</strong><small>ready</small></div>
+          <div class="signal-row"><span class="signal-icon">P</span><strong>Premium tools</strong><small>locked</small></div>
+        </div>
+        <span class="kicker">Private Student Access</span>
+        <h1>Join the site.</h1>
+        <p class="intro-copy">Request access with your email, then claim your account from the invite link. Once you are in, the homepage opens up into games, chat, profiles, canvas, coins, market items, leaderboards, and premium-only tools.</p>
+        <div class="trust-row">
+          <span>Invite reviewed</span>
+          <span>Verified email friendly</span>
+          <span>Encrypted chat available</span>
+          <span>Virtual coins only</span>
+        </div>
+      </div>
+
+      <div class="side-stack">
+        <section class="signup-panel" style="min-height: 520px; display: flex; flex-direction: column;">
+          <div class="auth-tabs" role="tablist">
+            <button class="auth-tab-btn active" id="tab-login" onclick="switchTab('login')" role="tab" aria-selected="true" aria-controls="pane-login">Log In</button>
+            <button class="auth-tab-btn" id="tab-invite" onclick="switchTab('invite')" role="tab" aria-selected="false" aria-controls="pane-invite">Sign Up</button>
+            <button class="auth-tab-btn" id="tab-reset" onclick="switchTab('reset')" role="tab" aria-selected="false" aria-controls="pane-reset">Reset</button>
+          </div>
+
+          <!-- Tab Pane: Log In -->
+          <div class="tab-pane active" id="pane-login" role="tabpanel" aria-labelledby="tab-login">
+            <div class="panel-head" style="margin-bottom: 20px;">
+              <div>
+                <h2>Welcome Back</h2>
+                <p>Log in with your email and account password.</p>
+              </div>
+            </div>
+            <label class="field-label" for="login-email">Email Address</label>
+            <input id="login-email" type="email" autocomplete="email" placeholder="your@email.com">
+            
+            <label class="field-label" for="login-password">Password</label>
+            <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 8px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+            
+            <div style="text-align: right; margin-bottom: 16px;">
+              <a href="javascript:void(0)" onclick="switchTab('reset')" style="color: var(--cyan); font-size: 0.75rem; text-decoration: none; font-weight: 600;">Forgot password?</a>
+            </div>
+
+            <button id="login-btn" class="btn" onclick="login()">Log In</button>
+            <div id="login-msg"></div>
+          </div>
+
+          <!-- Tab Pane: Sign Up -->
+          <div class="tab-pane" id="pane-invite" role="tabpanel" aria-labelledby="tab-invite">
+            <div id="invite-step-1">
+              <div class="panel-head" style="margin-bottom: 20px;">
+                <div>
+                  <h2 id="invite-title">Create Account</h2>
+                  <p id="invite-desc">Enter your email and choose a secure password.</p>
+                </div>
+              </div>
+              <label class="field-label" for="email">Email Address</label>
+              <input id="email" type="email" autocomplete="email" placeholder="your@email.com">
+
+              <label class="field-label" for="signup-password">Choose Password (min 6 chars)</label>
+              <input id="signup-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 12px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+
+              <label class="field-label" for="signup-confirm-password">Confirm Password</label>
+              <input id="signup-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 12px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+
+              <div class="agree-row">
+                <input type="checkbox" id="agree" onchange="updateBtn()">
+                <label for="agree">
+                  I am 13 or older and I agree to the
+                  <a href="/use-agreement.html" target="_blank" onclick="event.stopPropagation()">Use Agreement</a> and
+                  <a href="/privacy/" target="_blank" onclick="event.stopPropagation()">Privacy Policy</a>.
+                </label>
+              </div>
+
+              <button id="btn" class="btn" onclick="submit()">Sign Up</button>
+              
+              <div id="support-actions" style="display:none; margin-top: 16px; text-align: center;">
+                <button id="resend-btn" class="secondary-btn btn" onclick="submit(true)" style="min-height: 38px; font-size: 0.8rem; margin-bottom: 8px;">Didn't get email? (Wait 30s)</button>
+                <br>
+                <a href="javascript:void(0)" id="no-email-link" onclick="showNoEmailForm()" style="display:none; color: var(--rose); font-size: 0.75rem; text-decoration: none; font-weight: 700;">Still not getting it? Apply for a manual account.</a>
+              </div>
+
+              <div id="no-email-form" style="display:none; margin-top: 20px; padding: 16px; background: rgba(251, 113, 133, 0.05); border: 1px solid rgba(251, 113, 133, 0.15); border-radius: 10px;">
+                <h3 style="font-family: 'Syne', sans-serif; font-size: 1rem; margin-bottom: 8px;">Manual Account Request</h3>
+                <p style="font-size: 0.75rem; color: var(--t-fg2); margin-bottom: 12px;">If your school blocks our emails, you can apply for a manual bypass. Briefly state why you need access.</p>
+                <textarea id="no-email-reason" placeholder="Brief reason..." style="width: 100%; height: 60px; border-radius: 8px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: #fff; padding: 8px; font-family: inherit; font-size: 0.85rem; margin-bottom: 12px; outline: none;"></textarea>
+                <button class="btn" onclick="applyNoEmail()" style="min-height: 38px; font-size: 0.85rem; background: var(--rose); color: #fff;">Submit Bypass Request</button>
+              </div>
+            </div>
+
+            <div id="invite-step-2" style="display:none;">
+              <div class="panel-head" style="margin-bottom: 20px;">
+                <div>
+                  <h2>Verify Email</h2>
+                  <p>Enter the 6-digit code sent to your email to complete registration.</p>
+                </div>
+              </div>
+              <div class="warning-alert">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span><strong>TIME SENSITIVE:</strong> This code will expire in 30 minutes. If it expires, you will need to sign up again.</span>
+              </div>
+
+              <label class="field-label" for="token">6-Digit Verification Code</label>
+              <input id="token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
+
+              <button id="tbtn" class="btn" onclick="verifySignup()">Complete Sign Up</button>
+              <div id="tmsg"></div>
+            </div>
+
+            <div id="msg"></div>
+          </div>
+
+          <!-- Tab Pane: Reset Password -->
+          <div class="tab-pane" id="pane-reset" role="tabpanel" aria-labelledby="tab-reset">
+            <div id="reset-step-1">
+              <div class="panel-head" style="margin-bottom: 20px;">
+                <div>
+                  <h2>Reset Password</h2>
+                  <p>Enter your email to receive a 6-digit reset code.</p>
+                </div>
+              </div>
+              <label class="field-label" for="reset-email">Email Address</label>
+              <input id="reset-email" type="email" autocomplete="email" placeholder="your@email.com">
+              
+              <button id="reset-request-btn" class="btn" onclick="requestReset()">Send Reset Code</button>
+            </div>
+
+            <div id="reset-step-2" style="display:none;">
+              <div class="panel-head" style="margin-bottom: 20px;">
+                <div>
+                  <h2>Enter Reset Code</h2>
+                  <p>Use your 6-digit reset code to set a new password.</p>
+                </div>
+              </div>
+              <div class="warning-alert">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                <span><strong>E2E SECURE CHAT WARNING:</strong> Resetting your password derives new encryption keys. <strong>You will lose access to all previously encrypted secure chats.</strong></span>
+              </div>
+
+              <label class="field-label" for="reset-token">6-Digit Reset Code</label>
+              <input id="reset-token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
+
+              <label class="field-label" for="reset-password">New Password (min 6 chars)</label>
+              <input id="reset-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 16px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+
+              <label class="field-label" for="reset-confirm-password">Confirm New Password</label>
+              <input id="reset-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 16px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+
+              <button id="rbtn" class="btn" onclick="claimToken('reset')">Reset Password</button>
+            </div>
+            <div id="rtmsg"></div>
+          </div>
+          
+          <div class="recaptcha-wrap" style="display: flex; justify-content: center; margin-top: 20px;">
+            <div id="captcha-shared"></div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="benefits">
+      <div class="section-title">
+        <h2>What You Unlock</h2>
+        <small>Built for quick access and repeat use</small>
+      </div>
+      <div class="benefit-grid">
+        <div class="benefit">
+          <span class="benefit-icon">G</span>
+          <div>
+            <strong>Games and arcade pages</strong>
+            <span>Jump into the redesigned game hub, favorites, casino-style virtual coin games, chess, puzzles, and more.</span>
+          </div>
+        </div>
+        <div class="benefit">
+          <span class="benefit-icon">C</span>
+          <div>
+            <strong>Canvas and profiles</strong>
+            <span>Draw on pixelplace, track stats, view profiles, roles, premium members, online users, and leaderboards.</span>
+          </div>
+        </div>
+        <div class="benefit">
+          <span class="benefit-icon">M</span>
+          <div>
+            <strong>Coins, market, and perks</strong>
+            <span>Earn and spend virtual coins on cosmetics, backgrounds, badges, shop items, and temporary passes.</span>
+          </div>
+        </div>
+        <div class="benefit">
+          <span class="benefit-icon">S</span>
+          <div>
+            <strong>Safer community tools</strong>
+            <span>Use encrypted chat, notifications, feedback, reports, moderation review, and clear account rules.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="flow-strip">
+      <div class="flow-step"><b>Sign Up</b><span>Choose your email and a secure account password.</span></div>
+      <div class="flow-step"><b>Verify</b><span>Enter the 6-digit code sent to your email (expires in 30m).</span></div>
+      <div class="flow-step"><b>Unlock</b><span>Verification immediately derives your E2E keys and signs you in.</span></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    &copy; 2026 mitch.pro &middot; <a href="/faq.html">FAQ</a>
+  </footer>
+
+<script>
+var _attempts = [], _LIMIT = 3, _WINDOW = 60000;
+
+function updateBtn() {
+
+  document.getElementById('btn').disabled = !document.getElementById('agree').checked;
+}
+
+function _checkSpam() {
+  var now = Date.now();
+  _attempts = _attempts.filter(t => now - t < _WINDOW);
+  _attempts.push(now);
+  return _attempts.length > _LIMIT;
+}
+
+
+function getCaptchaResponse() {
+  if (!window.grecaptcha || _captchaId === null) return '';
+  return grecaptcha.getResponse(_captchaId);
+}
+
+function resetCaptcha() {
+  if (window.grecaptcha && _captchaId !== null) grecaptcha.reset(_captchaId);
+}
+
+// Auto-fill from invite link (?ref=CODE&email=THEIR@EMAIL)
+(function() {
+  try {
+    var qs = new URLSearchParams(window.location.search);
+    var refEmail = qs.get('email');
+    var refCode  = qs.get('ref');
+    if (refEmail) {
+      var el = document.getElementById('email');
+      if (el && !el.value) el.value = refEmail;
+    }
+    if (refCode) {
+      window._inviteRef = refCode.toUpperCase();
+      // Show a small banner so they know they're using an invite
+      var banner = document.createElement('div');
+      banner.style.cssText = 'background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.8rem;font-weight:700;color:#c4b5fd;';
+      banner.textContent = '\ud83d\udd17 You were invited! Code: ' + refCode.toUpperCase();
+      var emailField = document.getElementById('email');
+      if (emailField && emailField.parentNode) emailField.parentNode.insertBefore(banner, emailField);
+    }
+  } catch(e) {}
+})();
+
+async function submit(isResend = false) {
+  var email = document.getElementById('email').value.trim();
+  var password = document.getElementById('signup-password').value;
+  var confirm = document.getElementById('signup-confirm-password').value;
+  var btn = document.getElementById('btn');
+  var msg = document.getElementById('msg');
+  var support = document.getElementById('support-actions');
+  var resendBtn = document.getElementById('resend-btn');
+  var captcha = getCaptchaResponse();
+
+  if (!email) { msg.className = 'err'; msg.textContent = 'Enter your email first.'; return; }
+  if (!password || password.length < 6) { msg.className = 'err'; msg.textContent = 'Choose a password (min 6 chars).'; return; }
+  if (password !== confirm) { msg.className = 'err'; msg.textContent = 'Passwords do not match.'; return; }
+  if (!document.getElementById('agree').checked) { msg.className = 'err'; msg.textContent = 'Agreement required.'; return; }
+  if (!captcha) { msg.className = 'err'; msg.textContent = 'Please complete reCAPTCHA.'; return; }
+  if (_checkSpam()) { msg.className = 'err'; msg.textContent = 'Too many requests. Try again in a minute.'; return; }
+
+  btn.disabled = true;
+  if (isResend) resendBtn.disabled = true;
+  msg.textContent = isResend ? 'Resending code...' : 'Registering...';
+  msg.className = '';
+
+  try {
+    const r = await fetch('/api/signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, recaptcha_token: captcha, refCode: window._inviteRef || '' })
+    });
+    const d = await r.json();
+    if (d.success) {
+      msg.className = 'ok';
+      msg.textContent = 'Sign up started. Check your email for a 6-digit code.';
+      support.style.display = 'block';
+      if (!isResend) startResendTimer();
+      resetCaptcha();
+      
+      document.getElementById('invite-step-1').style.display = 'none';
+      document.getElementById('invite-step-2').style.display = 'block';
+      document.getElementById('invite-step-2').appendChild(support);
+    } else {
+      msg.className = 'err';
+      msg.textContent = d.message || 'Error signing up.';
+      btn.disabled = false;
+      if (isResend) resendBtn.disabled = false;
+      resetCaptcha();
+    }
+  } catch (e) {
+    msg.className = 'err';
+    msg.textContent = 'Server error.';
+    btn.disabled = false;
+    if (isResend) resendBtn.disabled = false;
+    resetCaptcha();
+  }
+}
+
+async function verifySignup() {
+  const email = document.getElementById('email').value.trim();
+  const code = document.getElementById('token').value.trim();
+  const captcha = getCaptchaResponse();
+  const tmsg = document.getElementById('tmsg');
+  const btn = document.getElementById('tbtn');
+
+  if (!code) { tmsg.className = 'err'; tmsg.textContent = 'Enter your 6-digit code.'; return; }
+  if (!captcha) { tmsg.className = 'err'; tmsg.textContent = 'Complete reCAPTCHA.'; return; }
+
+  btn.disabled = true;
+  tmsg.textContent = 'Verifying and finalizing account...';
+  tmsg.className = '';
+
+  try {
+    const r = await fetch('/api/verify-signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, recaptcha_token: captcha })
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+      tmsg.className = 'ok';
+      tmsg.innerHTML = 'Success! Welcome to mitch.pro. Redirecting...';
+      setTimeout(() => window.location.href = "/", 2000);
+    } else {
+      tmsg.className = 'err';
+      tmsg.textContent = d.message || 'Invalid code.';
+      btn.disabled = false;
+      resetCaptcha();
+    }
+  } catch (e) {
+    tmsg.className = 'err';
+    tmsg.textContent = 'Server error.';
+    btn.disabled = false;
+    resetCaptcha();
+  }
+}
+
+async function requestReset() {
+  const email = document.getElementById('reset-email').value.trim();
+  const btn = document.getElementById('reset-request-btn');
+  const msg = document.getElementById('rtmsg');
+  const captcha = getCaptchaResponse();
+
+  if (!email) { msg.className = 'err'; msg.textContent = 'Enter your email.'; return; }
+  if (!captcha) { msg.className = 'err'; msg.textContent = 'Complete reCAPTCHA.'; return; }
+
+  btn.disabled = true;
+  msg.textContent = 'Sending reset code...';
+  msg.className = '';
+
+  try {
+    const r = await fetch('/api/request-access', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, recaptcha_token: captcha })
+    });
+    const d = await r.json();
+    if (d.success) {
+      msg.className = 'ok';
+      msg.textContent = 'Reset code sent. Check your email.';
+      document.getElementById('reset-step-1').style.display = 'none';
+      document.getElementById('reset-step-2').style.display = 'block';
+      resetCaptcha();
+    } else {
+      msg.className = 'err';
+      msg.textContent = d.message || 'Error sending request.';
+      btn.disabled = false;
+      resetCaptcha();
+    }
+  } catch (e) {
+    msg.className = 'err';
+    msg.textContent = 'Server error.';
+    btn.disabled = false;
+    resetCaptcha();
+  }
+}
+
+function startResendTimer() {
+  const resendBtn = document.getElementById('resend-btn');
+  const link = document.getElementById('no-email-link');
+  let left = 30;
+  resendBtn.disabled = true;
+  resendBtn.textContent = `Resend available in ${left}s`;
+  
+  const inv = setInterval(() => {
+    left--;
+    if (left <= 0) {
+      clearInterval(inv);
+      resendBtn.disabled = false;
+      resendBtn.textContent = "Didn't get email? Resend";
+      link.style.display = 'inline-block';
+    } else {
+      resendBtn.textContent = `Resend available in ${left}s`;
+    }
+  }, 1000);
+}
+
+function showNoEmailForm() {
+  document.getElementById('no-email-form').style.display = 'block';
+  document.getElementById('no-email-link').style.display = 'none';
+}
+
+async function applyNoEmail() {
+  const email = document.getElementById('email').value.trim();
+  const reason = document.getElementById('no-email-reason').value.trim();
+  const captcha = getCaptchaResponse(); 
+  const msg = document.getElementById('msg');
+
+  if (!reason) {
+    alert("Please provide a reason.");
+    return;
+  }
+  if (!captcha) {
+    alert("Please complete captcha above.");
+    return;
+  }
+
+  try {
+    const r = await fetch('/api/apply-no-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, reason, recaptcha_token: captcha })
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.getElementById('no-email-form').innerHTML = '<p style="color:var(--green); font-size:0.8rem; font-weight:700;">Manual request submitted. We will review it soon.</p>';
+    } else {
+      alert(d.message || "Failed to submit request.");
+      resetCaptcha();
+    }
+  } catch (e) {
+    alert("Server error.");
+    resetCaptcha();
+  }
+}
+
+function switchTab(tab) {
+  const tabs = ['login', 'invite', 'reset'];
+  tabs.forEach(t => {
+    const btn = document.getElementById('tab-' + t);
+    const pane = document.getElementById('pane-' + t);
+    if (btn) btn.classList.toggle('active', t === tab);
+    if (btn) btn.setAttribute('aria-selected', t === tab ? 'true' : 'false');
+    if (pane) pane.classList.toggle('active', t === tab);
+  });
+
+  // Reset steps when switching
+  if (tab === 'invite') {
+    document.getElementById('invite-step-1').style.display = 'block';
+    document.getElementById('invite-step-2').style.display = 'none';
+  }
+  if (tab === 'reset') {
+    document.getElementById('reset-step-1').style.display = 'block';
+    document.getElementById('reset-step-2').style.display = 'none';
+  }
+}
+
+async function login() {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const captcha = getCaptchaResponse();
+  const msg = document.getElementById('login-msg');
+  const btn = document.getElementById('login-btn');
+  if (!email || !password) {
+    msg.className = 'err';
+    msg.textContent = 'Enter email and password.';
+    return;
+  }
+  if (!captcha) {
+    msg.className = 'err';
+    msg.textContent = 'Complete reCAPTCHA.';
+    return;
+  }
+  btn.disabled = true;
+  msg.textContent = 'Logging in...';
+  msg.className = '';
+  try {
+    const r = await fetch('/api/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, recaptcha_token: captcha })
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+      window.location.href = "/";
+    } else {
+      msg.className = 'err';
+      msg.textContent = d.message || 'Invalid email or password.';
+      btn.disabled = false;
+      resetCaptcha();
+    }
+  } catch (e) {
+    msg.className = 'err';
+    msg.textContent = 'Server error.';
+    btn.disabled = false;
+    resetCaptcha();
+  }
+}
+
+async function claimToken(mode) {
+  const isReset = mode === 'reset';
+  const prefix = isReset ? 'reset-' : 'claim-';
+  const tokenField = isReset ? 'reset-token' : 'token';
+  const msgField = isReset ? 'rtmsg' : 'tmsg';
+  const captcha = getCaptchaResponse();
+  
+  var tok = document.getElementById(tokenField).value.trim();
+  var password = document.getElementById(isReset ? 'reset-password' : 'claim-password').value;
+  var confirm = document.getElementById(isReset ? 'reset-confirm-password' : 'claim-confirm-password').value;
+  var tmsg = document.getElementById(msgField);
+  
+  if (!tok) { tmsg.className = 'err'; tmsg.textContent = 'Enter your 6-digit code.'; return; }
+  if (!password || password.length < 6) { tmsg.className = 'err'; tmsg.textContent = 'Password must be at least 6 characters.'; return; }
+  if (password !== confirm) { tmsg.className = 'err'; tmsg.textContent = 'Passwords do not match.'; return; }
+  if (!captcha) { tmsg.className = 'err'; tmsg.textContent = 'Complete reCAPTCHA.'; return; }
+
+  tmsg.textContent = 'Verifying and configuring security...';
+  tmsg.className = '';
+
+  try {
+    const r = await fetch('/api/claim-token', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ token: tok, password, recaptcha_token: captcha })
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+      tmsg.className = 'ok';
+      tmsg.innerHTML = 'Success! <a href="/" style="color:var(--green)">Go to Homepage</a>';
+      setTimeout(() => window.location.href = "/", 2000);
+    } else {
+      tmsg.className = 'err';
+      tmsg.textContent = d.message || 'Invalid code.';
+      resetCaptcha();
+    }
+  } catch (e) {
+    tmsg.className = 'err';
+    tmsg.textContent = 'Server error.';
+    resetCaptcha();
+  }
+}
+
+// Prefill code from URL parameter if present
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code') || params.get('token') || params.get('claim') || params.get('reset') || '';
+  if (code) {
+    if (params.get('reset')) {
+      switchTab('reset');
+      document.getElementById('reset-step-1').style.display = 'none';
+      document.getElementById('reset-step-2').style.display = 'block';
+      const resetField = document.getElementById('reset-token');
+      if (resetField) resetField.value = code;
+    } else {
+      switchTab('invite');
+      document.getElementById('invite-step-1').style.display = 'none';
+      document.getElementById('invite-step-2').style.display = 'block';
+      const tokenField = document.getElementById('token');
+      if (tokenField) tokenField.value = code;
+    }
+  }
+})();
+</script>
+<script src="/cookie-consent.js" defer></script>
+<script src="/sync.js" defer></script><script src="/assistant.js" defer></script><script src="/broadcast.js" defer></script><div id="_agree_footer" style="position:fixed;bottom:5px;left:0;right:0;text-align:center;pointer-events:none;z-index:2147483647;font-size:.65rem;color:rgba(255,255,255,.15);font-family:system-ui,sans-serif;letter-spacing:.01em;">By using mitch.pro you agree to the <a href="/use-agreement.html" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">use agreement</a> and <a href="/privacy/" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">privacy policy</a>.</div></body>
+</html>

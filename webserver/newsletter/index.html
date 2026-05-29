@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>mitch.pro Newsletter</title>
+<script src="/theme.js"></script>
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: #0a0a12; color: #f8fafc;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  .page {
+    min-height: 100vh; display: grid; grid-template-columns: minmax(0, .9fr) minmax(320px, 430px);
+    align-items: stretch;
+  }
+  .story {
+    padding: clamp(28px, 6vw, 72px); display: flex; flex-direction: column; justify-content: center;
+    background:
+      linear-gradient(120deg, rgba(14,165,233,.18), transparent 36%),
+      linear-gradient(180deg, rgba(10,10,18,.2), #0a0a12),
+      url("/pic.webp") center/cover no-repeat;
+    min-height: 420px;
+  }
+  .story h1 { font-size: clamp(2rem, 5vw, 4.7rem); line-height: .96; margin: 0 0 18px; letter-spacing: 0; max-width: 760px; }
+  .story p { max-width: 610px; margin: 0; color: rgba(226,232,240,.78); font-size: clamp(.98rem, 1.4vw, 1.15rem); line-height: 1.55; }
+  .form-panel {
+    background: rgba(8,13,24,.94); border-left: 1px solid rgba(148,163,184,.18);
+    padding: clamp(22px, 4vw, 42px); display: flex; flex-direction: column; justify-content: center;
+  }
+  .back {
+    align-self: flex-start; color: #93c5fd; text-decoration: none; border: 1px solid rgba(147,197,253,.28);
+    border-radius: 8px; padding: 7px 10px; font-size: .82rem; margin-bottom: 28px;
+  }
+  .eyebrow { color:#86efac; font-size:.72rem; font-weight:900; text-transform:uppercase; letter-spacing:.12em; margin-bottom:10px; }
+  h2 { margin: 0 0 8px; font-size: 1.45rem; letter-spacing: 0; }
+  .note { margin: 0 0 20px; color: rgba(203,213,225,.72); font-size: .9rem; line-height: 1.5; }
+  label { display:block; color: rgba(226,232,240,.82); font-size:.78rem; font-weight:800; margin-bottom:7px; }
+  input {
+    width: 100%; background: rgba(255,255,255,.06); border: 1px solid rgba(148,163,184,.22);
+    color: #f8fafc; border-radius: 8px; padding: 12px 13px; font-size: .98rem; outline: none;
+  }
+  input:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,.14); }
+  .warning {
+    color:#fde68a; background:rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.22);
+    border-radius:8px; padding:10px 11px; margin:16px 0; font-size:.82rem; line-height:1.45;
+  }
+  .g-recaptcha { margin: 14px 0 16px; transform-origin: left top; }
+  button {
+    width: 100%; border: 0; border-radius: 8px; padding: 12px 14px; cursor: pointer;
+    background: #38bdf8; color: #06111f; font-weight: 900; font-size: .98rem;
+  }
+  button:hover { filter: brightness(1.06); }
+  button:disabled { opacity: .55; cursor: default; }
+  #msg { min-height: 1.3em; margin-top: 13px; font-size: .88rem; text-align: center; color: rgba(203,213,225,.78); }
+  .ok { color: #86efac !important; }
+  .err { color: #fca5a5 !important; }
+  footer { margin-top: 28px; color: rgba(148,163,184,.7); font-size: .76rem; line-height: 1.5; }
+  footer a { color: #93c5fd; text-decoration: none; }
+  @media (max-width: 820px) {
+    .page { grid-template-columns: 1fr; }
+    .story { min-height: 38vh; }
+    .form-panel { border-left: 0; border-top: 1px solid rgba(148,163,184,.18); }
+  }
+  @media (max-width: 380px) {
+    .g-recaptcha { transform: scale(.88); margin-bottom: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <section class="story">
+    <h1>mitch.pro updates, without the noise.</h1>
+    <p>Get the useful stuff: new games, site changes, premium updates, security notes, and student community announcements.</p>
+  </section>
+  <section class="form-panel">
+    <a class="back" href="/">Back home</a>
+    <div class="eyebrow">Newsletter</div>
+    <h2>Sign up</h2>
+    <p class="note">Use the email tied to your mitch.pro account so the signup can be verified.</p>
+    <label for="email">Email address</label>
+    <input id="email" type="email" autocomplete="email" placeholder="you@student.mitch.pro">
+    <div class="warning">Abuse of this signup form may result in account termination.</div>
+    <div class="g-recaptcha" data-sitekey="6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz" data-theme="dark"></div>
+    <button id="btn" onclick="submit()">Sign Up</button>
+    <div id="msg"></div>
+    <footer>
+      For support: <a href="mailto:support@mitch.pro">support@mitch.pro</a>
+      <div>By using mitch.pro you agree to the <a href="/use-agreement.html">use agreement</a>.</div>
+    </footer>
+  </section>
+</div>
+<script>
+var _LIMIT = 3, _WINDOW = 60000;
+
+function _getAttempts() {
+  var m = document.cookie.split(';').reduce(function(a,c){var p=c.trim().split('=');if(p.length>=2)a[p[0]]=p[1];return a;},{});
+  var raw = m['_nl_rl'] || '';
+  return raw ? raw.split(',').map(Number).filter(Boolean) : [];
+}
+
+function _saveAttempts(arr) {
+  var exp = new Date(Date.now() + _WINDOW).toUTCString();
+  document.cookie = '_nl_rl=' + arr.join(',') + ';expires=' + exp + ';path=/';
+}
+
+function _checkSpam() {
+  var now = Date.now();
+  var attempts = _getAttempts().filter(function(t){ return now - t < _WINDOW; });
+  attempts.push(now);
+  _saveAttempts(attempts);
+  return attempts.length > _LIMIT;
+}
+
+async function submit() {
+  var email = document.getElementById('email').value.trim();
+  var btn = document.getElementById('btn');
+  var msg = document.getElementById('msg');
+  if (!email) { msg.className='err'; msg.textContent='Enter your email first.'; return; }
+  if (_checkSpam()) { msg.className='err'; msg.textContent='Too many requests.'; btn.disabled=false; return; }
+  var captcha = window.grecaptcha && grecaptcha.getResponse ? grecaptcha.getResponse() : '';
+  var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
+  var studentId = c.get('studentId') || c.get('password') || '';
+  btn.disabled = true;
+  msg.textContent = 'Signing up...';
+  msg.className = '';
+  try {
+    var r = await (await fetch('/api/newsletter-signup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, studentId, recaptcha_token: captcha})
+    })).json();
+    if (r.success) {
+      msg.className = 'ok';
+      msg.textContent = r.already ? 'You are already signed up.' : 'You are signed up. Check your email for confirmation.';
+      btn.disabled = true;
+    } else {
+      msg.className = 'err';
+      msg.textContent = r.message === 'Not signed in.' ? 'You must be signed in to mitch.pro to subscribe.' : (r.message || 'Something went wrong.');
+      if (window.grecaptcha) grecaptcha.reset();
+      btn.disabled = false;
+    }
+  } catch(e) {
+    msg.className = 'err';
+    msg.textContent = 'Network error.';
+    btn.disabled = false;
+  }
+}
+document.getElementById('email').addEventListener('keydown', function(e) { if (e.key === 'Enter') submit(); });
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

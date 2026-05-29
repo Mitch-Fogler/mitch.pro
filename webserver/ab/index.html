@@ -1,0 +1,201 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>a:b ifram launcher</title>
+  <script src="/theme.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--t-bg);
+      color: var(--t-fg);
+      padding: 24px;
+    }
+    input, textarea {
+      width: 400px;
+      padding: 8px 12px;
+      font-size: 15px;
+      background: var(--t-bg2);
+      color: var(--t-fg);
+      border: 1px solid var(--t-bd);
+      border-radius: 7px;
+      font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: var(--t-ac);
+      box-shadow: 0 0 0 3px var(--t-gls);
+    }
+    button {
+      padding: 8px 16px;
+      font-size: 14px;
+      cursor: pointer;
+      background: var(--t-bg2);
+      color: var(--t-ac);
+      border: 1px solid var(--t-bda);
+      border-radius: 7px;
+      font-family: inherit;
+      font-weight: 500;
+      transition: all .15s;
+    }
+    button:hover {
+      background: var(--t-bg3);
+      box-shadow: 0 0 8px var(--t-gls);
+    }
+    textarea {
+      height: 100px;
+      font-family: monospace;
+    }
+    .section {
+      margin-bottom: 20px;
+      padding: 18px;
+      background: var(--t-bg2);
+      border: 1px solid var(--t-bd);
+      border-radius: 12px;
+    }
+    h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      background: var(--t-gr);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      display: inline-block;
+    }
+    #urlList div {
+      padding: 3px 0;
+      color: var(--t-fg2);
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="section" id="builder">
+    <h2>URL Builder</h2>
+    <input id="urlInput" type="text" placeholder="Enter URL"><br><br>
+    <button id="addBtn">Add URL</button>
+    <button id="clearBtn">Clear All</button><br><br>
+    <div id="urlList"></div>
+    <br>
+    <textarea id="generatedUrl" readonly placeholder="Generated URL will appear here..."></textarea><br><br>
+    <button id="copyBtn">Copy URL</button>
+    <button id="useBtn">Use This URL</button>
+  </div>
+
+  <div class="section" id="launcher">
+    <h2>Launch</h2>
+    <input id="url" type="text" placeholder="https://example.com or paste generated URL"><br><br>
+    <button id="openBtn">Open</button>
+  </div>
+
+  <script>
+    const urls = [];
+    const urlInput = document.getElementById('urlInput');
+    const urlList = document.getElementById('urlList');
+    const generatedUrl = document.getElementById('generatedUrl');
+
+    function updateBuilder() {
+      urlList.innerHTML = '';
+      urls.forEach((url, i) => {
+        const div = document.createElement('div');
+        div.innerHTML = `${i + 1}. ${url} <button onclick="removeUrl(${i})">Remove</button>`;
+        urlList.appendChild(div);
+      });
+
+      if (urls.length > 0) {
+        const params = new URLSearchParams();
+        urls.forEach((url, i) => params.set(`url${i + 1}`, url));
+        generatedUrl.value = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+      } else {
+        generatedUrl.value = '';
+      }
+    }
+
+    window.removeUrl = (i) => {
+      urls.splice(i, 1);
+      updateBuilder();
+    };
+
+    document.getElementById('addBtn').onclick = () => {
+      const url = urlInput.value.trim();
+      if (!url) return alert('Enter a URL!');
+      if (urls.length >= 5) return alert('Max 5 URLs!');
+      urls.push(url);
+      urlInput.value = '';
+      updateBuilder();
+    };
+
+    document.getElementById('clearBtn').onclick = () => {
+      urls.length = 0;
+      updateBuilder();
+    };
+
+    document.getElementById('copyBtn').onclick = () => {
+      if (!generatedUrl.value) return alert('No URL to copy!');
+      generatedUrl.select();
+      document.execCommand('copy');
+      alert('Copied!');
+    };
+
+    document.getElementById('useBtn').onclick = () => {
+      if (!generatedUrl.value) return alert('No URL to use!');
+      document.getElementById('url').value = generatedUrl.value;
+    };
+
+    const url1 = new URLSearchParams(window.location.search).get('url1') ?? "";
+    const url2 = new URLSearchParams(window.location.search).get('url2') ?? "";
+    const url3 = new URLSearchParams(window.location.search).get('url3') ?? "";
+    const url4 = new URLSearchParams(window.location.search).get('url4') ?? "";
+    const url5 = new URLSearchParams(window.location.search).get('url5') ?? "";
+
+    function openBlank(target) {
+      if (!target) return alert("Enter a URL first!");
+      const w = window.open("", "_blank", "width=1000,height=700");
+      if (!w) return alert("Popup blocked! Allow popups for this site.");
+      const html = `<!doctype html>
+<html>
+<head>
+  <title>New Tab</title>
+  <link rel="icon" type="image/svg" href="https://www.google.com/chrome/static/images/chrome-logo_112px.svg">
+  <meta charset="utf-8">
+  <style>
+    html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000}
+    iframe{border:0;width:100%;height:100%;display:block}
+  </style>
+</head>
+<body><iframe src="${target}" allowfullscreen allow="fullscreen; autoplay; clipboard-read; clipboard-write; encrypted-media"></iframe></body>
+</html>`;
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
+    }
+
+    document.getElementById('openBtn').onclick = () => {
+      openBlank(document.getElementById('url').value.trim());
+    };
+
+    document.getElementById('url').onkeydown = (e) => {
+      if (e.key === 'Enter') openBlank(document.getElementById('url').value.trim());
+    };
+
+    if (url1) {
+      const autoUrls = [url1, url2, url3, url4, url5].filter(u => u);
+      autoUrls.forEach(openBlank);
+      setTimeout(() => window.open('', '_self').close(), 500);
+    }
+  </script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+<head>
+
+
+<!-- AUTH_INJECT_START -->
+<style>
+  #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
+    padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
+</style>
+<!-- AUTH_INJECT_END -->
+</head>
+</html>
