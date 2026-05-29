@@ -235,8 +235,10 @@
 
         const colorClass = m.color || '';
 
+        const emailHtml = m.email ? ` <span style="font-size:9px;opacity:0.4;font-weight:400;margin-left:4px;">(${m.email})</span>` : '';
+
         div.innerHTML = `
-            <span class="author ${colorClass}">${m.name}${badgeHtml} <span style="font-size:9px;opacity:0.4;font-weight:400;margin-left:4px;">(${m.email})</span></span>
+            <span class="author ${colorClass}">${m.name}${badgeHtml}${emailHtml}</span>
             <span class="text">${escapeHtml(m.text)}</span>
         `;
         chatBox.appendChild(div);

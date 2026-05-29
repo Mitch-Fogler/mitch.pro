@@ -14,6 +14,7 @@
 </script>
 <script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer></script>
 <script src="/theme.js"></script>
+<script src="/sync.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -678,6 +679,16 @@
           <span class="toggle-desc">Prevent others from viewing your profile.</span>
         </div>
       </div>
+      <div class="field">
+        <label>Hide Email</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="privHideEmailToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Only display name to others; admins and mods can still see it.</span>
+        </div>
+      </div>
       </div>
       </section>
 
@@ -1303,6 +1314,7 @@ function saveAll() {
       noHistory:    document.getElementById('privNoHistoryToggle').checked,
       newsletter:   document.getElementById('privNewsletterToggle').checked,
       blockProfile: document.getElementById('privBlockProfileToggle').checked,
+      hideEmail:    document.getElementById('privHideEmailToggle').checked,
     }));
     localStorage.setItem(AI_CONFIG_KEY, JSON.stringify({
       enabled:     document.getElementById('aiToggle').checked,
@@ -1340,6 +1352,9 @@ function saveAll() {
 
   updateSummaries();
   showSaved();
+  if (window._mitchSync && window._mitchSync.save) {
+    window._mitchSync.save();
+  }
 }
 
 function debouncedSave() {
@@ -1446,12 +1461,13 @@ function resetPreferencesOnly() {
   document.getElementById('vfxRainToggle').checked      = !!vk.rain;
   document.getElementById('vfxParticlesToggle').checked = !!vk.particles;
 
-  var pk = load(PRIVACY_CONFIG_KEY, { hideOnline: false, stealthDash: false, noHistory: false, newsletter: true, blockProfile: false });
+  var pk = load(PRIVACY_CONFIG_KEY, { hideOnline: false, stealthDash: false, noHistory: false, newsletter: true, blockProfile: false, hideEmail: false });
   document.getElementById('privHideOnlineToggle').checked  = !!pk.hideOnline;
   document.getElementById('privStealthToggle').checked     = !!pk.stealthDash;
   document.getElementById('privNoHistoryToggle').checked    = !!pk.noHistory;
   document.getElementById('privNewsletterToggle').checked   = pk.newsletter !== false;
   document.getElementById('privBlockProfileToggle').checked = !!pk.blockProfile;
+  document.getElementById('privHideEmailToggle').checked    = !!pk.hideEmail;
 
   var ai = load(AI_CONFIG_KEY, { enabled: true, personality: 'friendly', privacy: false, customPrompt: '' });
   document.getElementById('aiToggle').checked = ai.enabled !== false;
@@ -1522,7 +1538,7 @@ function resetPreferencesOnly() {
   }).catch(function(){});
 
   ['vfxSnowToggle','vfxStarsToggle','vfxRainToggle','vfxParticlesToggle',
-   'privHideOnlineToggle','privStealthToggle','privNoHistoryToggle','privNewsletterToggle','privBlockProfileToggle',
+   'privHideOnlineToggle','privStealthToggle','privNoHistoryToggle','privNewsletterToggle','privBlockProfileToggle','privHideEmailToggle',
    'aiToggle','aiPrivacyToggle','syncToggle','homeQuickToggle','homeMembersToggle','homeCompactToggle','homeSearchFocusToggle',
    'prefCanvasLock','prefQuickAccess','prefDailyBonus'].forEach(function(id) {
     document.getElementById(id).addEventListener('change', saveAll);
@@ -1548,8 +1564,9 @@ function resetPreferencesOnly() {
     const status = document.getElementById('securityStatus');
     const btn = document.getElementById('changePassBtn');
     
-    if (!window.grecaptcha || _captchaId === null) return alert('reCAPTCHA not loaded.');
-    const captcha = grecaptcha.getResponse(_captchaId);
+    const isLocal = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname) || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.') || location.hostname.endsWith('.local') || location.hostname.includes('mitch-desk');
+    if (!isLocal && (!window.grecaptcha || _captchaId === null)) return alert('reCAPTCHA not loaded.');
+    const captcha = isLocal ? 'local-bypass' : grecaptcha.getResponse(_captchaId);
 
     if (!currentPassword || !newPassword || !confirmPassword) {
       status.style.color = 'var(--rose)';
@@ -1590,11 +1607,11 @@ function resetPreferencesOnly() {
         document.getElementById('currPass').value = '';
         document.getElementById('newPass').value = '';
         document.getElementById('confirmPass').value = '';
-        grecaptcha.reset(_captchaId);
+        if (window.grecaptcha && _captchaId !== null) grecaptcha.reset(_captchaId);
       } else {
         status.style.color = 'var(--rose)';
         status.textContent = data.message || 'Change failed.';
-        grecaptcha.reset(_captchaId);
+        if (window.grecaptcha && _captchaId !== null) grecaptcha.reset(_captchaId);
       }
     } catch (e) {
       status.style.color = 'var(--rose)';
@@ -1626,7 +1643,8 @@ function resetPreferencesOnly() {
       });
       const data = await res.json();
       if (data.success && data.id) {
-        document.cookie = "studentId=" + data.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+        var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
+        document.cookie = "studentId=" + data.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
         status.style.color = 'var(--t-ac)';
         status.textContent = 'Logged out of all other sessions successfully!';
       } else {

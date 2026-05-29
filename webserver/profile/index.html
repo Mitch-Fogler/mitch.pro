@@ -213,7 +213,7 @@ async function load() {
         ${profile.isAdmin ? '<span class="badge-admin">Admin</span>' : ''}
       </div>` : ''}
       <div class="display-name ${profile.activeColor || ''}">${esc(profile.displayName || profile.email || 'mitch.pro user')}${badgeHtml}</div>
-      ${!window.PUBLIC_PROFILE ? `<div class="email-line">${esc(profile.email || '')}</div>` : ''}
+      ${(!window.PUBLIC_PROFILE && profile.email && profile.email.includes('@')) ? `<div class="email-line">${esc(profile.email || '')}</div>` : ''}
       ${profile.bio ? `<div class="bio">${esc(profile.bio)}</div>` : ''}
       ${profile.website ? `<div class="website"><a href="${esc(profile.website)}" target="_blank" rel="noopener">${esc(profile.website)}</a></div>` : ''}
       

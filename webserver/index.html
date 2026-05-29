@@ -882,7 +882,7 @@ function renderOnlineMembers(members) {
 
   list.innerHTML = online.map(function(m) {
     var email = m.email || '';
-    var name = m.displayName || email.split('@')[0];
+    var name = m.displayName || (email.includes('@') ? email.split('@')[0] : 'mitch.pro user');
     var badge = badgeLabels[m.badge];
     var badgeHtml = badge ? ' <span class="l-badge ' + badge.cls + '">' + badge.text + '</span>' : '';
     var colorClass = m.color || '';
@@ -892,7 +892,8 @@ function renderOnlineMembers(members) {
       nameContent = '<span class="name-inner">' + nameContent + '</span>';
     }
     
-    return '<a class="online-chip name ' + escText(colorClass) + '" href="/profile/?u=' + encodeURIComponent(email) + '" title="' + escText(email) + '"><span class="online-dot"></span>' + nameContent + badgeHtml + '</a>';
+    var tooltip = email.includes('@') ? email : '';
+    return '<a class="online-chip name ' + escText(colorClass) + '" href="/profile/?u=' + encodeURIComponent(email) + '" title="' + escText(tooltip) + '"><span class="online-dot"></span>' + nameContent + badgeHtml + '</a>';
   }).join('');
   wrap.style.display = '';
 }
@@ -2957,7 +2958,7 @@ var origShow = showIframe;
       const colorClass = m.color || '';
       chip.className = 'member-chip name ' + colorClass;
       chip.style.cssText = 'color:' + (colorClass ? '' : opts.color) + ';background:' + opts.bg + ';border:1px solid ' + opts.border + ';';
-      const label = m.displayName || (email ? email.split('@')[0] : 'member');
+      const label = m.displayName || (email && email.includes('@') ? email.split('@')[0] : 'mitch.pro user');
       const role = opts.roleSuffix || (m.role ? String(m.role) : '');
       const pride = opts.prideEmail && email === opts.prideEmail ? ' <span class="member-role" title="Pride">&#127987;&#65039;&#8205;&#127752;</span>' : '';
       const badge = badgeLabels[m.badge];
@@ -2972,7 +2973,7 @@ var origShow = showIframe;
       if ((opts.rainbowEmail && email === opts.rainbowEmail) || colorClass === 'rainbow_name') {
         chip.classList.add('rainbow-premium');
       }
-      chip.title = email;
+      chip.title = email.includes('@') ? email : '';
       list.appendChild(chip);
       } catch(e) {}
     });

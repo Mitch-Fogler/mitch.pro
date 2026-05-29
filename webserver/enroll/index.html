@@ -1071,6 +1071,8 @@ function _checkSpam() {
 
 
 function getCaptchaResponse() {
+  var isLocal = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname) || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.') || location.hostname.endsWith('.local') || location.hostname.includes('mitch-desk');
+  if (isLocal) return 'local-bypass';
   if (!window.grecaptcha || _captchaId === null) return '';
   return grecaptcha.getResponse(_captchaId);
 }
@@ -1178,7 +1180,8 @@ async function verifySignup() {
     });
     const d = await r.json();
     if (d.success) {
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
       tmsg.className = 'ok';
       tmsg.innerHTML = 'Success! Welcome to mitch.pro. Redirecting...';
       setTimeout(() => window.location.href = "/", 2000);
@@ -1344,7 +1347,8 @@ async function login() {
     });
     const d = await r.json();
     if (d.success) {
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
       window.location.href = "/";
     } else {
       msg.className = 'err';
@@ -1389,7 +1393,8 @@ async function claimToken(mode) {
     });
     const d = await r.json();
     if (d.success) {
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000;Secure;SameSite=Lax";
+      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
       tmsg.className = 'ok';
       tmsg.innerHTML = 'Success! <a href="/" style="color:var(--green)">Go to Homepage</a>';
       setTimeout(() => window.location.href = "/", 2000);

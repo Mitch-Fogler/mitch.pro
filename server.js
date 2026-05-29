@@ -2826,6 +2826,88 @@ function emailFromSid(sid) {
   return null;
 }
 
+function getUidForEmail(email) {
+  if (!email) return null;
+  const norm = normalizeEmail(email);
+  const gens = loadGenerations();
+  const currentGenRec = gens[norm] || {};
+  const currentGen = (currentGenRec && typeof currentGenRec === 'object') ? (currentGenRec.gen || 0) : (currentGenRec || 0);
+  return makeEmailId(norm, currentGen);
+}
+
+function hasEmailPrivacyEnabled(email) {
+  try {
+    const uid = getUidForEmail(email);
+    if (!uid) return false;
+    const fpath = userdataPath(uid);
+    if (!fpath || !existsSync(fpath)) return false;
+    const data = JSON.parse(readFileSync(fpath, 'utf8'));
+    const snap = data._snapshot;
+    if (snap && snap._prefPrivacy) {
+      const pref = typeof snap._prefPrivacy === 'string' ? JSON.parse(snap._prefPrivacy) : snap._prefPrivacy;
+      return !!pref.hideEmail;
+    }
+  } catch (e) {
+    console.error('[privacy] failed to check email privacy:', e);
+  }
+  return false;
+}
+
+function emailFromHash(hash) {
+  if (!hash) return null;
+  if (hash.includes('@')) return hash;
+  
+  const names = loadJson(NAMES_FILE, {});
+  if (names[hash]) return names[hash];
+
+  const profiles = loadJson(PROFILES_FILE, {});
+  for (const email of Object.keys(profiles)) {
+    if (getUidForEmail(email) === hash) {
+      return email;
+    }
+  }
+
+  const stats = loadUserStats();
+  for (const email of Object.keys(stats)) {
+    if (getUidForEmail(email) === hash) {
+      return email;
+    }
+  }
+
+  const tokens = loadTokens();
+  for (const t of Object.values(tokens)) {
+    if (t.email) {
+      if (getUidForEmail(t.email) === hash) {
+        return t.email;
+      }
+    }
+  }
+
+  return null;
+}
+
+function processMemberFields(memberEmail, profile, viewerEmail) {
+  if (!memberEmail) {
+    return { displayName: null, email: '' };
+  }
+  const normTarget = normalizeEmail(memberEmail);
+  const normViewer = viewerEmail ? normalizeEmail(viewerEmail) : '';
+  const viewerCanSee = normViewer === normTarget || isAdminEmail(viewerEmail) || isModeratorEmail(viewerEmail);
+  const privacyEnabled = hasEmailPrivacyEnabled(memberEmail);
+  
+  if (privacyEnabled && !viewerCanSee) {
+    return {
+      displayName: (profile && profile.displayName) || 'mitch.pro user',
+      email: getUidForEmail(memberEmail)
+    };
+  } else {
+    return {
+      displayName: (profile && profile.displayName) || null,
+      email: maskEmail(memberEmail)
+    };
+  }
+}
+
 function isPremiumEmail(email) {
   if (!email) return false;
   try {
@@ -7557,12 +7639,14 @@ function loadAllGamesList() {
         else if (isModeratorEmail(email)) role = 'moderator';
         else if (isPremiumEmail(email)) role = 'premium';
         const e2e = deriveUserE2EKeys(email);
+        const viewerEmail = emailFromSid(sid);
+        const processed = processMemberFields(email, profile, viewerEmail);
         members.push({ 
-          email: maskEmail(email), 
+          email: processed.email, 
           online: onlineEmails.has(normalizeEmail(email)), 
           role,
 
-          displayName: profile.displayName || null,
+          displayName: processed.displayName,
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null,
           pubKey: e2e.pubKeyHex
@@ -7579,15 +7663,17 @@ function loadAllGamesList() {
       const apps = applications;
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
+      const viewerEmail = emailFromSid(sid);
       const members = apps
         .filter(a => a.status === 'approved' && (a.type === 'premium' || a.grantPremium === true) && a.email !== TEST_ACCOUNT_EMAIL)
         .map(a => {
           const norm = normalizeEmail(a.email || '');
           const profile = profiles[norm] || {};
           const cosm = cosmetics[norm] || {};
+          const processed = processMemberFields(a.email, profile, viewerEmail);
           return { 
-            displayName: profile.displayName || null, 
-            email: maskEmail(a.email),
+            displayName: processed.displayName, 
+            email: processed.email,
             color: publicActiveColor(a.email, cosm.activeColor),
             badge: cosm.activeBadge || null
           };
@@ -7603,6 +7689,7 @@ function loadAllGamesList() {
       if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
+      const viewerEmail = emailFromSid(sid);
       const developerNorms = new Set(['tyler.thompson1@student.rjuhsd.us'].map(normalizeEmail));
       const members = adminMemberEmails()
         .filter(email => email !== TEST_ACCOUNT_EMAIL)
@@ -7610,9 +7697,10 @@ function loadAllGamesList() {
         const norm = normalizeEmail(email);
         const profile = profiles[norm] || {};
         const cosm = cosmetics[norm] || {};
+        const processed = processMemberFields(email, profile, viewerEmail);
         return {
-          displayName: profile.displayName || null,
-          email: maskEmail(email),
+          displayName: processed.displayName,
+          email: processed.email,
           role: developerNorms.has(norm) ? 'Admin/developer.' : 'Admin',
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null
@@ -7629,6 +7717,7 @@ function loadAllGamesList() {
       if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
+      const viewerEmail = emailFromSid(sid);
       const excluded = new Set([...siteAdminEmails(), ...ownerMemberEmails()].map(email => normalizeEmail(email)));
       const seen = new Set();
       const members = moderatorEmails()
@@ -7638,9 +7727,10 @@ function loadAllGamesList() {
           const norm = normalizeEmail(email);
           const profile = profiles[norm] || {};
           const cosm = cosmetics[norm] || {};
+          const processed = processMemberFields(email, profile, viewerEmail);
           return {
-            displayName: profile.displayName || null,
-            email: maskEmail(email),
+            displayName: processed.displayName,
+            email: processed.email,
             role: 'Moderator',
             color: publicActiveColor(email, cosm.activeColor),
             badge: cosm.activeBadge || null
@@ -7657,15 +7747,17 @@ function loadAllGamesList() {
       if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
+      const viewerEmail = emailFromSid(sid);
       const members = ownerMemberEmails()
         .filter(email => email !== TEST_ACCOUNT_EMAIL)
         .map(email => {
         const norm = normalizeEmail(email);
         const profile = profiles[norm] || {};
         const cosm = cosmetics[norm] || {};
+        const processed = processMemberFields(email, profile, viewerEmail);
         return { 
-          displayName: profile.displayName || 'mitch', 
-          email: maskEmail(email), 
+          displayName: processed.displayName || 'mitch', 
+          email: processed.email, 
           role: 'owner/developer',
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null
@@ -7689,9 +7781,11 @@ function loadAllGamesList() {
         background: ''
       };
       const cosm = loadJson(COSMETICS_FILE, {});
+      const processed = processMemberFields(email, profile, email);
       return jsonResp(200, {
         ...profile,
-        email: maskEmail(profile.email || email),
+        displayName: processed.displayName,
+        email: processed.email,
         isPremium: isPremiumEmail(email),
         isAdmin: isAdminEmail(email),
         stats: loadUserStats()[norm] || {},
@@ -7702,25 +7796,30 @@ function loadAllGamesList() {
       }
 
       if (path.startsWith('/api/profile/')) {      const slug = decodeURIComponent(path.slice('/api/profile/'.length));
+      const cookies = getCookies(req);
+      const viewerEmail = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      const actualEmail = emailFromHash(slug) || slug;
       const profiles = loadJson(PROFILES_FILE, {});
-      const norm = normalizeEmail(slug);
+      const norm = normalizeEmail(actualEmail);
       const profile = profiles[norm] || {
-        email: maskEmail(slug),
-        displayName: slug.split('@')[0],
+        email: actualEmail,
+        displayName: actualEmail.split('@')[0],
         bio: 'Welcome to my profile!',
         pfp: '',
         background: ''
       };
       const cosm = loadJson(COSMETICS_FILE, {});
+      const processed = processMemberFields(actualEmail, profile, viewerEmail);
       return jsonResp(200, {
         ...profile,
-        email: maskEmail(profile.email || slug),
-        isPremium: isPremiumEmail(slug),
+        displayName: processed.displayName,
+        email: processed.email,
+        isPremium: isPremiumEmail(actualEmail),
 
-        isAdmin: isAdminEmail(slug),
+        isAdmin: isAdminEmail(actualEmail),
         stats: loadUserStats()[norm] || {},
-        achievements: getAchievements(slug),
-        activeColor: publicActiveColor(slug, cosm[norm]?.activeColor),
+        achievements: getAchievements(actualEmail),
+        activeColor: publicActiveColor(actualEmail, cosm[norm]?.activeColor),
         activeBadge: cosm[norm]?.activeBadge || null
       });
       }  } // end GET
@@ -9868,11 +9967,15 @@ function loadAllGamesList() {
       const email = emailFromSid(sid);
       if (!email || !isPremiumEmail(email)) return jsonResp(403, { error: 'Premium required' });
       const history = loadJson(PREMIUM_CHAT_FILE, []);
-      const messages = history.slice(-100).map(msg => ({ 
-        ...msg, 
-        email: maskEmail(msg.email || ''),
-        color: publicActiveColor(msg.email || msg.name || '', msg.color) 
-      }));
+      const viewerEmail = emailFromSid(sid);
+      const messages = history.slice(-100).map(msg => {
+        const processed = processMemberFields(msg.email, null, viewerEmail);
+        return { 
+          ...msg, 
+          email: processed.email,
+          color: publicActiveColor(msg.email || msg.name || '', msg.color) 
+        };
+      });
       return jsonResp(200, { messages });
     }
 
@@ -9884,11 +9987,15 @@ function loadAllGamesList() {
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
       const history = loadJson(PUBLIC_CHAT_FILE, []);
-      const messages = history.slice(-100).map(msg => ({ 
-        ...msg, 
-        email: maskEmail(msg.email || ''),
-        color: publicActiveColor(msg.email || msg.name || '', msg.color) 
-      }));
+      const viewerEmail = emailFromSid(sid);
+      const messages = history.slice(-100).map(msg => {
+        const processed = processMemberFields(msg.email, null, viewerEmail);
+        return { 
+          ...msg, 
+          email: processed.email,
+          color: publicActiveColor(msg.email || msg.name || '', msg.color) 
+        };
+      });
       return jsonResp(200, { messages });
     }
 
