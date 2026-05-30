@@ -154,8 +154,15 @@ function Fmt(n) {
   return n.toExponential(1);
 }
 
-async function load() {
   const wrap = document.getElementById('wrap');
+  let myEmail = null;
+  try {
+    const meRes = await fetch('/api/me');
+    if (meRes.ok) {
+      const meData = await meRes.json();
+      myEmail = meData.email;
+    }
+  } catch (e) {}
   let profile = null;
   let stats = {}, achs = [];
 
@@ -213,6 +220,7 @@ async function load() {
   const badge = badgeLabels[profile.activeBadge];
   let badgeHtml = badge ? `<span class="profile-badge ${badge.cls}" title="${badge.title}">${badge.text}</span>` : '';
 
+  const isMe = myEmail && profile.email && (profile.email.toLowerCase() === myEmail.toLowerCase());
   let html = `
     <div style="display:flex;flex-direction:column;align-items:flex-start;margin-bottom:32px">
       <div class="avatar">
@@ -222,7 +230,7 @@ async function load() {
         ${profile.isPremium ? '<span class="badge-premium">Premium member</span>' : ''}
         ${profile.isAdmin ? '<span class="badge-admin">Admin</span>' : ''}
       </div>` : ''}
-      <div class="display-name ${profile.activeColor || ''}">${esc(profile.displayName || profile.email || 'mitch.pro user')}${cloakHtml}${badgeHtml}</div>
+      <div class="display-name ${profile.activeColor || ''}">${isMe ? (profile.displayName || profile.email || 'mitch.pro user') : esc(profile.displayName || profile.email || 'mitch.pro user')}${cloakHtml}${badgeHtml}</div>
       ${(!window.PUBLIC_PROFILE && profile.email && profile.email.includes('@')) ? `<div class="email-line">${esc(profile.email || '')}</div>` : ''}
       ${profile.bio ? `<div class="bio">${esc(profile.bio)}</div>` : ''}
       ${profile.website ? `<div class="website"><a href="${esc(profile.website)}" target="_blank" rel="noopener">${esc(profile.website)}</a></div>` : ''}

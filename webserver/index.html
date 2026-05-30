@@ -897,7 +897,13 @@ function renderOnlineMembers(members) {
       if (priv.hideEmail) isHideEmailActive = true;
     } catch(e) {}
     var isUserAnon = (email && !email.includes('@')) || (isHideEmailActive && window._currentUserEmail && (email.toLowerCase() === window._currentUserEmail || email.toLowerCase() === window._currentUserEmail.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro')));
-    var nameContent = escText(name) + (isUserAnon ? ' 🥷' : '');
+    var isMe = false;
+    if (email && window._currentUserEmail) {
+      var e1 = email.toLowerCase().trim();
+      var e2 = window._currentUserEmail.toLowerCase().trim();
+      isMe = (e1 === e2 || e1 === e2.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro') || e2 === e1.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro'));
+    }
+    var nameContent = (isMe ? name : escText(name)) + (isUserAnon ? ' 🥷' : '');
     if (colorClass === 'rainbow_name') {
       nameContent = '<span class="name-inner">' + nameContent + '</span>';
     }
@@ -2980,7 +2986,13 @@ var origShow = showIframe;
         if (priv.hideEmail) isHideEmailActive = true;
       } catch(e) {}
       var isUserAnon = (email && !email.includes('@')) || (isHideEmailActive && window._currentUserEmail && (email.toLowerCase() === window._currentUserEmail || email.toLowerCase() === window._currentUserEmail.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro')));
-      var nameContent = escText(label) + (isUserAnon ? ' 🥷' : '');
+      var isMe = false;
+      if (email && window._currentUserEmail) {
+        var e1 = email.toLowerCase().trim();
+        var e2 = window._currentUserEmail.toLowerCase().trim();
+        isMe = (e1 === e2 || e1 === e2.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro') || e2 === e1.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro'));
+      }
+      var nameContent = (isMe ? label : escText(label)) + (isUserAnon ? ' 🥷' : '');
       if (colorClass === 'rainbow_name') {
         nameContent = '<span class="name-inner">' + nameContent + '</span>';
       }

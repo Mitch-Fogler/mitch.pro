@@ -828,7 +828,7 @@ async function init() {
   bindEvents();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').classList.add('ready');
-  document.getElementById('my-identity').textContent = '> ' + (myDisplayName ? `${myDisplayName} (${myEmail})` : myEmail);
+  document.getElementById('my-identity').innerHTML = '&gt; ' + (myDisplayName ? `${myDisplayName} (${esc(myEmail)})` : esc(myEmail));
   syncExpiryButton();
 
   await refreshEverything();
@@ -1034,7 +1034,9 @@ async function selectDm(email) {
   const member = memberFor(email);
   activeChat = { type:'dm', id: email };
   unreadDm[directKey(email)] = 0;
-  document.getElementById('chat-title').textContent = displayNameFor(email);
+  const isMe = sameEmail(email, myEmail);
+  const titleName = displayNameFor(email);
+  document.getElementById('chat-title').innerHTML = isMe ? titleName : esc(titleName);
   document.getElementById('chat-subtitle').textContent = (member && member.online ? 'online' : 'offline') + ' - ' + email;
   document.getElementById('leave-group-btn').style.display = 'none';
   showChatShell();
@@ -1170,7 +1172,7 @@ function messageHtml(m) {
     ${reply}
     <div class="msg-line">
       <span class="ts">${fmtTime(m.ts)}</span>
-      <span class="who ${mine ? 'me' : 'them'}">${esc(name)}</span>
+      <span class="who ${mine ? 'me' : 'them'}">${mine ? name : esc(name)}</span>
       ${safeText}
     </div>
     ${imageHtml}
