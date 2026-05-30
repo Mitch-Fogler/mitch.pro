@@ -3906,6 +3906,36 @@ async function handleRequest(req, server) {
     console.error('[traffic] Failed to update last known IP:', e);
   }
 
+  // Enforce admin passphrase for all administrative API actions
+  if (path.startsWith('/api/admin/') && path !== '/api/admin/passphrase-status') {
+    try {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+
+      // Passphrase enforcement applies to all full administrators
+      if (isAdminId(sid)) {
+        const email = emailFromSid(sid) || 'admin';
+        const norm = normalizeEmail(email);
+        const data = loadAdminPassphrase();
+        const entry = data[norm] || {};
+
+        if (!entry.hash) {
+          return jsonResp(403, { error: 'passphrase_not_configured' });
+        }
+
+        const pass = String(req.headers.get('X-Admin-Passphrase') || '').trim();
+        if (!pass || !await verifyAdminPassphrase(req, pass)) {
+          return jsonResp(403, { error: 'invalid_passphrase' });
+        }
+      }
+    } catch (e) {
+      console.error('[auth] Admin passphrase check failed:', e);
+      return jsonResp(500, { error: 'internal_error' });
+    }
+  }
+
   // ── mitch.prox Open General Proxy ──
   if (path === '/prox') {
     return Response.redirect('/prox/', 302);
