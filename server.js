@@ -650,14 +650,14 @@ const RATE_LIMITS = {
   '/api/friends/list':         [30,  60],
   '/api/friends/add':          [5,   60],
   '/api/premium-chat/history': [60,  60],
-  '/api/premium-chat/send':    [20,  60],
+  '/api/premium-chat/send':    [3,   10],
   '/api/public-chat/history':  [60,  60],
-  '/api/public-chat/send':     [20,  60],
+  '/api/public-chat/send':     [3,   10],
   '/api/dm/send':              [3,   10],
-  '/api/marketplace/list':     [10,  60],
-  '/api/marketplace/buy':      [10,  60],
-  '/api/marketplace/mediate':  [20,  60],
-  '/api/marketplace/appeal':   [10,  60],
+  '/api/marketplace/list':     [1,   30],
+  '/api/marketplace/buy':      [1,   30],
+  '/api/marketplace/mediate':  [1,   30],
+  '/api/marketplace/appeal':   [1,   30],
   '/api/marketplace/items':    [60,  60],
   '/api/chess/puzzle-solved':  [15,  3600],
   '/api/games/lillians-logic/solve': [10, 60],
@@ -10104,6 +10104,15 @@ function loadAllGamesList() {
 	      else filePath = join(WEBROOT, path.replace(/^\//, ''));
 
 	      if (existsSync(filePath) && !statSync(filePath).isDirectory()) {
+	        try {
+	          const cookies = getCookies(req);
+	          const sid = cookies['studentId'] || cookies['id'] || '';
+	          const email = sid ? emailFromSid(sid) : '';
+	          const logUser = email || (sid ? sid.slice(0, 8) : 'anonymous');
+	          logTraffic(logUser, path);
+	        } catch (e) {
+	          console.error('[traffic] Failed to log page traffic:', e);
+	        }
 	        try {
 	          let raw    = readFileSync(filePath);
 
