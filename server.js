@@ -876,6 +876,40 @@ function bannedInfoForSid(sid) {
   const email = emailFromSid(sid);
   return email ? bannedInfoForEmail(email) : null;
 }
+
+let cachedNames = null;
+let lastNamesLoad = 0;
+function getCachedNames() {
+  const now = Date.now();
+  if (!cachedNames || now - lastNamesLoad > 2000) {
+    cachedNames = loadJson(NAMES_FILE, {});
+    lastNamesLoad = now;
+  }
+  return cachedNames;
+}
+
+let lastKnownIps = {};
+try {
+  lastKnownIps = loadJson(join(DATA_DIR, 'last_known_ips.json'), {});
+} catch {}
+
+function saveLastKnownIps() {
+  saveJson(join(DATA_DIR, 'last_known_ips.json'), lastKnownIps);
+}
+
+function loadBannedIps() {
+  return loadJson(join(DATA_DIR, 'banned_ips.json'), {});
+}
+
+function saveBannedIps(ips) {
+  saveJson(join(DATA_DIR, 'banned_ips.json'), ips);
+}
+
+function bannedInfoForIp(ip) {
+  if (!ip) return null;
+  const bannedIps = loadBannedIps();
+  return bannedIps[ip] || null;
+}
 function loadGenerations() { return loadJson(GENERATIONS_FILE, {}); }
 function saveGenerations(g){ saveJson(GENERATIONS_FILE, g); }
 function loadInvalidated() { return loadJson(INVALIDATED_FILE, {}); }
@@ -2805,7 +2839,7 @@ function filterSites(raw, isAdmin, realAdmin = false, isPremium = false) {
 function emailFromSid(sid) {
   if (!sid) return null;
   try {
-    const names = loadJson(NAMES_FILE, {});
+    const names = getCachedNames();
     if (names[sid]) {
       const email = names[sid];
       const norm = normalizeEmail(email);
@@ -3842,6 +3876,36 @@ async function handleRequest(req, server) {
   const method = req.method;
   console.log(`[debug] ${method} ${path}`);
 
+  const ip = getRealIp(req);
+
+  // Reject request if IP is banned (except for ban appeal paths)
+  const ipBan = bannedInfoForIp(ip);
+  if (ipBan && !banOpenPaths.has(path)) {
+    return bannedResponse({
+      reason: ipBan.reason || 'This IP address is banned from the website.',
+      by: ipBan.by || 'site admin'
+    });
+  }
+
+  // Dynamically track the user's last known IP address
+  try {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (sid && validId(sid)) {
+      const names = getCachedNames();
+      const email = names[sid];
+      if (email) {
+        const norm = normalizeEmail(email);
+        if (lastKnownIps[norm] !== ip) {
+          lastKnownIps[norm] = ip;
+          saveLastKnownIps();
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[traffic] Failed to update last known IP:', e);
+  }
+
   // ── mitch.prox Open General Proxy ──
   if (path === '/prox') {
     return Response.redirect('/prox/', 302);
@@ -4442,8 +4506,6 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
       return Response.redirect('/', 302);
     }
   }
-
-  const ip     = getRealIp(req);
 
   // ── Ultimate mitch.prox routes (Premium Only) ──────────────────────────── 
   const PROXY_PATHS = ["/bare/", "/assets/", "/baremux/", "/epoxy/", "/libcurl/", "/baremod/", "/wisp/", "/scram/", "/trad/", "/jsmpeg.min.js", "/scripts"]; 
@@ -5067,6 +5129,29 @@ Mitch.pro Team`;
       const bl = loadBlacklist();
       bl[targetEmail] = { reason, banned_at: Date.now(), by: adminEmail };
       saveBlacklist(bl);
+
+      // If their last known IP isn't whitelisted, then IP ban them
+      try {
+        const targetIp = lastKnownIps[targetEmail];
+        if (targetIp) {
+          if (!WHITELISTED_IPS.has(targetIp)) {
+            const bannedIps = loadBannedIps();
+            bannedIps[targetIp] = {
+              reason: `IP associated with banned account ${targetEmail}. Reason: ${reason}`,
+              banned_at: Date.now(),
+              by: adminEmail,
+              email: targetEmail
+            };
+            saveBannedIps(bannedIps);
+            console.log(`[ban] IP Banned ${targetIp} for user ${targetEmail}`);
+          } else {
+            console.log(`[ban] Skipping IP ban for ${targetEmail} because IP ${targetIp} is whitelisted.`);
+          }
+        }
+      } catch (e) {
+        console.error('[ban] Failed to apply IP ban:', e);
+      }
+
       addAdminNotification(targetEmail, 'Account banned', `Your account was banned. Reason: ${reason}`, adminEmail);
 	      logAdminAction(adminEmail, 'ban_account', { targetEmail, reason });
       return jsonResp(200, { ok: true, targetEmail });
@@ -5089,6 +5174,25 @@ Mitch.pro Team`;
       const existed = !!bl[targetEmail];
       delete bl[targetEmail];
       saveBlacklist(bl);
+
+      // Remove any IP bans associated with this email
+      try {
+        const bannedIps = loadBannedIps();
+        let ipBansRemoved = 0;
+        for (const [ip, info] of Object.entries(bannedIps)) {
+          if (info && info.email === targetEmail) {
+            delete bannedIps[ip];
+            ipBansRemoved++;
+          }
+        }
+        if (ipBansRemoved > 0) {
+          saveBannedIps(bannedIps);
+          console.log(`[unban] Removed ${ipBansRemoved} IP ban(s) associated with ${targetEmail}`);
+        }
+      } catch (e) {
+        console.error('[unban] Failed to remove associated IP bans:', e);
+      }
+
 	      logAdminAction(adminEmail, 'unban_account', { targetEmail, existed });
       return jsonResp(200, { ok: true, targetEmail, existed });
     }
