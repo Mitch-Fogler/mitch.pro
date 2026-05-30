@@ -605,6 +605,8 @@ let replyTo = null;
 let selectedGroupMembers = new Set();
 let livePollTimer = null;
 let livePollBusy = false;
+let hasMoreMessages = true;
+let isLoadingMore = false;
 
 const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
 const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
@@ -858,7 +860,13 @@ function bindEvents() {
   document.getElementById('msgInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) send();
   });
-  document.getElementById('msgs').addEventListener('click', onMessageAction);
+  const msgsEl = document.getElementById('msgs');
+  msgsEl.addEventListener('click', onMessageAction);
+  msgsEl.addEventListener('scroll', () => {
+    if (msgsEl.scrollTop < 20) {
+      loadMoreMessages();
+    }
+  });
   document.getElementById('close-group-modal').onclick = closeGroupModal;
   document.getElementById('cancel-group-btn').onclick = closeGroupModal;
   document.getElementById('create-group-btn').onclick = createGroup;
@@ -1061,9 +1069,11 @@ function showChatShell() {
 
 async function reloadActiveChat() {
   if (!activeChat) return;
+  hasMoreMessages = true;
+  isLoadingMore = false;
   const url = activeChat.type === 'group'
-    ? `/api/dm/inbox?group=${encodeURIComponent(activeChat.id)}&since=0`
-    : `/api/dm/inbox?with=${encodeURIComponent(activeChat.id)}&since=0`;
+    ? `/api/dm/inbox?group=${encodeURIComponent(activeChat.id)}&limit=5`
+    : `/api/dm/inbox?with=${encodeURIComponent(activeChat.id)}&limit=5`;
   try {
     const r = await fetch(url, { credentials:'include' });
     const d = await r.json();
@@ -1074,7 +1084,55 @@ async function reloadActiveChat() {
     renderMessages();
     const el = document.getElementById('msgs');
     el.scrollTop = el.scrollHeight;
+    if (msgs.length < 5) {
+      hasMoreMessages = false;
+    }
   } catch {}
+}
+
+async function loadMoreMessages() {
+  if (!activeChat || !hasMoreMessages || isLoadingMore) return;
+  if (!currentMessages.length) return;
+  const oldestTs = currentMessages[0].ts;
+  if (!oldestTs) return;
+
+  isLoadingMore = true;
+
+  const url = activeChat.type === 'group'
+    ? `/api/dm/inbox?group=${encodeURIComponent(activeChat.id)}&limit=5&before=${oldestTs}`
+    : `/api/dm/inbox?with=${encodeURIComponent(activeChat.id)}&limit=5&before=${oldestTs}`;
+
+  try {
+    const r = await fetch(url, { credentials:'include' });
+    const d = await r.json();
+    const msgs = (d.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
+
+    if (msgs.length === 0) {
+      hasMoreMessages = false;
+      return;
+    }
+
+    await Promise.all(msgs.map(decryptMessageContent));
+
+    currentMessages = [...msgs, ...currentMessages];
+
+    const el = document.getElementById('msgs');
+    const oldScrollHeight = el.scrollHeight;
+    const oldScrollTop = el.scrollTop;
+
+    renderMessages();
+
+    // Maintain stable scroll position
+    el.scrollTop = el.scrollHeight - oldScrollHeight + oldScrollTop;
+
+    if (msgs.length < 5) {
+      hasMoreMessages = false;
+    }
+  } catch (err) {
+    console.error('[E2E] Failed to load more messages:', err);
+  } finally {
+    isLoadingMore = false;
+  }
 }
 
 function renderMessages() {

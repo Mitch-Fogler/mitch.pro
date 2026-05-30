@@ -8079,6 +8079,9 @@ function loadAllGamesList() {
       const withUser = (qs.get('with') || '').toLowerCase();
       const groupId  = qs.get('group') || '';
       const since = parseInt(qs.get('since') || '0') || 0;
+      const before = parseInt(qs.get('before') || '0') || 0;
+      const limit = parseInt(qs.get('limit') || '0') || 0;
+
       const dms = loadJson(DMS_FILE, []);
       const cleared = loadJson(DM_CLEARED_FILE, {});
       const myCleared = cleared[normalizeEmail(myEmail)] || {};
@@ -8110,7 +8113,19 @@ function loadAllGamesList() {
         return (normalizeEmail(m.from) === normalizeEmail(myEmail) || normalizeEmail(m.to) === normalizeEmail(myEmail)) &&
                (m.ts || 0) > clearedAt;
       });
-      const resultMsgs = msgs.map(m => ({
+
+      // Sort chronologically
+      msgs.sort((a, b) => (a.ts || 0) - (b.ts || 0));
+
+      let filtered = msgs;
+      if (before) {
+        filtered = filtered.filter(m => (m.ts || 0) < before);
+      }
+      if (limit > 0) {
+        filtered = filtered.slice(-limit);
+      }
+
+      const resultMsgs = filtered.map(m => ({
         ...m,
         from: maskEmail(m.from),
         to: maskEmail(m.to),
