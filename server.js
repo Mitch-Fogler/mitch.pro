@@ -653,7 +653,7 @@ const RATE_LIMITS = {
   '/api/premium-chat/send':    [20,  60],
   '/api/public-chat/history':  [60,  60],
   '/api/public-chat/send':     [20,  60],
-  '/api/dm/send':              [20,  60],
+  '/api/dm/send':              [3,   10],
   '/api/marketplace/list':     [10,  60],
   '/api/marketplace/buy':      [10,  60],
   '/api/marketplace/mediate':  [20,  60],
