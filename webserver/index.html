@@ -632,6 +632,7 @@ function loadGreeting() {
   var clockEl = document.getElementById('greeting-clock');
   var gamesDayEl = document.getElementById('home-games-day');
   var statsEl = document.getElementById('stats-bar');
+  window._currentUserEmail = null;
 
   var _homePrefG = {};
   try { _homePrefG = JSON.parse(localStorage.getItem('_prefHomepage') || '{}'); } catch(e) {}
@@ -668,7 +669,10 @@ function loadGreeting() {
     return r.ok ? r.json() : null;
   }).then(function(d) {
     if (d) {
-      if (d.email) emailEl.textContent = d.email;
+      if (d.email) {
+        emailEl.textContent = d.email;
+        window._currentUserEmail = d.email.toLowerCase();
+      }
       if (d.bonusAwarded) {
         var bonusNote = document.createElement('div');
         bonusNote.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--t-gr);color:#fff;padding:12px 24px;border-radius:12px;font-weight:800;z-index:100000;box-shadow:0 10px 40px rgba(0,0,0,0.5);animation:bonus-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;';
@@ -887,7 +891,13 @@ function renderOnlineMembers(members) {
     var badgeHtml = badge ? ' <span class="l-badge ' + badge.cls + '">' + badge.text + '</span>' : '';
     var colorClass = m.color || '';
     
-    var nameContent = escText(name);
+    var isHideEmailActive = false;
+    try {
+      var priv = JSON.parse(localStorage.getItem('_prefPrivacy') || '{}');
+      if (priv.hideEmail) isHideEmailActive = true;
+    } catch(e) {}
+    var isUserAnon = (email && !email.includes('@')) || (isHideEmailActive && window._currentUserEmail && (email.toLowerCase() === window._currentUserEmail || email.toLowerCase() === window._currentUserEmail.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro')));
+    var nameContent = escText(name) + (isUserAnon ? ' 🥷' : '');
     if (colorClass === 'rainbow_name') {
       nameContent = '<span class="name-inner">' + nameContent + '</span>';
     }
@@ -2964,7 +2974,13 @@ var origShow = showIframe;
       const badge = badgeLabels[m.badge];
       const badgeHtml = badge ? ' <span class="l-badge ' + badge.cls + '">' + badge.text + '</span>' : '';
       
-      var nameContent = escText(label);
+      var isHideEmailActive = false;
+      try {
+        var priv = JSON.parse(localStorage.getItem('_prefPrivacy') || '{}');
+        if (priv.hideEmail) isHideEmailActive = true;
+      } catch(e) {}
+      var isUserAnon = (email && !email.includes('@')) || (isHideEmailActive && window._currentUserEmail && (email.toLowerCase() === window._currentUserEmail || email.toLowerCase() === window._currentUserEmail.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro')));
+      var nameContent = escText(label) + (isUserAnon ? ' 🥷' : '');
       if (colorClass === 'rainbow_name') {
         nameContent = '<span class="name-inner">' + nameContent + '</span>';
       }

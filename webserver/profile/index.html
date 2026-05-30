@@ -181,6 +181,16 @@ async function load() {
     } catch { showNotFound(wrap); return; }
   }
 
+  var isOwnAnon = false;
+  if (isOwnProfile) {
+    try {
+      var priv = JSON.parse(localStorage.getItem('_prefPrivacy') || '{}');
+      if (priv.hideEmail) isOwnAnon = true;
+    } catch(e) {}
+  }
+  var isAnon = isOwnAnon || (profile.email && !profile.email.includes('@'));
+  var cloakHtml = isAnon ? ' 🥷' : '';
+
   if (profile.background) {
     document.body.style.backgroundImage = `url('${profile.background}')`;
   } else {
@@ -212,7 +222,7 @@ async function load() {
         ${profile.isPremium ? '<span class="badge-premium">Premium member</span>' : ''}
         ${profile.isAdmin ? '<span class="badge-admin">Admin</span>' : ''}
       </div>` : ''}
-      <div class="display-name ${profile.activeColor || ''}">${esc(profile.displayName || profile.email || 'mitch.pro user')}${badgeHtml}</div>
+      <div class="display-name ${profile.activeColor || ''}">${esc(profile.displayName || profile.email || 'mitch.pro user')}${cloakHtml}${badgeHtml}</div>
       ${(!window.PUBLIC_PROFILE && profile.email && profile.email.includes('@')) ? `<div class="email-line">${esc(profile.email || '')}</div>` : ''}
       ${profile.bio ? `<div class="bio">${esc(profile.bio)}</div>` : ''}
       ${profile.website ? `<div class="website"><a href="${esc(profile.website)}" target="_blank" rel="noopener">${esc(profile.website)}</a></div>` : ''}

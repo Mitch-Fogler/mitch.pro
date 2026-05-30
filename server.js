@@ -653,6 +653,7 @@ const RATE_LIMITS = {
   '/api/premium-chat/send':    [20,  60],
   '/api/public-chat/history':  [60,  60],
   '/api/public-chat/send':     [20,  60],
+  '/api/dm/send':              [20,  60],
   '/api/marketplace/list':     [10,  60],
   '/api/marketplace/buy':      [10,  60],
   '/api/marketplace/mediate':  [20,  60],
@@ -2906,6 +2907,29 @@ function processMemberFields(memberEmail, profile, viewerEmail) {
       email: maskEmail(memberEmail)
     };
   }
+}
+
+function pruneDms(dms) {
+  const counts = new Map();
+  const keep = [];
+  for (let i = dms.length - 1; i >= 0; i--) {
+    const msg = dms[i];
+    if (!msg) continue;
+    let convoId;
+    if (msg.kind === 'group') {
+      convoId = 'g::' + (msg.groupId || '');
+    } else {
+      const u1 = normalizeEmail(msg.from || '');
+      const u2 = normalizeEmail(msg.to || '');
+      convoId = 'd::' + [u1, u2].sort().join('::');
+    }
+    const count = counts.get(convoId) || 0;
+    if (count < 100) {
+      keep.unshift(msg);
+      counts.set(convoId, count + 1);
+    }
+  }
+  return keep;
 }
 
 function isPremiumEmail(email) {
@@ -7828,6 +7852,7 @@ function loadAllGamesList() {
 
     // /api/dm/send — store a DM or group message and push-notify recipient(s)
     if (path === '/api/dm/send') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
@@ -7869,8 +7894,7 @@ function loadAllGamesList() {
           return jsonResp(403, { error: 'not a member' });
         msg = { kind: 'group', groupId, groupName: group.name, from: senderEmail, text, image: safeImage, replyTo, ts: Date.now(), readBy: [senderEmail] };
         dms.push(msg);
-        if (dms.length > 20000) dms.splice(0, dms.length - 20000);
-        saveJson(DMS_FILE, dms);
+        saveJson(DMS_FILE, pruneDms(dms));
         if (VAPID_PUBLIC) {
           const notifyBody = safeImage ? (text ? text.slice(0, 90) + ' [image]' : 'Sent an image') : text.slice(0, 120);
           for (const member of group.members) {
@@ -7886,8 +7910,7 @@ function loadAllGamesList() {
         } else {
         msg = { kind: 'dm', from: senderEmail, to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
         dms.push(msg);
-        if (dms.length > 20000) dms.splice(0, dms.length - 20000);
-        saveJson(DMS_FILE, dms);
+        saveJson(DMS_FILE, pruneDms(dms));
         const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
         if (!recActive && VAPID_PUBLIC && subs[to]) {
           webpush.sendNotification(subs[to], JSON.stringify({
