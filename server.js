@@ -5032,11 +5032,11 @@ Mitch.pro Team`;
       const active = !!body.active;
       let mods = moderatorEmails();
       if (active) {
-        if (!mods.includes(target)) mods.push(target);
+        if (!mods.some(m => normalizeEmail(m) === target)) mods.push(target);
       } else {
         mods = mods.filter(m => normalizeEmail(m) !== target);
       }
-      saveJson(MODERATORS_FILE, mods);
+      await saveJson(MODERATORS_FILE, mods);
       logAdminAction(adminEmail, active ? 'add_moderator' : 'remove_moderator', { target });
       return jsonResp(200, { ok: true });
     }
@@ -5062,7 +5062,7 @@ Mitch.pro Team`;
       if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const links = sanitizeModeratorPanelLinks(body.links);
-      saveJson(MODERATOR_PANEL_FILE, { links });
+      await saveJson(MODERATOR_PANEL_FILE, { links });
       logAdminAction(emailFromSid(sid) || 'admin', 'update_moderator_panel', { linkCount: links.length });
       return jsonResp(200, { ok: true, links });
     }

@@ -864,7 +864,7 @@
 
     
     async function runWealthAudit() {
-      const res = await fetch('/api/admin/economy/audit', { credentials: 'include' });
+      const res = await fetch('/api/admin/economy/audit', { credentials: 'include', headers: getAdminHeaders() });
       const data = await res.json();
       document.getElementById('audit-results').innerHTML = `
         Total Coins: ${data.total.toFixed(2)}<br>
@@ -959,7 +959,7 @@
 
     async function loadModerators() {
       try {
-        const r = await fetch('/api/admin/moderators', { credentials: 'include' });
+        const r = await fetch('/api/admin/moderators', { credentials: 'include', headers: getAdminHeaders() });
         if (!r.ok) return;
         const d = await r.json();
         const list = document.getElementById('moderator-list');
@@ -974,7 +974,7 @@
 
     async function loadModeratorPanel() {
       try {
-        const r = await fetch('/api/admin/moderator-panel', { credentials: 'include' });
+        const r = await fetch('/api/admin/moderator-panel', { credentials: 'include', headers: getAdminHeaders() });
         if (!r.ok) return;
         const d = await r.json();
         document.getElementById('mod-panel-links').value = (d.links || [])
@@ -1091,7 +1091,7 @@
 
     
     async function refreshCasinoStats() {
-      const res = await fetch('/api/admin/casino/rtp', { credentials: 'include' });
+      const res = await fetch('/api/admin/casino/rtp', { credentials: 'include', headers: getAdminHeaders() });
       const d = await res.json();
       const intake = d.intake || 0;
       const payout = d.payout || 0;
@@ -1152,7 +1152,7 @@
 
     
     async function refreshProxSessions() {
-      const res = await fetch('/api/admin/prox/sessions', { credentials: 'include' });
+      const res = await fetch('/api/admin/prox/sessions', { credentials: 'include', headers: getAdminHeaders() });
       const d = await res.json();
       const list = document.getElementById('prox-list');
       list.innerHTML = (d.sessions || []).map(s => '<div class="feed-entry"><span class="feed-ts">Active</span><span class="feed-msg">' + s.id + ' (Display ' + s.display + ')</span></div>').join('') || '<div class="empty">No active sessions</div>';
@@ -1893,7 +1893,7 @@
     let currentSoftMaintenanceActive = false;
     async function loadSoftMaintenanceStatus() {
       try {
-        const res = await fetch('/api/admin/maintenance-status', { credentials: 'include' });
+        const res = await fetch('/api/admin/maintenance-status', { credentials: 'include', headers: getAdminHeaders() });
         if (!res.ok) return;
         const d = await res.json();
         currentSoftMaintenanceActive = !!d.active;
@@ -1941,7 +1941,7 @@
     async function loadShopCatalog() {
       setStatus('shop-catalog-feedback', 'Loading catalog...', '');
       try {
-        const res = await fetch('/api/admin/shop/catalog', { credentials: 'include' });
+        const res = await fetch('/api/admin/shop/catalog', { credentials: 'include', headers: getAdminHeaders() });
         if (!res.ok) throw new Error('Failed to load shop catalog');
         const data = await res.json();
         currentShopCatalog = data.catalog || [];

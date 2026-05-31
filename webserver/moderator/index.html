@@ -65,10 +65,19 @@
       }
       const d = await r.json();
       const links = d.links || [];
-      if (!links.length) return;
-      document.getElementById('panel').innerHTML = '<div class="links">' + links.map(link =>
-        '<a href="' + esc(link.href) + '">' + esc(link.label) + '<span>→</span></a>'
-      ).join('') + '</div>';
+      let html = '';
+      if (!links.length) {
+        html = '<div class="empty" style="margin-bottom:16px;">No custom moderator panel links are configured by the admin right now.</div>';
+      }
+      html += '<div class="links">';
+      html += '<a href="/advanced-admin.html" style="border-color:var(--t-ac); background:rgba(235, 94, 40, 0.1);">🛡️ Staff Command Center (Direct Safety Tools)<span>→</span></a>';
+      if (links.length) {
+        html += links.map(link =>
+          '<a href="' + esc(link.href) + '">' + esc(link.label) + '<span>→</span></a>'
+        ).join('');
+      }
+      html += '</div>';
+      document.getElementById('panel').innerHTML = html;
     }
     loadPanel().catch(() => {
       document.getElementById('panel').innerHTML = '<div class="empty">Panel unavailable.</div>';
