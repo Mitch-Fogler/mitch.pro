@@ -229,6 +229,19 @@
     body.admin-locked .topbar .status {
       display: none !important;
     }
+
+    /* Hide admin-only features for moderators */
+    body.moderator-mode a[href="#economy-tools"],
+    body.moderator-mode a[href="#casino-tools"],
+    body.moderator-mode a[href="#shop-tools"],
+    body.moderator-mode #economy-tools,
+    body.moderator-mode #casino-tools,
+    body.moderator-mode #shop-tools,
+    body.moderator-mode #moderator-card,
+    body.moderator-mode #people-tools form:nth-of-type(1),
+    body.moderator-mode #people-tools form:nth-of-type(2) {
+      display: none !important;
+    }
   </style>
 </head>
 <body class="admin-locked">
@@ -1329,9 +1342,33 @@
       table('proxyHistory-table', ['Email', 'Destination URL', 'Time'], filtered.proxyHistory || [], r =>
         '<tr><td>' + esc(r.email) + '</td><td><div class="chat-text">' + esc(r.url) + '</div><div class="muted">' + esc(r.rawPath) + '</div></td><td>' + esc(fmtTime(r.ts)) + '</td></tr>'
       );
-      table('adminActions-table', ['Time', 'Actor', 'Action', 'Details'], filtered.adminActions, r =>
-        '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td>' + esc(r.actor) + '</td><td><span class="pill ok">' + esc(r.action) + '</span></td><td class="muted">' + esc(JSON.stringify(r.details || {})) + '</td></tr>'
-      );
+      table('adminActions-table', ['Time', 'Actor', 'Role', 'Action', 'Parameters', 'IP / Metadata'], filtered.adminActions, r => {
+        const d = r.details || {};
+        const role = d.role || (r.actor.includes('admin') || r.actor === 'owner' ? 'admin' : 'moderator');
+        const ip = d.ip || '';
+        const ua = d.userAgent || '';
+        
+        // Clean up parameters to exclude metadata
+        const params = { ...d };
+        delete params.role;
+        delete params.ip;
+        delete params.userAgent;
+        
+        const rolePill = role === 'moderator' 
+          ? '<span class="pill" style="color:#7dd3fc; border-color:rgba(56,189,248,0.25); background:rgba(56,189,248,0.08);">Mod</span>'
+          : '<span class="pill" style="color:#f87171; border-color:rgba(239,68,68,0.25); background:rgba(239,68,68,0.08);">Admin</span>';
+          
+        const metaStr = ip ? `<span class="pill" style="font-family:monospace; font-size:0.68rem;" title="${esc(ua)}">${esc(ip)}</span>` : '<span class="muted">-</span>';
+        
+        return '<tr>' +
+          '<td>' + esc(fmtTime(r.ts)) + '</td>' +
+          '<td>' + esc(r.actor) + '</td>' +
+          '<td>' + rolePill + '</td>' +
+          '<td><span class="pill ok">' + esc(r.action) + '</span></td>' +
+          '<td class="muted">' + esc(JSON.stringify(params)) + '</td>' +
+          '<td>' + metaStr + '</td>' +
+          '</tr>';
+      });
       table('sentNotifications-table', ['Time', 'Target', 'Title', 'Source', 'Status', 'Action'], filtered.sentNotifications, r =>
         '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td>' + esc(r.targetEmail) + '</td><td>' + esc(r.title) + '</td><td>' + esc(r.source) + '</td><td><span class="pill">' + (r.read ? 'read' : 'unread') + '</span></td><td><button type="button" onclick=\'unsendNotification(' + JSON.stringify(r.id) + ',' + JSON.stringify(r.batchId || '') + ')\'>Unsend</button></td></tr>'
       );      table('bannedAccounts-table', ['Banned At', 'Email', 'By', 'Reason'], filtered.bannedAccounts, r =>
@@ -1483,8 +1520,20 @@
       }
     }
 
+    const MODERATOR_DIRECT_ACTIONS = new Set([
+      '/api/admin/restricted-mode',
+      '/api/admin/shadow-ban',
+      '/api/admin/ban-account',
+      '/api/admin/unban-account',
+      '/api/admin/send-notification',
+      '/api/admin/unsend-notification',
+      '/api/admin/prox/block',
+      '/api/admin/prox/unblock',
+      '/api/admin/chat-reports/resolve'
+    ]);
+
     async function postAdmin(url, body) {
-      if (moderatorApprovalMode()) {
+      if (moderatorApprovalMode() && !MODERATOR_DIRECT_ACTIONS.has(url)) {
         const action = ACTION_BY_URL[url];
         if (!action) throw new Error('This action is not available for moderator approval yet.');
         const r = await fetch('/api/moderator/action-request', {

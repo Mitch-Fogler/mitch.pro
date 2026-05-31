@@ -3111,6 +3111,7 @@ const MODERATOR_ACTION_BY_URL = {
   '/api/admin/economy/multiplier': 'economy_multiplier',
   '/api/admin/broadcast': 'broadcast',
   '/api/admin/shadow-ban': 'shadow_ban',
+  '/api/admin/restricted-mode': 'shadow_ban',
   '/api/admin/ban-account': 'ban_account',
   '/api/admin/unban-account': 'unban_account',
   '/api/admin/casino/rig': 'casino_rig',
@@ -5123,18 +5124,26 @@ Mitch.pro Team`;
       return jsonResp(200, { ok: true, enabled: casinoEnabled });
     }
 
-    // POST /api/admin/shadow-ban
-    if (path === '/api/admin/shadow-ban') {
+    // POST /api/admin/shadow-ban & /api/admin/restricted-mode
+    if (path === '/api/admin/shadow-ban' || path === '/api/admin/restricted-mode') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-	      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const target = normalizeEmail(body.email);
       if (shadowBans.has(target)) shadowBans.delete(target);
       else shadowBans.add(target);
       saveShadowBans();
-      const actor = emailFromSid(sid) || 'admin';
-	      logAdminAction(actor, 'shadow_ban', { target, active: shadowBans.has(target) });
+      const actor = emailFromSid(sid) || 'moderator';
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(actor, 'shadow_ban', {
+        target,
+        active: shadowBans.has(target),
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true, active: shadowBans.has(target) });
     }
 
@@ -5143,12 +5152,12 @@ Mitch.pro Team`;
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
-	      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const adminEmail = emailFromSid(sid) || 'admin';
+      const adminEmail = emailFromSid(sid) || 'moderator';
       const emailRaw = String(body.email || '').toLowerCase().trim();
       const targetEmail = normalizeEmail(emailRaw);
-      const reason = String(body.reason || 'Banned by admin').trim().slice(0, 200) || 'Banned by admin';
+      const reason = String(body.reason || 'Banned by staff').trim().slice(0, 200) || 'Banned by staff';
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
         return jsonResp(400, { error: 'valid email required' });
       }
@@ -5182,7 +5191,14 @@ Mitch.pro Team`;
       }
 
       addAdminNotification(targetEmail, 'Account banned', `Your account was banned. Reason: ${reason}`, adminEmail);
-	      logAdminAction(adminEmail, 'ban_account', { targetEmail, reason });
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(adminEmail, 'ban_account', {
+        targetEmail,
+        reason,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true, targetEmail });
     }
 
@@ -5191,9 +5207,9 @@ Mitch.pro Team`;
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
-	      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const adminEmail = emailFromSid(sid) || 'admin';
+      const adminEmail = emailFromSid(sid) || 'moderator';
       const emailRaw = String(body.email || '').toLowerCase().trim();
       const targetEmail = normalizeEmail(emailRaw);
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailRaw)) {
@@ -5222,9 +5238,17 @@ Mitch.pro Team`;
         console.error('[unban] Failed to remove associated IP bans:', e);
       }
 
-	      logAdminAction(adminEmail, 'unban_account', { targetEmail, existed });
-      return jsonResp(200, { ok: true, targetEmail, existed });
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(adminEmail, 'unban_account', {
+        targetEmail,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
+      return jsonResp(200, { ok: existed });
     }
+
+
 
     // GET /api/admin/prox/sessions
     if (path === '/api/admin/prox/sessions') {
@@ -5244,12 +5268,20 @@ Mitch.pro Team`;
     if (path === '/api/admin/prox/block') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const domain = String(body.domain || '').toLowerCase().trim();
       proxBlocklist.add(domain);
       saveJson(join(BASE, 'data', 'prox_blocklist.json'), Array.from(proxBlocklist));
-      logAdminAction(emailFromSid(sid) || 'admin', 'prox_block', { domain });
+      const actor = emailFromSid(sid) || 'moderator';
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(actor, 'prox_block', {
+        domain,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true });
     }
 
@@ -5257,12 +5289,20 @@ Mitch.pro Team`;
     if (path === '/api/admin/prox/unblock') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const domain = String(body.domain || '').toLowerCase().trim();
       proxBlocklist.delete(domain);
       saveJson(join(BASE, 'data', 'prox_blocklist.json'), Array.from(proxBlocklist));
-      logAdminAction(emailFromSid(sid) || 'admin', 'prox_unblock', { domain });
+      const actor = emailFromSid(sid) || 'moderator';
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(actor, 'prox_unblock', {
+        domain,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true });
     }
 
@@ -5306,14 +5346,22 @@ Mitch.pro Team`;
     if (path === '/api/admin/content/mirror') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const newUrl = body.url;
       const sitesPath = join(BASE, 'data', 'sites');
       let contents = readFileSync(sitesPath, 'utf8');
       contents = contents.replace(/url https:\/\/docs\.google\.com\/document\/d\/[^\s]+ Mitch\.pro Mirrors/, `url ${newUrl} Mitch.pro Mirrors`);
       writeFileSync(sitesPath, contents);
-      logAdminAction(emailFromSid(sid) || 'admin', 'update_mirror', { url: newUrl });
+      const actor = emailFromSid(sid) || 'moderator';
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(actor, 'update_mirror', {
+        url: newUrl,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true });
     }
 
@@ -5321,21 +5369,31 @@ Mitch.pro Team`;
     if (path === '/api/admin/content/featured') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       featuredGameHref = body.href;
-      logAdminAction(emailFromSid(sid) || 'admin', 'set_featured', { href: featuredGameHref });
+      const actor = emailFromSid(sid) || 'moderator';
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(actor, 'set_featured', {
+        href: featuredGameHref,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true });
     }
+
+    // POST /api/admin/send-notification
     if (path === '/api/admin/send-notification' && method === 'POST') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
 
-      const adminEmail = emailFromSid(sid) || 'admin';
+      const adminEmail = emailFromSid(sid) || 'moderator';
       const allUsers = body.allUsers === true;
       const targetRaw = String(body.targetEmail || '').toLowerCase().trim();
       const title = String(body.title || 'Admin notification').trim().slice(0, 80);
@@ -5347,6 +5405,7 @@ Mitch.pro Team`;
       }
       if (!message) return jsonResp(400, { error: 'message required' });
 
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
       if (allUsers) {
         const tokens = loadTokens();
         const targets = new Set();
@@ -5359,25 +5418,41 @@ Mitch.pro Team`;
           addAdminNotification(email, title || 'Admin notification', message, adminEmail, batchId);
           pushAdminNotification(email, title || 'Admin notification', message);
         }
-        console.log(`[admin] ${adminEmail} sent notification to all users (${targets.size}): ${title || 'Admin notification'}`);
-        logAdminAction(adminEmail, 'send_notification_all', { count: targets.size, title: title || 'Admin notification', batchId });
+        console.log(`[staff] ${adminEmail} sent notification to all users (${targets.size}): ${title || 'Admin notification'}`);
+        logAdminAction(adminEmail, 'send_notification_all', {
+          count: targets.size,
+          title: title || 'Admin notification',
+          batchId,
+          ip: getRealIp(req),
+          userAgent: req.headers.get('user-agent') || 'unknown',
+          role
+        });
         return jsonResp(200, { ok: true, allUsers: true, count: targets.size, batchId });
       }
 
       const notice = addAdminNotification(targetRaw, title || 'Admin notification', message, adminEmail, batchId);
       pushAdminNotification(targetRaw, title || 'Admin notification', message);
-      console.log(`[admin] ${adminEmail} sent notification to ${targetRaw}: ${title || 'Admin notification'}`);
-      logAdminAction(adminEmail, 'send_notification', { targetEmail: targetRaw, title: title || 'Admin notification', notificationId: notice?.id || '', batchId });
+      console.log(`[staff] ${adminEmail} sent notification to ${targetRaw}: ${title || 'Admin notification'}`);
+      logAdminAction(adminEmail, 'send_notification', {
+        targetEmail: targetRaw,
+        title: title || 'Admin notification',
+        notificationId: notice?.id || '',
+        batchId,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true, targetEmail: targetRaw, notificationId: notice?.id || '', batchId });
     }
 
+    // POST /api/admin/unsend-notification
     if (path === '/api/admin/unsend-notification' && method === 'POST') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
 
       const id = String(body.id || '').trim();
       const batchId = String(body.batchId || '').trim();
@@ -5396,8 +5471,16 @@ Mitch.pro Team`;
         gifts[email] = kept;
       }
       saveJson(COIN_GIFTS_FILE, gifts);
-      const adminEmail = emailFromSid(sid) || 'admin';
-      logAdminAction(adminEmail, 'unsend_notification', { id, batchId, removed });
+      const adminEmail = emailFromSid(sid) || 'moderator';
+      const role = isAdminId(sid) ? 'admin' : 'moderator';
+      logAdminAction(adminEmail, 'unsend_notification', {
+        id,
+        batchId,
+        removed,
+        ip: getRealIp(req),
+        userAgent: req.headers.get('user-agent') || 'unknown',
+        role
+      });
       return jsonResp(200, { ok: true, removed });
     }
 
