@@ -1843,14 +1843,13 @@ if (document.readyState === 'loading') {
   }
 
   @media (max-width: 760px) {
-    .glass-card { padding: 14px; width: min(100%, calc(100vw - 1rem)); }
-    .home-hero, .home-toolbar, .home-grid { grid-template-columns: 1fr; }
-    .home-title-block h1 { font-size: 2rem; }
-    .home-title-block, #greeting-card { min-height: auto; }
+    .glass-card { padding: 12px !important; width: min(100%, calc(100vw - 0.75rem)) !important; }
+    .home-hero, .home-grid { grid-template-columns: 1fr !important; }
+    .home-title-block h1 { font-size: 1.85rem !important; }
+    .home-title-block, #greeting-card { min-height: auto !important; }
     .home-status-row span { flex: 1 1 auto; justify-content: center; }
     .category-title { align-items: flex-start; flex-direction: column; gap: 3px; }
     .category-title small { text-align: left; }
-    .category-grid { grid-template-columns: 1fr; }
   }
 
   #admin-action-wrap {
@@ -2670,38 +2669,60 @@ if (document.readyState === 'loading') {
   @media (max-width: 980px) {
     body {
       overflow-x: hidden !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
     }
 
     #top-left-shortcuts {
+      order: 1 !important;
       position: static !important;
-      width: min(620px, calc(100vw - 16px));
-      margin: 8px auto 0;
-      display: grid !important;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      align-items: stretch;
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      padding: 10px 16px !important;
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: nowrap !important;
+      overflow-x: auto !important;
+      -webkit-overflow-scrolling: touch !important;
+      gap: 10px !important;
+      scrollbar-width: none !important; /* Firefox */
+      -ms-overflow-style: none !important;  /* IE and Edge */
+      align-items: center !important;
+      justify-content: flex-start !important;
     }
 
-    #market-shortcut,
-    #student-chat-shortcut,
-    #profile-shortcut {
-      width: 100%;
-      min-height: 42px;
-      justify-content: center;
-      white-space: normal;
-      text-align: center;
-      line-height: 1.2;
+    #top-left-shortcuts::-webkit-scrollbar {
+      display: none !important; /* Chrome, Safari, Opera */
+    }
+
+    #top-left-shortcuts a {
+      flex: 0 0 auto !important;
+      white-space: nowrap !important;
+      margin: 0 !important;
+      border-radius: 99px !important; /* Beautiful rounded pills! */
+      padding: 0 16px !important;
+      min-height: 38px !important;
+      font-size: 0.8rem !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.18) !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 1 !important;
     }
 
     #member-side-rail {
+      order: 3 !important; /* Put member side rail at the bottom below main content */
       position: static !important;
       transform: none !important;
       width: min(620px, calc(100vw - 16px)) !important;
       max-height: none !important;
-      margin: 10px auto !important;
+      margin: 24px auto 30px !important;
       display: grid !important;
-      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-      gap: 8px !important;
-      padding: 10px !important;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+      gap: 12px !important;
+      padding: 0 10px !important;
     }
 
     #member-side-rail .side-section {
@@ -2710,13 +2731,14 @@ if (document.readyState === 'loading') {
     }
 
     #member-side-rail .side-list {
-      max-height: 148px !important;
+      max-height: 180px !important;
     }
 
     #mainpage {
+      order: 2 !important;
       width: 100% !important;
       min-width: 0 !important;
-      padding: 10px 8px 72px !important;
+      padding: 10px 8px 30px !important;
     }
 
     .glass-card {
@@ -2725,10 +2747,23 @@ if (document.readyState === 'loading') {
     }
 
     .home-hero,
-    .home-toolbar,
-    .home-grid,
-    .category-grid {
+    .home-grid {
       grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .home-toolbar {
+      display: grid !important;
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 10px !important;
+    }
+
+    #stats-bar {
+      grid-column: span 2 !important;
+    }
+
+    .category-grid {
+      grid-template-columns: repeat(2, 1fr) !important;
+      gap: 8px !important;
     }
 
     .panel-heading,
@@ -2748,16 +2783,29 @@ if (document.readyState === 'loading') {
     }
 
     a.site-link {
-      min-height: 54px;
+      grid-template-columns: 32px minmax(0, 1fr) !important; /* Hide the arrow column */
+      min-height: 48px !important;
+      padding: 8px !important;
+      gap: 8px !important;
+    }
+
+    a.site-link .link-arrow {
+      display: none !important;
+    }
+
+    a.site-link .icon {
+      width: 30px !important;
+      height: 30px !important;
+      font-size: 0.9rem !important;
     }
 
     a.site-link .lbl {
-      white-space: normal !important;
-      overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      line-height: 1.25;
+      font-size: 0.78rem !important;
+      font-weight: 800 !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      display: block !important;
     }
 
     #admin-action-btn,
@@ -2770,13 +2818,12 @@ if (document.readyState === 'loading') {
   }
 
   @media (max-width: 520px) {
-    #top-left-shortcuts,
     #member-side-rail {
       grid-template-columns: minmax(0, 1fr) !important;
     }
 
     .home-title-block h1 {
-      font-size: 1.75rem !important;
+      font-size: 1.7rem !important;
     }
 
     #greeting-clock {
@@ -2788,12 +2835,16 @@ if (document.readyState === 'loading') {
     }
 
     .home-search-box {
-      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-columns: auto minmax(0, 1fr) auto !important;
+      padding: 0 8px 0 10px !important;
+      min-height: 40px !important;
     }
 
     #home-search-clear {
-      grid-column: 1 / -1;
-      width: 100%;
+      grid-column: auto !important;
+      width: auto !important;
+      padding: 4px 8px !important;
+      font-size: 0.7rem !important;
     }
   }
 </style>
