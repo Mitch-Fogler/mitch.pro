@@ -108,20 +108,20 @@
     transition: all 0.2s;
   }
   input:focus { border-color: var(--primary); background: rgba(129,182,76,0.05); }
-  button {
-    background: var(--primary);
-    color: #0d0d0d;
-    border: none;
-    border-radius: var(--radius);
-    padding: 0 24px;
-    font-family: 'Syne', sans-serif;
-    font-size: 14px;
-    font-weight: 800;
-    cursor: pointer;
-    transition: all 0.2s;
+  #sendBtn {
+    background: var(--primary) !important;
+    color: #0d0d0d !important;
+    border: none !important;
+    border-radius: var(--radius) !important;
+    padding: 0 24px !important;
+    font-family: 'Syne', sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
   }
-  button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(129,182,76,0.3); }
-  button:active { transform: translateY(0); }
+  #sendBtn:hover:not(:disabled) { transform: translateY(-1px) !important; box-shadow: 0 4px 15px rgba(129,182,76,0.3) !important; }
+  #sendBtn:active { transform: translateY(0) !important; }
 
   /* Badge styling */
   .chat-badge { font-size: 9px; margin-left: 5px; vertical-align: middle; }
@@ -246,7 +246,7 @@
         var cloakHtml = isAnon ? ' 🥷' : '';
 
         div.innerHTML = `
-            <span class="author ${colorClass}">${m.name}${badgeHtml}${cloakHtml}${emailHtml}</span>
+            <span class="author ${colorClass}">${m.name}${badgeHtml}${cloakHtml}</span>
             <span class="text">${escapeHtml(m.text)}</span>
         `;
         chatBox.appendChild(div);

@@ -579,10 +579,7 @@
       text.placeholder = '#7c3aed';
       text.value = getPref(pref, '');
       text.style.cssText = 'min-width:0;height:30px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);color:#ddd;border-radius:7px;padding:4px 7px;font-size:0.76rem;';
-      var clear = mkBtn('x', 'Clear custom accent', function() {
-        text.value = '';
-        setPref(pref, '');
-        applyTheme(getCookie());
+      var clear = mkBtn('', 'Clear custom accent', function() {
       });
       function apply(v) {
         if (v && !/^#[0-9a-f]{6}$/i.test(v)) return;
@@ -947,6 +944,7 @@
 
     // ── Click Tracking (Heatmap) ────────────────────────────────────────────────
     function setupClickTracking() {
+    return;
       window.addEventListener('click', function(e) {
         if (e.target.closest('button, a, input, select, textarea')) {
           // Track clicks on interactive elements

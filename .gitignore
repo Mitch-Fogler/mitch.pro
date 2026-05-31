@@ -22,8 +22,6 @@ data/*
 !data/payloads.json
 !data/bad_words.json
 !data/bell_overrides.json
-!data/admins.json
-!data/moderators.json
 !data/unlimited_ids.json
 !data/rainbow_refunds.json
 !data/prox_blocklist.json
