@@ -355,6 +355,19 @@
         <button type="submit">Send Notification</button>
         <div id="notif-status" class="form-status"></div>
       </form>
+
+      <div class="action-card" id="moderator-card" style="display:none">
+        <h2>Moderator Roles</h2>
+        <p>Admins can apply changes directly. Moderators can request role or panel changes for approval.</p>
+        <div id="moderator-list" style="font-size:0.75rem; margin-bottom:10px;"></div>
+        <form onsubmit="addModerator(event)" style="display:flex; gap:5px;">
+          <input id="mod-email" type="email" placeholder="user@email.com" required style="flex:1">
+          <button type="submit" style="width:auto">Add</button>
+        </form>
+        <textarea id="mod-panel-links" placeholder="Optional panel links, one per line: Label | /path"></textarea>
+        <button type="button" onclick="saveModeratorPanel()">Save Moderator Panel</button>
+        <div id="mod-status" class="form-status"></div>
+      </div>
     </div>
     </section>
 
@@ -539,18 +552,6 @@
         <button type="submit">Update Mirror</button>
         <div id="mirror-status" class="form-status"></div>
       </form>
-      <div class="action-card" id="moderator-card" style="display:none">
-        <h2>Moderator Roles</h2>
-        <p>Admins can apply changes directly. Moderators can request role or panel changes for approval.</p>
-        <div id="moderator-list" style="font-size:0.75rem; margin-bottom:10px;"></div>
-        <form onsubmit="addModerator(event)" style="display:flex; gap:5px;">
-          <input id="mod-email" type="email" placeholder="user@email.com" required style="flex:1">
-          <button type="submit" style="width:auto">Add</button>
-        </form>
-        <textarea id="mod-panel-links" placeholder="Optional panel links, one per line: Label | /path"></textarea>
-        <button type="button" onclick="saveModeratorPanel()">Save Moderator Panel</button>
-        <div id="mod-status" class="form-status"></div>
-      </div>
     </div>
     </section>
 
@@ -928,17 +929,29 @@
     }
 
     async function addModerator(e) {
-      e.preventDefault();
-      const email = document.getElementById('mod-email').value.trim();
+      let email;
+      if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault();
+        email = document.getElementById('mod-email').value.trim();
+      } else {
+        email = String(e || '').trim();
+      }
+      if (!email) {
+        console.error("No email provided!");
+        return;
+      }
       setStatus('mod-status', 'Adding...', '');
       try {
         const d = await postAdmin('/api/admin/moderators', { email, active: true });
         setStatus('mod-status', d.pending ? pendingText(d) : 'Added moderator.', 'ok');
-        document.getElementById('mod-email').value = '';
+        if (document.getElementById('mod-email')) {
+          document.getElementById('mod-email').value = '';
+        }
         if (d.pending) loadModeratorRequests();
         else loadModerators();
       } catch (err) {
         setStatus('mod-status', err.message, 'err');
+        console.error(err);
       }
     }
 
@@ -1529,7 +1542,8 @@
       '/api/admin/unsend-notification',
       '/api/admin/prox/block',
       '/api/admin/prox/unblock',
-      '/api/admin/chat-reports/resolve'
+      '/api/admin/chat-reports/resolve',
+      '/api/admin/broadcast'
     ]);
 
     async function postAdmin(url, body) {

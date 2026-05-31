@@ -714,7 +714,7 @@ function loadJson(file, fallback) {
 async function saveJson(file, data) {
   const tmp = file + '.' + randomBytes(8).toString('hex') + '.tmp';
   try {
-    await Bun.write(tmp, JSON.stringify(data, null, 2));
+    writeFileSync(tmp, JSON.stringify(data, null, 2));
     renameSync(tmp, file);
   } catch (e) {
     console.error(`[saveJson] error writing ${file}: ${e.message}`);
@@ -3451,15 +3451,16 @@ function executeModeratorApprovedAction(action, rawPayload, approverEmail, reque
     return { ok: true, href: featuredGameHref };
   }
   if (action === 'moderator_role') {
-    const target = normalizeEmail(payload.email);
+    const targetRaw = String(payload.email || '').trim();
+    const target = normalizeEmail(targetRaw);
     let mods = moderatorEmails();
     if (payload.active) {
-      if (!mods.some(m => normalizeEmail(m) === target)) mods.push(target);
+      if (!mods.some(m => normalizeEmail(m) === target)) mods.push(targetRaw);
     } else {
       mods = mods.filter(m => normalizeEmail(m) !== target);
     }
     saveJsonSync(MODERATORS_FILE, mods);
-    logAdminAction(actor, payload.active ? 'add_moderator' : 'remove_moderator', { target, requestedBy: requesterEmail });
+    logAdminAction(actor, payload.active ? 'add_moderator' : 'remove_moderator', { target: targetRaw, requestedBy: requesterEmail });
     return { ok: true, moderators: mods };
   }
   if (action === 'moderator_panel') {
@@ -4995,7 +4996,7 @@ Mitch.pro Team`;
       if (path === '/api/admin/broadcast') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const adminEmail = emailFromSid(sid) || 'admin';
       const { msg, type } = body;
@@ -5021,6 +5022,8 @@ Mitch.pro Team`;
       return jsonResp(200, { ok: true, chance });
     }
 
+
+
     // POST /api/admin/moderators
     if (path === '/api/admin/moderators' && method === 'POST') {
       const cookies = getCookies(req);
@@ -5028,16 +5031,17 @@ Mitch.pro Team`;
       if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const adminEmail = emailFromSid(sid) || 'admin';
-      const target = normalizeEmail(body.email);
+      const targetRaw = String(body.email || '').trim();
+      const target = normalizeEmail(targetRaw);
       const active = !!body.active;
       let mods = moderatorEmails();
       if (active) {
-        if (!mods.some(m => normalizeEmail(m) === target)) mods.push(target);
+        if (!mods.some(m => normalizeEmail(m) === target)) mods.push(targetRaw);
       } else {
         mods = mods.filter(m => normalizeEmail(m) !== target);
       }
       await saveJson(MODERATORS_FILE, mods);
-      logAdminAction(adminEmail, active ? 'add_moderator' : 'remove_moderator', { target });
+      logAdminAction(adminEmail, active ? 'add_moderator' : 'remove_moderator', { target: targetRaw });
       return jsonResp(200, { ok: true });
     }
 
