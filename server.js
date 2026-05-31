@@ -3874,7 +3874,6 @@ async function handleRequest(req, server) {
   const url    = new URL(req.url);
   const path   = url.pathname;
   const method = req.method;
-  console.log(`[debug] ${method} ${path}`);
 
   const ip = getRealIp(req);
 
@@ -4521,7 +4520,7 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
   }
 
   // ── Admin Panel Protection ──────────────────────────────────────────────────
-  if (path === '/advanced-admin.html' || path === '/admin.html') {
+  if (path === '/advanced-admin.html' || path === '/admin.html' || path === '/advanced-admin' || path.startsWith('/advanced-admin/')) {
     const cookies = getCookies(req);
     const sid = cookies['studentId'] || cookies['id'] || '';
     if (!isAnyAdminId(sid)) {
@@ -5533,7 +5532,7 @@ Mitch.pro Team`;
       } catch (e) { return jsonResp(400, { success: false, error: String(e) }); }
     }
 
-    if (path === '/api/admin/passphrase-status') {
+    if (path === '/api/admin/passphrase-status' && method === 'POST') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });

@@ -219,12 +219,19 @@
     @media (max-width: 680px) {
       .economy-panel, .moderation-panel, .casino-panel, .prox-panel, .content-panel {
         grid-template-columns: 1fr;
-      }
     }
 
+    body.admin-locked .admin-layout,
+    body.admin-locked .notice,
+    body.admin-locked .role-note,
+    body.admin-locked .cards,
+    body.admin-locked .topbar div,
+    body.admin-locked .topbar .status {
+      display: none !important;
+    }
   </style>
 </head>
-<body>
+<body class="admin-locked">
   <main class="shell">
     <div class="topbar">
       <a class="back" href="/">Back</a>
@@ -761,6 +768,15 @@
     let filtered = null;
     let currentUser = null;
     let moderatorRequests = [];
+    function getAdminHeaders(extra = {}) {
+      const headers = { ...extra };
+      const pass = sessionStorage.getItem('admin_passphrase');
+      if (pass) {
+        headers['X-Admin-Passphrase'] = pass;
+      }
+      return headers;
+    }
+
     const ACTION_BY_URL = {
       '/api/admin/grant-premium': 'grant_premium',
       '/api/admin/revoke-premium': 'revoke_premium',
@@ -974,7 +990,7 @@
 
     async function pollFeeds() {
       try {
-        const res = await fetch('/api/admin/live-feeds', { credentials: 'include' });
+        const res = await fetch('/api/admin/live-feeds', { credentials: 'include', headers: getAdminHeaders() });
         const data = await res.json();
         
         const traffic = document.getElementById('traffic-feed');
@@ -1238,7 +1254,7 @@
 
     async function pollResources() {
       try {
-        const res = await fetch('/api/admin/resources', { credentials: 'include' });
+        const res = await fetch('/api/admin/resources', { credentials: 'include', headers: getAdminHeaders() });
         const d = await res.json();
         const memGb = (d.memory.rss / 1024 / 1024 / 1024).toFixed(2);
         const totalGb = (d.totalMem / 1024 / 1024 / 1024).toFixed(1);
@@ -1255,11 +1271,15 @@
         drawResourceChart();
       } catch(e) {}
     }
-    setInterval(pollResources, 10000);
+    let pollingActive = false;
+    function startPolling() {
+      if (pollingActive) return;
+      pollingActive = true;
+      setInterval(pollResources, 10000);
+      setInterval(pollFeeds, 5000);
+      setInterval(loadModeratorRequests, 15000);
+    }
     setTimeout(drawResourceChart, 200);
-
-    setInterval(pollFeeds, 5000);
-    setInterval(loadModeratorRequests, 15000);
 
     function applyFilter() {
       if (!rawData) return;
@@ -1431,7 +1451,7 @@
 
     async function loadModeratorRequests() {
       try {
-        const r = await fetch('/api/admin/moderator-requests', { credentials: 'include', cache: 'no-store' });
+        const r = await fetch('/api/admin/moderator-requests', { credentials: 'include', cache: 'no-store', headers: getAdminHeaders() });
         if (!r.ok) return;
         const d = await r.json();
         moderatorRequests = d.requests || [];
@@ -1622,7 +1642,29 @@
         : (currentUser.isModerator
           ? 'Moderator mode: you can view the admin tools and submit changes, but state-changing actions wait for admin or owner approval.'
           : 'This page is only for admin, owner, and moderator accounts.');
-      const r = await fetch('/api/admin/advanced-data', { credentials: 'include', cache: 'no-store' });
+      // --- Passphrase Verification check FIRST ---
+      if (currentUser.isAdmin) {
+        const savedPass = sessionStorage.getItem('admin_passphrase');
+        if (!savedPass) {
+          await checkPassphraseStatus();
+          return;
+        }
+        const verifyRes = await fetch('/api/admin/passphrase-status', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Admin-Passphrase': savedPass
+          }
+        });
+        if (!verifyRes.ok) {
+          sessionStorage.removeItem('admin_passphrase');
+          await checkPassphraseStatus();
+          return;
+        }
+      }
+
+      const r = await fetch('/api/admin/advanced-data', { credentials: 'include', cache: 'no-store', headers: getAdminHeaders() });
       if (!r.ok) {
         document.getElementById('access-status').textContent = r.status === 403 ? 'Staff only' : 'Unavailable';
         document.getElementById('cards').innerHTML = '<div class="card" style="grid-column:1/-1;"><div class="value">Access denied</div><div class="sub">This page is only available to signed-in admins and moderators.</div></div>';
@@ -1637,7 +1679,7 @@
         loadModeratorPanel();
       }
       
-      const rLogs = await fetch('/api/admin/search-logs', { credentials: 'include' });
+      const rLogs = await fetch('/api/admin/search-logs', { credentials: 'include', headers: getAdminHeaders() });
       const dLogs = await rLogs.json();
       rawData.searchIntent = dLogs.logs || [];
 
@@ -1650,6 +1692,7 @@
       await checkPassphraseStatus();
       await loadSoftMaintenanceStatus();
       await loadShopCatalog();
+      startPolling();
     }
 
     // --- Passphrase Controllers ---
@@ -1658,6 +1701,7 @@
       if (!lockBox) return;
       if (!currentUser || !currentUser.isAdmin) {
         lockBox.style.display = 'none';
+        document.body.classList.remove('admin-locked');
         return;
       }
       lockBox.style.display = 'block';
@@ -1677,6 +1721,7 @@
           document.getElementById('lock-box-form-container').style.display = 'flex';
           document.getElementById('lock-box-unlocked-container').style.display = 'none';
           document.getElementById('lock-box-change-container').style.display = 'none';
+          document.body.classList.add('admin-locked');
         } else if (savedPass) {
           const verifyRes = await fetch('/api/admin/passphrase-status', {
             method: 'POST',
@@ -1693,6 +1738,7 @@
             document.getElementById('lock-box-form-container').style.display = 'none';
             document.getElementById('lock-box-unlocked-container').style.display = 'flex';
             document.getElementById('lock-box-change-container').style.display = 'none';
+            document.body.classList.remove('admin-locked');
           } else {
             sessionStorage.removeItem('admin_passphrase');
             showLockedState();
@@ -1715,6 +1761,7 @@
       document.getElementById('lock-box-form-container').style.display = 'flex';
       document.getElementById('lock-box-unlocked-container').style.display = 'none';
       document.getElementById('lock-box-change-container').style.display = 'none';
+      document.body.classList.add('admin-locked');
     }
     
     async function submitPassphrase() {
