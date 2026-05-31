@@ -855,7 +855,9 @@
             const local = (input.value || '').split('@')[0].trim();
             input.value = (local || 'user') + '@' + domain;
             input.focus();
-            input.setSelectionRange(0, input.value.indexOf('@'));
+            try {
+              input.setSelectionRange(0, input.value.indexOf('@'));
+            } catch (e) {}
           };
           row.appendChild(btn);
         });
