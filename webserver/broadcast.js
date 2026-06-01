@@ -66,7 +66,9 @@
     var s = document.createElement('style');
     s.id = 'sw-notif-styles';
     s.textContent = 
-      '#sw-notif-wrap { position: fixed; top: 12px; right: 12px; z-index: 1000001; }' +
+      /* shared top-right toolbar */
+      '#site-topbar { position: fixed; top: 10px; right: 12px; z-index: 1000001; display: flex; align-items: center; gap: 6px; }' +
+      '#sw-notif-wrap { position: relative; display: inline-flex; align-items: center; }' +
       '#sw-notif-btn {' +
       '  width: 36px; height: 36px; border-radius: 50%;' +
       '  display: flex; align-items: center; justify-content: center;' +
@@ -121,6 +123,13 @@
 
   function injectNotifHTML() {
     if (document.getElementById('sw-notif-wrap')) return;
+    // Create shared topbar if not already present
+    var topbar = document.getElementById('site-topbar');
+    if (!topbar) {
+      topbar = document.createElement('div');
+      topbar.id = 'site-topbar';
+      document.body.appendChild(topbar);
+    }
     var wrap = document.createElement('div');
     wrap.id = 'sw-notif-wrap';
     wrap.innerHTML = 
@@ -133,7 +142,7 @@
       '  </div>' +
       '  <div id="sw-notif-list"><div class="sw-notif-empty">No unread notifications</div></div>' +
       '</div>';
-    document.body.appendChild(wrap);
+    topbar.appendChild(wrap);
   }
 
   async function loadNotifications() {
@@ -211,6 +220,29 @@
     
     injectNotifCSS();
     injectNotifHTML();
+
+    // On encrypt page: move topbar into the sidebar-top bar to avoid covering chat tools
+    if (window.location.pathname.startsWith('/encrypt')) {
+      function relocateToSidebar() {
+        var sidebarTop = document.getElementById('sidebar-top');
+        var topbar = document.getElementById('site-topbar');
+        if (sidebarTop && topbar) {
+          topbar.style.cssText = 'position:relative;top:auto;right:auto;z-index:100;display:inline-flex;align-items:center;gap:6px;';
+          sidebarTop.appendChild(topbar);
+          // Keep the notification panel fixed so it opens without clipping
+          var panel = document.getElementById('sw-notif-panel');
+          if (panel) {
+            panel.style.position = 'fixed';
+            panel.style.top = '50px';
+            panel.style.left = '8px';
+            panel.style.right = 'auto';
+          }
+        }
+      }
+      // sidebar-top may not exist yet if app hasn't rendered; try now and after short delay
+      relocateToSidebar();
+      setTimeout(relocateToSidebar, 500);
+    }
 
     var btn = document.getElementById('sw-notif-btn');
     var panel = document.getElementById('sw-notif-panel');

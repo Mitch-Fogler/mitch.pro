@@ -9,6 +9,8 @@
 
   var SID = getCook('studentId') || getCook('id');
   if (!SID) return;
+  // Don't show on encrypt page (full-screen chat UI)
+  if (window.location.pathname.startsWith('/encrypt')) return;
 
   var _aiPref = {};
   try { _aiPref = JSON.parse(localStorage.getItem('_prefAI') || '{}'); } catch(e) {}
@@ -19,14 +21,14 @@
 
   var ST = document.createElement('style');
   ST.textContent = [
-    '#_ab{position:fixed;bottom:50px;left:12px;z-index:2147483630;width:28px;height:28px;',
+    '#_ab{z-index:2147483630;width:28px;height:28px;',
     'border-radius:50%;border:1px solid rgba(255,255,255,0.1);cursor:pointer;opacity:0.7;',
     'background:rgba(10,10,10,0.4);color:#fff;box-shadow:none;',
     'font-size:10px;font-weight:900;letter-spacing:.02em;line-height:1;',
-    'display:flex;align-items:center;justify-content:center;',
+    'display:flex;align-items:center;justify-content:center;flex-shrink:0;',
     'transition:transform .15s,opacity .15s,background .15s;font-family:system-ui,sans-serif;}',
     '#_ab:hover{transform:scale(1.1);opacity:1;background:var(--t-ac, #81b64c);}',
-    '#_ap{position:fixed;bottom:103px;left:12px;z-index:2147483629;width:310px;',
+    '#_ap{position:fixed;top:50px;right:12px;z-index:2147483629;width:310px;',
     'max-height:440px;display:flex;flex-direction:column;background:rgba(20,20,25,0.85);',
     'backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);',
     'border:1px solid var(--t-bd, rgba(255,255,255,0.1));border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.65);',
@@ -74,8 +76,20 @@
   var btn = document.createElement('button');
   btn.id = '_ab'; btn.title = 'mitch.pro Assistant'; btn.textContent = 'AI';
   btn.onclick = togglePanel;
-  document.body.appendChild(btn);
-
+  // Inject AI button into shared topbar, falling back to body
+  (function injectAIBtn() {
+    var topbar = document.getElementById('site-topbar');
+    if (topbar) {
+      topbar.insertBefore(btn, topbar.firstChild);
+    } else {
+      // topbar not ready yet — wait briefly for broadcast.js to create it
+      setTimeout(function() {
+        var tb = document.getElementById('site-topbar');
+        if (tb) tb.insertBefore(btn, tb.firstChild);
+        else document.body.appendChild(btn);
+      }, 100);
+    }
+  })();
   var panel = document.createElement('div');
   panel.id = '_ap';
   panel.innerHTML =

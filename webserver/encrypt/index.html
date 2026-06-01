@@ -193,6 +193,7 @@ button {
 }
 .role-tag.owner { color: #facc15; border-color: rgba(250,204,21,.45); }
 .role-tag.admin { color: #f87171; border-color: rgba(248,113,113,.45); }
+.role-tag.moderator { color: #10b981; border-color: rgba(16,185,129,.45); }
 .role-tag.premium { color: #f59e0b; border-color: rgba(245,158,11,.45); }
 .unread {
   background: #ef4444;
@@ -245,6 +246,8 @@ button {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding-right: 48px; /* room for notification bell top-right */
+  flex-wrap: wrap;
 }
 #msgSearch {
   width: 190px;
@@ -565,9 +568,9 @@ button {
     </div>
     <div id="input-row">
       <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
+      <button id="sendBtn" type="button">Send</button>
       <button id="attachBtn" type="button">Image</button>
       <input type="text" id="msgInput" placeholder="type a message..." autocomplete="off">
-      <button id="sendBtn" type="button">Send</button>
     </div>
   </main>
 </div>
@@ -662,8 +665,9 @@ function memberFor(email) {
 
 function roleRank(role) {
   role = String(role || '');
-  if (role.includes('owner')) return 4;
-  if (role.includes('admin')) return 3;
+  if (role.includes('owner')) return 5;
+  if (role.includes('admin')) return 4;
+  if (role.includes('moderator')) return 3;
   if (role.includes('premium')) return 2;
   return 1;
 }
@@ -672,6 +676,7 @@ function roleInfo(role) {
   role = String(role || 'member');
   if (role.includes('owner')) return { label: 'owner', cls: 'owner', title: 'Owner / developer' };
   if (role.includes('admin')) return { label: 'admin', cls: 'admin', title: 'Admin / developer' };
+  if (role.includes('moderator')) return { label: 'moderator', cls: 'moderator', title: 'Moderator' };
   if (role.includes('premium')) return { label: 'premium', cls: 'premium', title: 'Premium member' };
   return { label: 'member', cls: 'member', title: 'Member' };
 }
