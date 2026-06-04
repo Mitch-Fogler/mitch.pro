@@ -168,6 +168,7 @@
     const chatForm = document.getElementById('chatForm');
     const chatInput = document.getElementById('chatInput');
     let myEmail = null;
+    let isModOrAdmin = false;
     let lastTs = 0;
 
     async function loadMe() {
@@ -175,6 +176,7 @@
         const d = await r.json();
         if (!d.email) location.href = '/enroll.html';
         myEmail = d.email;
+        isModOrAdmin = d.isAdmin || d.isModerator;
     }
 
     async function fetchHistory() {
@@ -188,6 +190,18 @@
             }
             const d = await r.json();
             if (d.messages) {
+                if (d.messages.length > 0) {
+                    const minTs = d.messages[0].ts;
+                    const currentIds = new Set(d.messages.map(m => m.id).filter(Boolean));
+                    chatBox.querySelectorAll('.msg').forEach(el => {
+                        const mid = el.getAttribute('data-msg-id');
+                        const mts = Number(el.getAttribute('data-msg-ts') || 0);
+                        if (mid && mts >= minTs && !currentIds.has(mid)) {
+                            el.remove();
+                        }
+                    });
+                }
+
                 const newMsgs = d.messages.filter(m => m.ts > lastTs);
                 if (newMsgs.length > 0) {
                     newMsgs.forEach(renderMsg);
@@ -202,6 +216,9 @@
         const div = document.createElement('div');
         const isOwn = m.email === myEmail;
         div.className = 'msg' + (isOwn ? ' own' : '');
+        div.setAttribute('data-msg-id', m.id || '');
+        div.setAttribute('data-msg-ts', m.ts || 0);
+        div.setAttribute('data-email', m.email || '');
         
         const badgeLabels = {
     verified_badge: { text: '✔', cls: 'badge-verified' },
@@ -228,8 +245,13 @@
         var isAnon = isOwnAnon || (m.email && !m.email.includes('@'));
         var cloakHtml = isAnon ? ' 🥷' : '';
 
+        let modHtml = '';
+        if (isModOrAdmin) {
+            modHtml = `<span class="mod-trigger" style="cursor:pointer; font-size:10px; margin-left:6px; opacity:0.6;" onclick="showModMenu('${m.id || ''}', '${escapeHtml(m.email || '')}', '${escapeHtml(m.name || '')}', 'premium')">🛡️</span>`;
+        }
+
         div.innerHTML = `
-            <span class="author ${colorClass}">${m.name}${badgeHtml}${cloakHtml}</span>
+            <span class="author ${colorClass}">${m.name}${badgeHtml}${cloakHtml}${modHtml}</span>
             <span class="text">${escapeHtml(m.text)}</span>
         `;
         chatBox.appendChild(div);
@@ -244,13 +266,145 @@
         const text = chatInput.value.trim();
         if (!text) return;
         chatInput.value = '';
-        await fetch('/api/premium-chat/send', {
+        const r = await fetch('/api/premium-chat/send', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ text })
         });
+        if (!r.ok) {
+            const err = await r.json();
+            alert(err.error || "Failed to send message");
+        }
         fetchHistory();
     };
+
+    function showModMenu(msgId, email, name, room) {
+        const existing = document.getElementById('mod-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'mod-modal';
+        modal.style.position = 'fixed';
+        modal.style.inset = '0';
+        modal.style.background = 'rgba(0,0,0,0.85)';
+        modal.style.zIndex = '99999';
+        modal.style.display = 'flex';
+        modal.style.alignItems = 'center';
+        modal.style.justifyContent = 'center';
+        modal.style.backdropFilter = 'blur(8px)';
+
+        const colorTheme = '#f59e0b';
+
+        modal.innerHTML = `
+            <div style="background:#141414; border:1px solid ${colorTheme}; border-radius:12px; padding:24px; width:90%; max-width:400px; font-family:'DM Mono', monospace; color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+                <div style="display:flex; justify-content:between; align-items:center; margin-bottom:18px;">
+                    <h3 style="font-family:'Syne', sans-serif; font-size:16px; color:${colorTheme}; margin:0;">MODERATOR PANEL</h3>
+                    <span id="close-mod-modal" style="cursor:pointer; opacity:0.6; font-weight:800; font-size:16px; margin-left:auto;">&times;</span>
+                </div>
+                <div style="font-size:12px; opacity:0.8; margin-bottom:20px; word-break:break-all;">
+                    Target: <strong>${escapeHtml(name)}</strong> (${escapeHtml(email)})<br>
+                    Room: <strong>${room.toUpperCase()}</strong>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <button id="mod-action-del-msg" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Delete Message</button>
+                    <button id="mod-action-del-user" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Delete All Messages from User</button>
+                    <button id="mod-action-timeout" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Timeout User (Mute)</button>
+                    <button id="mod-action-ban" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Ban from Chatroom (toggle)</button>
+                    <button id="mod-action-warn" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Send Warning</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        const closeBtn = document.getElementById('close-mod-modal');
+        closeBtn.onclick = () => modal.remove();
+        modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+
+        document.getElementById('mod-action-del-msg').onclick = async () => {
+            if (!confirm("Delete this message?")) return;
+            const r = await fetch('/api/chat/delete-message', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ room, msgId })
+            });
+            if (r.ok) {
+                modal.remove();
+                fetchHistory();
+            } else {
+                const d = await r.json();
+                alert("Error: " + d.error);
+            }
+        };
+
+        document.getElementById('mod-action-del-user').onclick = async () => {
+            if (!confirm(`Delete all messages from ${name} in ${room} chat?`)) return;
+            const r = await fetch('/api/chat/delete-user-messages', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ room, userEmail: email })
+            });
+            if (r.ok) {
+                modal.remove();
+                fetchHistory();
+            } else {
+                const d = await r.json();
+                alert("Error: " + d.error);
+            }
+        };
+
+        document.getElementById('mod-action-timeout').onclick = async () => {
+            const minutes = prompt("Timeout duration in minutes (e.g. 10):", "10");
+            if (!minutes) return;
+            const secs = Number(minutes) * 60;
+            if (isNaN(secs) || secs <= 0) return alert("Invalid duration");
+            const r = await fetch('/api/chat/timeout-user', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ room, userEmail: email, durationSeconds: secs })
+            });
+            if (r.ok) {
+                modal.remove();
+                alert(`User muted for ${minutes} minutes in this chatroom.`);
+            } else {
+                const d = await r.json();
+                alert("Error: " + d.error);
+            }
+        };
+
+        document.getElementById('mod-action-ban').onclick = async () => {
+            const isBanned = confirm(`Do you want to ban ${name} from this chatroom? (Cancel to unban/toggle off)`);
+            const r = await fetch('/api/chat/ban-user', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ room, userEmail: email, ban: isBanned })
+            });
+            if (r.ok) {
+                modal.remove();
+                alert(`Ban status updated to: ${isBanned ? 'Banned' : 'Not Banned'}`);
+            } else {
+                const d = await r.json();
+                alert("Error: " + d.error);
+            }
+        };
+
+        document.getElementById('mod-action-warn').onclick = async () => {
+            const message = prompt(`Enter warning text for ${name}:`);
+            if (!message) return;
+            const r = await fetch('/api/chat/warn-user', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ userEmail: email, message })
+            });
+            if (r.ok) {
+                modal.remove();
+                alert("Warning sent to user!");
+            } else {
+                const d = await r.json();
+                alert("Error: " + d.error);
+            }
+        };
+    }
 
     loadMe().then(() => {
         fetchHistory();

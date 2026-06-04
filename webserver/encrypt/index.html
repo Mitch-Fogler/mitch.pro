@@ -530,6 +530,7 @@ button {
       <div class="tabs">
         <button class="tab active" id="direct-tab" type="button">Direct</button>
         <button class="tab" id="groups-tab" type="button">Groups</button>
+        <button class="tab" id="reports-tab" type="button" style="display:none">Reports</button>
       </div>
       <input id="searchInput" placeholder="search people or groups..." autocomplete="off">
     </div>
@@ -571,6 +572,10 @@ button {
       <button id="sendBtn" type="button">Send</button>
       <button id="attachBtn" type="button">Image</button>
       <input type="text" id="msgInput" placeholder="type a message..." autocomplete="off">
+    </div>
+    <div id="report-actions-row" style="display:none; padding:10px 14px; gap:8px; border-top:1px solid var(--t-bd); align-items:center; background:rgba(0,0,0,0.15); font-family:inherit;">
+      <button id="resolve-report-btn" class="small-btn" type="button" style="background:#10b981; color:#fff; border-color:#10b981;">Resolve Report</button>
+      <button id="delete-report-btn" class="small-btn" type="button" style="background:#ef4444; color:#fff; border-color:#ef4444;">Delete Report</button>
     </div>
   </main>
 </div>
@@ -780,6 +785,10 @@ async function init() {
     const r = await fetch('/api/me', { credentials:'include', cache:'no-store' });
     fetchedData = await r.json();
     myEmail = (fetchedData.email || '').toLowerCase();
+    if (fetchedData.isAdmin || fetchedData.isModerator) {
+      document.getElementById('reports-tab').style.display = 'block';
+      document.querySelector('.tabs').style.gridTemplateColumns = '1fr 1fr 1fr';
+    }
   } catch (err) {
     console.error("Fetch /api/me error:", err);
   }
@@ -847,6 +856,18 @@ async function init() {
 function bindEvents() {
   document.getElementById('direct-tab').onclick = () => setView('direct');
   document.getElementById('groups-tab').onclick = () => setView('groups');
+  const reportsTab = document.getElementById('reports-tab');
+  if (reportsTab) {
+    reportsTab.onclick = () => selectReportsTab();
+  }
+  const resolveBtn = document.getElementById('resolve-report-btn');
+  if (resolveBtn) {
+    resolveBtn.onclick = handleResolveReport;
+  }
+  const deleteBtn = document.getElementById('delete-report-btn');
+  if (deleteBtn) {
+    deleteBtn.onclick = handleDeleteReport;
+  }
   document.getElementById('searchInput').oninput = renderList;
   document.getElementById('msgSearch').oninput = filterCurrentMessages;
   document.getElementById('new-group-btn').onclick = openGroupModal;
@@ -953,6 +974,10 @@ function setView(view) {
   activeView = view;
   document.getElementById('direct-tab').classList.toggle('active', view === 'direct');
   document.getElementById('groups-tab').classList.toggle('active', view === 'groups');
+  const reportsTab = document.getElementById('reports-tab');
+  if (reportsTab) {
+    reportsTab.classList.toggle('active', view === 'reports');
+  }
   renderList();
 }
 
@@ -963,6 +988,36 @@ function lastDirectMessage(email) {
 function renderList() {
   const q = (document.getElementById('searchInput').value || '').toLowerCase();
   const list = document.getElementById('user-list');
+  if (activeView === 'reports') {
+    if (!reportedChats.length) {
+      list.innerHTML = '<div class="empty">No reported messages yet.</div>';
+      return;
+    }
+    const filtered = reportedChats.filter(r => {
+      const hay = [r.reason, r.status].join(' ').toLowerCase();
+      return !q || hay.includes(q);
+    });
+    if (!filtered.length) {
+      list.innerHTML = '<div class="empty">No reports match your search.</div>';
+      return;
+    }
+    list.innerHTML = filtered.map(r => {
+      const idx = reportedChats.indexOf(r);
+      const timeStr = fmtDay(r.ts) + ' ' + fmtTime(r.ts);
+      const statusClass = r.status === 'Needs review' ? 'unread' : 'role-tag';
+      return `<button class="user-entry ${activeChat && activeChat.type === 'report' && activeChat.id === idx ? 'active' : ''}" data-report-index="${idx}">
+        <span class="dot ${r.status === 'Needs review' ? 'on' : ''}"></span>
+        <span class="entry-main">
+          <span class="entry-name">${esc(r.reason || 'Chat Report')}</span>
+          <span class="entry-sub">By: [Anonymous] | ${timeStr}</span>
+        </span>
+        <span class="${statusClass}">${esc(r.status || 'Needs review')}</span>
+      </button>`;
+    }).join('');
+    list.querySelectorAll('[data-report-index]').forEach(btn => btn.onclick = () => selectReport(Number(btn.dataset.reportIndex)));
+    return;
+  }
+
   if (activeView === 'groups') {
     const filtered = groups.filter(g => {
       const hay = [g.name, ...(g.members || [])].join(' ').toLowerCase();
@@ -1064,11 +1119,210 @@ async function selectGroup(groupId) {
   markActiveRead();
 }
 
+let reportedChats = [];
+
+async function selectReportsTab() {
+  setView('reports');
+  await loadReports();
+}
+
+async function loadReports() {
+  try {
+    const r = await fetch('/api/admin/advanced-data');
+    if (r.ok) {
+      const data = await r.json();
+      reportedChats = data.chatReports || [];
+      renderList();
+    }
+  } catch(e) {}
+}
+
+async function selectReport(index) {
+  const report = reportedChats[index];
+  if (!report) return;
+  activeChat = { type: 'report', id: index };
+  document.getElementById('chat-title').textContent = report.reason || 'Report Details';
+  document.getElementById('chat-subtitle').textContent = `Status: ${report.status || 'Needs review'} | Reporter: [Anonymous]`;
+  document.getElementById('leave-group-btn').style.display = 'none';
+  
+  renderReportContext(report);
+  showChatShell();
+  renderList();
+}
+
+function renderReportContext(report) {
+  const el = document.getElementById('msgs');
+  if (!report.context || !report.context.length) {
+    el.innerHTML = '<div class="empty">No message context available.</div>';
+    return;
+  }
+  
+  let html = '';
+  html += `<div style="padding:15px; border-bottom:1px solid var(--t-bd); font-size:.8rem; background:rgba(255,255,255,0.02); margin-bottom:15px; line-height:1.4;">
+    <strong>Reason:</strong> ${esc(report.reason || 'None')}<br>
+    <strong>Reported:</strong> ${fmtDay(report.ts)} ${fmtTime(report.ts)}
+  </div>`;
+
+  html += report.context.map(m => {
+    const isReported = m.reported;
+    const fromName = displayNameFor(m.from) || m.from;
+    const toName = displayNameFor(m.to) || m.to;
+    const senderText = esc(fromName);
+    const recipientText = esc(toName);
+    
+    const headerHtml = `<span class="who them">${senderText} &rarr; ${recipientText}</span>`;
+    const safeText = `<span class="body">${esc(m.text || '')}</span>`;
+    const reportedBadge = isReported ? `<span style="background:#ef4444; color:#fff; font-size:.65rem; font-weight:800; padding:2px 6px; border-radius:3px; margin-left:8px; text-transform:uppercase;">Reported Message</span>` : '';
+    
+    const modActions = `
+      <div class="msg-tools" style="display:flex; gap:6px; margin-top:8px;">
+        <button class="small-btn mod-warn-btn" data-email="${esc(m.from)}" type="button">Warn</button>
+        <button class="small-btn mod-timeout-btn" data-email="${esc(m.from)}" type="button">Timeout</button>
+        <button class="small-btn mod-ban-btn" data-email="${esc(m.from)}" type="button">Ban (Public/Prem)</button>
+        <button class="small-btn mod-delete-all-btn" data-email="${esc(m.from)}" type="button">Delete All Messages</button>
+      </div>
+    `;
+
+    return `<div class="msg" style="border:1px solid ${isReported ? 'rgba(239,68,68,0.25)' : 'var(--t-bd)'}; background:${isReported ? 'rgba(239,68,68,0.03)' : 'transparent'}; margin-bottom:12px; padding:10px 14px; border-radius:8px;">
+      <div class="msg-line" style="display:flex; align-items:center; gap:8px;">
+        <span class="ts">${fmtTime(m.ts)}</span>
+        ${headerHtml}
+        ${reportedBadge}
+      </div>
+      <div style="margin-top:6px; font-size:.82rem; color:var(--t-fg);">${safeText}</div>
+      ${modActions}
+    </div>`;
+  }).join('');
+  
+  el.innerHTML = html;
+  
+  el.querySelectorAll('.mod-warn-btn').forEach(btn => {
+    btn.onclick = () => handleModWarn(btn.dataset.email);
+  });
+  el.querySelectorAll('.mod-timeout-btn').forEach(btn => {
+    btn.onclick = () => handleModTimeout(btn.dataset.email);
+  });
+  el.querySelectorAll('.mod-ban-btn').forEach(btn => {
+    btn.onclick = () => handleModBan(btn.dataset.email);
+  });
+  el.querySelectorAll('.mod-delete-all-btn').forEach(btn => {
+    btn.onclick = () => handleModDeleteAll(btn.dataset.email);
+  });
+}
+
+async function handleModWarn(email) {
+  const msg = prompt(`Enter warning message for ${email}:`);
+  if (!msg) return;
+  const r = await fetch('/api/chat/warn-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userEmail: email, message: msg })
+  });
+  const d = await r.json();
+  if (r.ok) toast("User warned successfully!");
+  else toast("Error: " + d.error);
+}
+
+async function handleModTimeout(email) {
+  const minutes = prompt(`Enter timeout duration in minutes for ${email} (e.g. 10):`, "10");
+  if (!minutes) return;
+  const secs = Number(minutes) * 60;
+  if (isNaN(secs) || secs <= 0) return toast("Invalid duration");
+  for (const room of ['public', 'premium']) {
+      await fetch('/api/chat/timeout-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room, userEmail: email, durationSeconds: secs })
+      });
+  }
+  toast("User timed out for " + minutes + " minutes in chats!");
+}
+
+async function handleModBan(email) {
+  if (!confirm(`Are you sure you want to ban ${email} from public and premium chatrooms?`)) return;
+  for (const room of ['public', 'premium']) {
+      await fetch('/api/chat/ban-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room, userEmail: email, ban: true })
+      });
+  }
+  toast("User banned from chatrooms!");
+}
+
+async function handleModDeleteAll(email) {
+  if (!confirm(`Are you sure you want to delete all messages from ${email} in both chatrooms?`)) return;
+  for (const room of ['public', 'premium']) {
+      await fetch('/api/chat/delete-user-messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ room, userEmail: email })
+      });
+  }
+  toast("User's messages cleared from chatrooms!");
+}
+
+async function handleResolveReport() {
+  if (activeChat && activeChat.type === 'report') {
+    const report = reportedChats[activeChat.id];
+    if (!report) return;
+    const r = await fetch('/api/admin/chat-reports/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ts: report.ts, action: 'resolve' })
+    });
+    const d = await r.json();
+    if (r.ok) {
+      toast("Report resolved!");
+      await loadReports();
+      document.getElementById('chat-title').textContent = "No chat selected";
+      document.getElementById('chat-subtitle').textContent = "Choose a direct message or group chat.";
+      document.getElementById('msgs').innerHTML = "";
+      document.getElementById('report-actions-row').style.display = 'none';
+      document.getElementById('no-chat').style.display = '';
+    } else {
+      toast("Error: " + d.error);
+    }
+  }
+}
+
+async function handleDeleteReport() {
+  if (activeChat && activeChat.type === 'report') {
+    const report = reportedChats[activeChat.id];
+    if (!report) return;
+    if (!confirm("Are you sure you want to permanently delete this report?")) return;
+    const r = await fetch('/api/admin/chat-reports/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ts: report.ts, action: 'delete' })
+    });
+    const d = await r.json();
+    if (r.ok) {
+      toast("Report deleted!");
+      await loadReports();
+      document.getElementById('chat-title').textContent = "No chat selected";
+      document.getElementById('chat-subtitle').textContent = "Choose a direct message or group chat.";
+      document.getElementById('msgs').innerHTML = "";
+      document.getElementById('report-actions-row').style.display = 'none';
+      document.getElementById('no-chat').style.display = '';
+    } else {
+      toast("Error: " + d.error);
+    }
+  }
+}
+
 function showChatShell() {
   document.getElementById('no-chat').style.display = 'none';
   document.getElementById('msgs').classList.add('on');
-  document.getElementById('input-row').classList.add('on');
-  document.getElementById('msgInput').focus();
+  const reportsActionsRow = document.getElementById('report-actions-row');
+  if (activeChat && activeChat.type === 'report') {
+    document.getElementById('input-row').classList.remove('on');
+    if (reportsActionsRow) reportsActionsRow.style.display = 'flex';
+  } else {
+    document.getElementById('input-row').classList.add('on');
+    if (reportsActionsRow) reportsActionsRow.style.display = 'none';
+    document.getElementById('msgInput').focus();
+  }
   document.getElementById('msgSearch').value = '';
   clearReply();
   clearImage();
@@ -1477,6 +1731,8 @@ async function leaveCurrentGroup() {
     document.getElementById('no-chat').style.display = '';
     document.getElementById('msgs').classList.remove('on');
     document.getElementById('input-row').classList.remove('on');
+    const reportsActionsRow = document.getElementById('report-actions-row');
+    if (reportsActionsRow) reportsActionsRow.style.display = 'none';
     await loadGroups();
     toast('Left group.');
   } catch {

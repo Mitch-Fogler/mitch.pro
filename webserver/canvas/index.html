@@ -962,14 +962,14 @@ async function loadBans() {
   try {
     const r = await fetch('/api/canvas/whoami');
     const d = await r.json();
-    isAdmin = d.isAdmin;
+    isAdmin = d.isAdmin || d.isModerator;
     if (d.email) {
       pid = d.email;
       localStorage.setItem('canvas_pid', pid);
     }
-  if (IS_PREMIUM) {
-    document.getElementById('premium-badge').style.display = '';
-    document.getElementById('brush-sz').max = 16;
+    if (IS_PREMIUM) {
+      document.getElementById('premium-badge').style.display = '';
+      document.getElementById('brush-sz').max = 16;
     }
   } catch {}
   if (isAdmin) {

@@ -4235,6 +4235,12 @@ async function handleRequest(req, server) {
     if (!email) return jsonResp(401, { error: "email not found" }); 
     const norm = normalizeEmail(email);
 
+    const listings = loadJson(MARKETPLACE_FILE, []);
+    const activeCount = listings.filter(l => normalizeEmail(l.seller) === norm && l.status === 'active').length;
+    if (activeCount >= 10) {
+      return jsonResp(400, { error: "You cannot have more than 10 active listings on the marketplace." });
+    }
+
     if (!await tryParseJson()) return jsonResp(400, { error: "bad json" });
     const { type, itemId, description, price, mediator } = body;
     
@@ -4278,7 +4284,6 @@ async function handleRequest(req, server) {
       }
     }
 
-    const listings = loadJson(MARKETPLACE_FILE, []);
     const newListing = {
       id: crypto.randomUUID().slice(0, 12),
       seller: email,
@@ -7094,14 +7099,47 @@ function loadAllGamesList() {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const text = String(body.text || '').trim().slice(0, 1000);
       if (!text) return jsonResp(400, { error: 'empty message' });
+      const normEmail = normalizeEmail(email);
+
+      // Check if user is timed out or banned from this chatroom
+      const chatroomBans = loadJson(join(DATA_DIR, 'chatroom_bans.json'), {});
+      const premiumBans = chatroomBans.premium || {};
+      const banEntry = premiumBans[normEmail];
+      if (banEntry) {
+        if (banEntry.type === 'ban') {
+          return jsonResp(403, { error: 'You are banned from this chatroom.' });
+        } else if (banEntry.type === 'timeout') {
+          if (Date.now() < banEntry.expires) {
+            return jsonResp(403, { error: `You are timed out from this chatroom for another ${Math.ceil((banEntry.expires - Date.now()) / 1000)} seconds.` });
+          } else {
+            // Timeout expired, clean it up
+            delete premiumBans[normEmail];
+            chatroomBans.premium = premiumBans;
+            saveJson(join(DATA_DIR, 'chatroom_bans.json'), chatroomBans);
+          }
+        }
+      }
+
+      // Check last 10 messages spam limit
+      const history = loadJson(PREMIUM_CHAT_FILE, []);
+      if (history.length >= 10) {
+        const last10 = history.slice(-10);
+        const allMine = last10.every(m => normalizeEmail(m.email) === normEmail);
+        if (allMine) {
+          logCheat(email, 'chat_spam', 'User sent 10 consecutive messages in premium_chat', getRealIp(req));
+          return jsonResp(400, { error: 'Spam detected. The last 10 messages in this chatroom are yours.' });
+        }
+      }
+
       const profiles = loadJson(PROFILES_FILE, {});
-      const p = profiles[normalizeEmail(email)] || {};
+      const p = profiles[normEmail] || {};
       const name = p.displayName || email.split('@')[0];
       
       const cosm = loadJson(COSMETICS_FILE, {});
-      const userCosm = cosm[normalizeEmail(email)] || {};
+      const userCosm = cosm[normEmail] || {};
       
       const msg = { 
+        id: randomBytes(8).toString('hex'),
         name, 
         email, 
         text, 
@@ -7109,10 +7147,10 @@ function loadAllGamesList() {
         color: publicActiveColor(email, userCosm.activeColor),
         badge: userCosm.activeBadge || null
       };
-      if (shadowBans.has(normalizeEmail(email))) {
+      if (shadowBans.has(normEmail)) {
         return jsonResp(200, { ok: true }); // shadow success
       }
-      const history = loadJson(PREMIUM_CHAT_FILE, []);      history.push(msg);
+      history.push(msg);
       saveJson(PREMIUM_CHAT_FILE, history.slice(-1000));
       return jsonResp(200, { ok: true });
     }
@@ -7127,14 +7165,47 @@ function loadAllGamesList() {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const text = String(body.text || '').trim().slice(0, 1000);
       if (!text) return jsonResp(400, { error: 'empty message' });
+      const normEmail = normalizeEmail(email);
+
+      // Check if user is timed out or banned from this chatroom
+      const chatroomBans = loadJson(join(DATA_DIR, 'chatroom_bans.json'), {});
+      const publicBans = chatroomBans.public || {};
+      const banEntry = publicBans[normEmail];
+      if (banEntry) {
+        if (banEntry.type === 'ban') {
+          return jsonResp(403, { error: 'You are banned from this chatroom.' });
+        } else if (banEntry.type === 'timeout') {
+          if (Date.now() < banEntry.expires) {
+            return jsonResp(403, { error: `You are timed out from this chatroom for another ${Math.ceil((banEntry.expires - Date.now()) / 1000)} seconds.` });
+          } else {
+            // Timeout expired, clean it up
+            delete publicBans[normEmail];
+            chatroomBans.public = publicBans;
+            saveJson(join(DATA_DIR, 'chatroom_bans.json'), chatroomBans);
+          }
+        }
+      }
+
+      // Check last 10 messages spam limit
+      const history = loadJson(PUBLIC_CHAT_FILE, []);
+      if (history.length >= 10) {
+        const last10 = history.slice(-10);
+        const allMine = last10.every(m => normalizeEmail(m.email) === normEmail);
+        if (allMine) {
+          logCheat(email, 'chat_spam', 'User sent 10 consecutive messages in public_chat', getRealIp(req));
+          return jsonResp(400, { error: 'Spam detected. The last 10 messages in this chatroom are yours.' });
+        }
+      }
+
       const profiles = loadJson(PROFILES_FILE, {});
-      const p = profiles[normalizeEmail(email)] || {};
+      const p = profiles[normEmail] || {};
       const name = p.displayName || email.split('@')[0];
       
       const cosm = loadJson(COSMETICS_FILE, {});
-      const userCosm = cosm[normalizeEmail(email)] || {};
+      const userCosm = cosm[normEmail] || {};
       
       const msg = { 
+        id: randomBytes(8).toString('hex'),
         name, 
         email, 
         text, 
@@ -7142,10 +7213,9 @@ function loadAllGamesList() {
         color: publicActiveColor(email, userCosm.activeColor),
         badge: userCosm.activeBadge || null
       };
-      if (shadowBans.has(normalizeEmail(email))) {
+      if (shadowBans.has(normEmail)) {
         return jsonResp(200, { ok: true }); // shadow success
       }
-      const history = loadJson(PUBLIC_CHAT_FILE, []);
       history.push(msg);
       saveJson(PUBLIC_CHAT_FILE, history.slice(-1000));
 
@@ -7165,6 +7235,195 @@ function loadAllGamesList() {
       }
 
       return jsonResp(200, { ok: true });
+    }
+
+
+    // POST /api/chat/delete-message
+    if (path === '/api/chat/delete-message' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      
+      const room = String(body.room || '').trim().toLowerCase(); // 'public' or 'premium'
+      const msgId = String(body.msgId || '').trim();
+      if (!msgId || !['public', 'premium'].includes(room)) {
+        return jsonResp(400, { error: 'msgId and valid room required' });
+      }
+
+      const file = room === 'public' ? PUBLIC_CHAT_FILE : PREMIUM_CHAT_FILE;
+      const history = loadJson(file, []);
+      const msgIndex = history.findIndex(m => m.id === msgId);
+      if (msgIndex === -1) {
+        return jsonResp(404, { error: 'message not found' });
+      }
+
+      const msg = history[msgIndex];
+      history.splice(msgIndex, 1);
+      saveJson(file, history);
+
+      const actor = emailFromSid(sid) || 'moderator';
+      logAdminAction(actor, `chat_delete_message_${room}`, { msgId, sender: msg.email, text: msg.text });
+
+      // Broadcast update to WebSocket clients if public
+      if (room === 'public') {
+        const payload = JSON.stringify({
+          type: 'public_chat_delete',
+          msgId
+        });
+        for (const ws of allSockets) {
+          if (ws.data && ws.data.isBroadcast) {
+            try { ws.send(payload); } catch {}
+          }
+        }
+      }
+
+      return jsonResp(200, { ok: true });
+    }
+
+    // POST /api/chat/delete-user-messages
+    if (path === '/api/chat/delete-user-messages' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const room = String(body.room || '').trim().toLowerCase();
+      const userEmail = String(body.userEmail || '').trim();
+      if (!userEmail || !['public', 'premium'].includes(room)) {
+        return jsonResp(400, { error: 'userEmail and valid room required' });
+      }
+
+      const file = room === 'public' ? PUBLIC_CHAT_FILE : PREMIUM_CHAT_FILE;
+      const history = loadJson(file, []);
+      const normTarget = normalizeEmail(userEmail);
+      const filtered = history.filter(m => normalizeEmail(m.email) !== normTarget);
+      saveJson(file, filtered);
+
+      const actor = emailFromSid(sid) || 'moderator';
+      logAdminAction(actor, `chat_delete_user_messages_${room}`, { userEmail });
+
+      // Broadcast update to WebSocket clients if public
+      if (room === 'public') {
+        const payload = JSON.stringify({
+          type: 'public_chat_clear_user',
+          userEmail: normTarget
+        });
+        for (const ws of allSockets) {
+          if (ws.data && ws.data.isBroadcast) {
+            try { ws.send(payload); } catch {}
+          }
+        }
+      }
+
+      return jsonResp(200, { ok: true });
+    }
+
+    // POST /api/chat/ban-user
+    if (path === '/api/chat/ban-user' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const room = String(body.room || '').trim().toLowerCase();
+      const userEmail = String(body.userEmail || '').trim();
+      const isBan = !!body.ban;
+      if (!userEmail || !['public', 'premium'].includes(room)) {
+        return jsonResp(400, { error: 'userEmail and valid room required' });
+      }
+
+      const banFile = join(DATA_DIR, 'chatroom_bans.json');
+      const chatroomBans = loadJson(banFile, {});
+      if (!chatroomBans[room]) chatroomBans[room] = {};
+
+      const normTarget = normalizeEmail(userEmail);
+      const actor = emailFromSid(sid) || 'moderator';
+
+      if (isBan) {
+        chatroomBans[room][normTarget] = {
+          type: 'ban',
+          bannedBy: actor,
+          ts: Date.now()
+        };
+        logAdminAction(actor, `chat_ban_user_${room}`, { userEmail });
+      } else {
+        delete chatroomBans[room][normTarget];
+        logAdminAction(actor, `chat_unban_user_${room}`, { userEmail });
+      }
+
+      saveJson(banFile, chatroomBans);
+      return jsonResp(200, { ok: true });
+    }
+
+    // POST /api/chat/timeout-user
+    if (path === '/api/chat/timeout-user' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const room = String(body.room || '').trim().toLowerCase();
+      const userEmail = String(body.userEmail || '').trim();
+      const durationSeconds = Number(body.durationSeconds);
+      if (!userEmail || !['public', 'premium'].includes(room) || isNaN(durationSeconds) || durationSeconds <= 0) {
+        return jsonResp(400, { error: 'userEmail, valid room, and positive durationSeconds required' });
+      }
+
+      const banFile = join(DATA_DIR, 'chatroom_bans.json');
+      const chatroomBans = loadJson(banFile, {});
+      if (!chatroomBans[room]) chatroomBans[room] = {};
+
+      const normTarget = normalizeEmail(userEmail);
+      const actor = emailFromSid(sid) || 'moderator';
+
+      chatroomBans[room][normTarget] = {
+        type: 'timeout',
+        expires: Date.now() + durationSeconds * 1000,
+        timedOutBy: actor,
+        ts: Date.now()
+      };
+
+      saveJson(banFile, chatroomBans);
+      logAdminAction(actor, `chat_timeout_user_${room}`, { userEmail, durationSeconds });
+      return jsonResp(200, { ok: true });
+    }
+
+    // POST /api/chat/warn-user
+    if (path === '/api/chat/warn-user' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const userEmail = String(body.userEmail || '').trim();
+      const message = String(body.message || '').trim();
+      if (!userEmail || !message) {
+        return jsonResp(400, { error: 'userEmail and message required' });
+      }
+
+      const actor = emailFromSid(sid) || 'moderator';
+      addAdminNotification(userEmail, 'Chatroom Warning', message, actor);
+      pushAdminNotification(userEmail, 'Chatroom Warning', message);
+      logAdminAction(actor, 'chat_warn_user', { targetEmail: userEmail, message });
+
+      return jsonResp(200, { ok: true });
+    }
+
+    // GET /api/chat/bans
+    if (path === '/api/chat/bans' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+
+      const chatroomBans = loadJson(join(DATA_DIR, 'chatroom_bans.json'), {});
+      return jsonResp(200, chatroomBans);
     }
 
 
@@ -8805,7 +9064,7 @@ function loadAllGamesList() {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
-    if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
     const adminEmail = emailFromSid(sid) || 'admin';
     const { x, y } = body;
     if (!canvasPixels[`${x},${y}`]) return jsonResp(404, { error: 'no pixel' });
@@ -8817,7 +9076,7 @@ function loadAllGamesList() {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
-    if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
     const { painter, reason } = body;
     if (!painter) return jsonResp(400, { error: 'painter required' });
     const pEmail = Object.values(canvasPixels).find(p => p.painter === painter)?.email || null;    if (pEmail && normalizeEmail(pEmail) === normalizeEmail('admin@mitch.pro'))
@@ -8834,7 +9093,7 @@ function loadAllGamesList() {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
-    if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
     const { painter } = body;
     if (!painter) return jsonResp(400, { error: 'painter required' });
     const bannedData = loadJson(CANVAS_BANNED_FILE, {});
@@ -8850,7 +9109,7 @@ function loadAllGamesList() {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
-    if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
     const email = emailFromSid(sid) || '';
     const points = Array.isArray(body.pixels) ? body.pixels.slice(0, 2500) : [];
     if (!points.length) return jsonResp(400, { error: 'pixels required' });
@@ -8879,7 +9138,7 @@ function loadAllGamesList() {
 		    const cookies = getCookies(req);
 		    const sid = authSidFromCookies(cookies);
 		    const email = emailFromSid(sid);
-		    const adminOk = isAdminId(sid);
+		    const adminOk = isAnyAdminId(sid);
 	    const rl = checkRateLimit(req, path);
 	    if (rl && !bypass && !adminOk) return rl;
 
@@ -8942,7 +9201,7 @@ function loadAllGamesList() {
     if (typeof x !== 'number' || typeof y !== 'number' || !painter)
       return jsonResp(400, { error: 'missing fields' });
     const cookies = getCookies(req);
-    const adminOk = isAdminId(authSidFromCookies(cookies));
+    const adminOk = isAnyAdminId(authSidFromCookies(cookies));
     const key = `${x},${y}`;
     if (!canvasPixels[key]) return jsonResp(200, { ok: true });
     if (!adminOk && canvasPixels[key].painter !== painter) return jsonResp(403, { error: 'not yours' });
@@ -8961,7 +9220,7 @@ function loadAllGamesList() {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
-    if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
     const id = String(body.id || '');
     const status = String(body.status || '').slice(0, 40);
     if (!id || !['Needs review', 'Reviewing', 'Resolved', 'Dismissed'].includes(status)) {
@@ -10117,7 +10376,7 @@ function loadAllGamesList() {
 
   if (path === '/api/canvas/admin-bans') {
     const cookies = getCookies(req);
-    if (!isAdminId(authSidFromCookies(cookies))) return jsonResp(403, { error: 'forbidden' });
+    if (!isAnyAdminId(authSidFromCookies(cookies))) return jsonResp(403, { error: 'forbidden' });
     return jsonResp(200, loadJson(CANVAS_BANNED_FILE, {}));
   }
 
