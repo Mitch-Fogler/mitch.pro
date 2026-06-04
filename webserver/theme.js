@@ -846,13 +846,27 @@
     if (!location.pathname.startsWith('/encrypt')) {
       xBtn.onclick = activateCleanMode;
       var topbarX = document.getElementById('site-topbar');
-      if (topbarX) topbarX.insertBefore(xBtn, topbarX.firstChild);
-      else document.body.appendChild(xBtn);
+      if (topbarX) {
+        topbarX.insertBefore(xBtn, topbarX.firstChild);
+      } else {
+        xBtn.style.position = 'fixed';
+        xBtn.style.right = '56px';
+        xBtn.style.top = '20px';
+        xBtn.style.zIndex = '999999';
+        document.body.appendChild(xBtn);
+      }
     }
 
     var topbar = document.getElementById('site-topbar');
-    if (topbar) topbar.insertBefore(btn, topbar.firstChild);
-    else document.body.appendChild(btn);
+    if (topbar) {
+      topbar.insertBefore(btn, topbar.firstChild);
+    } else {
+      btn.style.position = 'fixed';
+      btn.style.right = '20px';
+      btn.style.top = '20px';
+      btn.style.zIndex = '999999';
+      document.body.appendChild(btn);
+    }
     document.body.appendChild(panel);
   }
 
