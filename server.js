@@ -9886,7 +9886,7 @@ function loadAllGamesList() {
     }
 
     function isRigged() {
-      return Math.random() * 100 < casinoRigChance;
+      return false;
     }
 
     function settleCasinoRound(gameName, bet, payout, outcome) {
@@ -10002,7 +10002,7 @@ function loadAllGamesList() {
 
       let playerHand = [deck.pop(), deck.pop()];
       let dealerHand = [deck.pop(), deck.pop()];
-      const rigged = Math.random() * 100 < casinoRigChance;
+      const rigged = false;
 
       if (rigged) {
         const getValLocal = (h) => {
@@ -10210,7 +10210,7 @@ function loadAllGamesList() {
         else if (side === 'over' && roll > 51) roll = Math.floor(Math.random() * 51) + 1;
       }
       const won = side === 'under' ? roll < 50 : roll > 51;
-      const mult = won ? 1.92 : 0;
+      const mult = won ? 1.94 : 0;
       const settled = settleCasinoRound('Dice Duel', betCheck.bet, won ? betCheck.bet * mult : 0, won ? 'WIN' : 'LOSE');
       return jsonResp(200, { ok: true, roll, won, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
@@ -10223,7 +10223,7 @@ function loadAllGamesList() {
       const target = Number(body.target);
       if (!Number.isFinite(target) || target < 1.2 || target > 6) return jsonResp(400, { error: 'Cashout must be between 1.20x and 6.00x.' });
       const rigged = isRigged();
-      let crashAt = Number(Math.max(1, Math.min(10, 0.93 / Math.max(Math.random(), 0.000001))).toFixed(2));
+      let crashAt = Number(Math.max(1, Math.min(10, 0.95 / Math.max(Math.random(), 0.000001))).toFixed(2));
       const cashout = Number(target.toFixed(2));
       if (rigged && cashout <= crashAt) crashAt = Number(Math.max(1, cashout - 0.01).toFixed(2));
       const won = cashout <= crashAt;
@@ -10237,10 +10237,10 @@ function loadAllGamesList() {
       const betCheck = readCasinoBet();
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
       const segments = [
-        { label: 'Bust', mult: 0, weight: 96 },
+        { label: 'Bust', mult: 0, weight: 85 },
         { label: 'Half Back', mult: 0.5, weight: 40 },
         { label: 'Small Win', mult: 1.25, weight: 32 },
-        { label: 'Double', mult: 2, weight: 20 },
+        { label: 'Double', mult: 2, weight: 31 },
         { label: 'Triple', mult: 3, weight: 8 },
         { label: 'Meteor', mult: 8, weight: 3 },
         { label: 'Galaxy Jackpot', mult: 20, weight: 1 },
@@ -10261,16 +10261,16 @@ function loadAllGamesList() {
       let roll = Math.random();
       if (rigged && roll < 0.180) roll = 0.300 + Math.random() * 0.7; // Force No Match (roll >= 0.300)
       let mult = 0, rank = 'No Match';
-      if (roll < 0.002) { mult = 75; rank = 'Triple Diamonds'; }
-      else if (roll < 0.010) { mult = 20; rank = 'Triple Sevens'; }
-      else if (roll < 0.040) { mult = 5; rank = 'Triple Bells'; }
-      else if (roll < 0.100) { mult = 2; rank = 'Triple Fruit'; }
-      else if (roll < 0.180) { mult = 1.2; rank = 'Small Match'; }
-      else if (roll < 0.300) { mult = 0.5; rank = 'Half Back'; }
+      if (roll < 0.002) { mult = 90; rank = 'Triple Diamonds'; }
+      else if (roll < 0.010) { mult = 25; rank = 'Triple Sevens'; }
+      else if (roll < 0.040) { mult = 6; rank = 'Triple Bells'; }
+      else if (roll < 0.100) { mult = 2.5; rank = 'Triple Fruit'; }
+      else if (roll < 0.180) { mult = 1.5; rank = 'Small Match'; }
+      else if (roll < 0.300) { mult = 1.0; rank = 'Half Back'; }
       const symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣'];
       const tiles = Array.from({ length: 9 }, () => symbols[Math.floor(Math.random() * symbols.length)]);
-      if (mult >= 20) { tiles[0] = tiles[4] = tiles[8] = mult >= 75 ? '💎' : '7️⃣'; }
-      else if (mult >= 2) { tiles[1] = tiles[4] = tiles[7] = mult >= 5 ? '🔔' : '🍒'; }
+      if (mult >= 25) { tiles[0] = tiles[4] = tiles[8] = mult >= 90 ? '💎' : '7️⃣'; }
+      else if (mult >= 2.5) { tiles[1] = tiles[4] = tiles[7] = mult >= 6 ? '🔔' : '🍒'; }
       else if (mult > 0) { tiles[3] = tiles[4] = '🍋'; }
       const settled = settleCasinoRound('Scratch Card', betCheck.bet, betCheck.bet * mult, mult >= 1 ? 'WIN' : 'LOSE');
       return jsonResp(200, { ok: true, tiles, rank, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
@@ -10309,7 +10309,8 @@ function loadAllGamesList() {
         }
       }
 
-      const mult = payoutTable[picks.length][hits.length] || 0;
+      let mult = payoutTable[picks.length][hits.length] || 0;
+      if (mult > 0) mult = Number((mult * 1.12).toFixed(2));
       const settled = settleCasinoRound('Keno Rush', betCheck.bet, betCheck.bet * mult, mult > 0 ? 'WIN' : 'LOSE');
       return jsonResp(200, { ok: true, picks, drawn, hits, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
@@ -10345,8 +10346,8 @@ function loadAllGamesList() {
           if (s === '7️⃣') return 50;
           if (s === '🔔') return 20;
           if (s === '🍒') return 10;
-          return 5;
-        } else if (res[0] === res[1]) return 2;
+          return 6;
+        } else if (res[0] === res[1]) return 3;
         return 0;
       };
 
@@ -10363,7 +10364,7 @@ function loadAllGamesList() {
       }
 
       let mult = getMult(results);
-      let rank = mult === 100 ? 'JACKPOT (Diamonds)' : mult === 50 ? 'Triple Sevens' : mult === 20 ? 'Triple Bells' : mult === 10 ? 'Triple Cherries' : mult === 5 ? 'Triple Fruit' : mult === 2 ? 'Double' : 'Lose';
+      let rank = mult === 100 ? 'JACKPOT (Diamonds)' : mult === 50 ? 'Triple Sevens' : mult === 20 ? 'Triple Bells' : mult === 10 ? 'Triple Cherries' : mult === 6 ? 'Triple Fruit' : mult === 3 ? 'Double' : 'Lose';
 
       if (isVipRoom && mult > 0) mult = Number((mult * 1.1).toFixed(2)); // 10% VIP bonus
 
