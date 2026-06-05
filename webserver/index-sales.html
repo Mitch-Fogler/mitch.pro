@@ -24,7 +24,8 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@800&family=JetBrains+Mono:wght@400;800&family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="preload" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@800&family=JetBrains+Mono:wght@400;800&family=Syncopate:wght@400;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@800&family=JetBrains+Mono:wght@400;800&family=Syncopate:wght@400;700&display=swap" rel="stylesheet"></noscript>
   
   <style>
     :root {
@@ -1788,8 +1789,12 @@
       const mockup = document.querySelector('.window-mockup');
       
       if (mockupContainer && mockup) {
+        let rect = null;
+        mockupContainer.addEventListener('mouseenter', () => {
+          rect = mockupContainer.getBoundingClientRect();
+        });
         mockupContainer.addEventListener('mousemove', (e) => {
-          const rect = mockupContainer.getBoundingClientRect();
+          if (!rect) rect = mockupContainer.getBoundingClientRect();
           const x = (e.clientX - rect.left) / rect.width - 0.5;
           const y = (e.clientY - rect.top) / rect.height - 0.5;
           
@@ -1797,6 +1802,7 @@
         });
         
         mockupContainer.addEventListener('mouseleave', () => {
+          rect = null;
           mockup.style.transform = `rotateX(5deg) rotateY(0deg)`;
         });
       }
@@ -2066,10 +2072,30 @@
         }
 
         // Mouse move
-        container.addEventListener('mousemove', (e) => {
+        let containerTop = 0;
+        let containerHeight = 0;
+        function updateMetrics() {
           const rect = container.getBoundingClientRect();
-          state.mouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-          state.mouseY = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+          const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+          containerTop = rect.top + scrollTop;
+          containerHeight = rect.height;
+        }
+        updateMetrics();
+        window.addEventListener('resize', updateMetrics);
+        window.addEventListener('load', updateMetrics);
+
+        // Mouse move
+        let tunnelRect = null;
+        container.addEventListener('mouseenter', () => {
+          tunnelRect = container.getBoundingClientRect();
+        });
+        container.addEventListener('mousemove', (e) => {
+          if (!tunnelRect) tunnelRect = container.getBoundingClientRect();
+          state.mouseX = ((e.clientX - tunnelRect.left) / tunnelRect.width - 0.5) * 2;
+          state.mouseY = ((e.clientY - tunnelRect.top) / tunnelRect.height - 0.5) * 2;
+        });
+        container.addEventListener('mouseleave', () => {
+          tunnelRect = null;
         });
 
         let lastProgress = 0;
@@ -2078,12 +2104,14 @@
         let lastFpsTime = performance.now();
 
         function render(time) {
-          const rect = container.getBoundingClientRect();
+          const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
           const viewH = window.innerHeight;
+          const rectTop = containerTop - scrollTop;
+          const rectBottom = rectTop + containerHeight;
           
-          if (rect.top <= viewH && rect.bottom >= 0) {
-            const totalScroll = rect.height - viewH;
-            const currentScroll = -rect.top;
+          if (rectTop <= viewH && rectBottom >= 0) {
+            const totalScroll = containerHeight - viewH;
+            const currentScroll = -rectTop;
             const progress = Math.max(0, Math.min(1, currentScroll / totalScroll));
             
             const dt = time - lastTime;

@@ -3793,13 +3793,15 @@ async function serveStatic(urlPath) {
       'json': 'application/json; charset=utf-8'
     };
     const contentType = mimeTypes[ext] || file.type;
+    const headers = { 'Content-Type': contentType };
 
     if (contentType.includes('text/html')) {
       const text = await file.text();
       const html = injectBroadcast(injectReadability(text, urlPath));
-      return new Response(html, { headers: { 'Content-Type': contentType } });
+      return new Response(html, { headers });
     }
-    return new Response(file, { headers: { 'Content-Type': contentType } });
+    headers['Cache-Control'] = 'public, max-age=2592000';
+    return new Response(file, { headers });
   }
   return errResp(404, null, null);
 }
