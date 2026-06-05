@@ -3,7 +3,7 @@
 
 set -euo pipefail
 
-CADDYFILE_PATH="/home/mitch/server/bun/Caddyfile"
+CADDYFILE_PATH="/home/mitch/server/bun/caddy/Caddyfile"
 NTFY_TOPIC="mitch_pro_71065_personal_alrtspquirl"
 
 send_notification() {

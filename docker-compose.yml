@@ -9,7 +9,7 @@ services:
     ports:
       - "6800:6800"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy:/etc/caddy
     depends_on:
       - webserver-blue
       - webserver-green
