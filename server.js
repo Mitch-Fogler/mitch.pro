@@ -10719,7 +10719,8 @@ function loadAllGamesList() {
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
-      '/favicon.ico', '/icon-192.png', '/icon-512.png'
+      '/favicon.ico', '/icon-192.png', '/icon-512.png',
+      '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
     if (!isOpenHtmlPage && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !checkPasswordCookie(req)) {
