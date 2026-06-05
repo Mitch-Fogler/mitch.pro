@@ -1977,7 +1977,8 @@
           starCount: 100,
           zGap: 800,
           loopSize: 0,
-          camSpeed: 2.5
+          camSpeed: 2.5,
+          scrollDepth: 3200
         };
         CONFIG.loopSize = CONFIG.itemCount * CONFIG.zGap;
 
@@ -2117,7 +2118,7 @@
             const dt = time - lastTime;
             if (dt > 0) {
               const deltaProgress = progress - lastProgress;
-              state.targetSpeed = (deltaProgress * CONFIG.loopSize) / (dt / 16.666);
+              state.targetSpeed = (deltaProgress * CONFIG.scrollDepth) / (dt / 16.666);
             }
             lastProgress = progress;
             lastTime = time;
@@ -2125,7 +2126,7 @@
             state.velocity += (state.targetSpeed - state.velocity) * 0.12;
 
             if (velVal) velVal.innerText = Math.abs(state.velocity).toFixed(2);
-            const virtualDepth = progress * CONFIG.loopSize;
+            const virtualDepth = progress * CONFIG.scrollDepth;
             if (depthVal) depthVal.innerText = virtualDepth.toFixed(0).padStart(6, '0');
 
             frameCount++;
