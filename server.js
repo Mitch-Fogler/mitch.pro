@@ -3877,6 +3877,10 @@ async function handleRequest(req, server) {
   const path   = url.pathname;
   const method = req.method;
 
+  if (path === '/swift') {
+    return Response.redirect('/swift/' + url.search, 301);
+  }
+
   const ip = getRealIp(req);
 
   // Reject request if IP is banned (except for ban appeal paths)
@@ -10569,7 +10573,8 @@ function loadAllGamesList() {
     if (htmlBase.endsWith('/') && htmlBase.length > 1) htmlBase = htmlBase.slice(0, -1);
     const HTML_OPEN = new Set(['/roblox', '/enroll', '/claim', '/password',
                                 '/appeal', '/unsubscribe', '/admin',
-                                '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index']);
+                                '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
+                                '/swift', '/swift/index']);
     const isHtmlRequest = path.endsWith('.html') || path.endsWith('/');
     const isOpenHtmlPage = isHtmlRequest && HTML_OPEN.has(htmlBase);
 	    if (isHtmlRequest && !isOpenHtmlPage && !path.startsWith('/unsubscribe/')) {
