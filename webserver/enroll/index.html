@@ -824,9 +824,106 @@
     line-height: 1.45;
   }
 
-  .warning-alert strong {
-    color: var(--rose);
+  /* 3D Parallax Benefit Cards Adaptation */
+  .benefit {
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 16px;
+    padding: 24px !important;
+    border: 1px solid var(--line) !important;
+    border-radius: 16px !important;
+    background: rgba(255, 255, 255, 0.01) !important;
+    align-items: start;
+    perspective: 1000px;
+    transform-style: preserve-3d;
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s, box-shadow 0.3s !important;
+    overflow: hidden;
+  }
+  .benefit:hover {
+    transform: rotate3d(1, -1, 0, 12deg);
+    border-color: rgba(34, 211, 238, 0.2) !important;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), 0 0 20px rgba(34, 211, 238, 0.04) !important;
+  }
+  .benefit-icon {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: rgba(34, 211, 238, 0.06) !important;
+    border: 1px solid rgba(34, 211, 238, 0.15) !important;
+    color: var(--cyan) !important;
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 0.95rem;
+    transform: translate3d(0, 0, 20px);
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s;
+  }
+  .benefit:hover .benefit-icon {
+    transform: translate3d(0, 0, 40px);
+    background: rgba(34, 211, 238, 0.15) !important;
+  }
+  .benefit div {
+    transform: translate3d(0, 0, 15px);
+    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .benefit:hover div {
+    transform: translate3d(0, 0, 30px);
+  }
+
+  /* HUD Style for Top Bar */
+  .site-hud {
+    display: flex;
+    gap: 16px;
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid var(--line);
+    padding: 6px 18px;
+    border-radius: 99px;
+    font-family: monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .hud-item {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .hud-label {
+    color: var(--t-fg2, rgba(200,200,220,0.6));
     font-weight: 700;
+  }
+  .hud-val {
+    color: var(--cyan);
+    font-weight: 800;
+  }
+  @media (max-width: 768px) {
+    .site-hud {
+      display: none !important;
+    }
+  }
+
+  /* Procedural SVG Waves (Tidal style) inside Left Intro Panel */
+  .hero-waves {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 160px;
+    overflow: hidden;
+    pointer-events: none;
+    z-index: 1;
+  }
+  .hero-waves svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .signal-board {
+    z-index: 2 !important;
   }
 </style>
 </head>
@@ -837,6 +934,12 @@
         <img src="/icon-192.png" alt="">
         <span>mitch.pro</span>
       </a>
+      <!-- Hyper Scroll Scroll HUD -->
+      <div class="site-hud" aria-hidden="true">
+        <div class="hud-item"><span class="hud-label">SYS</span><span class="hud-val" style="color: #10b981;">ONLINE</span></div>
+        <div class="hud-item"><span class="hud-label">VEL</span><span class="hud-val" id="hud-speed">0 PX/S</span></div>
+        <div class="hud-item"><span class="hud-label">FPS</span><span class="hud-val" id="hud-fps">--</span></div>
+      </div>
       <div class="top-links">
         <a href="/faq.html">FAQ</a>
         <a href="/use-agreement.html">Use Agreement</a>
@@ -846,6 +949,25 @@
 
     <section class="hero">
       <div class="intro">
+        <!-- Procedural wave generator canvas -->
+        <div class="hero-waves" aria-hidden="true">
+          <svg id="hero-wave-svg" viewBox="0 0 1440 240" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="wg1" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(34, 211, 238, 0.08)" />
+                <stop offset="100%" stop-color="#0a0a0c" />
+              </linearGradient>
+              <linearGradient id="wg2" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(167, 139, 250, 0.12)" />
+                <stop offset="100%" stop-color="#0a0a0c" />
+              </linearGradient>
+              <linearGradient id="wg3" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="rgba(34, 211, 238, 0.18)" />
+                <stop offset="100%" stop-color="#0a0a0c" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
         <div class="signal-board" aria-hidden="true">
           <div class="signal-row"><span class="signal-icon">G</span><strong>Games hub</strong><small>live</small></div>
           <div class="signal-row"><span class="signal-icon">C</span><strong>Canvas + profiles</strong><small>open</small></div>
@@ -1429,6 +1551,199 @@ async function claimToken(mode) {
       if (tokenField) tokenField.value = code;
     }
   }
+})();
+
+// Hyper Scroll Scrolling Speed/Velocity and FPS tracker in HUD
+(function() {
+  let lastScrollTop = 0;
+  let lastScrollTime = Date.now();
+  let scrollSpeed = 0;
+  let velocityReadout = document.getElementById('hud-speed');
+  let fpsReadout = document.getElementById('hud-fps');
+  
+  let frameCount = 0;
+  let lastFpsTime = Date.now();
+  
+  function updateFps() {
+    frameCount++;
+    let now = Date.now();
+    if (now - lastFpsTime >= 1000) {
+      if (fpsReadout) fpsReadout.textContent = frameCount;
+      frameCount = 0;
+      lastFpsTime = now;
+    }
+    requestAnimationFrame(updateFps);
+  }
+  requestAnimationFrame(updateFps);
+
+  window.addEventListener('scroll', () => {
+    let now = Date.now();
+    let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    let dt = (now - lastScrollTime) / 1000;
+    if (dt > 0.005) {
+      let dy = scrollTop - lastScrollTop;
+      scrollSpeed = Math.abs(dy / dt);
+      if (velocityReadout) {
+        velocityReadout.textContent = Math.round(scrollSpeed) + ' PX/S';
+      }
+      lastScrollTop = scrollTop;
+      lastScrollTime = now;
+    }
+  }, { passive: true });
+})();
+
+// Procedural Hero Waves Builder (Tidal waves code)
+(function buildHeroWaves() {
+  const svg = document.getElementById("hero-wave-svg");
+  if (!svg) return;
+  const NS = "http://www.w3.org/2000/svg";
+  const W = 1440, H = 240;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  if (!document.getElementById("hero-wave-kf")) {
+    const st = document.createElement("style");
+    st.id = "hero-wave-kf";
+    st.textContent =
+      "@keyframes heroWaveScroll{from{transform:translateX(0)}to{transform:translateX(-" + W + "px)}}" +
+      ".hwave{will-change:transform}";
+    document.head.appendChild(st);
+  }
+
+  function makeWave(baseY, octaves) {
+    const comps = octaves.map((o) => ({
+      k: o.k,
+      amp: o.amp * rand(0.7, 1.25),
+      ph: rand(0, Math.PI * 2)
+    }));
+    return (x) => {
+      let y = baseY;
+      for (const c of comps)
+        y -= c.amp * Math.sin((2 * Math.PI * c.k * x) / W + c.ph);
+      return y;
+    };
+  }
+
+  function topLine(fn) {
+    const step = 6;
+    let d = "M 0 " + fn(0).toFixed(1);
+    for (let x = step; x <= 2 * W; x += step)
+      d += " L " + x + " " + fn(x).toFixed(1);
+    return d;
+  }
+
+  function crests(fn) {
+    const step = 4, pts = [];
+    let prev = fn(-step), cur = fn(0);
+    for (let x = 0; x < W; x += step) {
+      const nxt = fn(x + step);
+      if (cur < prev && cur < nxt) pts.push({ x, y: cur });
+      prev = cur;
+      cur = nxt;
+    }
+    return pts;
+  }
+
+  const layers = [
+    {
+      baseY: 108,
+      oct: [
+        { k: 1, amp: 32 },
+        { k: 2, amp: 15 },
+        { k: 3, amp: 8 }
+      ],
+      fill: "url(#wg1)",
+      dur: 27,
+      rev: false,
+      foam: "rgba(34,211,238,0.06)",
+      fw: 1.5,
+      dots: 0
+    },
+    {
+      baseY: 130,
+      oct: [
+        { k: 1, amp: 28 },
+        { k: 2, amp: 17 },
+        { k: 4, amp: 9 }
+      ],
+      fill: "url(#wg2)",
+      dur: 21,
+      rev: true,
+      foam: "rgba(167,139,250,0.08)",
+      fw: 2,
+      dots: 3
+    },
+    {
+      baseY: 156,
+      oct: [
+        { k: 2, amp: 20 },
+        { k: 3, amp: 13 },
+        { k: 5, amp: 7 }
+      ],
+      fill: "url(#wg3)",
+      dur: 15,
+      rev: false,
+      foam: "rgba(34,211,238,0.12)",
+      fw: 2.4,
+      dots: 4
+    },
+    {
+      baseY: 188,
+      oct: [
+        { k: 2, amp: 14 },
+        { k: 4, amp: 9 },
+        { k: 6, amp: 6 }
+      ],
+      fill: "#0a0a0c",
+      dur: 11,
+      rev: true,
+      foam: "rgba(255,255,255,0.04)",
+      fw: 2,
+      dots: 5
+    }
+  ];
+
+  layers.forEach((L) => {
+    const fn = makeWave(L.baseY, L.oct);
+    const line = topLine(fn);
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("class", "hwave");
+    if (!reduce)
+      g.style.animation =
+        "heroWaveScroll " + L.dur + "s linear infinite" + (L.rev ? " reverse" : "");
+
+    const body = document.createElementNS(NS, "path");
+    body.setAttribute("d", line + " L " + 2 * W + " " + H + " L 0 " + H + " Z");
+    body.setAttribute("fill", L.fill);
+    g.appendChild(body);
+
+    const crest = document.createElementNS(NS, "path");
+    crest.setAttribute("d", line);
+    crest.setAttribute("fill", "none");
+    crest.setAttribute("stroke", L.foam);
+    crest.setAttribute("stroke-width", L.fw);
+    crest.setAttribute("stroke-linecap", "round");
+    g.appendChild(crest);
+
+    if (L.dots) {
+      const cs = crests(fn);
+      for (let i = cs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [cs[i], cs[j]] = [cs[j], cs[i]];
+      }
+      cs.slice(0, L.dots).forEach((p) => {
+        [0, W].forEach((off) => {
+          const c = document.createElementNS(NS, "circle");
+          c.setAttribute("cx", (p.x + off).toFixed(1));
+          c.setAttribute("cy", p.y.toFixed(1));
+          c.setAttribute("r", rand(1.5, 3).toFixed(1));
+          c.setAttribute("fill", "rgba(34,211,238," + rand(0.08, 0.2).toFixed(2) + ")");
+          g.appendChild(c);
+        });
+      });
+    }
+    svg.appendChild(g);
+  });
 })();
 </script>
 <script src="/cookie-consent.js" defer></script>

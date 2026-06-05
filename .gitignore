@@ -60,6 +60,8 @@ old/
 # Developer Overrides
 docker-compose.override.yml
 
+codepen-temp/
+
 # Massive Third-Party Game Libraries (Managed on host to keep git repository under 50MB)
 webserver/games/3kh0/
 webserver/games/gta/

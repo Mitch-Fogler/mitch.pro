@@ -24,111 +24,2154 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Syne:wght@800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Syne:wght@800&family=JetBrains+Mono:wght@400;800&family=Syncopate:wght@400;700&display=swap" rel="stylesheet">
+  
   <style>
     :root {
-      --bg: #060608;
-      --fg: #e2e2e4;
-      --fg-dim: rgba(200, 200, 220, 0.60);
+      --bg: #030305;
+      --fg: #e2e2e8;
+      --fg-dim: rgba(226, 226, 232, 0.65);
       --ac: #22d3ee;
-      --ac-gr: linear-gradient(135deg, #22d3ee, #60a5fa, #facc15);
-      --panel: rgba(255, 255, 255, 0.03);
-      --line: rgba(255, 255, 255, 0.08);
+      --ac-purple: #a78bfa;
+      --ac-gr: linear-gradient(135deg, #22d3ee, #60a5fa, #a78bfa);
+      --panel: rgba(255, 255, 255, 0.02);
+      --line: rgba(255, 255, 255, 0.06);
+      --line-glow: rgba(34, 211, 238, 0.2);
     }
+
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    
     body {
       font-family: 'Outfit', sans-serif;
       background: var(--bg);
       color: var(--fg);
-      line-height: 1.5;
+      line-height: 1.6;
       overflow-x: hidden;
       -webkit-font-smoothing: antialiased;
     }
-    body::before {
-      content: ''; position: fixed; inset: 0;
-      background: 
-        radial-gradient(circle at 15% 15%, rgba(34, 211, 238, 0.08) 0%, transparent 45%),
-        radial-gradient(circle at 85% 85%, rgba(167, 139, 250, 0.08) 0%, transparent 45%),
-        linear-gradient(rgba(255, 255, 255, 0.01) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.01) 1px, transparent 1px);
-      background-size: auto, auto, 64px 64px, 64px 64px;
-      z-index: -1;
+
+    /* Scroll Progress Bar */
+    #scroll-progress {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: var(--ac-gr);
+      z-index: 9999;
+      width: 0%;
+      transition: width 0.1s ease-out;
     }
-    .wrapper { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
-    nav { display: flex; justify-content: space-between; align-items: center; padding: 24px 0 60px; }
-    .logo { display: flex; align-items: center; gap: 12px; text-decoration: none; color: #fff; }
-    .logo img { width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); }
-    .logo span { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.2rem; }
-    .btn-ghost { padding: 8px 20px; border-radius: 10px; border: 1px solid var(--line); color: var(--fg); text-decoration: none; font-weight: 600; font-size: 0.9rem; transition: all 0.2s; }
-    .btn-ghost:hover { border-color: var(--ac); background: rgba(34, 211, 238, 0.05); }
 
-    header { text-align: center; padding: 40px 0 100px; }
-    .badge { display: inline-block; padding: 6px 14px; border-radius: 99px; background: rgba(34, 211, 238, 0.08); border: 1px solid rgba(34, 211, 238, 0.2); color: var(--ac); font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 24px; }
-    h1 { font-family: 'Syne', sans-serif; font-size: clamp(2.5rem, 8vw, 4.5rem); line-height: 1; letter-spacing: -0.03em; text-transform: uppercase; margin-bottom: 20px; background: var(--ac-gr); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .hero-p { font-size: clamp(1.1rem, 3vw, 1.4rem); color: var(--fg-dim); max-width: 700px; margin: 0 auto 40px; }
-    .btn-primary { display: inline-flex; padding: 16px 40px; border-radius: 14px; background: #fff; color: #000; text-decoration: none; font-weight: 800; font-size: 1.1rem; transition: transform 0.15s; }
-    .btn-primary:hover { transform: scale(1.04); box-shadow: 0 0 30px rgba(255,255,255,0.2); }
+    /* Ambient Background Blobs */
+    .bg-blobs {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      overflow: hidden;
+    }
+    
+    .blob {
+      position: absolute;
+      width: clamp(300px, 40vw, 600px);
+      height: clamp(300px, 40vw, 600px);
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.12;
+      animation: float 25s infinite alternate ease-in-out;
+    }
+    
+    .blob-1 {
+      background: var(--ac);
+      top: -10%;
+      left: -5%;
+    }
+    
+    .blob-2 {
+      background: var(--ac-purple);
+      top: 45%;
+      right: -10%;
+      animation-delay: -8s;
+    }
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 100px; }
-    .feature { padding: 32px; border-radius: 20px; background: var(--panel); border: 1px solid var(--line); transition: border-color 0.3s, background 0.3s; }
-    .feature:hover { border-color: rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); }
-    .f-icon { font-size: 2rem; margin-bottom: 20px; display: block; }
-    h3 { font-family: 'Syne', sans-serif; font-size: 1.4rem; margin-bottom: 12px; color: #fff; }
-    .feature p { color: var(--fg-dim); font-size: 0.95rem; line-height: 1.6; }
+    .blob-3 {
+      background: #facc15;
+      bottom: -10%;
+      left: 10%;
+      animation-delay: -15s;
+    }
 
-    footer { padding: 60px 0; border-top: 1px solid var(--line); text-align: center; color: var(--fg-dim); font-size: 0.85rem; }
-    footer a { color: var(--fg-dim); margin: 0 10px; text-decoration: none; }
-    footer a:hover { color: #fff; }
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+      50% { transform: translate(60px, 40px) scale(1.15) rotate(180deg); }
+      100% { transform: translate(-40px, 80px) scale(0.9) rotate(360deg); }
+    }
+
+    /* Grid overlay background */
+    .grid-overlay {
+      position: fixed;
+      inset: 0;
+      background-image: 
+        linear-gradient(var(--line) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line) 1px, transparent 1px);
+      background-size: 80px 80px;
+      z-index: -1;
+      opacity: 0.3;
+      pointer-events: none;
+      mask-image: radial-gradient(circle at center, black, transparent 80%);
+      -webkit-mask-image: radial-gradient(circle at center, black, transparent 80%);
+    }
+
+    .wrapper { max-width: 1200px; margin: 0 auto; padding: 0 24px; position: relative; }
+
+    /* Navigation */
+    nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 0;
+      border-bottom: 1px solid var(--line);
+      gap: 16px;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+      color: #fff;
+    }
+    
+    .logo img {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      transition: transform 0.3s ease;
+    }
+
+    .logo:hover img {
+      transform: rotate(10deg) scale(1.05);
+    }
+    
+    .logo span {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.3rem;
+      letter-spacing: -0.02em;
+    }
+
+    /* Scroll HUD Widget (Hyper Scroll vibe) */
+    .site-hud {
+      display: flex;
+      gap: 16px;
+      background: rgba(255, 255, 255, 0.015);
+      border: 1px solid var(--line);
+      padding: 6px 18px;
+      border-radius: 99px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .hud-item {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+    .hud-label {
+      color: var(--fg-dim);
+      font-weight: 700;
+    }
+    .hud-val {
+      color: var(--ac);
+      font-weight: 800;
+    }
+    .hud-val.sys-ok {
+      color: #10b981;
+    }
+    
+    .btn-ghost {
+      padding: 10px 24px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      color: var(--fg);
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      background: rgba(255, 255, 255, 0.01);
+    }
+    
+    .btn-ghost:hover {
+      border-color: var(--ac);
+      background: rgba(34, 211, 238, 0.06);
+      box-shadow: 0 0 20px rgba(34, 211, 238, 0.15);
+      transform: translateY(-2px);
+    }
+
+    /* Hero Section */
+    header {
+      text-align: center;
+      padding: 100px 0 160px;
+      position: relative;
+    }
+    
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 99px;
+      background: rgba(34, 211, 238, 0.06);
+      border: 1px solid rgba(34, 211, 238, 0.18);
+      color: var(--ac);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 28px;
+      animation: pulseBadge 3s infinite;
+    }
+
+    @keyframes pulseBadge {
+      0%, 100% { box-shadow: 0 0 0px rgba(34, 211, 238, 0); }
+      50% { box-shadow: 0 0 15px rgba(34, 211, 238, 0.2); }
+    }
+    
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.8rem, 9vw, 5.2rem);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      background: var(--ac-gr);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    
+    .hero-p {
+      font-size: clamp(1.15rem, 3.2vw, 1.45rem);
+      color: var(--fg-dim);
+      max-width: 760px;
+      margin: 0 auto 44px;
+      font-weight: 400;
+    }
+    
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 18px 46px;
+      border-radius: 16px;
+      background: #fff;
+      color: #030305;
+      text-decoration: none;
+      font-weight: 800;
+      font-size: 1.15rem;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      box-shadow: 0 4px 30px rgba(255, 255, 255, 0.15);
+      position: relative;
+      z-index: 10;
+    }
+    
+    .btn-primary:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 0 35px rgba(255,255,255,0.3);
+    }
+
+    /* Procedural SVG Waves (Tidal style) */
+    .hero-waves {
+      position: absolute;
+      bottom: -60px;
+      left: 0;
+      width: 100vw;
+      margin-left: calc(-50vw + 50%);
+      height: 240px;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .hero-waves svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Scroll mouse animation */
+    .scroll-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-top: 50px;
+      color: var(--fg-dim);
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      text-decoration: none;
+      position: relative;
+      z-index: 10;
+    }
+
+    .mouse {
+      width: 24px;
+      height: 38px;
+      border-radius: 12px;
+      border: 2px solid var(--fg-dim);
+      position: relative;
+    }
+
+    .wheel {
+      width: 4px;
+      height: 8px;
+      background: var(--ac);
+      border-radius: 2px;
+      position: absolute;
+      top: 6px;
+      left: 50%;
+      transform: translateX(-50%);
+      animation: scrollWheel 2s infinite ease-in-out;
+    }
+
+    @keyframes scrollWheel {
+      0% { top: 6px; opacity: 1; }
+      50% { top: 18px; opacity: 0; }
+      100% { top: 6px; opacity: 1; }
+    }
+
+    /* Simulated UI Mockup */
+    .mockup-container {
+      margin: 40px auto 120px;
+      max-width: 860px;
+      perspective: 1000px;
+    }
+
+    .window-mockup {
+      width: 100%;
+      border-radius: 16px;
+      background: rgba(10, 10, 16, 0.75);
+      border: 1px solid var(--line);
+      box-shadow: 0 30px 70px rgba(0, 0, 0, 0.65), 0 0 100px rgba(34, 211, 238, 0.03);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      aspect-ratio: 16/10;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      transform: rotateX(5deg);
+      transition: transform 0.15s ease-out, border-color 0.3s ease;
+      transform-style: preserve-3d;
+    }
+
+    .window-header {
+      height: 44px;
+      background: rgba(18, 18, 26, 0.6);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+      position: relative;
+    }
+
+    .header-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .dot.red { background: #ff5f56; }
+    .dot.yellow { background: #ffbd2e; }
+    .dot.green { background: #27c93f; }
+
+    .window-title {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.75rem;
+      color: var(--fg-dim);
+      font-family: monospace;
+      letter-spacing: 0.05em;
+    }
+
+    .window-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .sidebar-mockup {
+      width: 180px;
+      background: rgba(10, 10, 16, 0.2);
+      border-right: 1px solid var(--line);
+      padding: 20px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sidebar-item {
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 0.8rem;
+      color: var(--fg-dim);
+      font-weight: 500;
+      gap: 10px;
+      background: transparent;
+    }
+
+    .sidebar-item.active {
+      background: rgba(34, 211, 238, 0.08);
+      color: #fff;
+      border-left: 3px solid var(--ac);
+      font-weight: 600;
+    }
+
+    .content-mockup {
+      flex: 1;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    .mockup-row {
+      display: flex;
+      gap: 16px;
+    }
+
+    .mockup-card {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.015);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .card-title {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .card-val {
+      font-size: 1.3rem;
+      font-weight: 800;
+      color: var(--ac);
+      font-family: 'Syne', sans-serif;
+    }
+
+    .mockup-bar {
+      height: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .mockup-progress {
+      height: 100%;
+      width: 78%;
+      background: var(--ac-gr);
+      border-radius: 99px;
+      animation: progressPulse 5s infinite ease-in-out;
+    }
+
+    @keyframes progressPulse {
+      0%, 100% { width: 70%; }
+      50% { width: 85%; }
+    }
+
+    /* Simulated Live Chat in Mockup */
+    .mockup-chat {
+      flex: 1.4;
+      background: rgba(255, 255, 255, 0.015);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      justify-content: flex-end;
+      min-height: 160px;
+    }
+
+    .chat-bubble {
+      padding: 10px 14px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      max-width: 85%;
+      line-height: 1.4;
+      animation: chatCycle 12s infinite ease-in-out;
+      opacity: 0;
+      transform: translateY(15px);
+    }
+
+    .chat-bubble.left {
+      background: rgba(255, 255, 255, 0.04);
+      align-self: flex-start;
+      border-bottom-left-radius: 2px;
+    }
+
+    .chat-bubble.right {
+      background: rgba(34, 211, 238, 0.1);
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 2px;
+      border: 1px solid rgba(34, 211, 238, 0.15);
+    }
+
+    .bubble-meta {
+      font-size: 0.65rem;
+      opacity: 0.4;
+      margin-bottom: 2px;
+      display: block;
+    }
+
+    /* Loop chat animations cleanly */
+    @keyframes chatCycle {
+      0%, 8% { opacity: 0; transform: translateY(10px); }
+      12%, 36% { opacity: 1; transform: translateY(0); }
+      40%, 100% { opacity: 0; transform: translateY(-10px); }
+    }
+
+    .chat-bubble:nth-child(1) { animation-name: chat1; }
+    .chat-bubble:nth-child(2) { animation-name: chat2; }
+    .chat-bubble:nth-child(3) { animation-name: chat3; }
+
+    @keyframes chat1 {
+      0%, 2% { opacity: 0; transform: translateY(10px); }
+      6%, 28% { opacity: 1; transform: translateY(0); }
+      32%, 100% { opacity: 0; transform: translateY(-10px); }
+    }
+    @keyframes chat2 {
+      0%, 32% { opacity: 0; transform: translateY(10px); }
+      36%, 60% { opacity: 1; transform: translateY(0); }
+      64%, 100% { opacity: 0; transform: translateY(-10px); }
+    }
+    @keyframes chat3 {
+      0%, 64% { opacity: 0; transform: translateY(10px); }
+      68%, 94% { opacity: 1; transform: translateY(0); }
+      97%, 100% { opacity: 0; transform: translateY(-10px); }
+    }
+
+    /* Stats Counter Section */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-bottom: 120px;
+      text-align: center;
+    }
+
+    .stat-item {
+      padding: 30px 20px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.01);
+      border: 1px solid var(--line);
+    }
+
+    .stat-number {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(1.8rem, 5vw, 3rem);
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px;
+      background: var(--ac-gr);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: var(--fg-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    /* Features Grid (DepthFold 3D Cards Adaptation) */
+    .section-title-wrap {
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2rem, 6vw, 3.2rem);
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+
+    .section-desc {
+      color: var(--fg-dim);
+      max-width: 600px;
+      margin: 0 auto;
+      font-size: 1.1rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      margin-bottom: 120px;
+    }
+    
+    .ux-parent {
+      width: 100%;
+      height: 320px;
+      perspective: 1000px;
+      perspective-origin: 50% 50%;
+    }
+    
+    .ux-card {
+      position: relative;
+      height: 100%;
+      border-radius: 24px;
+      background: var(--ux-grad);
+      transform-style: preserve-3d;
+      transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.55s ease, border-color 0.3s;
+      box-shadow: rgba(0, 0, 0, 0.5) 0 25px 35px -5px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .ux-parent:hover .ux-card {
+      transform: rotate3d(1, -1, 0, 18deg);
+      border-color: rgba(255, 255, 255, 0.15);
+      box-shadow: rgba(0, 0, 0, 0.6) 0 35px 50px -10px, var(--card-glow) 0 0 40px -5px;
+    }
+
+    .ux-glass {
+      transform-style: preserve-3d;
+      position: absolute;
+      inset: 8px;
+      border-radius: 20px;
+      background: rgba(10, 10, 16, 0.72);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transform: translate3d(0, 0, 20px);
+      transition: transform 0.5s ease-in-out;
+      pointer-events: none;
+    }
+
+    .ux-logo {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 160px;
+      height: 160px;
+      transform-style: preserve-3d;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .ux-circle {
+      display: block;
+      position: absolute;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      top: 0;
+      right: 0;
+      background: var(--ux-orbit);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .ux-circle:nth-child(1) { width: 140px; transform: translate3d(0, 0, 15px); top: 8px; right: 8px; }
+    .ux-circle:nth-child(2) { width: 110px; transform: translate3d(0, 0, 30px); top: 12px; right: 12px; }
+    .ux-circle:nth-child(3) { width: 80px; transform: translate3d(0, 0, 45px); top: 16px; right: 16px; }
+    .ux-circle:nth-child(4) { width: 50px; transform: translate3d(0, 0, 60px); top: 20px; right: 20px; display: grid; place-content: center; font-size: 1.6rem; }
+
+    .ux-parent:hover .ux-circle:nth-child(1) { transform: translate3d(0, 0, 25px); }
+    .ux-parent:hover .ux-circle:nth-child(2) { transform: translate3d(0, 0, 50px); }
+    .ux-parent:hover .ux-circle:nth-child(3) { transform: translate3d(0, 0, 75px); }
+    .ux-parent:hover .ux-circle:nth-child(4) { transform: translate3d(0, 0, 100px); }
+
+    .ux-content {
+      padding: 30px 24px;
+      transform: translate3d(0, 0, 25px);
+      position: relative;
+      z-index: 3;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      justify-content: flex-end;
+      pointer-events: none;
+    }
+
+    .ux-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+    .ux-text {
+      color: var(--fg-dim);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+
+    /* 3D Card Colors */
+    .ux-parent--mint {
+      --ux-grad: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
+      --ux-orbit: rgba(34, 211, 238, 0.08);
+      --card-glow: rgba(34, 211, 238, 0.12);
+    }
+    .ux-parent--violet {
+      --ux-grad: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%);
+      --ux-orbit: rgba(167, 139, 250, 0.08);
+      --card-glow: rgba(167, 139, 250, 0.12);
+    }
+    .ux-parent--solar {
+      --ux-grad: linear-gradient(135deg, #facc15 0%, #ea580c 100%);
+      --ux-orbit: rgba(250, 204, 21, 0.08);
+      --card-glow: rgba(250, 204, 21, 0.12);
+    }
+    .ux-parent--ocean {
+      --ux-grad: linear-gradient(135deg, #60a5fa 0%, #1d4ed8 100%);
+      --ux-orbit: rgba(96, 165, 250, 0.08);
+      --card-glow: rgba(96, 165, 250, 0.12);
+    }
+
+    /* Interactive Showcase Section (MitchSync visual demo) */
+    .showcase-block {
+      display: grid;
+      grid-template-columns: 1.1fr 1.3fr;
+      gap: 60px;
+      align-items: center;
+      margin-bottom: 140px;
+      background: rgba(255, 255, 255, 0.01);
+      border: 1px solid var(--line);
+      padding: 60px;
+      border-radius: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .showcase-block::before {
+      content: '';
+      position: absolute;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(167, 139, 250, 0.05), transparent 70%);
+      top: -200px;
+      right: -200px;
+    }
+
+    .showcase-text h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2rem, 5vw, 2.8rem);
+      line-height: 1.1;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .showcase-text p {
+      color: var(--fg-dim);
+      margin-bottom: 24px;
+      font-size: 1.05rem;
+    }
+
+    .showcase-bullets {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .showcase-bullet {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 500;
+    }
+
+    .bullet-check {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(34, 211, 238, 0.1);
+      border: 1px solid var(--ac);
+      color: var(--ac);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+    }
+
+    /* Animated Diagram */
+    .diagram-panel {
+      background: rgba(5, 5, 8, 0.5);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 30px;
+      position: relative;
+    }
+
+    .diagram-devices {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 380px;
+      z-index: 2;
+    }
+
+    .device-box {
+      background: rgba(20, 20, 30, 0.8);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px 18px;
+      text-align: center;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--fg-dim);
+    }
+
+    .device-box.active {
+      border-color: var(--ac);
+      box-shadow: 0 0 15px rgba(34, 211, 238, 0.15);
+      color: #fff;
+    }
+
+    .diagram-cloud {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: rgba(34, 211, 238, 0.04);
+      border: 2px dashed var(--ac);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+      animation: rotateCloud 40s linear infinite;
+    }
+
+    .diagram-cloud-inner {
+      animation: counterRotateCloud 40s linear infinite;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .diagram-cloud span { font-size: 2.2rem; }
+    .diagram-cloud label { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ac); margin-top: 4px; }
+
+    @keyframes rotateCloud {
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes counterRotateCloud {
+      100% { transform: rotate(-360deg); }
+    }
+
+    /* Pulsing Sync lines */
+    .sync-line {
+      position: absolute;
+      width: 2px;
+      height: 100px;
+      background: linear-gradient(to bottom, transparent, var(--ac), transparent);
+      opacity: 0.8;
+      z-index: 1;
+    }
+
+    .sync-line-left {
+      top: 60px;
+      left: 28%;
+      transform: rotate(45deg);
+      height: 120px;
+      animation: syncLeft 3s infinite linear;
+    }
+
+    .sync-line-right {
+      top: 60px;
+      right: 28%;
+      transform: rotate(-45deg);
+      height: 120px;
+      animation: syncRight 3s infinite linear;
+    }
+
+    @keyframes syncLeft {
+      0% { background-position: 0% 0%; opacity: 0; }
+      50% { opacity: 1; }
+      100% { background-position: 0% 100%; opacity: 0; }
+    }
+
+    @keyframes syncRight {
+      0% { background-position: 0% 100%; opacity: 0; }
+      50% { opacity: 1; }
+      100% { background-position: 0% 0%; opacity: 0; }
+    }
+
+    /* FAQ Section */
+    .faq-container {
+      max-width: 800px;
+      margin: 0 auto 120px;
+    }
+
+    .faq-accordion {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    details {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    details[open] {
+      border-color: rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    summary {
+      padding: 24px;
+      font-weight: 700;
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      outline: none;
+      user-select: none;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    summary::after {
+      content: '+';
+      font-size: 1.5rem;
+      font-weight: 300;
+      color: var(--ac);
+      transition: transform 0.3s ease;
+    }
+
+    details[open] summary::after {
+      transform: rotate(45deg);
+    }
+
+    .faq-content {
+      padding: 0 24px 24px;
+      color: var(--fg-dim);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    /* Glowing Call-to-Action panel */
+    .cta-card {
+      text-align: center;
+      padding: 80px 40px;
+      border-radius: 32px;
+      background: radial-gradient(circle at top, rgba(34, 211, 238, 0.05), transparent 70%), rgba(255, 255, 255, 0.01);
+      border: 1px solid var(--line);
+      margin-bottom: 120px;
+      position: relative;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .cta-card h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.2rem, 6vw, 3.5rem);
+      margin-bottom: 18px;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
+
+    .cta-card p {
+      color: var(--fg-dim);
+      max-width: 600px;
+      margin: 0 auto 36px;
+      font-size: 1.1rem;
+    }
+
+    /* Reveal On Scroll Utility classes */
+    .reveal {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Footer */
+    footer {
+      padding: 48px 0;
+      border-top: 1px solid var(--line);
+      text-align: center;
+      color: var(--fg-dim);
+      font-size: 0.88rem;
+    }
+    
+    footer a {
+      color: var(--fg-dim);
+      margin: 0 12px;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    
+    footer a:hover {
+      color: #fff;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 900px) {
+      .showcase-block {
+        grid-template-columns: 1fr;
+        padding: 40px;
+        gap: 40px;
+      }
+      header {
+        padding-top: 60px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .site-hud {
+        display: none;
+      }
+    }
 
     @media (max-width: 600px) {
-      nav { padding-bottom: 40px; }
-      header { padding-bottom: 60px; }
+      .stats-bar {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+      .sidebar-mockup {
+        width: 60px;
+        padding: 14px 6px;
+      }
+      .sidebar-item span {
+        display: none;
+      }
+      .sidebar-item {
+        justify-content: center;
+        padding: 0;
+      }
+      .window-mockup {
+        aspect-ratio: 1.2;
+      }
+      .cta-card {
+        padding: 60px 24px;
+      }
+    }
+
+    /* --- 3D SCROLL TUNNEL SECTION --- */
+    .tunnel-container {
+      position: relative;
+      height: 160vh;
+      margin-top: 40px;
+      margin-bottom: 80px;
+      width: 100vw;
+      margin-left: calc(-50vw + 50%);
+      background: #000;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      --font-display: 'Syncopate', sans-serif;
+      --font-code: 'JetBrains Mono', monospace;
+      --tunnel-accent: #ff003c;
+      --tunnel-accent-2: #00f3ff;
+      --tunnel-card-bg: rgba(6, 6, 8, 0.45);
+      --tunnel-border: rgba(255, 255, 255, 0.08);
+      font-family: var(--font-display);
+      overflow: visible;
+    }
+
+    .tunnel-sticky {
+      position: sticky;
+      top: 0;
+      width: 100%;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+    }
+
+    /* Post-processing overlays inside sticky container */
+    .tunnel-scanlines {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom,
+          rgba(255, 255, 255, 0),
+          rgba(255, 255, 255, 0) 50%,
+          rgba(0, 0, 0, 0.3) 50%,
+          rgba(0, 0, 0, 0.3));
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 10;
+      opacity: 0.8;
+    }
+
+    .tunnel-vignette {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle, transparent 30%, #000 120%);
+      z-index: 11;
+      pointer-events: none;
+    }
+
+    .tunnel-noise {
+      position: absolute;
+      inset: 0;
+      z-index: 12;
+      opacity: 0.05;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    }
+
+    /* Tunnel HUD */
+    .tunnel-hud {
+      position: absolute;
+      inset: 2rem;
+      z-index: 20;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      font-family: var(--font-code);
+      font-size: 10px;
+      color: rgba(255, 255, 255, 0.4);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .tunnel-hud-top,
+    .tunnel-hud-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .tunnel-hud strong {
+      color: var(--tunnel-accent-2);
+    }
+
+    .tunnel-hud-line {
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.15);
+      margin: 0 1rem;
+      position: relative;
+    }
+
+    .tunnel-hud-line::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: -2px;
+      width: 5px;
+      height: 5px;
+      background: var(--tunnel-accent);
+    }
+
+    .tunnel-center-nav {
+      align-self: flex-start;
+      margin-top: auto;
+      margin-bottom: auto;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      font-family: var(--font-code);
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    /* 3D Viewport */
+    .tunnel-viewport {
+      position: absolute;
+      inset: 0;
+      perspective: 1000px;
+      overflow: hidden;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .tunnel-world {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform-style: preserve-3d;
+      will-change: transform;
+    }
+
+    .tunnel-item {
+      position: absolute;
+      left: 0;
+      top: 0;
+      backface-visibility: hidden;
+      transform-origin: center center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Cards & Content */
+    .tunnel-card {
+      width: 300px;
+      height: 400px;
+      background: var(--tunnel-card-bg);
+      border: 1px solid var(--tunnel-border);
+      position: relative;
+      padding: 1.8rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 20px 50px rgba(0, 0, 0, 0.6);
+      transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      transform: translate(-50%, -50%);
+    }
+
+    @media (hover: hover) {
+      .tunnel-card:hover {
+        border-color: var(--tunnel-accent);
+        box-shadow: 0 0 35px rgba(255, 0, 60, 0.3);
+        background: rgba(14, 14, 18, 0.85);
+        z-index: 100;
+      }
+    }
+
+    .tunnel-card::before,
+    .tunnel-card::after {
+      content: '';
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border: 1px solid transparent;
+      transition: 0.3s;
+    }
+
+    .tunnel-card::before {
+      top: -1px;
+      left: -1px;
+      border-top-color: #fff;
+      border-left-color: #fff;
+    }
+
+    .tunnel-card::after {
+      bottom: -1px;
+      right: -1px;
+      border-bottom-color: #fff;
+      border-right-color: #fff;
+    }
+
+    .tunnel-card:hover::before,
+    .tunnel-card:hover::after {
+      width: 100%;
+      height: 100%;
+      border-color: var(--tunnel-accent);
+    }
+
+    .tunnel-card-header {
+      border-bottom: 1px solid var(--tunnel-border);
+      padding-bottom: 0.8rem;
+      margin-bottom: 0.8rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .tunnel-card-id {
+      font-family: var(--font-code);
+      color: var(--tunnel-accent);
+      font-size: 0.75rem;
+    }
+
+    .tunnel-card h2 {
+      font-size: 2.2rem;
+      line-height: 0.95;
+      margin: 0;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: #fff;
+      mix-blend-mode: hard-light;
+      letter-spacing: -0.05em;
+    }
+
+    .tunnel-card-footer {
+      margin-top: auto;
+      font-family: var(--font-code);
+      font-size: 0.68rem;
+      color: rgba(255, 255, 255, 0.45);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .tunnel-big-text {
+      font-size: 12vw;
+      font-weight: 800;
+      color: transparent;
+      -webkit-text-stroke: 2px rgba(255, 255, 255, 0.12);
+      text-transform: uppercase;
+      white-space: nowrap;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      letter-spacing: -0.3rem;
+      mix-blend-mode: overlay;
+    }
+
+    .tunnel-star {
+      position: absolute;
+      width: 2px;
+      height: 2px;
+      background: white;
+      transform: translate(-50%, -50%);
+    }
+
+    .tunnel-container * {
+      box-sizing: border-box;
     }
   </style>
 </head>
 <body>
+
+  <!-- Scroll Progress Indicator -->
+  <div id="scroll-progress" aria-hidden="true"></div>
+
+  <!-- Background Layer -->
+  <div class="bg-blobs" aria-hidden="true">
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+    <div class="blob blob-3"></div>
+  </div>
+  <div class="grid-overlay" aria-hidden="true"></div>
+
   <div class="wrapper">
+    <!-- Navbar -->
     <nav>
-      <a href="/" class="logo">
-        <img src="/icon-192.png" alt="mitch.pro">
+      <a href="/" class="logo" id="nav-logo" aria-label="mitch.pro Homepage">
+        <img src="/icon-192.png" alt="mitch.pro logo">
         <span>mitch.pro</span>
       </a>
-      <a href="/enroll/" class="btn-ghost">Log In</a>
+      
+      <!-- Hyper Scroll Scroll HUD -->
+      <div class="site-hud" aria-hidden="true">
+        <div class="hud-item"><span class="hud-label">SYS</span><span class="hud-val sys-ok">ONLINE</span></div>
+        <div class="hud-item"><span class="hud-label">VEL</span><span class="hud-val" id="hud-speed">0 PX/S</span></div>
+        <div class="hud-item"><span class="hud-label">FPS</span><span class="hud-val" id="hud-fps">--</span></div>
+      </div>
+      
+      <a href="/enroll/" class="btn-ghost" id="nav-login">Log In</a>
     </nav>
 
+    <!-- Hero Header -->
     <header>
-      <div class="badge">A Private Social Experience</div>
-      <h1>Beyond Just Gaming</h1>
-      <p class="hero-p">A high-performance hub for private student communities. Access private tools, encrypted communication, and community-driven resources.</p>
-      <a href="/enroll/" class="btn-primary">Join the Community</a>
+      <div class="badge" id="hero-badge">
+        <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ac);"></span>
+        A Private Student Experience
+      </div>
+      <h1 id="hero-title">Beyond Just Gaming</h1>
+      <p class="hero-p" id="hero-desc">The high-performance private portal for student communities. Access academic tools, encrypted chat rooms, and sync your gameplay progress seamlessly.</p>
+      <a href="/enroll/" class="btn-primary" id="hero-cta">
+        Join the Community
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+      </a>
+      
+      <a href="#features" class="scroll-indicator" aria-label="Scroll down to features">
+        <span>Explore Portal</span>
+        <div class="mouse"><div class="wheel"></div></div>
+      </a>
+
+      <!-- Procedural wave generator canvas -->
+      <div class="hero-waves" aria-hidden="true">
+        <svg id="hero-wave-svg" viewBox="0 0 1440 240" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="wg1" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(34, 211, 238, 0.08)" />
+              <stop offset="100%" stop-color="#030305" />
+            </linearGradient>
+            <linearGradient id="wg2" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(167, 139, 250, 0.12)" />
+              <stop offset="100%" stop-color="#030305" />
+            </linearGradient>
+            <linearGradient id="wg3" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(34, 211, 238, 0.18)" />
+              <stop offset="100%" stop-color="#030305" />
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
     </header>
 
-    <div class="grid">
-      <div class="feature">
-        <span class="f-icon">💬</span>
-        <h3>Secure Social</h3>
-        <p>End-to-end encrypted chat rooms and private messaging. Your conversations are never logged, staying 100% private.</p>
+    <!-- 3D Scroll Tunnel Section (Aleksa Rakocevic brutalist 3D scroll) -->
+    <section class="tunnel-container" id="tunnel-section">
+      <div class="tunnel-sticky">
+         <!-- Overlays -->
+         <div class="tunnel-scanlines" aria-hidden="true"></div>
+         <div class="tunnel-vignette" aria-hidden="true"></div>
+         <div class="tunnel-noise" aria-hidden="true"></div>
+         
+         <!-- HUD -->
+         <div class="tunnel-hud" aria-hidden="true">
+             <div class="tunnel-hud-top">
+                 <span>SYS.READY</span>
+                 <div class="tunnel-hud-line"></div>
+                 <span>FPS: <strong id="tunnel-fps">60</strong></span>
+             </div>
+             <div class="tunnel-center-nav">
+                 SCROLL VELOCITY // <strong id="tunnel-vel-readout">0.00</strong>
+             </div>
+             <div class="tunnel-hud-bottom">
+                 <span>COORD: <strong id="tunnel-depth">000000</strong></span>
+                 <div class="tunnel-hud-line"></div>
+                 <span>VER 2.0.4 [BETA]</span>
+             </div>
+         </div>
+         
+         <!-- 3D VIEWPORT -->
+         <div class="tunnel-viewport" id="tunnel-viewport">
+             <div class="tunnel-world" id="tunnel-world"></div>
+         </div>
       </div>
-      <div class="feature">
-        <span class="f-icon">☁️</span>
-        <h3>MitchSync</h3>
-        <p>Never lose your progress. Our proprietary cloud-sync engine keeps your high scores, ELO, and settings safe across any device.</p>
-      </div>
-      <div class="feature">
-        <span class="f-icon">🎮</span>
-        <h3>25,000+ Games</h3>
-        <p>Master 50,000+ chess puzzles and explore a massive library of high-performance games with zero lag.</p>
-      </div>
-      <div class="feature">
-        <span class="f-icon">📅</span>
-        <h3>Student Hub</h3>
-        <p>Access live school schedules, academic tools, and community resources designed specifically for our local student body.</p>
+    </section>
+
+    <!-- Simulated UI Mockup (Interactive Parallax Mouse tilting) -->
+    <div class="mockup-container reveal">
+      <div class="window-mockup" id="portal-mockup" role="img" aria-label="mitch.pro simulated application mockup">
+        <div class="window-header">
+          <div class="header-dots">
+            <div class="dot red"></div>
+            <div class="dot yellow"></div>
+            <div class="dot green"></div>
+          </div>
+          <div class="window-title">mitch.pro/portal/dashboard</div>
+        </div>
+        <div class="window-body">
+          <div class="sidebar-mockup">
+            <div class="sidebar-item active">🚀 <span>Dashboard</span></div>
+            <div class="sidebar-item">💬 <span>Secure Chat</span></div>
+            <div class="sidebar-item">☁️ <span>MitchSync</span></div>
+            <div class="sidebar-item">📅 <span>Schedules</span></div>
+            <div class="sidebar-item">🎮 <span>Games Room</span></div>
+          </div>
+          <div class="content-mockup">
+            <div class="mockup-row">
+              <div class="mockup-card">
+                <span class="card-title">MitchSync Status</span>
+                <span class="card-val">Synced</span>
+                <div class="mockup-bar"><div class="mockup-progress"></div></div>
+              </div>
+              <div class="mockup-card">
+                <span class="card-title">Secured Nodes</span>
+                <span class="card-val">100% E2E</span>
+                <div style="font-size: 0.65rem; color: var(--fg-dim); margin-top: 14px;">AES-GCM Encryption Active</div>
+              </div>
+            </div>
+            <div class="mockup-chat">
+              <div class="chat-bubble left">
+                <span class="bubble-meta">Alex • 10:14 AM</span>
+                Anyone down for some Chess puzzles between classes?
+              </div>
+              <div class="chat-bubble right">
+                <span class="bubble-meta">Sam (You) • 10:14 AM</span>
+                Always! Let me sync my ELO real quick on MitchSync.
+              </div>
+              <div class="chat-bubble left">
+                <span class="bubble-meta">Alex • 10:15 AM</span>
+                WHS bell schedule says we have 10 mins left in lunch anyway, let's go!
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
+    <!-- Stats Bar -->
+    <div class="stats-bar reveal">
+      <div class="stat-item" id="stat-puzzles">
+        <div class="stat-number">50,000+</div>
+        <div class="stat-label">Chess Puzzles</div>
+      </div>
+      <div class="stat-item" id="stat-privacy">
+        <div class="stat-number">100%</div>
+        <div class="stat-label">Encrypted & Private</div>
+      </div>
+      <div class="stat-item" id="stat-games">
+        <div class="stat-number">Instant</div>
+        <div class="stat-label">Cloud Progress Sync</div>
+      </div>
+    </div>
+
+    <!-- Features Section -->
+    <div id="features" style="scroll-margin-top: 40px;">
+      <div class="section-title-wrap reveal">
+        <h2 class="section-title">Designed for Students</h2>
+        <p class="section-desc">Experience a high-performance student utility hub loaded with features that put privacy and productivity first.</p>
+      </div>
+
+      <!-- DepthFold 3D Interactive Card Grid -->
+      <div class="grid">
+        <!-- Secure Social -->
+        <div class="ux-parent ux-parent--mint reveal">
+          <div class="ux-card" id="feat-chat">
+            <div class="ux-logo" aria-hidden="true">
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle">💬</span>
+            </div>
+            <div class="ux-glass"></div>
+            <div class="ux-content">
+              <h3 class="ux-title">Secure Social</h3>
+              <p class="ux-text">End-to-end encrypted chat rooms and private messaging. Your conversations are never logged, ensuring 100% absolute student privacy.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- MitchSync Engine -->
+        <div class="ux-parent ux-parent--violet reveal" style="transition-delay: 0.1s;">
+          <div class="ux-card" id="feat-sync">
+            <div class="ux-logo" aria-hidden="true">
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle">☁️</span>
+            </div>
+            <div class="ux-glass"></div>
+            <div class="ux-content">
+              <h3 class="ux-title">MitchSync Engine</h3>
+              <p class="ux-text">Never lose your gameplay progress. Our proprietary cloud-sync engine keeps your high scores, chess ELO, and settings safe across all devices.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Games Library -->
+        <div class="ux-parent ux-parent--solar reveal" style="transition-delay: 0.2s;">
+          <div class="ux-card" id="feat-games">
+            <div class="ux-logo" aria-hidden="true">
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle">🎮</span>
+            </div>
+            <div class="ux-glass"></div>
+            <div class="ux-content">
+              <h3 class="ux-title">Massive Library</h3>
+              <p class="ux-text">Master 50,000+ chess puzzles, ELO matches, and explore a huge catalog of high-performance unblocked games with zero browser latency.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Academic Hub -->
+        <div class="ux-parent ux-parent--ocean reveal" style="transition-delay: 0.3s;">
+          <div class="ux-card" id="feat-hub">
+            <div class="ux-logo" aria-hidden="true">
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle"></span>
+              <span class="ux-circle">📅</span>
+            </div>
+            <div class="ux-glass"></div>
+            <div class="ux-content">
+              <h3 class="ux-title">Academic Hub</h3>
+              <p class="ux-text">Access real-time local school bell schedules, class counters, custom homework trackers, and resources built for the student body.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Showcase Block -->
+    <div class="showcase-block reveal">
+      <div class="showcase-text">
+        <h2>Always Connected with MitchSync</h2>
+        <p>Your portal profile automatically backs up ELO ratings, preferences, and custom save files. Transition seamlessly from laptop to mobile without losing progress.</p>
+        <ul class="showcase-bullets">
+          <li class="showcase-bullet">
+            <span class="bullet-check" aria-hidden="true">✓</span>
+            <span>Automatic cloud backups on every game exit</span>
+          </li>
+          <li class="showcase-bullet">
+            <span class="bullet-check" aria-hidden="true">✓</span>
+            <span>Encrypted transmission of user game states</span>
+          </li>
+          <li class="showcase-bullet">
+            <span class="bullet-check" aria-hidden="true">✓</span>
+            <span>Support for offline profile saving fallback</span>
+          </li>
+        </ul>
+      </div>
+      <div class="diagram-panel" role="img" aria-label="Visual animation diagram of MitchSync database syncing between phone and laptop">
+        <div class="diagram-devices">
+          <div class="device-box active" id="dev-a">💻 Laptop</div>
+          <div class="device-box" id="dev-b">📱 Phone</div>
+        </div>
+        
+        <div class="diagram-cloud">
+          <div class="diagram-cloud-inner">
+            <span aria-hidden="true">☁️</span>
+            <label>Database</label>
+          </div>
+        </div>
+
+        <div class="sync-line sync-line-left" aria-hidden="true"></div>
+        <div class="sync-line sync-line-right" aria-hidden="true"></div>
+        
+        <div style="font-size: 0.75rem; font-weight:600; letter-spacing:0.02em; opacity: 0.8; color: var(--ac); margin-top:-10px;">Real-Time Sync Active</div>
+      </div>
+    </div>
+
+    <!-- FAQ Accordion -->
+    <div class="faq-container reveal">
+      <div class="section-title-wrap">
+        <h2 class="section-title">Frequently Asked Questions</h2>
+        <p class="section-desc">Got questions? We've got answers about accounts, privacy, and gaming.</p>
+      </div>
+      
+      <div class="faq-accordion">
+        <details id="faq-privacy">
+          <summary>Is my chat activity actually private?</summary>
+          <div class="faq-content">
+            Yes. Our chatrooms utilize client-side hashing and end-to-end encrypted tunnels. Conversations are transient and designed to disappear, meaning they are never stored or logged on any remote server database.
+          </div>
+        </details>
+        <details id="faq-mitchsync">
+          <summary>What is MitchSync?</summary>
+          <div class="faq-content">
+            MitchSync is our proprietary background API that syncs your local browser state with your profile token. It saves data like emulator game progress, statistics, settings, and high scores automatically.
+          </div>
+        </details>
+        <details id="faq-coins">
+          <summary>What are Mitch Coins?</summary>
+          <div class="faq-content">
+            Mitch Coins are a site-wide virtual currency. You earn them by placing pixels on the global canvas, solving daily chess puzzles, winning arcade games, or participating in events. They have <strong>zero real-world value</strong> and cannot be purchased with real money.
+          </div>
+        </details>
+        <details id="faq-premium">
+          <summary>What is "Premium" status?</summary>
+          <div class="faq-content">
+            Premium is a cosmetic upgrade that unlocks perks like <strong>Canvas Protection</strong> (locking your pixels so they can't be overwritten), custom badges, rainbow name animation in chat and leaderboards, and access to a private, premium-only chat room.
+          </div>
+        </details>
+        <details id="faq-e2e">
+          <summary>How does E2E Encryption work here?</summary>
+          <div class="faq-content">
+            Direct DMs use End-to-End Encryption (E2E). This means your messages are scrambled on your device and only the recipient can unscramble them. Even mitch.pro administrators cannot read your private messages. We use the browser's native Web Crypto API (AES-GCM 256-bit) for maximum security.
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <!-- Glowing Call-to-Action -->
+    <div class="cta-card reveal" id="enroll-cta-card">
+      <h2>Ready to Enter the Portal?</h2>
+      <p>Secure your profile today, sync your progress, and join the elite student community.</p>
+      <a href="/enroll/" class="btn-primary" id="cta-enroll-button">
+        Request Invitation
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+      </a>
+    </div>
+
+    <!-- Footer -->
     <footer>
-      &copy; 2026 mitch.pro &middot; <a href="/faq.html">FAQ</a> &middot; <a href="/privacy/">Privacy</a>
+      <p>&copy; 2026 mitch.pro &middot; <a href="/faq.html" id="footer-faq">FAQ</a> &middot; <a href="/privacy/" id="footer-privacy">Privacy</a></p>
     </footer>
   </div>
+
+  <!-- Scroll Animation and Progress Scripts -->
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      // 1. Scroll Progress Bar
+      const progressBar = document.getElementById('scroll-progress');
+      window.addEventListener('scroll', () => {
+        const winScroll = document.documentElement.scrollTop || document.body.scrollTop;
+        const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        const scrolled = (winScroll / height) * 100;
+        progressBar.style.width = scrolled + '%';
+      });
+
+      // 2. Intersection Observer for Scroll Reveal Animations
+      const observerOptions = {
+        root: null,
+        rootMargin: '0px 0px -100px 0px',
+        threshold: 0.1
+      };
+
+      const revealObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            revealObserver.unobserve(entry.target);
+          }
+        });
+      }, observerOptions);
+
+      document.querySelectorAll('.reveal').forEach(element => {
+        revealObserver.observe(element);
+      });
+
+      // 3. Mini interactive sync diagram animation state toggler
+      const devA = document.getElementById('dev-a');
+      const devB = document.getElementById('dev-b');
+      setInterval(() => {
+        devA.classList.toggle('active');
+        devB.classList.toggle('active');
+      }, 3000);
+
+      // 4. Hyper Scroll Scrolling Speed/Velocity and FPS tracker in HUD
+      let lastScrollTop = 0;
+      let lastScrollTime = Date.now();
+      let scrollSpeed = 0;
+      let velocityReadout = document.getElementById('hud-speed');
+      let fpsReadout = document.getElementById('hud-fps');
+      
+      let frameCount = 0;
+      let lastFpsTime = Date.now();
+      
+      function updateFps() {
+        frameCount++;
+        let now = Date.now();
+        if (now - lastFpsTime >= 1000) {
+          if (fpsReadout) fpsReadout.textContent = frameCount;
+          frameCount = 0;
+          lastFpsTime = now;
+        }
+        requestAnimationFrame(updateFps);
+      }
+      requestAnimationFrame(updateFps);
+
+      window.addEventListener('scroll', () => {
+        let now = Date.now();
+        let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        let dt = (now - lastScrollTime) / 1000;
+        if (dt > 0.005) {
+          let dy = scrollTop - lastScrollTop;
+          scrollSpeed = Math.abs(dy / dt);
+          if (velocityReadout) {
+            velocityReadout.textContent = Math.round(scrollSpeed) + ' PX/S';
+          }
+          lastScrollTop = scrollTop;
+          lastScrollTime = now;
+        }
+      }, { passive: true });
+
+      // 5. Interactive Mockup Mouse Parallax Tilting (DepthFold style)
+      const mockupContainer = document.querySelector('.mockup-container');
+      const mockup = document.querySelector('.window-mockup');
+      
+      if (mockupContainer && mockup) {
+        mockupContainer.addEventListener('mousemove', (e) => {
+          const rect = mockupContainer.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / rect.width - 0.5;
+          const y = (e.clientY - rect.top) / rect.height - 0.5;
+          
+          mockup.style.transform = `rotateY(${x * 14}deg) rotateX(${-y * 14}deg)`;
+        });
+        
+        mockupContainer.addEventListener('mouseleave', () => {
+          mockup.style.transform = `rotateX(5deg) rotateY(0deg)`;
+        });
+      }
+
+      // 6. Procedural Hero Waves Builder (Tidal waves code)
+      (function buildHeroWaves() {
+        const svg = document.getElementById("hero-wave-svg");
+        if (!svg) return;
+        const NS = "http://www.w3.org/2000/svg";
+        const W = 1440, H = 240;
+        const rand = (a, b) => a + Math.random() * (b - a);
+        const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        if (!document.getElementById("hero-wave-kf")) {
+          const st = document.createElement("style");
+          st.id = "hero-wave-kf";
+          st.textContent =
+            "@keyframes heroWaveScroll{from{transform:translateX(0)}to{transform:translateX(-" + W + "px)}}" +
+            ".hwave{will-change:transform}";
+          document.head.appendChild(st);
+        }
+
+        function makeWave(baseY, octaves) {
+          const comps = octaves.map((o) => ({
+            k: o.k,
+            amp: o.amp * rand(0.7, 1.25),
+            ph: rand(0, Math.PI * 2)
+          }));
+          return (x) => {
+            let y = baseY;
+            for (const c of comps)
+              y -= c.amp * Math.sin((2 * Math.PI * c.k * x) / W + c.ph);
+            return y;
+          };
+        }
+
+        function topLine(fn) {
+          const step = 6;
+          let d = "M 0 " + fn(0).toFixed(1);
+          for (let x = step; x <= 2 * W; x += step)
+            d += " L " + x + " " + fn(x).toFixed(1);
+          return d;
+        }
+
+        function crests(fn) {
+          const step = 4, pts = [];
+          let prev = fn(-step), cur = fn(0);
+          for (let x = 0; x < W; x += step) {
+            const nxt = fn(x + step);
+            if (cur < prev && cur < nxt) pts.push({ x, y: cur });
+            prev = cur;
+            cur = nxt;
+          }
+          return pts;
+        }
+
+        const layers = [
+          {
+            baseY: 108,
+            oct: [
+              { k: 1, amp: 32 },
+              { k: 2, amp: 15 },
+              { k: 3, amp: 8 }
+            ],
+            fill: "url(#wg1)",
+            dur: 27,
+            rev: false,
+            foam: "rgba(34,211,238,0.06)",
+            fw: 1.5,
+            dots: 0
+          },
+          {
+            baseY: 130,
+            oct: [
+              { k: 1, amp: 28 },
+              { k: 2, amp: 17 },
+              { k: 4, amp: 9 }
+            ],
+            fill: "url(#wg2)",
+            dur: 21,
+            rev: true,
+            foam: "rgba(167,139,250,0.08)",
+            fw: 2,
+            dots: 3
+          },
+          {
+            baseY: 156,
+            oct: [
+              { k: 2, amp: 20 },
+              { k: 3, amp: 13 },
+              { k: 5, amp: 7 }
+            ],
+            fill: "url(#wg3)",
+            dur: 15,
+            rev: false,
+            foam: "rgba(34,211,238,0.12)",
+            fw: 2.4,
+            dots: 4
+          },
+          {
+            baseY: 188,
+            oct: [
+              { k: 2, amp: 14 },
+              { k: 4, amp: 9 },
+              { k: 6, amp: 6 }
+            ],
+            fill: "#030305",
+            dur: 11,
+            rev: true,
+            foam: "rgba(255,255,255,0.04)",
+            fw: 2,
+            dots: 5
+          }
+        ];
+
+        layers.forEach((L) => {
+          const fn = makeWave(L.baseY, L.oct);
+          const line = topLine(fn);
+          const g = document.createElementNS(NS, "g");
+          g.setAttribute("class", "hwave");
+          if (!reduce)
+            g.style.animation =
+              "heroWaveScroll " + L.dur + "s linear infinite" + (L.rev ? " reverse" : "");
+
+          const body = document.createElementNS(NS, "path");
+          body.setAttribute("d", line + " L " + 2 * W + " " + H + " L 0 " + H + " Z");
+          body.setAttribute("fill", L.fill);
+          g.appendChild(body);
+
+          const crest = document.createElementNS(NS, "path");
+          crest.setAttribute("d", line);
+          crest.setAttribute("fill", "none");
+          crest.setAttribute("stroke", L.foam);
+          crest.setAttribute("stroke-width", L.fw);
+          crest.setAttribute("stroke-linecap", "round");
+          g.appendChild(crest);
+
+          if (L.dots) {
+            const cs = crests(fn);
+            for (let i = cs.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [cs[i], cs[j]] = [cs[j], cs[i]];
+            }
+            cs.slice(0, L.dots).forEach((p) => {
+              [0, W].forEach((off) => {
+                const c = document.createElementNS(NS, "circle");
+                c.setAttribute("cx", (p.x + off).toFixed(1));
+                c.setAttribute("cy", p.y.toFixed(1));
+                c.setAttribute("r", rand(1.5, 3).toFixed(1));
+                c.setAttribute("fill", "rgba(34,211,238," + rand(0.08, 0.2).toFixed(2) + ")");
+                g.appendChild(c);
+              });
+            });
+          }
+          svg.appendChild(g);
+        });
+      })();
+
+      // --- 3D SCROLL TUNNEL LOGIC (Aleksa Rakocevic) ---
+      (function initTunnel() {
+        const container = document.getElementById('tunnel-section');
+        const world = document.getElementById('tunnel-world');
+        const viewport = document.getElementById('tunnel-viewport');
+        const fpsVal = document.getElementById('tunnel-fps');
+        const velVal = document.getElementById('tunnel-vel-readout');
+        const depthVal = document.getElementById('tunnel-depth');
+
+        if (!container || !world || !viewport) return;
+
+        const CONFIG = {
+          itemCount: 16,
+          starCount: 100,
+          zGap: 800,
+          loopSize: 0,
+          camSpeed: 2.5
+        };
+        CONFIG.loopSize = CONFIG.itemCount * CONFIG.zGap;
+
+        const TEXTS = [
+          "SECURE", "ENCRYPT", "CLOUD", "ARCADE", 
+          "SPEED", "PRIVACY", "PORTAL", "MITCHSYNC", 
+          "E2E", "COMMUNITY", "BYPASS", "HYPER", 
+          "LATENCY", "COINS", "PREMIUM", "FUTURE"
+        ];
+
+        const FEATURES = [
+          { title: "SECURE CHAT", id: "SEC-9821", f1: "CRYPT: AES-GCM", f2: "E2E: ACTIVE" },
+          { title: "MITCH SYNC", id: "SYN-2849", f1: "TYPE: BACKUP", f2: "STATUS: SYNCED" },
+          { title: "ARCADE HALL", id: "ARC-1102", f1: "GAMES: 50,000+", f2: "SPEED: DYNAMIC" },
+          { title: "WHS SCHEDULE", id: "SCH-7763", f1: "CLASS: CALENDAR", f2: "LIVE: BELLS" },
+          { title: "PRIVACY NET", id: "NET-6629", f1: "LOGS: NONE", f2: "ANONYMOUS: 100%" },
+          { title: "MITCH COINS", id: "COI-4091", f1: "VAL: COSMETIC", f2: "EARN: PLAYS" },
+          { title: "PREMIUM COK", id: "PRE-0928", f1: "BADGE: RAINBOW", f2: "CHAT: ACCS" },
+          { title: "E2E TUNNELS", id: "TUN-8831", f1: "NODE: HYPER", f2: "PORT: SECURE" }
+        ];
+
+        const state = {
+          scrollProgress: 0,
+          velocity: 0,
+          targetSpeed: 0,
+          mouseX: 0,
+          mouseY: 0
+        };
+
+        const items = [];
+
+        // 1. Create items
+        for (let i = 0; i < CONFIG.itemCount; i++) {
+          const el = document.createElement('div');
+          el.className = 'tunnel-item';
+
+          const isHeading = i % 2 === 0;
+
+          if (isHeading) {
+            const txt = document.createElement('div');
+            txt.className = 'tunnel-big-text';
+            txt.innerText = TEXTS[i % TEXTS.length];
+            el.appendChild(txt);
+            items.push({
+              el, type: 'text',
+              x: 0, y: 0, rot: (i % 3 - 1) * 5,
+              baseZ: -i * CONFIG.zGap
+            });
+          } else {
+            const cardData = FEATURES[Math.floor(i / 2) % FEATURES.length];
+            const card = document.createElement('div');
+            card.className = 'tunnel-card';
+            card.innerHTML = `
+              <div class="tunnel-card-header">
+                <span class="tunnel-card-id">${cardData.id}</span>
+                <div style="width: 10px; height: 10px; background: var(--tunnel-accent);"></div>
+              </div>
+              <h2>${cardData.title}</h2>
+              <div class="tunnel-card-footer">
+                <span>${cardData.f1}</span>
+                <span>${cardData.f2}</span>
+              </div>
+              <div style="position:absolute; bottom:1.8rem; right:1.8rem; font-size:3rem; opacity:0.06; font-weight:900; font-family:var(--font-code);">0${i}</div>
+            `;
+            el.appendChild(card);
+
+            const angle = (i / CONFIG.itemCount) * Math.PI * 6;
+            const x = Math.cos(angle) * (window.innerWidth * 0.22);
+            const y = Math.sin(angle) * (window.innerHeight * 0.2);
+            const rot = (Math.random() - 0.5) * 20;
+
+            items.push({
+              el, type: 'card',
+              x, y, rot,
+              baseZ: -i * CONFIG.zGap
+            });
+          }
+          world.appendChild(el);
+        }
+
+        // 2. Create Stars
+        for (let i = 0; i < CONFIG.starCount; i++) {
+          const el = document.createElement('div');
+          el.className = 'tunnel-star';
+          world.appendChild(el);
+          items.push({
+            el, type: 'star',
+            x: (Math.random() - 0.5) * 3500,
+            y: (Math.random() - 0.5) * 3500,
+            baseZ: -Math.random() * CONFIG.loopSize
+          });
+        }
+
+        // Mouse move
+        container.addEventListener('mousemove', (e) => {
+          const rect = container.getBoundingClientRect();
+          state.mouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+          state.mouseY = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+        });
+
+        let lastProgress = 0;
+        let lastTime = performance.now();
+        let frameCount = 0;
+        let lastFpsTime = performance.now();
+
+        function render(time) {
+          const rect = container.getBoundingClientRect();
+          const viewH = window.innerHeight;
+          
+          if (rect.top <= viewH && rect.bottom >= 0) {
+            const totalScroll = rect.height - viewH;
+            const currentScroll = -rect.top;
+            const progress = Math.max(0, Math.min(1, currentScroll / totalScroll));
+            
+            const dt = time - lastTime;
+            if (dt > 0) {
+              const deltaProgress = progress - lastProgress;
+              state.targetSpeed = (deltaProgress * CONFIG.loopSize) / (dt / 16.666);
+            }
+            lastProgress = progress;
+            lastTime = time;
+
+            state.velocity += (state.targetSpeed - state.velocity) * 0.12;
+
+            if (velVal) velVal.innerText = Math.abs(state.velocity).toFixed(2);
+            const virtualDepth = progress * CONFIG.loopSize;
+            if (depthVal) depthVal.innerText = virtualDepth.toFixed(0).padStart(6, '0');
+
+            frameCount++;
+            if (time - lastFpsTime >= 1000) {
+              if (fpsVal) fpsVal.innerText = frameCount;
+              frameCount = 0;
+              lastFpsTime = time;
+            }
+
+            const shake = state.velocity * 0.15;
+            const tiltX = state.mouseY * 6 - state.velocity * 0.3;
+            const tiltY = state.mouseX * 6;
+
+            world.style.transform = `
+              rotateX(${tiltX}deg) 
+              rotateY(${tiltY}deg)
+            `;
+
+            const baseFov = 1000;
+            const fov = baseFov - Math.min(Math.abs(state.velocity) * 12, 550);
+            viewport.style.perspective = `${fov}px`;
+
+            const cameraZ = virtualDepth * CONFIG.camSpeed;
+
+            items.forEach(item => {
+              let relZ = item.baseZ + cameraZ;
+              const modC = CONFIG.loopSize;
+
+              let vizZ = ((relZ % modC) + modC) % modC;
+              if (vizZ > 500) vizZ -= modC;
+
+              let alpha = 1;
+              if (vizZ < -2800) alpha = 0;
+              else if (vizZ < -1800) alpha = (vizZ + 2800) / 1000;
+
+              if (vizZ > 150 && item.type !== 'star') alpha = 1 - ((vizZ - 150) / 350);
+              if (alpha < 0) alpha = 0;
+
+              item.el.style.opacity = alpha;
+
+              if (alpha > 0) {
+                let trans = `translate3d(${item.x}px, ${item.y}px, ${vizZ}px)`;
+
+                if (item.type === 'star') {
+                  const stretch = Math.max(1, Math.min(1 + Math.abs(state.velocity) * 0.08, 8));
+                  trans += ` scale3d(1, 1, ${stretch})`;
+                } else if (item.type === 'text') {
+                  trans += ` rotateZ(${item.rot}deg)`;
+                  if (Math.abs(state.velocity) > 0.8) {
+                    const offset = Math.max(-12, Math.min(12, state.velocity * 1.5));
+                    item.el.style.textShadow = `${offset}px 0 var(--tunnel-accent), ${-offset}px 0 var(--tunnel-accent-2)`;
+                  } else {
+                    item.el.style.textShadow = 'none';
+                  }
+                } else {
+                  const t = time * 0.001;
+                  const float = Math.sin(t + item.x) * 8;
+                  trans += ` rotateZ(${item.rot}deg) rotateY(${float}deg)`;
+                }
+                item.el.style.transform = trans;
+              }
+            });
+          } else {
+            lastTime = time;
+            state.targetSpeed = 0;
+            state.velocity = 0;
+          }
+
+          requestAnimationFrame(render);
+        }
+
+        requestAnimationFrame(render);
+      })();
+    });
+  </script>
 </body>
 </html>
