@@ -8119,7 +8119,8 @@ function loadAllGamesList() {
       const isAdmin = isAdminId(sid);
       const tokens = loadTokens();
       const now = Date.now();
-      touchActiveEmail(emailFromSid(sid), now);
+      const viewerEmail = emailFromSid(sid);
+      touchActiveEmail(viewerEmail, now);
       const stats = loadUserStats();
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
@@ -8132,6 +8133,11 @@ function loadAllGamesList() {
       for (const u of Object.values(e2eUsers)) {
         if (u.email && now - u.last_seen < 60000) onlineEmails.add(normalizeEmail(u.email));
       }
+      
+      const dms = loadJson(DMS_FILE, []);
+      const cleared = loadJson(DM_CLEARED_FILE, {});
+      const myCleared = cleared[normalizeEmail(viewerEmail)] || {};
+      
       const seen = new Set();
       const members = [];
       for (const [tok, data] of Object.entries(tokens)) {
@@ -8148,20 +8154,72 @@ function loadAllGamesList() {
         else if (isModeratorEmail(email)) role = 'moderator';
         else if (isPremiumEmail(email)) role = 'premium';
         const e2e = deriveUserE2EKeys(email);
-        const viewerEmail = emailFromSid(sid);
         const processed = processMemberFields(email, profile, viewerEmail);
+        
+        // Find last message and unread count
+        const clearedAt = myCleared['dm:' + norm] || 0;
+        const memberDMs = dms.filter(m => {
+          if (m.kind === 'group') return false;
+          return ((normalizeEmail(m.from) === normalizeEmail(viewerEmail) && normalizeEmail(m.to) === norm) ||
+                  (normalizeEmail(m.from) === norm && normalizeEmail(m.to) === normalizeEmail(viewerEmail))) &&
+                 (m.ts || 0) > clearedAt;
+        });
+        
+        let lastMessage = null;
+        if (memberDMs.length > 0) {
+          let maxTs = 0;
+          let maxMsg = null;
+          for (const m of memberDMs) {
+            if ((m.ts || 0) >= maxTs) {
+              maxTs = m.ts || 0;
+              maxMsg = m;
+            }
+          }
+          if (maxMsg) {
+            lastMessage = {
+              ...maxMsg,
+              from: maskEmail(maxMsg.from),
+              to: maskEmail(maxMsg.to),
+              readBy: (maxMsg.readBy || []).map(maskEmail)
+            };
+          }
+        }
+        
+        const unread = memberDMs.filter(m => normalizeEmail(m.to) === normalizeEmail(viewerEmail) && !m.read).length;
+
         members.push({ 
           email: processed.email, 
           online: onlineEmails.has(normalizeEmail(email)), 
           role,
-
           displayName: processed.displayName,
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null,
-          pubKey: e2e.pubKeyHex
+          pubKey: e2e.pubKeyHex,
+          lastMessage,
+          unread
         });
       }
-      members.sort((a, b) => b.online - a.online || a.email.localeCompare(b.email));
+      
+      const backendRoleRank = (r) => {
+        const roleStr = String(r || '');
+        if (roleStr.includes('owner')) return 5;
+        if (roleStr.includes('admin')) return 4;
+        if (roleStr.includes('moderator')) return 3;
+        if (roleStr.includes('premium')) return 2;
+        return 1;
+      };
+
+      members.sort((a, b) => {
+        const tsA = a.lastMessage ? (a.lastMessage.ts || 0) : 0;
+        const tsB = b.lastMessage ? (b.lastMessage.ts || 0) : 0;
+        if (tsB !== tsA) return tsB - tsA;
+        const rankA = backendRoleRank(a.role);
+        const rankB = backendRoleRank(b.role);
+        if (rankB !== rankA) return rankB - rankA;
+        if (b.online !== a.online) return Number(b.online) - Number(a.online);
+        return a.email.localeCompare(b.email);
+      });
+
       return jsonResp(200, { members });
     }
     // /api/premium-members — public list of approved premium users
@@ -8380,8 +8438,18 @@ function loadAllGamesList() {
         msg = { kind: 'group', groupId, groupName: group.name, from: senderEmail, text, image: safeImage, replyTo, ts: Date.now(), readBy: [senderEmail] };
         dms.push(msg);
         saveJson(DMS_FILE, pruneDms(dms));
+        const getNotificationBody = (t, img) => {
+          try {
+            const parsed = JSON.parse(t);
+            if (parsed && parsed.e2e) {
+              return img ? '[Secure Image]' : '[Secure Message]';
+            }
+          } catch (e) {}
+          return img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120);
+        };
+
         if (VAPID_PUBLIC) {
-          const notifyBody = safeImage ? (text ? text.slice(0, 90) + ' [image]' : 'Sent an image') : text.slice(0, 120);
+          const notifyBody = getNotificationBody(text, safeImage);
           for (const member of group.members) {
             if (normalizeEmail(member) === normalizeEmail(senderEmail)) continue;
             const recActive = (member in e2eUsers) && (Date.now() - e2eUsers[member].last_seen < 30000);
@@ -8400,7 +8468,7 @@ function loadAllGamesList() {
         if (!recActive && VAPID_PUBLIC && subs[to]) {
           webpush.sendNotification(subs[to], JSON.stringify({
             title: `Message from ${maskEmail(senderEmail)}`,
-            body:  safeImage ? (text ? text.slice(0, 90) + ' [image]' : 'Sent an image') : text.slice(0, 120),
+            body:  getNotificationBody(text, safeImage),
             url:   notificationUrl('/encrypt.html'),
           })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[to]; saveJson(PUSH_SUBS_FILE, subs); } });
         }
@@ -8435,12 +8503,22 @@ function loadAllGamesList() {
                         .sort((a, b) => (b.ts || 0) - (a.ts || 0));
         const last = msgs[0];
         const unread = msgs.filter(m => !(m.readBy || []).some(e => normalizeEmail(e) === normalizeEmail(myEmail))).length;
+        let lastMessage = null;
+        if (last) {
+          lastMessage = {
+            ...last,
+            from: maskEmail(last.from),
+            to: last.to ? maskEmail(last.to) : undefined,
+            readBy: (last.readBy || []).map(maskEmail)
+          };
+        }
         return { 
           ...g, 
           members: (g.members || []).map(maskEmail),
           createdBy: maskEmail(g.createdBy),
           lastText: last ? (last.text || (last.image ? 'Sent an image' : '')) : '', 
           lastTs: last ? last.ts : g.createdAt, 
+          lastMessage,
           unread 
         };
       });

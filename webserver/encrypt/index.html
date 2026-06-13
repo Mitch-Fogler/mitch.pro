@@ -920,7 +920,10 @@ function startLivePolling() {
 
 async function refreshEverything() {
   await loadMembers();
-  await Promise.all([loadGroups(), loadAllMessages()]);
+  await loadGroups();
+  if (!dmSince) {
+    dmSince = Date.now();
+  }
   renderList();
   if (activeChat) await reloadActiveChat();
 }
@@ -929,7 +932,25 @@ async function loadMembers() {
   try {
     const r = await fetch('/api/members', { credentials:'include' });
     const d = await r.json();
-    members = (d.members || []).filter(m => !sameEmail(m.email, myEmail));
+    const fetchedMembers = (d.members || []).filter(m => !sameEmail(m.email, myEmail));
+    
+    // Decrypt lastMessage for all members
+    await Promise.all(fetchedMembers.map(async m => {
+      if (m.lastMessage) {
+        await decryptMessageContent(m.lastMessage);
+      }
+    }));
+    
+    members = fetchedMembers;
+    
+    // Populate unreadDm
+    unreadDm = {};
+    members.forEach(m => {
+      if (m.unread) {
+        unreadDm[directKey(m.email)] = m.unread;
+      }
+    });
+    
     renderList();
   } catch {}
 }
@@ -938,7 +959,16 @@ async function loadGroups() {
   try {
     const r = await fetch('/api/dm/groups', { credentials:'include' });
     const d = await r.json();
-    groups = d.groups || [];
+    const fetchedGroups = d.groups || [];
+    
+    // Decrypt lastMessage for all groups
+    await Promise.all(fetchedGroups.map(async g => {
+      if (g.lastMessage) {
+        await decryptMessageContent(g.lastMessage);
+      }
+    }));
+    
+    groups = fetchedGroups;
     unreadGroup = {};
     groups.forEach(g => { if (g.unread) unreadGroup[g.id] = g.unread; });
     renderList();
@@ -946,28 +976,7 @@ async function loadGroups() {
 }
 
 async function loadAllMessages() {
-  try {
-    const r = await fetch('/api/dm/inbox?since=0', { credentials:'include' });
-    const d = await r.json();
-    const msgs = (d.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
-    // Optimization: Only decrypt recent messages for previews to avoid heavy lag on load
-    const recent = msgs.slice(-500);
-    await Promise.all(recent.map(decryptMessageContent));
-    allMessages = msgs;
-    unreadDm = {};
-    dmSince = 0;
-    for (const m of allMessages) {
-      dmSince = Math.max(dmSince, m.ts || 0);
-      if (m.kind === 'group') {
-        if (!sameEmail(m.from, myEmail) && !(m.readBy || []).some(e => sameEmail(e, myEmail))) {
-          unreadGroup[m.groupId] = (unreadGroup[m.groupId] || 0) + 1;
-        }
-      } else if (!sameEmail(m.from, myEmail) && sameEmail(m.to, myEmail) && !m.read) {
-        const k = directKey(m.from);
-        unreadDm[k] = (unreadDm[k] || 0) + 1;
-      }
-    }
-  } catch {}
+  // E2E chat optimization: all messages are loaded on-demand per chat instead of loading all on startup.
 }
 
 function setView(view) {
@@ -1030,11 +1039,15 @@ function renderList() {
     list.innerHTML = filtered.map(g => {
       const unread = unreadGroup[g.id] || g.unread || 0;
       const membersText = (g.members || []).map(displayNameFor).slice(0, 4).join(', ');
+      let previewText = g.lastText || membersText || ((g.members || []).length + ' members');
+      if (g.lastMessage) {
+        previewText = g.lastMessage.text || (g.lastMessage.image ? 'Sent an image' : '');
+      }
       return `<button class="user-entry ${activeChat && activeChat.type === 'group' && activeChat.id === g.id ? 'active' : ''}" data-group="${esc(g.id)}">
         <span class="dot on"></span>
         <span class="entry-main">
           <span class="entry-name">${esc(g.name || 'Group chat')}</span>
-          <span class="entry-sub">${esc(g.lastText || membersText || ((g.members || []).length + ' members'))}</span>
+          <span class="entry-sub">${esc(previewText)}</span>
         </span>
         ${unread ? `<span class="unread">${unread}</span>` : `<span class="role-tag">${(g.members || []).length}</span>`}
       </button>`;
@@ -1049,8 +1062,8 @@ function renderList() {
       return !q || hay.includes(q);
     })
     .sort((a, b) => {
-      const la = lastDirectMessage(a.email);
-      const lb = lastDirectMessage(b.email);
+      const la = a.lastMessage;
+      const lb = b.lastMessage;
       return (lb ? lb.ts : 0) - (la ? la.ts : 0) ||
         roleRank(b.role) - roleRank(a.role) ||
         Number(b.online) - Number(a.online) ||
@@ -1071,7 +1084,7 @@ function renderList() {
     owner_fan_badge: 'CROWN'
   };
   list.innerHTML = filtered.map(m => {
-    const last = lastDirectMessage(m.email);
+    const last = m.lastMessage;
     const unread = unreadDm[directKey(m.email)] || 0;
     const role = roleInfo(m.role);
     const name = m.displayName || m.email.split('@')[0];
@@ -1585,6 +1598,20 @@ async function send() {
     msg.text = text;
     dmSince = Math.max(dmSince, msg.ts || 0);
     allMessages.push(msg);
+    if (msg.kind === 'group') {
+      const g = groups.find(x => String(x.id) === String(msg.groupId));
+      if (g) {
+        g.lastMessage = msg;
+        g.lastText = msg.text || (msg.image ? 'Sent an image' : '');
+        g.lastTs = msg.ts;
+      }
+    } else {
+      const peerEmail = activeChat.id;
+      const member = members.find(x => sameEmail(x.email, peerEmail));
+      if (member) {
+        member.lastMessage = msg;
+      }
+    }
     if (isActiveMessage(msg)) appendOrRerender(msg);
     renderList();
   } catch {
@@ -1607,17 +1634,49 @@ async function pollNewDMs() {
       dmSince = Math.max(dmSince, m.ts || 0);
       if (allMessages.some(existing => msgId(existing) === msgId(m))) continue;
       allMessages.push(m);
-      if (sameEmail(m.from, myEmail)) continue;
+      if (sameEmail(m.from, myEmail)) {
+        if (m.kind === 'group') {
+          const g = groups.find(x => String(x.id) === String(m.groupId));
+          if (g) {
+            g.lastMessage = m;
+            g.lastText = m.text || (m.image ? 'Sent an image' : '');
+            g.lastTs = m.ts;
+          }
+        } else {
+          const peerEmail = m.to;
+          const member = members.find(x => sameEmail(x.email, peerEmail));
+          if (member) {
+            member.lastMessage = m;
+          }
+        }
+        continue;
+      }
       if (isActiveMessage(m)) {
         currentMessages.push(m);
         activeAdded = true;
-      } else if (m.kind === 'group') {
-        unreadGroup[m.groupId] = (unreadGroup[m.groupId] || 0) + 1;
+      }
+      
+      if (m.kind === 'group') {
+        if (!isActiveMessage(m)) {
+          unreadGroup[m.groupId] = (unreadGroup[m.groupId] || 0) + 1;
+        }
         showNotif(m.groupName || 'Group chat', m.text || (m.image ? 'Sent an image' : 'New message'));
+        const g = groups.find(x => String(x.id) === String(m.groupId));
+        if (g) {
+          g.lastMessage = m;
+          g.lastText = m.text || (m.image ? 'Sent an image' : '');
+          g.lastTs = m.ts;
+        }
       } else {
-        const k = directKey(m.from);
-        unreadDm[k] = (unreadDm[k] || 0) + 1;
+        if (!isActiveMessage(m)) {
+          const k = directKey(m.from);
+          unreadDm[k] = (unreadDm[k] || 0) + 1;
+        }
         showNotif(displayNameFor(m.from), m.text || (m.image ? 'Sent an image' : 'New message'));
+        const member = members.find(x => sameEmail(x.email, m.from));
+        if (member) {
+          member.lastMessage = m;
+        }
       }
     }
     if (activeAdded) {
