@@ -397,7 +397,7 @@ button {
   opacity: 1;
   transform: none;
 }
-#group-modal {
+#group-modal, #e2e-modal {
   display: none;
   position: fixed;
   inset: 0;
@@ -407,7 +407,7 @@ button {
   justify-content: center;
   padding: 16px;
 }
-#group-modal.show { display: flex; }
+#group-modal.show, #e2e-modal.show { display: flex; }
 .modal-card {
   width: min(620px, 100%);
   max-height: min(760px, calc(100vh - 32px));
@@ -597,10 +597,26 @@ button {
   </div>
 </div>
 
+<div id="e2e-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <strong id="e2e-modal-title">Unlock Secure Chat</strong>
+    </div>
+    <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 8px;" id="e2e-modal-desc">
+      Secure Chat is end-to-end encrypted. Enter your password to unlock or generate your encryption keys on this device.
+    </div>
+    <input type="password" id="e2e-password" placeholder="Enter your login password" style="padding: 8px; border-radius: 4px; border: 1px solid var(--t-bd); background: var(--t-bg); color: var(--t-fg); margin-bottom: 8px;">
+    <div id="e2e-error" style="color: #ff5f5f; font-size: 0.8rem; display: none; margin-bottom: 8px;"></div>
+    <div class="modal-actions">
+      <button class="small-btn" type="button" id="e2e-submit-btn">Unlock</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
-let myEmail = null, myDisplayName = null, myNick = null, myKP = null;
+let myEmail = null, myDisplayName = null, myNick = null, myKP = null, myLegacyKP = null;
 let members = [], groups = [], allMessages = [], currentMessages = [];
 let myNickPubKey = null;
 let activeView = 'direct';
@@ -623,6 +639,30 @@ try { msgExpiry = parseInt(localStorage.getItem('_chatExpiry') || '0', 10) || 0;
 
 const h2b = h => Uint8Array.from(String(h || '').match(/../g).map(x => parseInt(x,16)));
 const b2h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
+
+async function deriveEncryptionKeyFromPassword(password, email) {
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey", "deriveBits"]
+  );
+  const salt = enc.encode(email.toLowerCase().trim());
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
 
 async function genKP() {
   return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
@@ -699,8 +739,11 @@ function isActiveMessage(m) {
 }
 
 let derivedKeysCache = {};
-async function deriveSharedKey(peerPubKeyHex) {
-  if (derivedKeysCache[peerPubKeyHex]) return derivedKeysCache[peerPubKeyHex];
+async function deriveSharedKey(peerPubKeyHex, useLegacy = false) {
+  const kp = useLegacy ? myLegacyKP : myKP;
+  if (!kp) throw new Error("Keypair not ready");
+  const cacheKey = peerPubKeyHex + (useLegacy ? '_legacy' : '');
+  if (derivedKeysCache[cacheKey]) return derivedKeysCache[cacheKey];
   const peerPubKey = await crypto.subtle.importKey(
     'raw',
     h2b(peerPubKeyHex),
@@ -710,71 +753,112 @@ async function deriveSharedKey(peerPubKeyHex) {
   );
   const sharedKey = await crypto.subtle.deriveKey(
     { name: 'ECDH', public: peerPubKey },
-    myKP.privateKey,
+    kp.privateKey,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
   );
-  derivedKeysCache[peerPubKeyHex] = sharedKey;
+  derivedKeysCache[cacheKey] = sharedKey;
   return sharedKey;
 }
 
 async function decryptMessageContent(m) {
-  if (!m || !m.text) return m;
+  if (!m) return m;
+  if (m.decrypted === true) return m;
+  if (!m.rawText) {
+    m.rawText = m.text;
+  }
   try {
-    const payload = JSON.parse(m.text);
+    const payload = JSON.parse(m.rawText);
     if (payload && payload.e2e) {
-      if (!myKP) {
-        console.warn("[E2E] Cannot decrypt: My keys are not ready.");
+      if (!myKP && !myLegacyKP) {
+        m.text = "[Decryption Error: Keys not ready]";
         return m;
       }
+      
+      const peerEmail = payload.group ? m.from : (sameEmail(m.from, myEmail) ? m.to : m.from);
+      const peer = memberFor(peerEmail);
+      if (!peer) {
+        m.text = "[Decryption Error: Peer not found]";
+        return m;
+      }
+      
+      // Gather all possible public keys of the peer
+      const peerPubKeys = [];
+      if (peer.pubKey) peerPubKeys.push(peer.pubKey);
+      if (peer.legacyPubKey && peer.legacyPubKey !== peer.pubKey) {
+        peerPubKeys.push(peer.legacyPubKey);
+      }
+      
+      // Gather all our own private keys
+      const ourKeypairs = [];
+      if (myKP) ourKeypairs.push({ kp: myKP, isLegacy: false });
+      if (myLegacyKP) ourKeypairs.push({ kp: myLegacyKP, isLegacy: true });
+      
+      let decryptedText = null;
+      
       if (payload.group) {
         if (payload.payloads && payload.payloads[normEmail(myEmail)]) {
           const innerPayload = payload.payloads[normEmail(myEmail)];
-          const peerEmail = m.from;
-          const peer = memberFor(peerEmail);
-          if (peer && peer.pubKey) {
-            try {
-              const sharedSecret = await deriveSharedKey(peer.pubKey);
-              const decrypted = await crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: h2b(innerPayload.iv) },
-                sharedSecret,
-                h2b(innerPayload.ciphertext)
-              );
-              m.text = new TextDecoder().decode(decrypted);
-            } catch (err) {
-              console.error("[E2E] Group decryption failed:", err);
-              m.text = "[Decryption Error]";
+          
+          outerLoop:
+          for (const ourKp of ourKeypairs) {
+            for (const peerPub of peerPubKeys) {
+              try {
+                const sharedSecret = await deriveSharedKey(peerPub, ourKp.isLegacy);
+                const decrypted = await crypto.subtle.decrypt(
+                  { name: 'AES-GCM', iv: h2b(innerPayload.iv) },
+                  sharedSecret,
+                  h2b(innerPayload.ciphertext)
+                );
+                decryptedText = new TextDecoder().decode(decrypted);
+                break outerLoop;
+              } catch (err) {
+                // Keep trying
+              }
             }
+          }
+          
+          if (decryptedText !== null) {
+            m.text = decryptedText;
+            m.decrypted = true;
           } else {
-            m.text = "[E2E encrypted group message - peer key missing]";
+            m.text = "[Decryption Error]";
           }
         } else {
           m.text = "[E2E encrypted group message - not a recipient]";
         }
       } else {
-        const peerEmail = sameEmail(m.from, myEmail) ? m.to : m.from;
-        const peer = memberFor(peerEmail);
-        if (peer && peer.pubKey) {
-          try {
-            const sharedSecret = await deriveSharedKey(peer.pubKey);
-            const decrypted = await crypto.subtle.decrypt(
-              { name: 'AES-GCM', iv: h2b(payload.iv) },
-              sharedSecret,
-              h2b(payload.ciphertext)
-            );
-            m.text = new TextDecoder().decode(decrypted);
-          } catch (err) {
-            console.error("[E2E] Direct decryption failed:", err);
-            m.text = "[Decryption Error]";
+        // Direct DM
+        outerLoopDirect:
+        for (const ourKp of ourKeypairs) {
+          for (const peerPub of peerPubKeys) {
+            try {
+              const sharedSecret = await deriveSharedKey(peerPub, ourKp.isLegacy);
+              const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: h2b(payload.iv) },
+                sharedSecret,
+                h2b(payload.ciphertext)
+              );
+              decryptedText = new TextDecoder().decode(decrypted);
+              break outerLoopDirect;
+            } catch (err) {
+              // Keep trying
+            }
           }
+        }
+        
+        if (decryptedText !== null) {
+          m.text = decryptedText;
+          m.decrypted = true;
         } else {
-          m.text = "[E2E encrypted message - peer key missing]";
+          m.text = "[Decryption Error]";
         }
       }
     }
   } catch (e) {
-    // legacy message or parse error
+    // legacy message or parse error (already plain text)
+    m.decrypted = true;
   }
   return m;
 }
@@ -804,26 +888,193 @@ async function init() {
   myNick = myEmail;
 
   try {
-    if (fetchedData && fetchedData.jwk) {
-      const pubKey = await crypto.subtle.importKey(
-        'jwk',
-        { kty: 'EC', crv: 'P-256', x: fetchedData.jwk.x, y: fetchedData.jwk.y },
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true,
-        []
-      );
-      const privateKey = await crypto.subtle.importKey(
-        'jwk',
-        fetchedData.jwk,
-        { name: 'ECDH', namedCurve: 'P-256' },
-        true,
-        ['deriveKey', 'deriveBits']
-      );
-      myKP = { publicKey: pubKey, privateKey };
-    } else {
-      console.warn("No JWK returned in /api/me response.");
+    // 1. Load legacy key as fallback
+    if (fetchedData && fetchedData.legacyJwk) {
+      try {
+        const legacyPub = await crypto.subtle.importKey(
+          'jwk',
+          { kty: 'EC', crv: 'P-256', x: fetchedData.legacyJwk.x, y: fetchedData.legacyJwk.y },
+          { name: 'ECDH', namedCurve: 'P-256' },
+          true,
+          []
+        );
+        const legacyPriv = await crypto.subtle.importKey(
+          'jwk',
+          fetchedData.legacyJwk,
+          { name: 'ECDH', namedCurve: 'P-256' },
+          true,
+          ['deriveKey', 'deriveBits']
+        );
+        myLegacyKP = { publicKey: legacyPub, privateKey: legacyPriv };
+      } catch (err) {
+        console.error("Failed to load legacy keypair:", err);
+      }
     }
-    
+
+    // 2. Check if we already have a valid password-derived key in localStorage
+    let hasValidLocalKey = false;
+    const localJwkStr = localStorage.getItem('_e2e_private_jwk');
+    if (localJwkStr && fetchedData && fetchedData.pubKeyHex) {
+      try {
+        const localJwk = JSON.parse(localJwkStr);
+        const pubKey = await crypto.subtle.importKey(
+          'jwk',
+          { kty: 'EC', crv: 'P-256', x: localJwk.x, y: localJwk.y },
+          { name: 'ECDH', namedCurve: 'P-256' },
+          true,
+          []
+        );
+        const pubHex = await b2h(await crypto.subtle.exportKey('raw', pubKey));
+        if (pubHex === fetchedData.pubKeyHex) {
+          const privateKey = await crypto.subtle.importKey(
+            'jwk',
+            localJwk,
+            { name: 'ECDH', namedCurve: 'P-256' },
+            true,
+            ['deriveKey', 'deriveBits']
+          );
+          myKP = { publicKey: pubKey, privateKey };
+          hasValidLocalKey = true;
+        } else {
+          console.log("Local E2E key does not match server registered key. Needs unlock.");
+        }
+      } catch (err) {
+        console.error("Error loading local E2E key:", err);
+      }
+    }
+
+    // 3. If no valid password-derived key, prompt the user via the modal
+    if (!hasValidLocalKey) {
+      const isSetup = !fetchedData.encryptedPrivateJwk;
+      const title = isSetup ? "Setup Secure Chat Keys" : "Unlock Secure Chat Keys";
+      const desc = isSetup 
+        ? "Secure Chat is end-to-end encrypted. Enter your login password to generate secure keys. They will be encrypted with your password client-side before storing on the server."
+        : "Your secure chat keys are encrypted. Enter your login password to decrypt and load them on this device.";
+      const submitText = isSetup ? "Setup Keys" : "Unlock Keys";
+      
+      document.getElementById('e2e-modal-title').textContent = title;
+      document.getElementById('e2e-modal-desc').textContent = desc;
+      document.getElementById('e2e-submit-btn').textContent = submitText;
+      document.getElementById('e2e-modal').classList.add('show');
+      
+      await new Promise((resolve) => {
+        const submitBtn = document.getElementById('e2e-submit-btn');
+        const pwdInput = document.getElementById('e2e-password');
+        const errDiv = document.getElementById('e2e-error');
+        
+        const onSubmit = async () => {
+          const password = pwdInput.value;
+          if (!password) {
+            errDiv.textContent = "Please enter your password.";
+            errDiv.style.display = "block";
+            return;
+          }
+          submitBtn.disabled = true;
+          errDiv.style.display = "none";
+          
+          try {
+            // Verify password against the server first
+            const verifyRes = await fetch('/api/e2e/verify-password', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password })
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyData.success) {
+              throw new Error(verifyData.message || "Incorrect password.");
+            }
+          } catch (verifyErr) {
+            errDiv.textContent = verifyErr.message || "Incorrect password.";
+            errDiv.style.display = "block";
+            submitBtn.disabled = false;
+            return;
+          }
+          
+          try {
+            const aesKey = await deriveEncryptionKeyFromPassword(password, myEmail);
+            
+            if (isSetup) {
+              const kp = await genKP();
+              const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+              const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
+              const iv = crypto.getRandomValues(new Uint8Array(12));
+              const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv },
+                aesKey,
+                privateJwkBytes
+              );
+              
+              const pubHex = await exportPub(kp);
+              const encryptedPrivateJwk = b2h(ciphertext);
+              const ivHex = b2h(iv);
+              
+              const res = await fetch('/api/e2e/register-key', {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ pubKeyHex: pubHex, encryptedPrivateJwk, ivHex })
+              });
+              const d = await res.json();
+              if (!d.success) {
+                throw new Error(d.message || "Failed to register keys.");
+              }
+              
+              localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+              myKP = kp;
+            } else {
+              const encryptedPrivateJwk = fetchedData.encryptedPrivateJwk;
+              const ivHex = fetchedData.ivHex;
+              
+              let decryptedJwk = null;
+              try {
+                const decBytes = await crypto.subtle.decrypt(
+                  { name: 'AES-GCM', iv: h2b(ivHex) },
+                  aesKey,
+                  h2b(encryptedPrivateJwk)
+                );
+                decryptedJwk = JSON.parse(new TextDecoder().decode(decBytes));
+              } catch (decErr) {
+                throw new Error("Incorrect password or key decryption failed.");
+              }
+              
+              const pubKey = await crypto.subtle.importKey(
+                'jwk',
+                { kty: 'EC', crv: 'P-256', x: decryptedJwk.x, y: decryptedJwk.y },
+                { name: 'ECDH', namedCurve: 'P-256' },
+                true,
+                []
+              );
+              const privateKey = await crypto.subtle.importKey(
+                'jwk',
+                decryptedJwk,
+                { name: 'ECDH', namedCurve: 'P-256' },
+                true,
+                ['deriveKey', 'deriveBits']
+              );
+              
+              localStorage.setItem('_e2e_private_jwk', JSON.stringify(decryptedJwk));
+              myKP = { publicKey: pubKey, privateKey };
+            }
+            
+            document.getElementById('e2e-modal').classList.remove('show');
+            submitBtn.disabled = false;
+            resolve();
+          } catch (err) {
+            console.error("E2E unlock/setup error:", err);
+            errDiv.textContent = err.message || "An error occurred.";
+            errDiv.style.display = "block";
+            submitBtn.disabled = false;
+          }
+        };
+        
+        submitBtn.onclick = onSubmit;
+        pwdInput.onkeydown = (e) => {
+          if (e.key === 'Enter') onSubmit();
+        };
+      });
+    }
+
     if (myKP) {
       const pubHex = await exportPub(myKP);
       myNickPubKey = pubHex;
@@ -1430,16 +1681,22 @@ function messageHtml(m) {
   const mine = sameEmail(m.from, myEmail);
   const name = mine ? (myDisplayName || 'You') : displayNameFor(m.from);
   const text = String(m.text || '');
-  const safeText = text ? `<span class="body">${esc(text)}</span>` : '<span class="body" style="opacity:.55">sent an image</span>';
+  const id = esc(msgId(m));
+  
+  const isEncrypted = m.rawText && m.rawText.includes('"e2e":true');
+  const retryBtn = (isEncrypted && !m.decrypted)
+    ? ` <button class="small-btn retry-decrypt-btn" data-id="${id}" type="button" style="margin-left:6px;padding:1px 5px;font-size:0.6rem;vertical-align:middle;display:inline-block;">Retry</button>`
+    : '';
+
+  const safeText = text ? `<span class="body">${esc(text)}${retryBtn}</span>` : '<span class="body" style="opacity:.55">sent an image</span>';
   const imageHtml = m.image && m.image.data
     ? `<a href="${esc(m.image.data)}" target="_blank" rel="noopener"><img class="chat-image" src="${esc(m.image.data)}" alt="${esc(m.image.name || 'attached image')}"></a>`
     : '';
   const reply = m.replyTo && (m.replyTo.text || m.replyTo.from)
     ? `<div class="reply-box">${esc(displayNameFor(m.replyTo.from || ''))}: ${esc(m.replyTo.text || '')}</div>`
     : '';
-  const id = esc(msgId(m));
   const bodyText = esc(text || (m.image ? 'sent an image' : ''));
-  const expiry = msgExpiry > 0 ? ` data-expire="${Date.now() + msgExpiry}"` : '';
+  const expiry = m.expiresAt ? ` data-expire="${m.expiresAt}"` : (msgExpiry > 0 ? ` data-expire="${Date.now() + msgExpiry}"` : '');
   return `<div class="msg" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
     ${reply}
     <div class="msg-line">
@@ -1568,8 +1825,8 @@ async function send() {
   const imageToSend = pendingImage;
   clearImage();
   const body = activeChat.type === 'group'
-    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo }
-    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo };
+    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry }
+    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry };
   clearReply();
   try {
     const r = await fetch('/api/dm/send', {
@@ -1800,6 +2057,20 @@ async function leaveCurrentGroup() {
 }
 
 function onMessageAction(e) {
+  const retryBtn = e.target.closest('.retry-decrypt-btn');
+  if (retryBtn) {
+    const id = retryBtn.dataset.id;
+    const m = currentMessages.find(x => msgId(x) === id) || allMessages.find(x => msgId(x) === id);
+    if (m) {
+      derivedKeysCache = {};
+      decryptMessageContent(m).then(() => {
+        renderMessages();
+        renderList();
+      });
+    }
+    return;
+  }
+
   const btn = e.target.closest('.msg-action');
   if (!btn) return;
   const id = btn.dataset.id;

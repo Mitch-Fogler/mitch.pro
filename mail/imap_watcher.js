@@ -16,6 +16,10 @@ try {
 
 const USER             = process.env.HOSTINGER_USER;
 const PASS             = process.env.HOSTINGER_PASS;
+if (!USER || !PASS) {
+  console.error("[imap-watcher] Error: HOSTINGER_USER or HOSTINGER_PASS not set in environment/dotenv.");
+  process.exit(1);
+}
 const CACHE_FILE       = path.join(__dirname, '..', 'data', 'team_inbox_cache.json');
 const AUTOREPLY_FILE   = path.join(__dirname, '..', 'data', 'autoreply_sent.json');
 const SUPPORT_SEND     = path.join(__dirname, 'support_send.js');

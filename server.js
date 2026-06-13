@@ -18,8 +18,33 @@ try {
   }
 } catch {}
 
-const VAPID_PUBLIC  = (process.env.VAPID_PUBLIC_KEY  || '').trim();
-const VAPID_PRIVATE = (process.env.VAPID_PRIVATE_KEY || '').trim();
+let VAPID_PUBLIC  = (process.env.VAPID_PUBLIC_KEY  || '').trim();
+let VAPID_PRIVATE = (process.env.VAPID_PRIVATE_KEY || '').trim();
+
+if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+  try {
+    const keys = webpush.generateVAPIDKeys();
+    VAPID_PUBLIC = keys.publicKey;
+    VAPID_PRIVATE = keys.privateKey;
+    process.env.VAPID_PUBLIC_KEY = VAPID_PUBLIC;
+    process.env.VAPID_PRIVATE_KEY = VAPID_PRIVATE;
+    
+    // Append to .env file
+    const envPath = join(BASE, '.env');
+    let envContent = '';
+    if (existsSync(envPath)) {
+      envContent = readFileSync(envPath, 'utf8');
+      if (!envContent.endsWith('\n')) envContent += '\n';
+    }
+    envContent += `VAPID_PUBLIC_KEY="${VAPID_PUBLIC}"\n`;
+    envContent += `VAPID_PRIVATE_KEY="${VAPID_PRIVATE}"\n`;
+    writeFileSync(envPath, envContent, 'utf8');
+    console.log('[startup] Auto-generated VAPID keys and saved to .env');
+  } catch (err) {
+    console.error('[startup] Failed to auto-generate VAPID keys:', err);
+  }
+}
+
 if (VAPID_PUBLIC && VAPID_PRIVATE) {
   webpush.setVapidDetails('mailto:support@mitch.pro', VAPID_PUBLIC, VAPID_PRIVATE);
 }
@@ -56,6 +81,7 @@ const PROFILES_FILE          = join(DATA_DIR, 'profiles.json');
 const COIN_GIFTS_FILE        = join(DATA_DIR, 'coin_gifts.json');
 const DMS_FILE               = join(DATA_DIR, 'dms.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
+const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
 const UNLOCKED_AI_FILE       = join(DATA_DIR, 'unlocked_ai.json');
 const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
@@ -104,6 +130,8 @@ const PORT = 6800;
 const HOST = "0.0.0.0";
 const USERDATA_DIR = "/opt/userdata";
 const NTFY_TOPIC = (process.env.NTFY_TOPIC || '').trim();
+const HOSTINGER_USER = (process.env.HOSTINGER_USER || '').trim();
+const HOSTINGER_PASS = (process.env.HOSTINGER_PASS || '').trim();
 const GOOGLE_CLIENT_ID = '561391673402-eufe4daah7oinpq0ddb7v2l6gspr01gh.apps.googleusercontent.com';
 const NOTIFICATION_ORIGIN = 'https://mitchdog.com';
 
@@ -624,6 +652,7 @@ const RATE_LIMITS = {
   '/api/request-access':       [3,   600],
   '/api/claim-token':          [10,  3600],
   '/api/pass':                 [60,  60],
+  '/api/e2e/verify-password':  [5,   60],
   '/api/content':              [120, 60],
   '/api/ping':                 [120, 60],
   '/api/ai':                   [20,  60],
@@ -2081,16 +2110,20 @@ async function nudgeWorker() {
 setInterval(nudgeWorker, 600_000);
 
 // ── IMAP watcher ──────────────────────────────────────────────────────────────
-(function startImapWatcher() {
-  const watcher = spawn('/usr/bin/node', [join(BASE, 'mail', 'imap_watcher.js')], {
-    detached: false,
-  });
-  watcher.on('exit', (code) => {
-    console.log(`[imap-watcher] exited (${code}), restarting in 10s…`);
-    setTimeout(startImapWatcher, 10_000);
-  });
-  console.log(`[imap-watcher] started (pid ${watcher.pid})`);
-})();
+if (HOSTINGER_USER && HOSTINGER_PASS) {
+  (function startImapWatcher() {
+    const watcher = spawn('/usr/bin/node', [join(BASE, 'mail', 'imap_watcher.js')], {
+      detached: false,
+    });
+    watcher.on('exit', (code) => {
+      console.log(`[imap-watcher] exited (${code}), restarting in 10s…`);
+      setTimeout(startImapWatcher, 10_000);
+    });
+    console.log(`[imap-watcher] started (pid ${watcher.pid})`);
+  })();
+} else {
+  console.log(`[imap-watcher] Silenced (HOSTINGER_USER or HOSTINGER_PASS not set in environment/dotenv)`);
+}
 const GMAIL_CACHE_FILE  = join(BASE, 'mail', 'check_email', 'emails.json');
 const GMAIL_PAUSE_FILE  = join(BASE, 'mail', 'check_email', 'gmail_paused');
 const GMAIL_SENT_FILE   = join(BASE, 'mail', 'check_email', 'gmail_sent.json');
@@ -2947,9 +2980,11 @@ function processMemberFields(memberEmail, profile, viewerEmail) {
 function pruneDms(dms) {
   const counts = new Map();
   const keep = [];
+  const now = Date.now();
   for (let i = dms.length - 1; i >= 0; i--) {
     const msg = dms[i];
     if (!msg) continue;
+    if (msg.expiresAt && now > msg.expiresAt) continue; // Purge expired messages
     let convoId;
     if (msg.kind === 'group') {
       convoId = 'g::' + (msg.groupId || '');
@@ -6572,6 +6607,91 @@ Mitch.pro Team`;
       return jsonResp(200, { success: true });
     }
 
+    // /api/e2e/register-key
+    if (path === '/api/e2e/register-key' && method === 'POST') {
+      try {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
+        const names = loadJson(NAMES_FILE, {});
+        const email = (names[sid] || '').toLowerCase().trim();
+        if (!email) return jsonResp(403, { success: false, message: 'Email not found' });
+        
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+        const { pubKeyHex, encryptedPrivateJwk, ivHex } = body;
+        if (!pubKeyHex || !encryptedPrivateJwk || !ivHex) {
+          return jsonResp(400, { success: false, message: 'Missing fields' });
+        }
+        
+        const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
+        const norm = normalizeEmail(email);
+        e2eKeysData[norm] = {
+          pubKeyHex,
+          encryptedPrivateJwk,
+          ivHex,
+          updatedAt: Date.now()
+        };
+        saveJson(E2E_KEYS_FILE, e2eKeysData);
+        
+        return jsonResp(200, { success: true });
+      } catch (e) {
+        return jsonResp(500, { success: false, message: String(e) });
+      }
+    }
+
+    // /api/e2e/get-key
+    if (path === '/api/e2e/get-key' && method === 'GET') {
+      try {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
+        const names = loadJson(NAMES_FILE, {});
+        const email = (names[sid] || '').toLowerCase().trim();
+        if (!email) return jsonResp(403, { success: false, message: 'Email not found' });
+        
+        const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
+        const norm = normalizeEmail(email);
+        const entry = e2eKeysData[norm];
+        if (!entry) {
+          return jsonResp(404, { success: false, message: 'Not found' });
+        }
+        return jsonResp(200, {
+          success: true,
+          pubKeyHex: entry.pubKeyHex,
+          encryptedPrivateJwk: entry.encryptedPrivateJwk,
+          ivHex: entry.ivHex
+        });
+      } catch (e) {
+        return jsonResp(500, { success: false, message: String(e) });
+      }
+    }
+
+    // /api/e2e/verify-password
+    if (path === '/api/e2e/verify-password' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      try {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
+        const names = loadJson(NAMES_FILE, {});
+        const email = (names[sid] || '').toLowerCase().trim();
+        if (!email) return jsonResp(403, { success: false, message: 'Email not found' });
+        
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+        const password = body.password || '';
+        if (!password) return jsonResp(400, { success: false, message: 'Password required' });
+        
+        const passwords = loadPasswords();
+        const stored = passwords[normalizeEmail(email)];
+        if (!stored || !(await Bun.password.verify(password, stored))) {
+          return jsonResp(401, { success: false, message: 'Incorrect password' });
+        }
+        return jsonResp(200, { success: true });
+      } catch (e) {
+        return jsonResp(500, { success: false, message: String(e) });
+      }
+    }
+
     // /api/pass
     if (path === '/api/pass') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
@@ -7928,7 +8048,27 @@ function loadAllGamesList() {
       const isModerator = isModeratorId(uid);
       const canGrantPremium = canGrantPremiumId(uid);
       const stats = email ? (loadUserStats()[normalizeEmail(email)] || {}) : {};
-      const e2eKeys = email ? deriveUserE2EKeys(email) : null;
+      
+      let pubKeyHex = null;
+      let legacyJwk = null;
+      let encryptedPrivateJwk = null;
+      let ivHex = null;
+      if (email) {
+        const legacyKeys = deriveUserE2EKeys(email);
+        legacyJwk = legacyKeys.jwk;
+        
+        const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
+        const norm = normalizeEmail(email);
+        const entry = e2eKeysData[norm];
+        if (entry) {
+          pubKeyHex = entry.pubKeyHex;
+          encryptedPrivateJwk = entry.encryptedPrivateJwk;
+          ivHex = entry.ivHex;
+        } else {
+          pubKeyHex = legacyKeys.pubKeyHex;
+        }
+      }
+
       return jsonResp(200, {
         email: maskEmail(email),
         isPremium,
@@ -7936,8 +8076,11 @@ function loadAllGamesList() {
         isModerator,
         canGrantPremium,
         vipUntil: stats.vip_casino_until || 0,
-        jwk: e2eKeys ? e2eKeys.jwk : null,
-        pubKeyHex: e2eKeys ? e2eKeys.pubKeyHex : null,
+        jwk: legacyJwk,
+        legacyJwk,
+        pubKeyHex,
+        encryptedPrivateJwk,
+        ivHex,
         happyHour: {
           active: happyHourActive,
           message: happyHourActive 
@@ -8138,6 +8281,7 @@ function loadAllGamesList() {
       const dms = loadJson(DMS_FILE, []);
       const cleared = loadJson(DM_CLEARED_FILE, {});
       const myCleared = cleared[normalizeEmail(viewerEmail)] || {};
+      const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
       
       const seen = new Set();
       const members = [];
@@ -8154,7 +8298,12 @@ function loadAllGamesList() {
         else if (adminMemberEmails().some(adminEmail => normalizeEmail(adminEmail) === normalizeEmail(email))) role = 'admin/developer';
         else if (isModeratorEmail(email)) role = 'moderator';
         else if (isPremiumEmail(email)) role = 'premium';
-        const e2e = deriveUserE2EKeys(email);
+        
+        const e2eLegacy = deriveUserE2EKeys(email);
+        const e2eEntry = e2eKeysData[norm];
+        const pubKey = e2eEntry ? e2eEntry.pubKeyHex : e2eLegacy.pubKeyHex;
+        const legacyPubKey = e2eLegacy.pubKeyHex;
+        
         const processed = processMemberFields(email, profile, viewerEmail);
         
         // Find last message and unread count
@@ -8195,7 +8344,8 @@ function loadAllGamesList() {
           displayName: processed.displayName,
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null,
-          pubKey: e2e.pubKeyHex,
+          pubKey,
+          legacyPubKey,
           lastMessage,
           unread
         });
@@ -8430,6 +8580,7 @@ function loadAllGamesList() {
       const dms = loadJson(DMS_FILE, []);
       const subs = VAPID_PUBLIC ? loadJson(PUSH_SUBS_FILE, {}) : {};
       let msg;
+      const expiry = Number(body.expiry) || 0;
       if (groupId) {
         const groups = loadJson(GROUPS_FILE, []);
         const group = groups.find(g => g.id === groupId);
@@ -8437,6 +8588,9 @@ function loadAllGamesList() {
         if (!group.members.some(m => normalizeEmail(m) === normalizeEmail(senderEmail)))
           return jsonResp(403, { error: 'not a member' });
         msg = { kind: 'group', groupId, groupName: group.name, from: senderEmail, text, image: safeImage, replyTo, ts: Date.now(), readBy: [senderEmail] };
+        if (expiry > 0) {
+          msg.expiresAt = Date.now() + expiry;
+        }
         dms.push(msg);
         saveJson(DMS_FILE, pruneDms(dms));
         const getNotificationBody = (t, img) => {
@@ -8463,6 +8617,9 @@ function loadAllGamesList() {
         }
         } else {
         msg = { kind: 'dm', from: senderEmail, to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
+        if (expiry > 0) {
+          msg.expiresAt = Date.now() + expiry;
+        }
         dms.push(msg);
         saveJson(DMS_FILE, pruneDms(dms));
         const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
@@ -8548,6 +8705,7 @@ function loadAllGamesList() {
       const myGroups = (loadJson(GROUPS_FILE, [])).filter(g => g.members.some(m => normalizeEmail(m) === normalizeEmail(myEmail)));
       const myGroupIds = new Set(myGroups.map(g => g.id));
       const msgs = dms.filter(m => {
+        if (m.expiresAt && Date.now() > m.expiresAt) return false;
         if (since && (m.ts || 0) <= since) return false;
         if (groupId) {
           if (m.kind !== 'group' || String(m.groupId) !== groupId) return false;
@@ -11046,3 +11204,14 @@ function getLeastUsedSchoolHour() {
   }
 
   console.log(`[startup] Webserver initialization complete.`);
+
+  // Periodically prune expired messages from database on disk
+  setInterval(() => {
+    try {
+      const dms = loadJson(DMS_FILE, []);
+      const pruned = pruneDms(dms);
+      if (pruned.length !== dms.length) {
+        saveJson(DMS_FILE, pruned);
+      }
+    } catch {}
+  }, 5 * 60 * 1000);
