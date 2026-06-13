@@ -985,6 +985,74 @@
 </div>
 
 <script>
+var myEmail = '';
+const b2h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
+
+async function deriveEncryptionKeyFromPassword(password, email) {
+  const enc = new TextEncoder();
+  const baseKey = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    "PBKDF2",
+    false,
+    ["deriveKey", "deriveBits"]
+  );
+  const salt = enc.encode(email.toLowerCase().trim());
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: salt,
+      iterations: 100000,
+      hash: "SHA-256"
+    },
+    baseKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function genKP() {
+  return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
+}
+
+async function exportPub(kp) {
+  return b2h(await crypto.subtle.exportKey('raw', kp.publicKey));
+}
+
+async function rotateE2EKeys(email, newPassword) {
+  try {
+    const aesKey = await deriveEncryptionKeyFromPassword(newPassword, email);
+    const kp = await genKP();
+    const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+    const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv },
+      aesKey,
+      privateJwkBytes
+    );
+    
+    const pubHex = await exportPub(kp);
+    const encryptedPrivateJwk = b2h(ciphertext);
+    const ivHex = b2h(iv);
+    
+    const res = await fetch('/api/e2e/register-key', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pubKeyHex: pubHex, encryptedPrivateJwk, ivHex })
+    });
+    const d = await res.json();
+    if (d.success) {
+      localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+      console.log("[E2E] Successfully rotated secure chat keys after password change.");
+    }
+  } catch (err) {
+    console.error("[E2E] Failed to rotate keys after password change:", err);
+  }
+}
+
 var VFX_CONFIG_KEY      = '_prefVFX';
 var PRIVACY_CONFIG_KEY  = '_prefPrivacy';
 var AI_CONFIG_KEY       = '_prefAI';
@@ -1478,6 +1546,7 @@ function resetPreferencesOnly() {
   if (ap2) { document.querySelectorAll('[data-personality]').forEach(function(b){b.classList.remove('active');}); ap2.classList.add('active'); }
 
   fetch('/api/me').then(function(r){return r.ok ? r.json() : {};}).then(function(me){
+    if (me.email) myEmail = me.email;
     if (me.isPremium) document.getElementById('premiumAiSection').style.display = 'block';
   }).catch(function(){});
 
@@ -1604,6 +1673,11 @@ function resetPreferencesOnly() {
       if (data.success) {
         status.style.color = 'var(--t-ac)';
         status.textContent = 'Password changed successfully!';
+        if (myEmail) {
+          status.textContent = 'Password changed. Re-encrypting Secure Chat keys...';
+          await rotateE2EKeys(myEmail, newPassword);
+          status.textContent = 'Password changed and Secure Chat keys rotated successfully!';
+        }
         document.getElementById('currPass').value = '';
         document.getElementById('newPass').value = '';
         document.getElementById('confirmPass').value = '';

@@ -15,6 +15,7 @@ url /encrypt/ Encrypted Chat
 url /export/ Export / Import Data
 url /canvas/ pixelplace
 url /invite/ Invite Friends
+url /friends/ Manage Friends
 url /ab/ About:Blank Launcher
 url / Home
 url /dh/ Diffie-Hellman Key Exchange

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { createHmac, createHash, randomBytes, timingSafeEqual, createECDH } from 'crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, rmSync, readdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, rmSync, readdirSync, appendFileSync } from 'fs';
 import { join, basename } from 'path';
 import { spawnSync, spawn } from 'child_process';
 import os from 'os';
@@ -82,6 +82,7 @@ const COIN_GIFTS_FILE        = join(DATA_DIR, 'coin_gifts.json');
 const DMS_FILE               = join(DATA_DIR, 'dms.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
 const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
+const CANVAS_HISTORY_FILE    = join(DATA_DIR, 'canvas_history.jsonl');
 const UNLOCKED_AI_FILE       = join(DATA_DIR, 'unlocked_ai.json');
 const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
@@ -94,6 +95,7 @@ const INVALIDATED_FILE       = join(DATA_DIR, 'invalidated_ids.json');
 const ADMINS_FILE            = join(DATA_DIR, 'admins.json');
 const PASSPHRASE_FILE        = join(DATA_DIR, 'admin_passphrase.json');
 const FRIENDS_FILE           = join(DATA_DIR, 'friends.json');
+const FRIEND_REQUESTS_FILE   = join(DATA_DIR, 'friend_requests.json');
 const CANVAS_PIXELS_FILE     = join(DATA_DIR, 'canvas_pixels.json');
 const CANVAS_LOCKS_FILE      = join(DATA_DIR, 'canvas_locks.json');
 const PREMIUM_CHAT_FILE      = join(DATA_DIR, 'premium_chat.json');
@@ -525,13 +527,79 @@ function cvCheckTimeout(g) {
   if (rem <= 0) { 
     g.status = 'over'; g.result = t === 'w' ? '0-1' : '1-0'; g.reason = 'timeout'; 
     const winner = g.result === '1-0' ? g.white : g.black;
-    addCoins(winner, 50 + (bet * 2));
+    const bet = g.bet || 0;
+    let winBonus = 50 + (bet * 2);
+    if (areFriends(g.white, g.black)) {
+      winBonus = Math.floor(winBonus * 1.5);
+    }
+    addCoins(winner, winBonus);
     updateStat(winner, 'chess_wins', 1);
     if (g.type === 'corr') cvSave();
   }
 }
 
 const cvOnline = {};  // email -> last_seen ms
+const userPresence = {}; // normalizedEmail -> { lastSeen: ms, playing: string }
+
+function touchUserPresence(email, playing = '') {
+  if (!email) return;
+  const norm = normalizeEmail(email);
+  const now = Date.now();
+  const prev = userPresence[norm];
+  const wasOffline = !prev || (now - prev.lastSeen > 120000);
+
+  userPresence[norm] = {
+    lastSeen: now,
+    playing: String(playing || '').trim()
+  };
+
+  cvOnline[email] = now;
+  cvOnline[norm] = now;
+
+  if (wasOffline) {
+    notifyFriendsOnline(email);
+  }
+}
+
+function notifyFriendsOnline(email) {
+  try {
+    const norm = normalizeEmail(email);
+    const friends = loadJson(FRIENDS_FILE, {});
+    const myList = friends[norm] || [];
+    const senderName = maskEmail(email);
+    const subs = loadJson(PUSH_SUBS_FILE, {});
+
+    for (const friend of myList) {
+      const friendNorm = normalizeEmail(friend);
+      const sub = subs[friend] || subs[friendNorm];
+      if (sub && VAPID_PUBLIC) {
+        webpush.sendNotification(sub, JSON.stringify({
+          title: 'Friend Online',
+          body: `${senderName} is now online!`,
+          url: notificationUrl('/'),
+        })).catch(e => {
+          if (e.statusCode === 410 || e.statusCode === 404) {
+            delete subs[friend];
+            delete subs[friendNorm];
+            saveJson(PUSH_SUBS_FILE, subs);
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Error in notifyFriendsOnline:', err);
+  }
+}
+
+function areFriends(playerA, playerB) {
+  if (!playerA || !playerB) return false;
+  const normA = normalizeEmail(playerA);
+  const normB = normalizeEmail(playerB);
+  const friends = loadJson(FRIENDS_FILE, {});
+  const listA = friends[normA] || [];
+  const listB = friends[normB] || [];
+  return listA.some(f => normalizeEmail(f) === normB) || listB.some(f => normalizeEmail(f) === normA);
+}
 
 // VPN cache
 let knownVpnIps   = new Set();
@@ -676,8 +744,12 @@ const RATE_LIMITS = {
   '/api/me/coins':             [30,  60],
   '/api/me/logout-other':      [5,   60],
   '/api/leaderboard':          [10,  60],
-  '/api/friends/list':         [30,  60],
-  '/api/friends/add':          [5,   60],
+  '/api/friends/list':             [30,  60],
+  '/api/friends/request':          [10,  60],
+  '/api/friends/requests/pending': [30,  60],
+  '/api/friends/request/respond':  [15,  60],
+  '/api/friends/remove':           [10,  60],
+  '/api/presence/heartbeat':       [60,  60],
   '/api/premium-chat/history': [60,  60],
   '/api/premium-chat/send':    [3,   10],
   '/api/public-chat/history':  [60,  60],
@@ -693,6 +765,7 @@ const RATE_LIMITS = {
   '/api/chess-vs/challenge':   [5,   600],
   '/api/chess-vs/move':        [60,  60],
   '/api/canvas/pixel':         [5,   60], // 5 pixels per minute by default
+  '/api/canvas/history':       [10,  60],
   '__default__':               [100, 60],
 };
 
@@ -2165,6 +2238,13 @@ function setCanvasPixel(x, y, data) {
   const ck = `${cx},${cy}`;
   if (!canvasChunks.has(ck)) canvasChunks.set(ck, {});
   canvasChunks.get(ck)[key] = data;
+
+  try {
+    const logEntry = JSON.stringify({ x, y, color: data.color, ts: data.ts || Date.now() }) + '\n';
+    appendFileSync(CANVAS_HISTORY_FILE, logEntry, 'utf8');
+  } catch (err) {
+    console.error('Failed to log canvas history:', err);
+  }
 }
 
 function deleteCanvasPixel(x, y) {
@@ -2173,6 +2253,13 @@ function deleteCanvasPixel(x, y) {
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
   const ck = `${cx},${cy}`;
   if (canvasChunks.has(ck)) delete canvasChunks.get(ck)[key];
+
+  try {
+    const logEntry = JSON.stringify({ x, y, color: '', ts: Date.now() }) + '\n';
+    appendFileSync(CANVAS_HISTORY_FILE, logEntry, 'utf8');
+  } catch (err) {
+    console.error('Failed to log canvas erase history:', err);
+  }
 }
 
 function saveCanvasPixels() { saveJson(CANVAS_PIXELS_FILE, canvasPixels); }
@@ -2853,6 +2940,8 @@ function checkPasswordCookie(req, providedSid = null) {
 }
 
 function checkRateLimit(req, endpoint) {
+  if (req._rateLimitChecked) return null;
+  req._rateLimitChecked = true;
   const ip = getRealIp(req);
   if (WHITELISTED_IPS.has(ip)) return null;
   const ep = endpoint || new URL(req.url).pathname;
@@ -2902,6 +2991,25 @@ function getUidForEmail(email) {
   const currentGenRec = gens[norm] || {};
   const currentGen = (currentGenRec && typeof currentGenRec === 'object') ? (currentGenRec.gen || 0) : (currentGenRec || 0);
   return makeEmailId(norm, currentGen);
+}
+
+function resolveTargetEmail(input) {
+  if (!input) return null;
+  const target = input.trim().toLowerCase();
+  if (!target) return null;
+
+  const passwords = loadPasswords();
+  const emails = Object.keys(passwords).map(e => e.toLowerCase().trim());
+
+  if (passwords[target]) return target;
+
+  for (const email of emails) {
+    if (normalizeEmail(email) === target) return email;
+    if (maskEmail(email).toLowerCase() === target) return email;
+    if (getUidForEmail(email) === input.trim()) return email;
+  }
+
+  return null;
 }
 
 function hasEmailPrivacyEnabled(email) {
@@ -3914,6 +4022,12 @@ async function handleRequest(req, server) {
   const url    = new URL(req.url);
   const path   = url.pathname;
   const method = req.method;
+
+  // Global rate limit check for all APIs
+  if (path.startsWith('/api/')) {
+    const rl = checkRateLimit(req, path);
+    if (rl) return rl;
+  }
 
   if (path === '/swift') {
     return Response.redirect('/swift/' + url.search, 301);
@@ -6934,7 +7048,19 @@ function loadAllGamesList() {
         } catch {}
         if (id && validId(id)) {
           const email = emailFromSid(id);
-          if (email) cvOnline[email] = Date.now();
+          if (email) {
+            let playingGame = '';
+            const pageLower = String(page || '').toLowerCase();
+            if (pageLower.includes('/games/chess/')) playingGame = 'Chess';
+            else if (pageLower.includes('/games/casino/') || pageLower.includes('/casino/')) playingGame = 'Casino';
+            else if (pageLower.includes('/canvas/')) playingGame = 'Canvas';
+            else if (pageLower.includes('/encrypt.html') || pageLower.includes('/encrypt/')) playingGame = 'Chat';
+            else if (pageLower.includes('/games/')) {
+              const matches = page.match(/\/games\/([^/]+)/);
+              playingGame = matches ? matches[1] : 'Games';
+            }
+            touchUserPresence(email, playingGame || page);
+          }
           const now          = Date.now() / 1000;
           const last         = sessionLastSeen[id] || 0;
           const isNewSession = (now - last) > SESSION_GAP;
@@ -7136,22 +7262,181 @@ function loadAllGamesList() {
       saveJson(PROFILES_FILE, profiles);
       return jsonResp(200, { ok: true });
     }
-    if (path === '/api/friends/add' && method === 'POST') {
+    if (path === '/api/friends/request' && method === 'POST') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const friendEmail = (body.email || '').trim().toLowerCase();
-      if (!friendEmail || !friendEmail.includes('@')) return jsonResp(400, { error: 'invalid email' });
+      
+      const resolved = resolveTargetEmail(body.email);
+      if (!resolved) return jsonResp(400, { error: 'user not found' });
+      const friendEmail = normalizeEmail(resolved);
+      
+      const norm = normalizeEmail(email);
+      if (norm === friendEmail) return jsonResp(400, { error: 'cannot friend request yourself' });
+
+      // Check if already friends
+      const friends = loadJson(FRIENDS_FILE, {});
+      const myList = friends[norm] || [];
+      if (myList.some(f => normalizeEmail(f) === friendEmail)) {
+        return jsonResp(400, { error: 'already friends' });
+      }
+
+      // Check if reverse request exists
+      const requests = loadJson(FRIEND_REQUESTS_FILE, []);
+      const reverseIdx = requests.findIndex(r => normalizeEmail(r.from) === friendEmail && normalizeEmail(r.to) === norm);
+      if (reverseIdx !== -1) {
+        // Auto-accept!
+        requests.splice(reverseIdx, 1);
+        saveJson(FRIEND_REQUESTS_FILE, requests);
+
+        if (!friends[norm]) friends[norm] = [];
+        if (!friends[norm].includes(friendEmail)) friends[norm].push(friendEmail);
+        
+        if (!friends[friendEmail]) friends[friendEmail] = [];
+        if (!friends[friendEmail].includes(norm)) friends[friendEmail].push(norm);
+        
+        saveJson(FRIENDS_FILE, friends);
+
+        // Send push notification to the other user
+        const subs = loadJson(PUSH_SUBS_FILE, {});
+        const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
+        if (sub && VAPID_PUBLIC) {
+          webpush.sendNotification(sub, JSON.stringify({
+            title: 'Friend Request Accepted',
+            body: `${maskEmail(email)} accepted your friend request!`,
+            url: notificationUrl('/'),
+          })).catch(() => {});
+        }
+
+        return jsonResp(200, { ok: true, status: 'accepted' });
+      }
+
+      // Check if duplicate request exists
+      const dupIdx = requests.findIndex(r => normalizeEmail(r.from) === norm && normalizeEmail(r.to) === friendEmail);
+      if (dupIdx !== -1) {
+        return jsonResp(400, { error: 'request already sent' });
+      }
+
+      // Create new pending request
+      requests.push({
+        from: norm,
+        to: friendEmail,
+        timestamp: Date.now()
+      });
+      saveJson(FRIEND_REQUESTS_FILE, requests);
+
+      // Notify the recipient via Web Push!
+      const subs = loadJson(PUSH_SUBS_FILE, {});
+      const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
+      if (sub && VAPID_PUBLIC) {
+        webpush.sendNotification(sub, JSON.stringify({
+          title: 'New Friend Request',
+          body: `${maskEmail(email)} sent you a friend request!`,
+          url: notificationUrl('/'),
+        })).catch(() => {});
+      }
+
+      return jsonResp(200, { ok: true, status: 'pending' });
+    }
+
+
+
+    if (path === '/api/friends/request/respond' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const resolved = resolveTargetEmail(body.email);
+      if (!resolved) return jsonResp(400, { error: 'invalid email' });
+      const friendEmail = normalizeEmail(resolved);
+      const action = String(body.action || '').trim().toLowerCase(); // 'accept' or 'reject'
+      
+      if (action !== 'accept' && action !== 'reject') return jsonResp(400, { error: 'invalid action' });
+      
+      const norm = normalizeEmail(email);
+      const requests = loadJson(FRIEND_REQUESTS_FILE, []);
+      const reqIdx = requests.findIndex(r => normalizeEmail(r.from) === friendEmail && normalizeEmail(r.to) === norm);
+      if (reqIdx === -1) {
+        return jsonResp(400, { error: 'no pending request found from this user' });
+      }
+
+      // Remove request
+      requests.splice(reqIdx, 1);
+      saveJson(FRIEND_REQUESTS_FILE, requests);
+
+      if (action === 'accept') {
+        const friends = loadJson(FRIENDS_FILE, {});
+        if (!friends[norm]) friends[norm] = [];
+        if (!friends[norm].includes(friendEmail)) friends[norm].push(friendEmail);
+
+        if (!friends[friendEmail]) friends[friendEmail] = [];
+        if (!friends[friendEmail].includes(norm)) friends[friendEmail].push(norm);
+
+        saveJson(FRIENDS_FILE, friends);
+
+        // Notify the requester
+        const subs = loadJson(PUSH_SUBS_FILE, {});
+        const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
+        if (sub && VAPID_PUBLIC) {
+          webpush.sendNotification(sub, JSON.stringify({
+            title: 'Friend Request Accepted',
+            body: `${maskEmail(email)} accepted your friend request!`,
+            url: notificationUrl('/'),
+          })).catch(() => {});
+        }
+      }
+
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/friends/remove' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const resolved = resolveTargetEmail(body.email);
+      if (!resolved) return jsonResp(400, { error: 'invalid email' });
+      const friendEmail = normalizeEmail(resolved);
+
       const norm = normalizeEmail(email);
       const friends = loadJson(FRIENDS_FILE, {});
-      if (!friends[norm]) friends[norm] = [];
-      if (!friends[norm].includes(friendEmail)) {
-        friends[norm].push(friendEmail);
+      
+      let changed = false;
+      if (friends[norm]) {
+        const origLen = friends[norm].length;
+        friends[norm] = friends[norm].filter(f => normalizeEmail(f) !== friendEmail);
+        if (friends[norm].length !== origLen) changed = true;
+      }
+      if (friends[friendEmail]) {
+        const origLen = friends[friendEmail].length;
+        friends[friendEmail] = friends[friendEmail].filter(f => normalizeEmail(f) !== norm);
+        if (friends[friendEmail].length !== origLen) changed = true;
+      }
+
+      if (changed) {
         saveJson(FRIENDS_FILE, friends);
       }
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/presence/heartbeat' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const playing = String(body.playing || '').trim();
+      touchUserPresence(email, playing);
       return jsonResp(200, { ok: true });
     }
 
@@ -9103,12 +9388,18 @@ function loadAllGamesList() {
       if (g.status === 'over') {
         const winner = g.result === '1-0' ? g.white : (g.result === '0-1' ? g.black : null);
         const bet = g.bet || 0;
+        let winBonus = 50 + (bet * 2);
+        let drawBonus = 10 + bet;
+        if (areFriends(g.white, g.black)) {
+          winBonus = Math.floor(winBonus * 1.5);
+          drawBonus = Math.floor(drawBonus * 1.5);
+        }
         if (winner) {
-          addCoins(winner, 50 + (bet * 2));
+          addCoins(winner, winBonus);
           updateStat(winner, 'chess_wins', 1);
         } else if (g.result === '1/2-1/2') {
-          addCoins(g.white, 10 + bet);
-          addCoins(g.black, 10 + bet);
+          addCoins(g.white, drawBonus);
+          addCoins(g.black, drawBonus);
         }
       }
       if (g.type === 'corr') {
@@ -9137,7 +9428,11 @@ function loadAllGamesList() {
       g.status = 'over'; g.result = myColor === 'w' ? '0-1' : '1-0'; g.reason = 'resign';
       const winner = g.result === '1-0' ? g.white : g.black;
       const bet = g.bet || 0;
-      addCoins(winner, 50 + (bet * 2));
+      let winBonus = 50 + (bet * 2);
+      if (areFriends(g.white, g.black)) {
+        winBonus = Math.floor(winBonus * 1.5);
+      }
+      addCoins(winner, winBonus);
       updateStat(winner, 'chess_wins', 1);
       if (g.type === 'corr') cvSave();
       return jsonResp(200, { ok: true, game: g });
@@ -9153,8 +9448,12 @@ function loadAllGamesList() {
       if (body.accept && g.drawOffer && g.drawOffer !== myEmail) {
         g.status = 'over'; g.result = '1/2-1/2'; g.reason = 'draw'; delete g.drawOffer;
         const bet = g.bet || 0;
-        addCoins(g.white, 10 + bet);
-        addCoins(g.black, 10 + bet);
+        let drawBonus = 10 + bet;
+        if (areFriends(g.white, g.black)) {
+          drawBonus = Math.floor(drawBonus * 1.5);
+        }
+        addCoins(g.white, drawBonus);
+        addCoins(g.black, drawBonus);
         if (g.type === 'corr') cvSave();
       } else { delete g.drawOffer; }
       return jsonResp(200, { ok: true, game: g });
@@ -9293,7 +9592,27 @@ function loadAllGamesList() {
       if (chunk) Object.assign(result, chunk);
     }
     return jsonResp(200, result);
-  }  if (path === '/api/canvas/whoami') {
+  }
+
+  if (path === '/api/canvas/history') {
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    let history = [];
+    try {
+      if (existsSync(CANVAS_HISTORY_FILE)) {
+        const content = readFileSync(CANVAS_HISTORY_FILE, 'utf8');
+        const lines = content.trim().split('\n');
+        const recentLines = lines.slice(-5000);
+        for (const line of recentLines) {
+          if (line.trim()) history.push(JSON.parse(line));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load canvas history:', err);
+    }
+    return jsonResp(200, { history });
+  }
+
+  if (path === '/api/canvas/whoami') {
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
     const isAdmin = sid ? isAdminId(sid) : false;
@@ -10715,10 +11034,43 @@ function loadAllGamesList() {
       const friends = loadJson(FRIENDS_FILE, {});
       const myList = friends[norm] || [];
       const now = Date.now();
-      const online = Object.entries(cvOnline).filter(([, t]) => now - t < 60000).map(([e]) => e);
-      const onlineSet = new Set(online);
-      const res = myList.map(f => ({ email: maskEmail(f), online: onlineSet.has(normalizeEmail(f)) }));
+      const online = Object.entries(cvOnline).filter(([, t]) => now - t < 120000).map(([e]) => e);
+      const onlineSet = new Set(online.map(normalizeEmail));
+      const res = myList.map(f => {
+        const fNorm = normalizeEmail(f);
+        const isOnline = onlineSet.has(fNorm);
+        const presence = userPresence[fNorm];
+        return {
+          email: f,
+          maskedEmail: maskEmail(f),
+          online: isOnline,
+          playing: isOnline && presence ? presence.playing : ''
+        };
+      });
       return jsonResp(200, { friends: res });
+    }
+
+    if (path === '/api/friends/requests/pending') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      const norm = normalizeEmail(email);
+
+      const requests = loadJson(FRIEND_REQUESTS_FILE, []);
+      const incoming = requests.filter(r => normalizeEmail(r.to) === norm).map(r => ({
+        from: r.from,
+        maskedFrom: maskEmail(r.from),
+        timestamp: r.timestamp
+      }));
+      const outgoing = requests.filter(r => normalizeEmail(r.from) === norm).map(r => ({
+        to: r.to,
+        maskedTo: maskEmail(r.to),
+        timestamp: r.timestamp
+      }));
+
+      return jsonResp(200, { incoming, outgoing });
     }
 
     if (path === '/api/premium-chat/history') {

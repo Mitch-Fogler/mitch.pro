@@ -268,6 +268,7 @@
   <button class="tb-btn" id="home-btn">⌂</button>
   <button class="tb-btn" id="ref-btn">↻</button>
   <button class="tb-btn" id="help-btn">?</button>
+  <button class="tb-btn" id="timelapse-btn" title="Watch canvas history timelapse">🎬 Timelapse</button>
   <span id="premium-badge" style="display:none">✦ premium</span>
   <button class="tb-btn" id="admin-btn" style="display:none;color:#dc2626;border-color:#dc2626">⚑ admin</button>
   <button class="tb-btn" id="bans-btn" style="display:none;color:#f59e0b;border-color:#f59e0b">bans</button>
@@ -374,6 +375,9 @@ let modTimer = null;
 let toastTimer = null;
 let helpVisible = false;
 let recentPainted = [];
+let timelapsePlaying = false;
+let timelapseBackupPixels = null;
+let timelapseTimer = null;
 
 
 let pid = localStorage.getItem('canvas_pid') || (() => {
@@ -392,6 +396,80 @@ function resize() {
 }
 window.addEventListener('resize', resize);
 resize();
+
+async function toggleTimelapse() {
+  const btn = document.getElementById('timelapse-btn');
+  if (timelapsePlaying) {
+    stopTimelapse();
+  } else {
+    btn.textContent = '⏹ Stop Timelapse';
+    btn.style.color = '#fbbf24';
+    btn.style.borderColor = '#fbbf24';
+    
+    try {
+      const res = await fetch('/api/canvas/history');
+      const data = await res.json();
+      const history = data.history || [];
+      if (!history.length) {
+        showToast("No canvas history available.");
+        stopTimelapse();
+        return;
+      }
+      
+      timelapsePlaying = true;
+      timelapseBackupPixels = { ...pixels };
+      pixels = {};
+      
+      let index = 0;
+      function playNext() {
+        if (!timelapsePlaying) return;
+        if (index >= history.length) {
+          showToast("Timelapse finished!");
+          stopTimelapse();
+          return;
+        }
+        
+        const batchSize = Math.max(1, Math.floor(history.length / 500));
+        for (let i = 0; i < batchSize && index < history.length; i++) {
+          const item = history[index++];
+          if (item.color === '') {
+            delete pixels[`${item.x},${item.y}`];
+          } else {
+            pixels[`${item.x},${item.y}`] = { color: item.color };
+          }
+        }
+        
+        draw();
+        timelapseTimer = setTimeout(playNext, 16);
+      }
+      
+      playNext();
+    } catch (err) {
+      console.error("Timelapse error:", err);
+      showToast("Failed to load history.", "err");
+      stopTimelapse();
+    }
+  }
+}
+
+function stopTimelapse() {
+  timelapsePlaying = false;
+  if (timelapseTimer) {
+    clearTimeout(timelapseTimer);
+    timelapseTimer = null;
+  }
+  if (timelapseBackupPixels) {
+    pixels = timelapseBackupPixels;
+    timelapseBackupPixels = null;
+  }
+  const btn = document.getElementById('timelapse-btn');
+  if (btn) {
+    btn.textContent = '🎬 Timelapse';
+    btn.style.color = '';
+    btn.style.borderColor = '';
+  }
+  draw();
+}
 
 function s2w(sx, sy) {
   const p = PX * zoom;
@@ -661,6 +739,7 @@ document.getElementById('help-btn').onclick = () => {
   document.getElementById('help-btn').classList.toggle('active', helpVisible);
   try { localStorage.setItem('canvas_help_seen', '1'); } catch {}
 };
+document.getElementById('timelapse-btn').onclick = toggleTimelapse;
 
 const palEl = document.getElementById('palette');
 
@@ -820,6 +899,7 @@ function visibleChunkSet(buf = 2) {
 }
 
 async function loadChunks(chunkKeys) {
+  if (timelapsePlaying) return;
   if (!chunkKeys.length || chunkLoadPending) return;
   chunkLoadPending = true;
   try {
@@ -834,6 +914,7 @@ async function loadChunks(chunkKeys) {
 }
 
 async function loadPixels() {
+  if (timelapsePlaying) return;
   const btn = document.getElementById('ref-btn');
   btn.textContent = '…';
   loadedChunks.clear();
