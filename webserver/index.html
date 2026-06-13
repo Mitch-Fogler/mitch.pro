@@ -1119,9 +1119,10 @@ async function loadPendingFriendRequests() {
     if (outgoing.length > 0) {
       html += outgoing.map(req => `
         <div style="display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; background: rgba(255, 255, 255, 0.03); border-radius: 4px; margin-bottom: 4px;">
-          <div style="font-size: 11px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
+          <div style="font-size: 11px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 6px;">
             ${escText(req.maskedTo)} <span style="font-size: 9px; opacity: 0.7;">(sent)</span>
           </div>
+          <button onclick="cancelFriendRequest('${escText(req.to)}')" style="padding: 2px 4px; font-size: 9px; font-weight: bold; border-radius: 3px; border: none; background: #ef4444; color: white; cursor: pointer; shrink: 0;">Cancel</button>
         </div>
       `).join('');
     }
@@ -1174,6 +1175,20 @@ async function respondFriendRequest(friendEmail, action) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: friendEmail, action: action })
+    });
+    if (r.ok) {
+      loadFriends();
+      loadPendingFriendRequests();
+    }
+  } catch(e) {}
+}
+
+async function cancelFriendRequest(friendEmail) {
+  try {
+    const r = await fetch('/api/friends/request/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: friendEmail })
     });
     if (r.ok) {
       loadFriends();

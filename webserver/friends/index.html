@@ -294,11 +294,24 @@ function onSearchInput() {
     return;
   }
 
+  // De-duplicate members, preferring those with display names
+  const sortedMembers = [...allMembers].sort((a, b) => {
+    const hasA = !!a.displayName;
+    const hasB = !!b.displayName;
+    if (hasA && !hasB) return -1;
+    if (!hasA && hasB) return 1;
+    return 0;
+  });
+
   const matches = [];
-  for (const m of allMembers) {
+  const seenEmails = new Set();
+
+  for (const m of sortedMembers) {
     const email = (m.email || '').toLowerCase();
     const name = (m.displayName || '').toLowerCase();
     
+    if (seenEmails.has(email)) continue;
+
     let score = 0;
     
     // exact matches / startsWith get priority
@@ -314,6 +327,7 @@ function onSearchInput() {
     
     if (score > 0) {
       matches.push({ member: m, score });
+      seenEmails.add(email);
     }
   }
 
@@ -427,8 +441,8 @@ async function loadPending() {
     } else {
       outList.innerHTML = outgoing.map(req => `
         <div class="request-item">
-          <span style="color: var(--t-fg2); opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escText(req.maskedTo)}</span>
-          <span style="font-size: 0.75rem; color: #3b82f6; font-weight: 600; shrink: 0;">Sent</span>
+          <span style="color: var(--t-fg2); opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 10px;">${escText(req.maskedTo)}</span>
+          <button onclick="cancelRequest('${escText(req.to)}')" class="btn-action btn-deny" style="shrink: 0;">Cancel</button>
         </div>
       `).join('');
     }
@@ -479,6 +493,20 @@ async function respond(friendEmail, action) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: friendEmail, action })
+    });
+    if (r.ok) {
+      loadFriends();
+      loadPending();
+    }
+  } catch(e) {}
+}
+
+async function cancelRequest(friendEmail) {
+  try {
+    const r = await fetch('/api/friends/request/cancel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: friendEmail })
     });
     if (r.ok) {
       loadFriends();

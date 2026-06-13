@@ -746,6 +746,7 @@ const RATE_LIMITS = {
   '/api/leaderboard':          [10,  60],
   '/api/friends/list':             [30,  60],
   '/api/friends/request':          [10,  60],
+  '/api/friends/request/cancel':   [15,  60],
   '/api/friends/requests/pending': [30,  60],
   '/api/friends/request/respond':  [15,  60],
   '/api/friends/remove':           [10,  60],
@@ -7365,6 +7366,32 @@ function loadAllGamesList() {
       }
 
       return jsonResp(200, { ok: true, status: 'pending' });
+    }
+
+    if (path === '/api/friends/request/cancel' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const resolved = resolveTargetEmail(body.email);
+      if (!resolved) return jsonResp(400, { error: 'invalid email' });
+      const friendEmail = normalizeEmail(resolved);
+
+      const norm = normalizeEmail(email);
+      const requests = loadJson(FRIEND_REQUESTS_FILE, []);
+      const reqIdx = requests.findIndex(r => normalizeEmail(r.from) === norm && normalizeEmail(r.to) === friendEmail);
+      if (reqIdx === -1) {
+        return jsonResp(400, { error: 'no pending request found to this user' });
+      }
+
+      // Remove request
+      requests.splice(reqIdx, 1);
+      saveJson(FRIEND_REQUESTS_FILE, requests);
+
+      return jsonResp(200, { ok: true });
     }
 
 

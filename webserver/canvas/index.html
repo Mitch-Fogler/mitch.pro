@@ -439,7 +439,6 @@ async function toggleTimelapse() {
           }
         }
         
-        draw();
         timelapseTimer = setTimeout(playNext, 16);
       }
       
@@ -468,7 +467,6 @@ function stopTimelapse() {
     btn.style.color = '';
     btn.style.borderColor = '';
   }
-  draw();
 }
 
 function s2w(sx, sy) {
