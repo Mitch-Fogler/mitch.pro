@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Manage Friends — mitch.pro</title>
+<script src="/theme.js"></script>
+<script src="/sync.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg);
+    color: var(--t-fg);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 3rem 1rem 4rem;
+  }
+  .card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 12px);
+    padding: 2rem;
+    width: 100%;
+    max-width: 760px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.5);
+    backdrop-filter: blur(10px);
+  }
+  .page-title {
+    font-size: 1.8rem;
+    font-weight: 800;
+    background: var(--t-gr);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: .3rem;
+  }
+  .page-sub {
+    font-size: .85rem;
+    color: var(--t-fg2);
+    opacity: .5;
+    margin-bottom: 2rem;
+  }
+  .section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--t-fg);
+    margin-bottom: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 6px;
+  }
+  .friend-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+  }
+  .friend-item {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: transform 0.2s, background-color 0.2s, border-color 0.2s;
+  }
+  .friend-item:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(59, 130, 246, 0.2);
+    transform: translateY(-2px);
+  }
+  .friend-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  .friend-email {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .friend-status {
+    font-size: 0.75rem;
+    margin-top: 3px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-weight: 500;
+  }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .online .status-dot { background-color: #4ade80; box-shadow: 0 0 8px #4ade80; }
+  .online { color: #4ade80; }
+  .offline .status-dot { background-color: #64748b; }
+  .offline { color: #64748b; }
+  
+  .add-box {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+  }
+  .add-input {
+    flex: 1;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--t-bd);
+    border-radius: 8px;
+    padding: 0.65rem 1rem;
+    color: #fff;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .add-input:focus { border-color: var(--t-ac, #3b82f6); }
+  .btn {
+    padding: 0.65rem 1.25rem;
+    border-radius: 8px;
+    border: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  .btn-primary { background: #3b82f6; color: #fff; }
+  .btn-primary:hover { background: #2563eb; }
+  .btn-primary:disabled { background: #1e3a8a; opacity: 0.6; cursor: not-allowed; }
+  
+  .btn-action {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    border-radius: 4px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .btn-accept { background: #22c55e; color: white; }
+  .btn-accept:hover { background: #16a34a; }
+  .btn-deny { background: #ef4444; color: white; margin-left: 4px; }
+  .btn-deny:hover { background: #dc2626; }
+  .btn-remove {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    font-size: 16px;
+    cursor: pointer;
+    opacity: 0.5;
+    padding: 4px;
+    transition: opacity 0.2s, transform 0.2s;
+  }
+  .btn-remove:hover { opacity: 1; transform: scale(1.15); }
+  
+  .requests-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+  .request-list {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 80px;
+  }
+  .request-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    font-size: 0.85rem;
+  }
+  .empty-state {
+    color: var(--t-fg2);
+    opacity: 0.45;
+    font-size: 0.82rem;
+    text-align: center;
+    padding: 16px 0;
+  }
+  
+  .back-link {
+    display: inline-block;
+    margin-top: 1.5rem;
+    font-size: .85rem;
+    color: var(--t-fg2);
+    text-decoration: none;
+    opacity: .5;
+    transition: opacity .15s;
+  }
+  .back-link:hover { opacity: 1; }
+
+  /* Autocomplete Dropdown Styles */
+  .autocomplete-item {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 0.15s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .autocomplete-item:last-child { border-bottom: none; }
+  .autocomplete-item:hover { background: rgba(59, 130, 246, 0.15); }
+  .autocomplete-item .item-name { font-weight: 600; color: #fff; }
+  .autocomplete-item .item-email { font-size: 0.75rem; color: var(--t-fg2); opacity: 0.6; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1 class="page-title">Manage Friends</h1>
+  <p class="page-sub">Send friend requests, view active game presence, and accept incoming invites.</p>
+
+  <!-- Add Friend Box -->
+  <div class="section-title"><span>Add Friend</span></div>
+  <div class="add-box" style="position: relative; flex-direction: column; gap: 0; margin-bottom: 2rem;">
+    <div style="display: flex; gap: 0.5rem; width: 100%;">
+      <input type="text" id="friendEmailInput" class="add-input" placeholder="Type display name or email to search..." autocomplete="off" oninput="onSearchInput()" />
+      <button id="friendSubmitBtn" class="btn btn-primary" onclick="sendRequest()">Add Friend</button>
+    </div>
+    <div id="autocomplete-list" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--t-bg2, #1b1f2a); border: 1px solid var(--t-bd, rgba(255,255,255,0.15)); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.5);"></div>
+  </div>
+  <div id="addStatusMsg" style="font-size: 0.85rem; margin-top: -1.5rem; margin-bottom: 1.5rem; display: none; font-weight: 600;"></div>
+
+  <!-- Pending Requests Grid -->
+  <div class="requests-section">
+    <div>
+      <div class="section-title"><span>Incoming Requests</span></div>
+      <div id="incomingList" class="request-list">
+        <div class="empty-state">No incoming requests</div>
+      </div>
+    </div>
+    <div>
+      <div class="section-title"><span>Outgoing Requests</span></div>
+      <div id="outgoingList" class="request-list">
+        <div class="empty-state">No outgoing requests</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Friends List -->
+  <div class="section-title"><span>My Friends</span></div>
+  <div id="friendsGrid" class="friend-grid">
+    <div class="empty-state" style="grid-column: 1/-1;">No friends added yet</div>
+  </div>
+
+  <a class="back-link" href="/">← Back to mitch.pro</a>
+</div>
+
+<script>
+let allMembers = [];
+
+function escText(t) {
+  if (!t) return '';
+  return String(t)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+async function fetchAllMembers() {
+  try {
+    const r = await fetch('/api/members?t=' + Date.now(), { credentials: 'include' });
+    if (r.ok) {
+      const d = await r.json();
+      allMembers = d.members || [];
+    }
+  } catch(e) {}
+}
+
+function onSearchInput() {
+  const input = document.getElementById('friendEmailInput');
+  const listEl = document.getElementById('autocomplete-list');
+  if (!input || !listEl) return;
+  const q = input.value.trim().toLowerCase();
+  if (!q) {
+    listEl.style.display = 'none';
+    return;
+  }
+
+  const matches = [];
+  for (const m of allMembers) {
+    const email = (m.email || '').toLowerCase();
+    const name = (m.displayName || '').toLowerCase();
+    
+    let score = 0;
+    
+    // exact matches / startsWith get priority
+    if (name === q || email === q) {
+      score += 1000;
+    } else if (name.startsWith(q) || email.startsWith(q)) {
+      score += 500;
+    } else if (name.includes(q)) {
+      score += 200;
+    } else if (email.includes(q)) {
+      score += 100;
+    }
+    
+    if (score > 0) {
+      matches.push({ member: m, score });
+    }
+  }
+
+  // Sort by score descending
+  matches.sort((a, b) => b.score - a.score);
+
+  if (matches.length === 0) {
+    listEl.style.display = 'none';
+    return;
+  }
+
+  listEl.style.display = 'block';
+  listEl.innerHTML = matches.slice(0, 6).map(item => {
+    const m = item.member;
+    const nameStr = m.displayName ? escText(m.displayName) : 'mitch.pro user';
+    const emailStr = escText(m.email);
+    // Click calls selectMember with the target identifier (m.email)
+    return `
+      <div class="autocomplete-item" onclick="selectMember('${escText(m.email)}')">
+        <span class="item-name">${nameStr}</span>
+        <span class="item-email">${emailStr}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectMember(email) {
+  const input = document.getElementById('friendEmailInput');
+  const listEl = document.getElementById('autocomplete-list');
+  if (input) input.value = email;
+  if (listEl) listEl.style.display = 'none';
+}
+
+// Close list on clicking outside
+document.addEventListener('click', function(e) {
+  const listEl = document.getElementById('autocomplete-list');
+  const input = document.getElementById('friendEmailInput');
+  if (listEl && e.target !== input && !listEl.contains(e.target)) {
+    listEl.style.display = 'none';
+  }
+});
+
+async function loadFriends() {
+  const grid = document.getElementById('friendsGrid');
+  try {
+    const r = await fetch('/api/friends/list?t=' + Date.now(), { credentials: 'include' });
+    if (!r.ok) {
+      grid.innerHTML = '<div class="empty-state">Please sign in to view friends</div>';
+      return;
+    }
+    const d = await r.json();
+    const list = d.friends || [];
+    if (list.length === 0) {
+      grid.innerHTML = '<div class="empty-state" style="grid-column: 1/-1;">No friends added yet. Search a member above to add someone!</div>';
+      return;
+    }
+    grid.innerHTML = list.map(f => {
+      const email = f.email;
+      const masked = f.maskedEmail;
+      const isOnline = f.online;
+      const playing = f.playing ? ` (playing ${f.playing})` : '';
+      
+      const statusClass = isOnline ? 'online' : 'offline';
+      const statusText = isOnline ? `Online${playing}` : 'Offline';
+      
+      return `
+        <div class="friend-item">
+          <div class="friend-info">
+            <span class="friend-email">${escText(masked)}</span>
+            <span class="friend-status ${statusClass}">
+              <span class="status-dot"></span>
+              ${escText(statusText)}
+            </span>
+          </div>
+          <button onclick="removeFriend('${escText(email)}')" class="btn-remove" title="Remove Friend">✕</button>
+        </div>
+      `;
+    }).join('');
+  } catch(e) {
+    grid.innerHTML = '<div class="empty-state">Error loading friends list</div>';
+  }
+}
+
+async function loadPending() {
+  const incList = document.getElementById('incomingList');
+  const outList = document.getElementById('outgoingList');
+  try {
+    const r = await fetch('/api/friends/requests/pending?t=' + Date.now(), { credentials: 'include' });
+    if (!r.ok) return;
+    const d = await r.json();
+    
+    const incoming = d.incoming || [];
+    const outgoing = d.outgoing || [];
+    
+    if (incoming.length === 0) {
+      incList.innerHTML = '<div class="empty-state">No incoming requests</div>';
+    } else {
+      incList.innerHTML = incoming.map(req => `
+        <div class="request-item">
+          <span style="font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; margin-right: 10px;">${escText(req.maskedFrom)}</span>
+          <div style="shrink: 0;">
+            <button onclick="respond('${escText(req.from)}', 'accept')" class="btn-action btn-accept">Accept</button>
+            <button onclick="respond('${escText(req.from)}', 'reject')" class="btn-action btn-deny">Reject</button>
+          </div>
+        </div>
+      `).join('');
+    }
+    
+    if (outgoing.length === 0) {
+      outList.innerHTML = '<div class="empty-state">No outgoing requests</div>';
+    } else {
+      outList.innerHTML = outgoing.map(req => `
+        <div class="request-item">
+          <span style="color: var(--t-fg2); opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">${escText(req.maskedTo)}</span>
+          <span style="font-size: 0.75rem; color: #3b82f6; font-weight: 600; shrink: 0;">Sent</span>
+        </div>
+      `).join('');
+    }
+  } catch(e) {}
+}
+
+async function sendRequest() {
+  const input = document.getElementById('friendEmailInput');
+  const btn = document.getElementById('friendSubmitBtn');
+  const msg = document.getElementById('addStatusMsg');
+  const email = input.value.trim();
+  if (!email) return;
+  
+  btn.disabled = true;
+  msg.style.display = 'block';
+  msg.style.color = 'var(--t-ac, #3b82f6)';
+  msg.innerText = 'Sending request...';
+  
+  try {
+    const r = await fetch('/api/friends/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    const d = await r.json();
+    if (r.ok) {
+      msg.style.color = '#4ade80';
+      msg.innerText = d.status === 'accepted' ? 'Friend request accepted (already mutual)!' : 'Friend request sent!';
+      input.value = '';
+      loadFriends();
+      loadPending();
+    } else {
+      msg.style.color = '#ef4444';
+      msg.innerText = d.error || 'Failed to send request';
+    }
+  } catch(e) {
+    msg.style.color = '#ef4444';
+    msg.innerText = 'Connection error';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { msg.style.display = 'none'; }, 6000);
+  }
+}
+
+async function respond(friendEmail, action) {
+  try {
+    const r = await fetch('/api/friends/request/respond', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: friendEmail, action })
+    });
+    if (r.ok) {
+      loadFriends();
+      loadPending();
+    }
+  } catch(e) {}
+}
+
+async function removeFriend(friendEmail) {
+  if (!confirm('Are you sure you want to remove this friend?')) return;
+  try {
+    const r = await fetch('/api/friends/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: friendEmail })
+    });
+    if (r.ok) {
+      loadFriends();
+      loadPending();
+    }
+  } catch(e) {}
+}
+
+// Heartbeat reporting
+async function sendHeartbeat() {
+  try {
+    await fetch('/api/presence/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ playing: 'Friends Manager' })
+    });
+  } catch(e) {}
+}
+
+function init() {
+  loadFriends();
+  loadPending();
+  fetchAllMembers();
+  sendHeartbeat();
+  
+  setInterval(loadFriends, 15000);
+  setInterval(loadPending, 15000);
+  setInterval(sendHeartbeat, 30000);
+  
+  document.getElementById('friendEmailInput').onkeydown = function(e) {
+    if (e.key === 'Enter') sendRequest();
+  };
+}
+
+document.addEventListener('DOMContentLoaded', init, { once: true });
+</script>
+</body>
+</html>
