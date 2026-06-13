@@ -103,7 +103,7 @@ try {
 const PORT = 6800;
 const HOST = "0.0.0.0";
 const USERDATA_DIR = "/opt/userdata";
-const NTFY_TOPIC = 'mitch_pro_71065_personal_alrtspquirl';
+const NTFY_TOPIC = (process.env.NTFY_TOPIC || '').trim();
 const GOOGLE_CLIENT_ID = '561391673402-eufe4daah7oinpq0ddb7v2l6gspr01gh.apps.googleusercontent.com';
 const NOTIFICATION_ORIGIN = 'https://mitchdog.com';
 
@@ -1456,6 +1456,7 @@ function sendEmailBg(to, subject, body) {
 // ── ntfy / recaptcha ──────────────────────────────────────────────────────────
 
 async function ntfy(msg, { title, priority } = {}) {
+  if (!NTFY_TOPIC) return;
   try {
     const headers = { 'Content-Type': 'text/plain' };
     if (title)                          headers['Title']    = title;

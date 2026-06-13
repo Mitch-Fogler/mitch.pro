@@ -19,7 +19,7 @@ const PASS             = process.env.HOSTINGER_PASS;
 const CACHE_FILE       = path.join(__dirname, '..', 'data', 'team_inbox_cache.json');
 const AUTOREPLY_FILE   = path.join(__dirname, '..', 'data', 'autoreply_sent.json');
 const SUPPORT_SEND     = path.join(__dirname, 'support_send.js');
-const NTFY_TOPIC       = 'mitch_pro_71065_personal_alrtspquirl';
+const NTFY_TOPIC       = (process.env.NTFY_TOPIC || '').trim();
 
 const AUTOREPLY_BODY = 'Thank you for contacting mitch.pro support. Please reply with your problem and we will get you into contact with a mitch.pro representative as soon as possible.';
 
@@ -29,6 +29,7 @@ function loadSent() {
 function saveSent(s) { fs.writeFileSync(AUTOREPLY_FILE, JSON.stringify([...s])); }
 
 async function ntfy(msg, title = 'Support Email', priority = 'high') {
+  if (!NTFY_TOPIC) return;
   try {
     await fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
       method: 'POST', body: msg,

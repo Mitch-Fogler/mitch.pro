@@ -10,7 +10,25 @@ EMAILS_FILE = os.path.join(BASE, 'emails.json')
 SENT_FILE   = os.path.join(BASE, 'gmail_autoreply_sent.json')
 LOCK_FILE   = os.path.join(BASE, 'gmail_autoreply.lock')
 SEND_SCRIPT = os.path.join(os.path.dirname(BASE), 'send_email.js')
-NTFY_TOPIC  = 'mitch_pro_71065_personal_alrtspquirl'
+# Try loading .env file if it exists
+def load_env():
+    # project root is two levels up from check_email
+    env_path = os.path.join(os.path.dirname(os.path.dirname(BASE)), '.env')
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        k, v = line.split('=', 1)
+                        # strip quotes if present
+                        v = v.strip().strip("'").strip('"')
+                        os.environ[k.strip()] = v
+        except Exception:
+            pass
+
+load_env()
+NTFY_TOPIC = os.environ.get('NTFY_TOPIC', '')
 GMAIL_ADDR  = 'mitchell.fogler@student.rjuhsd.us'
 
 def acquire_lock():
@@ -56,6 +74,8 @@ def first_part_only(body):
     return '\n'.join(result)
 
 def ntfy(msg, title='Support Email', priority='default'):
+    if not NTFY_TOPIC:
+        return
     try:
         req = urllib.request.Request(
             f'https://ntfy.sh/{NTFY_TOPIC}',
