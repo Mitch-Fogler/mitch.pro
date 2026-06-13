@@ -6150,7 +6150,7 @@ Mitch.pro Team`;
 
         const _s = site();
         sendEmailBg(email, `Your ${_s.name} Verification Code`,
-          `Hi,\n\nYour verification code is: ${code}\n\nThis code expires in 30 minutes. Enter it on the sign-up page to complete your account setup.\n\nIf you did not request this, please ignore this email.${emailFooter()}${emailSig()}`);
+          `Hi,\n\nYour verification code is: ${code}\n\nThis code expires in 30 minutes. Enter it on the sign-up page to complete your account setup.\n\nIf you didn't request this email, you can safely ignore it.${emailFooter()}${emailSig()}`);
 
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
@@ -6263,7 +6263,7 @@ Mitch.pro Team`;
 
         const _s = site();
         sendEmailBg(email, `Your ${_s.name} Reset Code`,
-          `Hi,\n\nYour 6-digit password reset code is: ${otp}\n\nThis code expires in 30 minutes. Enter it on the reset page to set a new password.${emailFooter()}${emailSig()}`);
+          `Hi,\n\nYour 6-digit password reset code is: ${otp}\n\nThis code expires in 30 minutes. Enter it on the reset page to set a new password.\n\nIf you didn't request this email, you can safely ignore it.${emailFooter()}${emailSig()}`);
 
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }

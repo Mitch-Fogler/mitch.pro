@@ -8,8 +8,27 @@ from playwright_stealth import Stealth
 
 PROFILE_DIR = "./gmail_profile"
 GOOGLE_EMAIL = "mitchell.fogler@student.rjuhsd.us"
-GOOGLE_PASSWORD = "711108"
-CACHE_FILE = "directory_cache.json"
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+
+def load_env():
+    # project root is two levels up from check_email
+    env_path = os.path.join(os.path.dirname(os.path.dirname(BASE)), '.env')
+    if os.path.exists(env_path):
+        try:
+            with open(env_path, encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        k, v = line.split('=', 1)
+                        v = v.strip().strip("'").strip('"')
+                        os.environ[k.strip()] = v
+        except Exception:
+            pass
+
+load_env()
+GOOGLE_PASSWORD = os.environ.get('GOOGLE_PASSWORD', '')
+CACHE_FILE = os.path.join(BASE, "directory_cache.json")
 
 def load_cache():
     if os.path.exists(CACHE_FILE):
