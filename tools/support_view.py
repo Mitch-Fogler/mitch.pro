@@ -5,17 +5,17 @@ import urllib.request, urllib.parse
 BASE        = os.path.dirname(os.path.abspath(__file__))
 READ_SCRIPT = os.path.join(BASE, 'mail', 'support_read.js')
 SEND_SCRIPT = os.path.join(BASE, 'mail', 'support_send.js')
-NTFY_TOPIC  = 'mitch_pro_71065_personal_alrtspquirl'
 SMS_CONVOS_FILE = os.path.join(BASE, 'data', 'sms_conversations.json')
 sms_convos_lock = threading.Lock()
 
 # Load .env
 try:
-    for _line in open(os.path.join(BASE, '.env')):
+    for _line in open(os.path.join(os.path.dirname(BASE), '.env')):
         _m = re.match(r'^\s*(?:export\s+)?([A-Z_]+)\s*=\s*"?([^"#]*)"?\s*$', _line)
         if _m: os.environ.setdefault(_m.group(1), _m.group(2).strip())
 except: pass
 
+NTFY_TOPIC  = os.environ.get('NTFY_TOPIC', '')
 TEXTBELT_KEY = os.environ.get('TEXTBELT_API_KEY', '')
 
 def _site():
@@ -25,6 +25,7 @@ def _site():
 WEBHOOK_URL = _site().get('primary', 'https://mitch.pro') + '/api/sms-reply'
 
 def ntfy(msg, title=None):
+    if not NTFY_TOPIC: return
     try:
         headers = {'Content-Type': 'text/plain'}
         if title: headers['Title'] = title

@@ -61,6 +61,7 @@ old/
 docker-compose.override.yml
 
 codepen-temp/
+expressions.txt
 
 # Massive Third-Party Game Libraries (Managed on host to keep git repository under 50MB)
 webserver/games/3kh0/

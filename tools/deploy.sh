@@ -4,9 +4,16 @@
 set -euo pipefail
 
 CADDYFILE_PATH="/home/mitch/server/bun/caddy/Caddyfile"
-NTFY_TOPIC="mitch_pro_71065_personal_alrtspquirl"
+# Load NTFY_TOPIC from .env
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_PATH="$SCRIPT_DIR/../.env"
+if [ -f "$ENV_PATH" ]; then
+    NTFY_TOPIC=$(grep -E "^NTFY_TOPIC=" "$ENV_PATH" | cut -d= -f2- | tr -d '"' | tr -d "'")
+fi
+NTFY_TOPIC="${NTFY_TOPIC:-}"
 
 send_notification() {
+    [ -z "${NTFY_TOPIC:-}" ] && return 0
     local msg="$1"
     local title="${2:-Deploy Status}"
     local priority="${3:-default}"
