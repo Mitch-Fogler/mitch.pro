@@ -3001,12 +3001,37 @@ function resolveTargetEmail(input) {
   const passwords = loadPasswords();
   const emails = Object.keys(passwords).map(e => e.toLowerCase().trim());
 
+  // 1. Direct match or normalized match
   if (passwords[target]) return target;
+  const normTarget = normalizeEmail(target);
+  if (passwords[normTarget]) return normTarget;
 
+  // 2. Try match by maskEmail or getUidForEmail
   for (const email of emails) {
-    if (normalizeEmail(email) === target) return email;
+    if (normalizeEmail(email) === normTarget) return email;
     if (maskEmail(email).toLowerCase() === target) return email;
     if (getUidForEmail(email) === input.trim()) return email;
+  }
+
+  // 3. Try match by displayName in profiles.json (exact case-insensitive match)
+  const profiles = loadJson(PROFILES_FILE, {});
+  for (const [normEmail, profile] of Object.entries(profiles)) {
+    if (profile.displayName && profile.displayName.toLowerCase().trim() === target) {
+      if (passwords[normEmail]) return normEmail;
+    }
+  }
+
+  // 4. Try match by local part of the email (e.g. "mitch" matching "mitch@mitch.pro")
+  for (const email of emails) {
+    const local = email.split('@')[0];
+    if (local === target) return email;
+  }
+
+  // 5. Try match by display name substring (e.g. "mitch" matching "Mitch Fogler")
+  for (const [normEmail, profile] of Object.entries(profiles)) {
+    if (profile.displayName && profile.displayName.toLowerCase().includes(target)) {
+      if (passwords[normEmail]) return normEmail;
+    }
   }
 
   return null;
