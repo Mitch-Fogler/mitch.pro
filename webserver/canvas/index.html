@@ -379,6 +379,65 @@ let timelapsePlaying = false;
 let timelapseBackupPixels = null;
 let timelapseTimer = null;
 
+const chunkCanvases = {};
+
+function getOrCreateChunkCanvas(cx, cy) {
+  const key = `${cx},${cy}`;
+  if (chunkCanvases[key]) return chunkCanvases[key];
+  const canvas = document.createElement('canvas');
+  canvas.width = CHUNK;
+  canvas.height = CHUNK;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  chunkCanvases[key] = { canvas, ctx };
+  return chunkCanvases[key];
+}
+
+function setPixelInChunk(wx, wy, color) {
+  const cx = Math.floor(wx / CHUNK);
+  const cy = Math.floor(wy / CHUNK);
+  const { ctx } = getOrCreateChunkCanvas(cx, cy);
+  const px = wx - cx * CHUNK;
+  const py = wy - cy * CHUNK;
+  if (color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(px, py, 1, 1);
+  } else {
+    ctx.clearRect(px, py, 1, 1);
+  }
+}
+
+function renderChunkToCanvas(cx, cy) {
+  const { canvas, ctx } = getOrCreateChunkCanvas(cx, cy);
+  ctx.clearRect(0, 0, CHUNK, CHUNK);
+  const startX = cx * CHUNK;
+  const startY = cy * CHUNK;
+  for (let x = 0; x < CHUNK; x++) {
+    for (let y = 0; y < CHUNK; y++) {
+      const wx = startX + x;
+      const wy = startY + y;
+      const p = pixels[`${wx},${wy}`];
+      if (p && p.color) {
+        ctx.fillStyle = p.color;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+}
+
+function clearAllChunkCanvases() {
+  for (const key in chunkCanvases) {
+    delete chunkCanvases[key];
+  }
+}
+
+function rebuildAllChunkCanvases() {
+  clearAllChunkCanvases();
+  for (const k of loadedChunks) {
+    const [cx, cy] = k.split(',').map(Number);
+    renderChunkToCanvas(cx, cy);
+  }
+}
 
 let pid = localStorage.getItem('canvas_pid') || (() => {
   const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -388,11 +447,13 @@ let pid = localStorage.getItem('canvas_pid') || (() => {
 
 const cv = document.getElementById('c');
 const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
 
 function resize() {
   cv.width = window.innerWidth;
   cv.height = window.innerHeight - TB - PB;
   cv.style.top = TB + 'px';
+  ctx.imageSmoothingEnabled = false;
 }
 window.addEventListener('resize', resize);
 resize();
@@ -419,6 +480,7 @@ async function toggleTimelapse() {
       timelapsePlaying = true;
       timelapseBackupPixels = { ...pixels };
       pixels = {};
+      clearAllChunkCanvases();
       
       let index = 0;
       function playNext() {
@@ -434,8 +496,10 @@ async function toggleTimelapse() {
           const item = history[index++];
           if (item.color === '') {
             delete pixels[`${item.x},${item.y}`];
+            setPixelInChunk(item.x, item.y, null);
           } else {
             pixels[`${item.x},${item.y}`] = { color: item.color };
+            setPixelInChunk(item.x, item.y, item.color);
           }
         }
         
@@ -467,6 +531,7 @@ function stopTimelapse() {
     btn.style.color = '';
     btn.style.borderColor = '';
   }
+  rebuildAllChunkCanvases();
 }
 
 function s2w(sx, sy) {
@@ -498,25 +563,37 @@ function render() {
     ctx.lineWidth = 1;
     const majorEvery = 8;
     const x0m = Math.floor((0 - W / 2) / p + panX) - 1, x1m = Math.ceil((W - W / 2) / p + panX) + 1;
+    const y0m = Math.floor((0 - H / 2) / p + panY) - 1, y1m = Math.ceil((H - H / 2) / p + panY) + 1;
+
+    ctx.beginPath();
     for (let wx = x0m; wx <= x1m; wx++) {
       if (wx % majorEvery !== 0) continue;
       const sx = w2sx(wx);
-      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke();
+      ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
     }
-    const y0m = Math.floor((0 - H / 2) / p + panY) - 1, y1m = Math.ceil((H - H / 2) / p + panY) + 1;
     for (let wy = y0m; wy <= y1m; wy++) {
       if (wy % majorEvery !== 0) continue;
       const sy = w2sy(wy);
-      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+      ctx.moveTo(0, sy); ctx.lineTo(W, sy);
     }
+    ctx.stroke();
   }
   if (p >= 5) {
     ctx.strokeStyle = 'rgba(203,213,225,0.055)';
     ctx.lineWidth = 0.5;
     const x0 = Math.floor((0 - W / 2) / p + panX) - 1, x1 = Math.ceil((W - W / 2) / p + panX) + 1;
-    for (let wx = x0; wx <= x1; wx++) { const sx = w2sx(wx); ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, H); ctx.stroke(); }
     const y0 = Math.floor((0 - H / 2) / p + panY) - 1, y1 = Math.ceil((H - H / 2) / p + panY) + 1;
-    for (let wy = y0; wy <= y1; wy++) { const sy = w2sy(wy); ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke(); }
+
+    ctx.beginPath();
+    for (let wx = x0; wx <= x1; wx++) {
+      const sx = w2sx(wx);
+      ctx.moveTo(sx, 0); ctx.lineTo(sx, H);
+    }
+    for (let wy = y0; wy <= y1; wy++) {
+      const sy = w2sy(wy);
+      ctx.moveTo(0, sy); ctx.lineTo(W, sy);
+    }
+    ctx.stroke();
   }
 
   ctx.strokeStyle = 'rgba(45,212,191,0.22)'; ctx.lineWidth = 1; ctx.setLineDash([4, 6]);
@@ -524,19 +601,39 @@ function render() {
   ctx.beginPath(); ctx.moveTo(0, w2sy(0)); ctx.lineTo(W, w2sy(0)); ctx.stroke();
   ctx.setLineDash([]);
 
-  for (const [key, d] of Object.entries(pixels)) {
-    const ci = key.indexOf(',');
-    const wx = +key.slice(0, ci), wy = +key.slice(ci + 1);
-    const sx = w2sx(wx), sy = w2sy(wy);
-    if (sx + p < 0 || sx > W || sy + p < 0 || sy > H) continue;
-    ctx.fillStyle = d.color;
-    ctx.fillRect(sx, sy, p + 0.5, p + 0.5);
-    if (d.premium && p >= 12) {
-      const r = Math.max(1.5, p * 0.12);
-      ctx.fillStyle = '#f59e0b';
-      ctx.beginPath();
-      ctx.arc(sx + p - r - 1, sy + r + 1, r, 0, Math.PI * 2);
-      ctx.fill();
+  const visibleChunks = visibleChunkSet(1);
+  for (const k of visibleChunks) {
+    const chunkData = chunkCanvases[k];
+    if (!chunkData) continue;
+    const [cx, cy] = k.split(',').map(Number);
+    const wx = cx * CHUNK;
+    const wy = cy * CHUNK;
+    const sx = w2sx(wx);
+    const sy = w2sy(wy);
+    const sz = CHUNK * p;
+    ctx.drawImage(chunkData.canvas, sx, sy, sz, sz);
+  }
+
+  if (p >= 12) {
+    for (const k of visibleChunks) {
+      const [cx, cy] = k.split(',').map(Number);
+      const startX = cx * CHUNK;
+      const startY = cy * CHUNK;
+      for (let x = 0; x < CHUNK; x++) {
+        for (let y = 0; y < CHUNK; y++) {
+          const wx = startX + x;
+          const wy = startY + y;
+          const d = pixels[`${wx},${wy}`];
+          if (d && d.premium) {
+            const sx = w2sx(wx), sy = w2sy(wy);
+            const r = Math.max(1.5, p * 0.12);
+            ctx.fillStyle = '#f59e0b';
+            ctx.beginPath();
+            ctx.arc(sx + p - r - 1, sy + r + 1, r, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
     }
   }
 
@@ -579,6 +676,7 @@ function actAt(wx, wy, isClick) {
         const key = `${x},${y}`;
         pixels[key] = { color, painter: pid, ts: now, email: pid, admin: true };
         points.push({ x, y, color, painter: pid });
+        setPixelInChunk(x, y, color);
       }
     }
     document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
@@ -603,6 +701,7 @@ function paintAt(wx, wy, isClick) {
     }
   }
   pixels[key] = { color, painter: pid, ts: Date.now() };
+  setPixelInChunk(wx, wy, color);
   recentPainted.push({ x: wx, y: wy, color, painter: pid, ts: Date.now() });
   if (recentPainted.length > 260) recentPainted.splice(0, recentPainted.length - 260);
   document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
@@ -616,7 +715,7 @@ function paintAt(wx, wy, isClick) {
     body: JSON.stringify({ x: wx, y: wy, color, painter: pid, lock: lock }),
   }).then(r => r.json()).then(d => {
     if (d.error === 'banned') { banned = true; showBanned(d.reason); }
-    if (d.error === 'occupied') delete pixels[key];
+    if (d.error === 'occupied') { delete pixels[key]; setPixelInChunk(wx, wy, null); }
   }).catch(() => {});
 }
 
@@ -639,6 +738,7 @@ function eraseAt(wx, wy, isClick) {
     return;
   }
   delete pixels[key];
+  setPixelInChunk(wx, wy, null);
   document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
   fetch('/api/canvas/erase', {
     method: 'POST',
@@ -905,7 +1005,11 @@ async function loadChunks(chunkKeys) {
     const r = await fetch('/api/canvas/pixels?chunks=' + encodeURIComponent(param));
     const data = await r.json();
     Object.assign(pixels, data);
-    for (const k of chunkKeys) loadedChunks.add(k);
+    for (const k of chunkKeys) {
+      loadedChunks.add(k);
+      const [cx, cy] = k.split(',').map(Number);
+      renderChunkToCanvas(cx, cy);
+    }
     document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
   } catch { showToast('Failed to load', 'err'); }
   chunkLoadPending = false;
@@ -917,6 +1021,7 @@ async function loadPixels() {
   btn.textContent = '…';
   loadedChunks.clear();
   pixels = {};
+  clearAllChunkCanvases();
   const visible = [...visibleChunkSet(3)];
   await loadChunks(visible);
   btn.textContent = '↻';
@@ -970,6 +1075,7 @@ async function adminErase() {
     return;
   }
   delete pixels[key];
+  setPixelInChunk(wx, wy, null);
   document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
   adminHoverPx = null; adminSelected = false;
   document.getElementById('adm-painter').textContent = '(empty)';

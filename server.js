@@ -118,6 +118,10 @@ const E2E_LOG_FILE           = join(DATA_DIR, 'e2e_log.json');
 const AI_LOG_FILE            = join(DATA_DIR, 'ai_log.json');
 const INVITE_CODES_FILE      = join(DATA_DIR, 'invite_codes.json');   // { normEmail -> code }
 const INVITE_CLAIMS_FILE     = join(DATA_DIR, 'invite_claims.json');  // { normNewEmail -> { refNorm, ts, paid } }
+const PREMIUM_COLORS         = new Set([
+  '#ffd700', '#ffc0cb', '#ff69b4', '#00ffff', '#7fffd4', '#adff2f',
+  '#ff4500', '#da70d6', '#40e0d0', '#f0e68c', '#e6e6fa', '#b8860b'
+]);
 const INVITE_SENT_FILE       = join(DATA_DIR, 'invite_sent.json');    // { normEmail -> [sentTo, ...] }
 const ADMIN_KEY_FILE         = join(BASE, 'admin', 'admin.key');
 const PREMIUM_GIFTS_SENT_FILE = join(DATA_DIR, 'premium_gifts_sent.json');
@@ -765,7 +769,7 @@ const RATE_LIMITS = {
   '/api/games/lillians-logic/solve': [10, 60],
   '/api/chess-vs/challenge':   [5,   600],
   '/api/chess-vs/move':        [60,  60],
-  '/api/canvas/pixel':         [5,   60], // 5 pixels per minute by default
+  '/api/canvas/pixel':         [120, 60], // 120 pixels per minute by default
   '/api/canvas/history':       [10,  60],
   '__default__':               [100, 60],
 };
