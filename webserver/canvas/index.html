@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
   <title>pixelplace — mitch.pro</title>
   <script src="/theme.js"></script>
+  <script src="/popup.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -490,6 +491,12 @@ async function loadAllPixelsInternal() {
 
 async function loadAllPixels() {
   if (timelapsePlaying) return;
+  const proceed = await window.customConfirm(
+    "Load Entire Canvas?",
+    "Fetching all pixels on the board might take a moment. Do you want to proceed?"
+  );
+  if (!proceed) return;
+
   const btn = document.getElementById('load-all-btn');
   const oldText = btn.textContent;
   btn.textContent = '⏳ Loading…';
@@ -510,6 +517,12 @@ async function toggleTimelapse() {
   if (timelapsePlaying) {
     stopTimelapse();
   } else {
+    const proceed = await window.customConfirm(
+      "Start Timelapse?",
+      "To run the timelapse, the full canvas must be loaded first. This might take a moment. Do you want to proceed?"
+    );
+    if (!proceed) return;
+
     btn.textContent = '⏹ Stop Timelapse';
     btn.style.color = '#fbbf24';
     btn.style.borderColor = '#fbbf24';
@@ -757,7 +770,7 @@ function paintAt(wx, wy, brushSz, isClick) {
   fetch('/api/canvas/pixel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ x: wx, y: wy, brushSz, color, painter: pid, lock: lock, bypass: speedUpEnabled }),
+    body: JSON.stringify({ x: wx, y: wy, brushSz, color, painter: pid, lock: lock }),
   }).then(r => r.json()).then(d => {
     if (d.error) {
       if (d.error === 'banned') { banned = true; showBanned(d.reason); }
