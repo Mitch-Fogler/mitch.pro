@@ -225,6 +225,21 @@
     .mod-entry { border-top: 1px solid #333; padding: 7px 0; display: flex; flex-direction: column; gap: 4px; }
     .mod-entry .mod-title { color: #fbbf24; font-size: 10px; font-weight: 800; }
     .mod-entry .mod-meta { color: #9ca3af; font-size: 10px; line-height: 1.4; }
+    #bookmarks-panel {
+      display: none; position: fixed; top: 52px; right: 12px; z-index: 200;
+      background: rgba(10,10,10,0.95); border: 1px solid #6b7280;
+      border-radius: 9px; padding: 10px 12px; font-family: monospace; font-size: 11px;
+      color: #e8e8e8; width: 280px; max-height: 70vh; overflow-y: auto;
+    }
+    #bookmarks-panel.show { display: block; }
+    #bookmarks-panel .adm-hd { color: #60a5fa; font-weight: 800; font-size: 12px; margin-bottom: 8px; }
+    .bm-entry { border-top: 1px solid #333; padding: 6px 0; display: flex; flex-direction: column; gap: 3px; }
+    .bm-entry-header { display: flex; justify-content: space-between; align-items: center; }
+    .bm-entry-name { font-weight: bold; color: #60a5fa; cursor: pointer; }
+    .bm-entry-name:hover { text-decoration: underline; }
+    .bm-entry-coords { color: #9ca3af; font-size: 10px; }
+    .bm-entry-meta { display: flex; gap: 6px; font-size: 9px; color: #64748b; margin-top: 2px; }
+    .bm-entry-actions { display: flex; gap: 6px; margin-top: 4px; }
     #play-tip {
       position: fixed; left: 14px; bottom: 78px; z-index: 90;
       display: flex; align-items: center; gap: 8px;
@@ -269,6 +284,7 @@
   <button class="tb-btn" id="home-btn">⌂</button>
   <button class="tb-btn" id="ref-btn">↻</button>
   <button class="tb-btn" id="load-all-btn" title="Load entire canvas (may take a moment)">🌐 Load All</button>
+  <button class="tb-btn" id="bookmarks-btn" title="View and search canvas bookmarks">🔖 Bookmarks</button>
   <button class="tb-btn" id="help-btn">?</button>
   <button class="tb-btn" id="timelapse-btn" title="Watch canvas history timelapse">🎬 Timelapse</button>
   <span id="premium-badge" style="display:none">✦ premium</span>
@@ -328,6 +344,20 @@
   <div class="adm-btns">
     <button class="adm-btn red" id="adm-ban-btn">ban painter</button>
   </div>
+  
+  <div class="adm-hd" style="margin-top:12px;border-top:1px solid #444;padding-top:8px">🖼 Image Placer</div>
+  <div style="font-size:10px;color:#94a3b8;margin-bottom:8px">Convert image to pixel art and place on canvas.</div>
+  <input type="file" id="adm-img-input" accept="image/*" style="font-size:10px;color:#94a3b8;margin-bottom:8px;width:100%">
+  <div id="adm-img-settings" style="display:none;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <span style="font-size:10px">Width:</span>
+      <input type="number" id="adm-img-width" min="1" max="100" value="20" style="width:50px;font-size:10px;background:#1e293b;border:1px solid #475569;color:#fff;border-radius:4px;padding:2px">
+      <button class="adm-btn" id="adm-img-resize-down" style="padding:2px 6px">-</button>
+      <button class="adm-btn" id="adm-img-resize-up" style="padding:2px 6px">+</button>
+    </div>
+    <div style="color:#fbbf24;font-size:9px;margin-bottom:6px">Move cursor on canvas to preview. Click to place.</div>
+    <button class="adm-btn red" id="adm-img-cancel" style="width:100%;margin-top:4px">Cancel Placer</button>
+  </div>
 </div>
 
 <div id="admin-bans-wrap">
@@ -335,6 +365,27 @@
   <div style="color:#777;font-size:10px;margin-bottom:8px;line-height:1.4">Manual bans stay here for quick cleanup.</div>
   <div class="adm-hd" style="color:#f87171;margin-top:4px">Banned painters</div>
   <div id="admin-bans-list"><span style="color:#555">loading…</span></div>
+</div>
+
+<div id="bookmarks-panel">
+  <div class="adm-hd">🔖 Bookmarks</div>
+  <div style="color:#94a3b8;font-size:10px;margin-bottom:8px;line-height:1.4">Bookmarks let you save coordinate locations. Max 1 public per day.</div>
+  
+  <div class="bm-form" style="border-bottom:1px solid #334155;padding-bottom:12px;margin-bottom:12px">
+    <div class="bm-form-row" style="display:flex;gap:6px;margin-bottom:6px">
+      <input type="text" id="bm-new-name" placeholder="Name (e.g. Castle)" style="flex:1;font-size:11px;background:#1e293b;border:1px solid #475569;color:#fff;border-radius:4px;padding:4px 6px">
+      <label style="font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="bm-new-public"> Public
+      </label>
+    </div>
+    <button class="adm-btn green" id="bm-create-btn" style="width:100%">Save Current Location</button>
+  </div>
+
+  <input type="text" id="bm-search" placeholder="🔍 Search bookmarks..." style="width:100%;font-size:11px;background:#1e293b;border:1px solid #475569;color:#fff;border-radius:4px;padding:4px 6px;margin-bottom:10px">
+
+  <div id="bookmarks-list" style="max-height:280px;overflow-y:auto;font-size:11px">
+    <span style="color:#555">loading…</span>
+  </div>
 </div>
 
 <div id="loading"><div class="spin"></div><p>Loading canvas…</p></div>
@@ -380,6 +431,9 @@ let recentPainted = [];
 let timelapsePlaying = false;
 let timelapseBackupPixels = null;
 let timelapseTimer = null;
+let placingImage = null;
+let currentImageSrc = null;
+let bookmarks = [];
 
 const chunkCanvases = {};
 
@@ -709,25 +763,38 @@ function render() {
   }
 
   if (!banned) {
-    const half = Math.floor(brushSz / 2);
-    for (let bx = 0; bx < brushSz; bx++) {
-      for (let by = 0; by < brushSz; by++) {
-        const wx = hWX - half + bx, wy = hWY - half + by;
+    if (placingImage) {
+      for (const pt of placingImage) {
+        const wx = hWX + pt.dx;
+        const wy = hWY + pt.dy;
         const sx = w2sx(wx), sy = w2sy(wy);
-        const occ = pixels[`${wx},${wy}`];
-    if (erasing) {
-          const mine = occ && occ.painter === pid;
-          ctx.fillStyle = mine ? 'rgba(251,191,36,0.2)' : 'rgba(100,100,100,0.1)';
-          ctx.fillRect(sx, sy, p, p);
-          ctx.strokeStyle = mine ? '#fbbf24' : '#444';
-          ctx.lineWidth = Math.max(0.5, p * 0.06);
-          ctx.strokeRect(sx + 0.5, sy + 0.5, p - 1, p - 1);
-        } else {
-          ctx.fillStyle = occ ? 'rgba(248,113,113,0.18)' : color + '33';
-          ctx.fillRect(sx, sy, p, p);
-          ctx.strokeStyle = occ ? '#f87171' : color + 'dd';
-          ctx.lineWidth = Math.max(0.5, p * 0.06);
-          ctx.strokeRect(sx + 0.5, sy + 0.5, p - 1, p - 1);
+        ctx.fillStyle = pt.color + 'aa';
+        ctx.fillRect(sx, sy, p, p);
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(sx, sy, p, p);
+      }
+    } else {
+      const half = Math.floor(brushSz / 2);
+      for (let bx = 0; bx < brushSz; bx++) {
+        for (let by = 0; by < brushSz; by++) {
+          const wx = hWX - half + bx, wy = hWY - half + by;
+          const sx = w2sx(wx), sy = w2sy(wy);
+          const occ = pixels[`${wx},${wy}`];
+          if (erasing) {
+            const mine = occ && occ.painter === pid;
+            ctx.fillStyle = mine ? 'rgba(251,191,36,0.2)' : 'rgba(100,100,100,0.1)';
+            ctx.fillRect(sx, sy, p, p);
+            ctx.strokeStyle = mine ? '#fbbf24' : '#444';
+            ctx.lineWidth = Math.max(0.5, p * 0.06);
+            ctx.strokeRect(sx + 0.5, sy + 0.5, p - 1, p - 1);
+          } else {
+            ctx.fillStyle = occ ? 'rgba(248,113,113,0.18)' : color + '33';
+            ctx.fillRect(sx, sy, p, p);
+            ctx.strokeStyle = occ ? '#f87171' : color + 'dd';
+            ctx.lineWidth = Math.max(0.5, p * 0.06);
+            ctx.strokeRect(sx + 0.5, sy + 0.5, p - 1, p - 1);
+          }
         }
       }
     }
@@ -809,6 +876,11 @@ cv.addEventListener('mousedown', e => {
     panning = true;
     lastPan = { x: e.clientX, y: e.clientY };
     cv.style.cursor = 'grab';
+    e.preventDefault();
+  } else if (e.button === 0 && placingImage) {
+    const [sx, sy] = clientToCanvas(e.clientX, e.clientY);
+    const [wx, wy] = s2w(sx, sy);
+    placeImageAt(wx, wy);
     e.preventDefault();
   } else if (e.button === 0 && adminMode) {
     const [sx, sy] = clientToCanvas(e.clientX, e.clientY);
@@ -1197,6 +1269,208 @@ async function loadBans() {
   } catch { list.innerHTML = '<span style="color:#f87171">error</span>'; }
 }
 
+// Image Placer helper functions
+function processImageToPixelArt() {
+  if (!currentImageSrc) return;
+  const targetWidth = parseInt(document.getElementById('adm-img-width').value) || 20;
+  
+  const img = new Image();
+  img.onload = () => {
+    const aspect = img.height / img.width;
+    const targetHeight = Math.max(1, Math.round(targetWidth * aspect));
+    
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = targetWidth;
+    tempCanvas.height = targetHeight;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.imageSmoothingEnabled = false;
+    tempCtx.drawImage(img, 0, 0, targetWidth, targetHeight);
+    
+    const imgData = tempCtx.getImageData(0, 0, targetWidth, targetHeight);
+    const data = imgData.data;
+    const pts = [];
+    const centerX = Math.floor(targetWidth / 2);
+    const centerY = Math.floor(targetHeight / 2);
+    
+    for (let y = 0; y < targetHeight; y++) {
+      for (let x = 0; x < targetWidth; x++) {
+        const idx = (y * targetWidth + x) * 4;
+        const r = data[idx];
+        const g = data[idx+1];
+        const b = data[idx+2];
+        const a = data[idx+3];
+        
+        if (a < 128) continue;
+        
+        const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+        pts.push({
+          dx: x - centerX,
+          dy: y - centerY,
+          color: hex
+        });
+      }
+    }
+    placingImage = pts;
+    cv.style.cursor = 'none';
+  };
+  img.src = currentImageSrc;
+}
+
+function cancelPlacer() {
+  placingImage = null;
+  document.getElementById('adm-img-input').value = '';
+  document.getElementById('adm-img-settings').style.display = 'none';
+  cv.style.cursor = 'crosshair';
+}
+
+async function placeImageAt(wx, wy) {
+  if (!placingImage) return;
+  const points = [];
+  const now = Date.now();
+  
+  for (const p of placingImage) {
+    const x = wx + p.dx;
+    const y = wy + p.dy;
+    const key = `${x},${y}`;
+    
+    pixels[key] = { color: p.color, painter: pid, ts: now, email: pid, ...(isAdmin ? { admin: true } : {}), ...(IS_PREMIUM ? { premium: true } : {}) };
+    setPixelInChunk(x, y, p.color);
+    points.push({ x, y, color: p.color, painter: pid });
+  }
+  
+  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  
+  try {
+    const r = await fetch('/api/canvas/pixels/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pixels: points }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || d.error) {
+      showToast(d.error || 'Failed to place image', 'err');
+    } else {
+      showToast('Image placed successfully!');
+    }
+  } catch (err) {
+    showToast('Failed to place image', 'err');
+  }
+  
+  cancelPlacer();
+}
+
+// Keyboard shortcuts for resizing when placing image
+window.addEventListener('keydown', e => {
+  if (placingImage) {
+    if (e.key === '=' || e.key === '+') {
+      document.getElementById('adm-img-resize-up').click();
+      e.preventDefault();
+    } else if (e.key === '-' || e.key === '_') {
+      document.getElementById('adm-img-resize-down').click();
+      e.preventDefault();
+    } else if (e.key === 'Escape') {
+      cancelPlacer();
+      e.preventDefault();
+    }
+  }
+});
+
+// Bookmarks helper functions
+async function loadBookmarks() {
+  try {
+    const r = await fetch('/api/canvas/bookmarks');
+    const d = await r.json();
+    bookmarks = d.bookmarks || [];
+    renderBookmarksList(document.getElementById('bm-search').value);
+  } catch {
+    document.getElementById('bookmarks-list').innerHTML = '<span style="color:#f87171">Failed to load bookmarks</span>';
+  }
+}
+
+function renderBookmarksList(query = '') {
+  const list = document.getElementById('bookmarks-list');
+  const q = query.toLowerCase().trim();
+  const filtered = bookmarks.filter(b => b.name.toLowerCase().includes(q));
+  
+  if (!filtered.length) {
+    list.innerHTML = '<span style="color:#555">No bookmarks found</span>';
+    return;
+  }
+  
+  list.innerHTML = '';
+  for (const b of filtered) {
+    const div = document.createElement('div');
+    div.className = 'bm-entry';
+    
+    let statusText = '';
+    if (!b.isPublic) statusText = '<span style="color:#94a3b8">Private</span>';
+    else if (!b.approved) statusText = '<span style="color:#f87171">Pending Approval</span>';
+    else statusText = '<span style="color:#4ade80">Public</span>';
+    
+    div.innerHTML = `
+      <div class="bm-entry-header">
+        <span class="bm-entry-name">${htmlEscape(b.name)}</span>
+        <span class="bm-entry-coords">${b.x}, ${b.y}</span>
+      </div>
+      <div class="bm-entry-meta">
+        <span>By ${htmlEscape(b.creator.split('@')[0])}</span> &middot;
+        <span>${statusText}</span>
+      </div>
+      <div class="bm-entry-actions">
+        ${(isAdmin && b.isPublic && !b.approved) ? `<button class="adm-btn green bm-approve-btn" data-id="${b.id}" style="font-size:9px;padding:2px 4px;margin-right:4px">Approve</button>` : ''}
+        ${(isAdmin || b.creator === pid) ? `<button class="adm-btn red bm-delete-btn" data-id="${b.id}" style="font-size:9px;padding:2px 4px">Delete</button>` : ''}
+      </div>
+    `;
+    
+    div.querySelector('.bm-entry-name').onclick = () => {
+      panX = b.x;
+      panY = b.y;
+      scheduleChunkLoad();
+      showToast(`Teleported to bookmark: ${b.name}`);
+    };
+    
+    if (isAdmin && b.isPublic && !b.approved) {
+      div.querySelector('.bm-approve-btn').onclick = async () => {
+        try {
+          const r = await fetch('/api/canvas/bookmarks/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: b.id })
+          });
+          const d = await r.json();
+          if (d.error) showToast(d.error, 'err');
+          else {
+            showToast('Bookmark approved!');
+            loadBookmarks();
+          }
+        } catch { showToast('Approve failed', 'err'); }
+      };
+    }
+    
+    if (isAdmin || b.creator === pid) {
+      div.querySelector('.bm-delete-btn').onclick = async () => {
+        const confirmDelete = await window.customConfirm("Delete Bookmark?", `Are you sure you want to delete bookmark "${b.name}"?`);
+        if (!confirmDelete) return;
+        try {
+          const r = await fetch('/api/canvas/bookmarks/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: b.id })
+          });
+          const d = await r.json();
+          if (d.error) showToast(d.error, 'err');
+          else {
+            showToast('Bookmark deleted!');
+            loadBookmarks();
+          }
+        } catch { showToast('Delete failed', 'err'); }
+      };
+    }
+    
+    list.appendChild(div);
+  }
+}
+
 (async () => {
   applyCanvasHash();
   await loadPixels();
@@ -1213,6 +1487,57 @@ async function loadBans() {
       document.getElementById('brush-sz').max = 16;
     }
   } catch {}
+
+  // Bookmarks panel interactions
+  document.getElementById('bookmarks-btn').onclick = () => {
+    const wrap = document.getElementById('bookmarks-panel');
+    const showing = wrap.classList.toggle('show');
+    if (showing) {
+      loadBookmarks();
+      document.getElementById('admin-bans-wrap').classList.remove('show');
+      if (isAdmin) {
+        document.getElementById('admin-panel').classList.remove('show');
+        cancelPlacer();
+      }
+    }
+  };
+
+  document.getElementById('bm-search').oninput = (e) => {
+    renderBookmarksList(e.target.value);
+  };
+
+  document.getElementById('bm-create-btn').onclick = async () => {
+    const nameInput = document.getElementById('bm-new-name');
+    const name = nameInput.value.trim();
+    if (!name) {
+      showToast('Please enter a name for the bookmark', 'warn');
+      return;
+    }
+    const isPublic = document.getElementById('bm-new-public').checked;
+    
+    const bx = Math.round(panX);
+    const by = Math.round(panY);
+    
+    try {
+      const r = await fetch('/api/canvas/bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x: bx, y: by, name, isPublic })
+      });
+      const d = await r.json();
+      if (d.error) {
+        showToast(d.error, 'warn');
+      } else {
+        showToast(isPublic ? 'Public bookmark submitted for approval!' : 'Private bookmark saved!');
+        nameInput.value = '';
+        document.getElementById('bm-new-public').checked = false;
+        loadBookmarks();
+      }
+    } catch {
+      showToast('Failed to save bookmark', 'err');
+    }
+  };
+
   if (isAdmin) {
     document.getElementById('admin-btn').style.display = '';
     document.getElementById('bans-btn').style.display = '';
@@ -1222,17 +1547,59 @@ async function loadBans() {
 
     document.getElementById('admin-btn').onclick = () => {
       adminMode = !adminMode;
-      if (!adminMode) { adminSelected = false; adminHoverPx = null; }
+      if (!adminMode) { adminSelected = false; adminHoverPx = null; cancelPlacer(); }
       document.getElementById('admin-btn').classList.toggle('active', adminMode);
       document.getElementById('admin-panel').classList.toggle('show', adminMode);
       cv.style.cursor = adminMode ? 'default' : (erasing ? 'cell' : 'crosshair');
+      if (adminMode) {
+        document.getElementById('bookmarks-panel').classList.remove('show');
+        document.getElementById('admin-bans-wrap').classList.remove('show');
+      }
     };
     document.getElementById('bans-btn').onclick = () => {
       const wrap = document.getElementById('admin-bans-wrap');
       const showing = wrap.classList.toggle('show');
-      if (showing) loadBans();
+      if (showing) {
+        loadBans();
+        document.getElementById('bookmarks-panel').classList.remove('show');
+        document.getElementById('admin-panel').classList.remove('show');
+        cancelPlacer();
+      }
     };
     document.getElementById('adm-ban-btn').onclick = adminBan;
+
+    // Admin Image Placer setup
+    document.getElementById('adm-img-input').onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        currentImageSrc = event.target.result;
+        document.getElementById('adm-img-settings').style.display = 'block';
+        processImageToPixelArt();
+      };
+      reader.readAsDataURL(file);
+    };
+
+    document.getElementById('adm-img-resize-down').onclick = () => {
+      const el = document.getElementById('adm-img-width');
+      const val = Math.max(1, (parseInt(el.value) || 20) - 2);
+      el.value = val;
+      processImageToPixelArt();
+    };
+
+    document.getElementById('adm-img-resize-up').onclick = () => {
+      const el = document.getElementById('adm-img-width');
+      const val = Math.min(100, (parseInt(el.value) || 20) + 2);
+      el.value = val;
+      processImageToPixelArt();
+    };
+
+    document.getElementById('adm-img-width').onchange = () => {
+      processImageToPixelArt();
+    };
+
+    document.getElementById('adm-img-cancel').onclick = cancelPlacer;
   }
   document.getElementById('loading').style.display = 'none';
   render();

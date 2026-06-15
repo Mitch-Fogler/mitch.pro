@@ -2209,6 +2209,7 @@ const GMAIL_SENT_FILE   = join(BASE, 'mail', 'check_email', 'gmail_sent.json');
 
 const CANVAS_BANNED_FILE  = join(BASE, 'data', 'canvas_banned.json');
 const CANVAS_REPORTS_FILE = join(BASE, 'data', 'canvas_reports.json');
+const CANVAS_BOOKMARKS_FILE = join(BASE, 'data', 'canvas_bookmarks.json');
 const canvasModTimes = {};  // painter -> last moderation timestamp
 const canvasHeatmap = new Map(); // "x,y" -> ts
 
@@ -9928,6 +9929,97 @@ function loadAllGamesList() {
     report.reviewedBy = emailFromSid(sid) || 'admin';
     saveJson(CANVAS_REPORTS_FILE, reports);
     logAdminAction(report.reviewedBy, 'canvas_report_status', { id, status });
+    return jsonResp(200, { ok: true });
+  }
+
+  if (path === '/api/canvas/bookmarks' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const { x, y, name, isPublic } = body;
+    if (typeof x !== 'number' || typeof y !== 'number' || !name) {
+      return jsonResp(400, { error: 'missing fields' });
+    }
+    const todayStr = new Date().toISOString().split('T')[0];
+    const bookmarks = loadJson(CANVAS_BOOKMARKS_FILE, []);
+    const userToday = bookmarks.filter(b => b.creator === email && b.date === todayStr);
+    if (isPublic) {
+      const publicToday = userToday.filter(b => b.isPublic);
+      if (publicToday.length >= 1) {
+        return jsonResp(429, { error: 'You can only create 1 public bookmark per day.' });
+      }
+    } else {
+      const privateToday = userToday.filter(b => !b.isPublic);
+      if (privateToday.length >= 10) {
+        return jsonResp(429, { error: 'You can only create 10 private bookmarks per day.' });
+      }
+    }
+    const id = 'bm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const bm = {
+      id,
+      x: Number(x),
+      y: Number(y),
+      name: String(name || '').slice(0, 60),
+      creator: email,
+      isPublic: !!isPublic,
+      approved: !isPublic,
+      date: todayStr
+    };
+    bookmarks.push(bm);
+    saveJson(CANVAS_BOOKMARKS_FILE, bookmarks);
+    return jsonResp(200, { ok: true, bookmark: bm });
+  }
+
+  if (path === '/api/canvas/bookmarks' && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const adminOk = isAnyAdminId(sid);
+    const bookmarks = loadJson(CANVAS_BOOKMARKS_FILE, []);
+    const visible = bookmarks.filter(b => {
+      if (adminOk) return true;
+      if (b.creator === email) return true;
+      return b.isPublic && b.approved;
+    });
+    return jsonResp(200, { ok: true, bookmarks: visible });
+  }
+
+  if (path === '/api/canvas/bookmarks/approve' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    const { id } = body;
+    if (!id) return jsonResp(400, { error: 'missing id' });
+    const bookmarks = loadJson(CANVAS_BOOKMARKS_FILE, []);
+    const bm = bookmarks.find(b => b.id === id);
+    if (!bm) return jsonResp(404, { error: 'bookmark not found' });
+    bm.approved = true;
+    saveJson(CANVAS_BOOKMARKS_FILE, bookmarks);
+    return jsonResp(200, { ok: true });
+  }
+
+  if (path === '/api/canvas/bookmarks/delete' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const adminOk = isAnyAdminId(sid);
+    const { id } = body;
+    if (!id) return jsonResp(400, { error: 'missing id' });
+    const bookmarks = loadJson(CANVAS_BOOKMARKS_FILE, []);
+    const idx = bookmarks.findIndex(b => b.id === id);
+    if (idx === -1) return jsonResp(404, { error: 'bookmark not found' });
+    const bm = bookmarks[idx];
+    if (!adminOk && bm.creator !== email) {
+      return jsonResp(403, { error: 'forbidden' });
+    }
+    bookmarks.splice(idx, 1);
+    saveJson(CANVAS_BOOKMARKS_FILE, bookmarks);
     return jsonResp(200, { ok: true });
   }
 
