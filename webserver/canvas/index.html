@@ -259,7 +259,7 @@
 <div id="toolbar">
   <span class="title">pixelplace</span>
   <div class="tsep"></div>
-  <span id="coords">0, 0</span><div class="tsep"></div><button id="speed-up-btn" style="background:none; border:none; color:#f59e0b; font-size:10px; font-weight:800; cursor:pointer; padding:2px 5px;">⚡ SPEED UP (5c)</button>
+  <span id="coords">0, 0</span>
   <div class="tsep"></div>
   <span id="zoom-disp">100%</span>
   <div class="tsep"></div>
@@ -267,6 +267,7 @@
   <div class="tsep"></div>
   <button class="tb-btn" id="home-btn">⌂</button>
   <button class="tb-btn" id="ref-btn">↻</button>
+  <button class="tb-btn" id="load-all-btn" title="Load entire canvas (may take a moment)">🌐 Load All</button>
   <button class="tb-btn" id="help-btn">?</button>
   <button class="tb-btn" id="timelapse-btn" title="Watch canvas history timelapse">🎬 Timelapse</button>
   <span id="premium-badge" style="display:none">✦ premium</span>
@@ -458,6 +459,52 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+async function loadAllPixelsInternal() {
+  const r = await fetch('/api/canvas/pixels');
+  const data = await r.json();
+  
+  loadedChunks.clear();
+  pixels = {};
+  clearAllChunkCanvases();
+  
+  Object.assign(pixels, data);
+  
+  for (const key of Object.keys(data)) {
+    const ci = key.indexOf(',');
+    if (ci === -1) continue;
+    const wx = +key.slice(0, ci);
+    const wy = +key.slice(ci + 1);
+    const cx = Math.floor(wx / CHUNK);
+    const cy = Math.floor(wy / CHUNK);
+    loadedChunks.add(`${cx},${cy}`);
+  }
+  
+  for (const k of loadedChunks) {
+    const [cx, cy] = k.split(',').map(Number);
+    renderChunkToCanvas(cx, cy);
+  }
+  
+  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  return data;
+}
+
+async function loadAllPixels() {
+  if (timelapsePlaying) return;
+  const btn = document.getElementById('load-all-btn');
+  const oldText = btn.textContent;
+  btn.textContent = '⏳ Loading…';
+  btn.disabled = true;
+  try {
+    await loadAllPixelsInternal();
+    showToast('Loaded all pixels!');
+  } catch (err) {
+    console.error(err);
+    showToast('Failed to load all pixels', 'err');
+  }
+  btn.textContent = oldText;
+  btn.disabled = false;
+}
+
 async function toggleTimelapse() {
   const btn = document.getElementById('timelapse-btn');
   if (timelapsePlaying) {
@@ -468,18 +515,28 @@ async function toggleTimelapse() {
     btn.style.borderColor = '#fbbf24';
     
     try {
+      const oldText = btn.textContent;
+      btn.textContent = '⏳ Loading board…';
+      
+      const allData = await loadAllPixelsInternal();
+      
       const res = await fetch('/api/canvas/history');
       const data = await res.json();
       const rawHistory = data.history || [];
       const myHistory = rawHistory.filter(item => item.painter === pid || (item.email && item.email === pid));
       if (!myHistory.length) {
         showToast("No canvas history available for your user.");
-        stopTimelapse();
+        rebuildAllChunkCanvases();
+        btn.textContent = '🎬 Timelapse';
+        btn.style.color = '';
+        btn.style.borderColor = '';
         return;
       }
       
+      btn.textContent = '⏹ Stop Timelapse';
       timelapsePlaying = true;
-      timelapseBackupPixels = { ...pixels };
+      timelapseBackupPixels = allData;
+      
       pixels = {};
       clearAllChunkCanvases();
       
@@ -700,9 +757,12 @@ function paintAt(wx, wy, brushSz, isClick) {
   fetch('/api/canvas/pixel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ x: wx, y: wy, brushSz, color, painter: pid, lock: lock }),
+    body: JSON.stringify({ x: wx, y: wy, brushSz, color, painter: pid, lock: lock, bypass: speedUpEnabled }),
   }).then(r => r.json()).then(d => {
-    if (d.error === 'banned') { banned = true; showBanned(d.reason); }
+    if (d.error) {
+      if (d.error === 'banned') { banned = true; showBanned(d.reason); }
+      else showToast(d.error, 'warn');
+    }
   }).catch(() => {});
 }
 
@@ -820,6 +880,7 @@ document.getElementById('help-btn').onclick = () => {
   try { localStorage.setItem('canvas_help_seen', '1'); } catch {}
 };
 document.getElementById('timelapse-btn').onclick = toggleTimelapse;
+document.getElementById('load-all-btn').onclick = loadAllPixels;
 
 const palEl = document.getElementById('palette');
 
