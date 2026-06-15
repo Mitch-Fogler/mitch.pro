@@ -470,9 +470,10 @@ async function toggleTimelapse() {
     try {
       const res = await fetch('/api/canvas/history');
       const data = await res.json();
-      const history = data.history || [];
-      if (!history.length) {
-        showToast("No canvas history available.");
+      const rawHistory = data.history || [];
+      const myHistory = rawHistory.filter(item => item.painter === pid || (item.email && item.email === pid));
+      if (!myHistory.length) {
+        showToast("No canvas history available for your user.");
         stopTimelapse();
         return;
       }
@@ -485,15 +486,15 @@ async function toggleTimelapse() {
       let index = 0;
       function playNext() {
         if (!timelapsePlaying) return;
-        if (index >= history.length) {
+        if (index >= myHistory.length) {
           showToast("Timelapse finished!");
           stopTimelapse();
           return;
         }
         
-        const batchSize = Math.max(1, Math.floor(history.length / 500));
-        for (let i = 0; i < batchSize && index < history.length; i++) {
-          const item = history[index++];
+        const batchSize = Math.max(15, Math.floor(myHistory.length / 150));
+        for (let i = 0; i < batchSize && index < myHistory.length; i++) {
+          const item = myHistory[index++];
           if (item.color === '') {
             delete pixels[`${item.x},${item.y}`];
             setPixelInChunk(item.x, item.y, null);
@@ -665,44 +666,31 @@ function render() {
 
 function actAt(wx, wy, isClick) {
   if (banned) return;
-  const half = Math.floor(brushSz / 2);
-  if (isAdmin && !erasing && brushSz > 1) {
-    const points = [];
-    const now = Date.now();
-    for (let bx = 0; bx < brushSz; bx++) {
-      for (let by = 0; by < brushSz; by++) {
-        const x = wx - half + bx;
-        const y = wy - half + by;
-        const key = `${x},${y}`;
-        pixels[key] = { color, painter: pid, ts: now, email: pid, admin: true };
-        points.push({ x, y, color, painter: pid });
-        setPixelInChunk(x, y, color);
-      }
-    }
-    document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
-    paintBulk(points);
-    return;
-  }
-  for (let bx = 0; bx < brushSz; bx++) {
-    for (let by = 0; by < brushSz; by++) {
-      if (erasing) eraseAt(wx - half + bx, wy - half + by, isClick);
-      else paintAt(wx - half + bx, wy - half + by, isClick && brushSz === 1);
-    }
+  if (erasing) {
+    eraseAt(wx, wy, brushSz, isClick);
+  } else {
+    paintAt(wx, wy, brushSz, isClick && brushSz === 1);
   }
 }
 
-function paintAt(wx, wy, isClick) {
-  const key = `${wx},${wy}`;
-  if (pixels[key] && !isAdmin) {
-    const isOwn = pixels[key].painter === pid;
-    if (!IS_PREMIUM || !isOwn) {
-      if (isClick) showToast(isOwn ? 'Upgrade to Premium to overwrite your pixels' : 'Pixel taken — can\'t overwrite!', 'warn');
-      return;
+function paintAt(wx, wy, brushSz, isClick) {
+  const half = Math.floor(brushSz / 2);
+  for (let bx = 0; bx < brushSz; bx++) {
+    for (let by = 0; by < brushSz; by++) {
+      const px = wx - half + bx;
+      const py = wy - half + by;
+      const key = `${px},${py}`;
+      if (pixels[key] && !isAdmin) {
+        const isOwn = pixels[key].painter === pid;
+        if (!IS_PREMIUM || !isOwn) {
+          continue;
+        }
+      }
+      pixels[key] = { color, painter: pid, ts: Date.now() };
+      setPixelInChunk(px, py, color);
+      recentPainted.push({ x: px, y: py, color, painter: pid, ts: Date.now() });
     }
   }
-  pixels[key] = { color, painter: pid, ts: Date.now() };
-  setPixelInChunk(wx, wy, color);
-  recentPainted.push({ x: wx, y: wy, color, painter: pid, ts: Date.now() });
   if (recentPainted.length > 260) recentPainted.splice(0, recentPainted.length - 260);
   document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
 
@@ -712,38 +700,32 @@ function paintAt(wx, wy, isClick) {
   fetch('/api/canvas/pixel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ x: wx, y: wy, color, painter: pid, lock: lock }),
+    body: JSON.stringify({ x: wx, y: wy, brushSz, color, painter: pid, lock: lock }),
   }).then(r => r.json()).then(d => {
     if (d.error === 'banned') { banned = true; showBanned(d.reason); }
-    if (d.error === 'occupied') { delete pixels[key]; setPixelInChunk(wx, wy, null); }
   }).catch(() => {});
 }
 
-function paintBulk(points) {
-  if (!points.length) return;
-  fetch('/api/canvas/pixels/bulk', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pixels: points }),
-  }).then(r => r.json()).then(d => {
-    if (d.error) showToast(d.error, 'err');
-  }).catch(() => showToast('Bulk paint failed', 'err'));
-}
-
-function eraseAt(wx, wy, isClick) {
-  const key = `${wx},${wy}`;
-  if (!pixels[key]) return;
-  if (!isAdmin && pixels[key].painter !== pid) {
-    if (isClick) showToast('Can only erase your own pixels', 'warn');
-    return;
+function eraseAt(wx, wy, brushSz, isClick) {
+  const half = Math.floor(brushSz / 2);
+  for (let bx = 0; bx < brushSz; bx++) {
+    for (let by = 0; by < brushSz; by++) {
+      const px = wx - half + bx;
+      const py = wy - half + by;
+      const key = `${px},${py}`;
+      if (!pixels[key]) continue;
+      if (!isAdmin && pixels[key].painter !== pid) {
+        continue;
+      }
+      delete pixels[key];
+      setPixelInChunk(px, py, null);
+    }
   }
-  delete pixels[key];
-  setPixelInChunk(wx, wy, null);
   document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
   fetch('/api/canvas/erase', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ x: wx, y: wy, painter: pid }),
+    body: JSON.stringify({ x: wx, y: wy, brushSz, painter: pid }),
   }).catch(() => {});
 }
 

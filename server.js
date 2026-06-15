@@ -769,7 +769,8 @@ const RATE_LIMITS = {
   '/api/games/lillians-logic/solve': [10, 60],
   '/api/chess-vs/challenge':   [5,   600],
   '/api/chess-vs/move':        [60,  60],
-  '/api/canvas/pixel':         [120, 60], // 120 pixels per minute by default
+  '/api/canvas/pixel':         [1000, 60], // 1000 pixels per minute by default
+  '/api/canvas/pixels/bulk':   [1000, 60], // 1000 bulk draw requests per minute
   '/api/canvas/history':       [10,  60],
   '__default__':               [100, 60],
 };
@@ -2245,14 +2246,21 @@ function setCanvasPixel(x, y, data) {
   canvasChunks.get(ck)[key] = data;
 
   try {
-    const logEntry = JSON.stringify({ x, y, color: data.color, ts: data.ts || Date.now() }) + '\n';
+    const logEntry = JSON.stringify({
+      x,
+      y,
+      color: data.color,
+      ts: data.ts || Date.now(),
+      painter: data.painter || '',
+      email: data.email || ''
+    }) + '\n';
     appendFileSync(CANVAS_HISTORY_FILE, logEntry, 'utf8');
   } catch (err) {
     console.error('Failed to log canvas history:', err);
   }
 }
 
-function deleteCanvasPixel(x, y) {
+function deleteCanvasPixel(x, y, painter = '', email = '') {
   const key = `${x},${y}`;
   delete canvasPixels[key];
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
@@ -2260,7 +2268,14 @@ function deleteCanvasPixel(x, y) {
   if (canvasChunks.has(ck)) delete canvasChunks.get(ck)[key];
 
   try {
-    const logEntry = JSON.stringify({ x, y, color: '', ts: Date.now() }) + '\n';
+    const logEntry = JSON.stringify({
+      x,
+      y,
+      color: '',
+      ts: Date.now(),
+      painter,
+      email
+    }) + '\n';
     appendFileSync(CANVAS_HISTORY_FILE, logEntry, 'utf8');
   } catch (err) {
     console.error('Failed to log canvas erase history:', err);
@@ -9686,7 +9701,7 @@ function loadAllGamesList() {
     const adminEmail = emailFromSid(sid) || 'admin';
     const { x, y } = body;
     if (!canvasPixels[`${x},${y}`]) return jsonResp(404, { error: 'no pixel' });
-    deleteCanvasPixel(x, y);
+    deleteCanvasPixel(x, y, 'admin', adminEmail);
     logAdminAction(adminEmail, 'canvas_erase', { x, y });
     return jsonResp(200, { ok: true });  }
 
@@ -9727,8 +9742,10 @@ function loadAllGamesList() {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
-    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
     const email = emailFromSid(sid) || '';
+    const premium = email ? isPremiumEmail(email) : false;
+    const adminOk = isAnyAdminId(sid);
+    if (!adminOk && !premium) return jsonResp(403, { error: 'forbidden' });
     const points = Array.isArray(body.pixels) ? body.pixels.slice(0, 2500) : [];
     if (!points.length) return jsonResp(400, { error: 'pixels required' });
     let count = 0;
@@ -9740,7 +9757,14 @@ function loadAllGamesList() {
       if (!Number.isInteger(x) || !Number.isInteger(y) || !/^#[0-9a-fA-F]{6}$/.test(color)) continue;
       if (Math.abs(x) > 500000 || Math.abs(y) > 500000) continue;
       const key = `${x},${y}`;
-      const pixelData = { color, painter, ts: Date.now(), admin: true, ...(email ? { email } : {}) };
+      const pixelData = {
+        color,
+        painter,
+        ts: Date.now(),
+        ...(adminOk ? { admin: true } : {}),
+        ...(premium ? { premium: true } : {}),
+        ...(email ? { email } : {})
+      };
       setCanvasPixel(x, y, pixelData);
       canvasHeatmap.set(key, Date.now());
       count++;
@@ -9752,15 +9776,22 @@ function loadAllGamesList() {
   if (path === '/api/canvas/pixel' && method === 'POST') {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const { x, y, color, painter, bypass } = body;
+    const brushSz = Math.min(50, Math.max(1, Number(body.brushSz) || 1));
 
-		    const cookies = getCookies(req);
-		    const sid = authSidFromCookies(cookies);
-		    const email = emailFromSid(sid);
-		    const adminOk = isAnyAdminId(sid);
-	    const rl = checkRateLimit(req, path);
-	    if (rl && !bypass && !adminOk) return rl;
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    const adminOk = isAnyAdminId(sid);
+    const premium = email ? isPremiumEmail(email) : false;
 
-	    if (rl && bypass && !adminOk) {
+    if (brushSz > 1 && !adminOk && !premium) {
+      return jsonResp(403, { error: 'forbidden' });
+    }
+
+    const rl = checkRateLimit(req, path);
+    if (rl && !bypass && !adminOk) return rl;
+
+    if (rl && bypass && !adminOk) {
       if (!email) return jsonResp(401, { error: 'Login required to bypass cooldown' });
       const balance = getCoins(email);
       if (balance < 5) return jsonResp(429, { error: 'Insufficient coins to bypass cooldown (Need 5)' });
@@ -9772,41 +9803,68 @@ function loadAllGamesList() {
     if (!/^#[0-9a-fA-F]{6}$/.test(color)) return jsonResp(400, { error: 'invalid color' });
     if (Math.abs(x) > 500000 || Math.abs(y) > 500000) return jsonResp(400, { error: 'out of bounds' });
     if (canvasBanned[painter]) return jsonResp(403, { error: 'banned', reason: canvasBanned[painter].reason });
-	    const premium = email ? isPremiumEmail(email) : false;
-	    if (!adminOk && !premium && PREMIUM_COLORS.has(color.toLowerCase())) return jsonResp(403, { error: 'premium_color' });
-	    const key = `${x},${y}`;
-	    if (!adminOk && canvasLocks[key]) {
-      const lock = canvasLocks[key];
-      const isLockOwner = (email && normalizeEmail(lock.email) === normalizeEmail(email)) || lock.painter === painter;
-      const expired = Date.now() > lock.expiresAt;
-      if (!expired && !isLockOwner) return jsonResp(403, { error: 'locked', expiresAt: lock.expiresAt });
-      if (expired) delete canvasLocks[key];
+    if (!adminOk && !premium && PREMIUM_COLORS.has(color.toLowerCase())) return jsonResp(403, { error: 'premium_color' });
+
+    const half = Math.floor(brushSz / 2);
+    const pixelsToPaint = [];
+
+    for (let bx = 0; bx < brushSz; bx++) {
+      for (let by = 0; by < brushSz; by++) {
+        const px = x - half + bx;
+        const py = y - half + by;
+        const pkey = `${px},${py}`;
+
+        if (Math.abs(px) > 500000 || Math.abs(py) > 500000) continue;
+
+        if (!adminOk && canvasLocks[pkey]) {
+          const lock = canvasLocks[pkey];
+          const isLockOwner = (email && normalizeEmail(lock.email) === normalizeEmail(email)) || lock.painter === painter;
+          const expired = Date.now() > lock.expiresAt;
+          if (!expired && !isLockOwner) continue;
+          if (expired) delete canvasLocks[pkey];
+        }
+
+        if (!adminOk && canvasPixels[pkey]) {
+          const isOwn = canvasPixels[pkey].painter === painter || (email && canvasPixels[pkey].email === email);
+          if (!premium || !isOwn) continue;
+        }
+
+        pixelsToPaint.push({ px, py, pkey });
+      }
     }
 
-	    if (!adminOk && canvasPixels[key]) {
-      const isOwn = canvasPixels[key].painter === painter || (email && canvasPixels[key].email === email);
-      if (!premium || !isOwn) return jsonResp(409, { error: 'occupied' });
-    }
     if (email && shadowBans.has(normalizeEmail(email))) {
       return jsonResp(200, { ok: true }); // shadow success
     }
-	    const pixelData = { color, painter, ts: Date.now(), ...(email ? { email } : {}), ...(premium ? { premium: true } : {}), ...(adminOk ? { admin: true } : {}) };
-    setCanvasPixel(x, y, pixelData);    canvasHeatmap.set(key, Date.now());
 
-    if (body.lock && premium && email) {
-      const norm = normalizeEmail(email);
-      const stats = loadUserStats();
-      if (!stats[norm]) stats[norm] = {};
-      const now = Date.now();
-      if (now - (stats[norm].last_lock_reset || 0) > 7 * 86400000) {
-        stats[norm].last_lock_reset = now;
-        stats[norm].week_locks = 0;
-      }
-      if ((stats[norm].week_locks || 0) < 16) {
-        stats[norm].week_locks = (stats[norm].week_locks || 0) + 1;
-        saveUserStats(stats);
-        canvasLocks[key] = { email, painter, expiresAt: Date.now() + 86400000 };
-        saveJson(CANVAS_LOCKS_FILE, canvasLocks);
+    const pixelData = {
+      color,
+      painter,
+      ts: Date.now(),
+      ...(email ? { email } : {}),
+      ...(premium ? { premium: true } : {}),
+      ...(adminOk ? { admin: true } : {})
+    };
+
+    for (const { px, py, pkey } of pixelsToPaint) {
+      setCanvasPixel(px, py, pixelData);
+      canvasHeatmap.set(pkey, Date.now());
+
+      if (body.lock && pkey === `${x},${y}` && premium && email) {
+        const norm = normalizeEmail(email);
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const now = Date.now();
+        if (now - (stats[norm].last_lock_reset || 0) > 7 * 86400000) {
+          stats[norm].last_lock_reset = now;
+          stats[norm].week_locks = 0;
+        }
+        if ((stats[norm].week_locks || 0) < 16) {
+          stats[norm].week_locks = (stats[norm].week_locks || 0) + 1;
+          saveUserStats(stats);
+          canvasLocks[pkey] = { email, painter, expiresAt: Date.now() + 86400000 };
+          saveJson(CANVAS_LOCKS_FILE, canvasLocks);
+        }
       }
     }
 
@@ -9818,12 +9876,23 @@ function loadAllGamesList() {
     const { x, y, painter } = body;
     if (typeof x !== 'number' || typeof y !== 'number' || !painter)
       return jsonResp(400, { error: 'missing fields' });
+    const brushSz = Math.min(50, Math.max(1, Number(body.brushSz) || 1));
     const cookies = getCookies(req);
-    const adminOk = isAnyAdminId(authSidFromCookies(cookies));
-    const key = `${x},${y}`;
-    if (!canvasPixels[key]) return jsonResp(200, { ok: true });
-    if (!adminOk && canvasPixels[key].painter !== painter) return jsonResp(403, { error: 'not yours' });
-    deleteCanvasPixel(x, y);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid) || '';
+    const adminOk = isAnyAdminId(sid);
+    
+    const half = Math.floor(brushSz / 2);
+    for (let bx = 0; bx < brushSz; bx++) {
+      for (let by = 0; by < brushSz; by++) {
+        const px = x - half + bx;
+        const py = y - half + by;
+        const pkey = `${px},${py}`;
+        if (!canvasPixels[pkey]) continue;
+        if (!adminOk && canvasPixels[pkey].painter !== painter && (email && canvasPixels[pkey].email !== email)) continue;
+        deleteCanvasPixel(px, py, painter, email);
+      }
+    }
     return jsonResp(200, { ok: true });  }
 
   if (path === '/api/canvas/moderate' && method === 'POST') {
