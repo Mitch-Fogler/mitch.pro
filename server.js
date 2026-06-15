@@ -9784,8 +9784,9 @@ function loadAllGamesList() {
     const adminOk = isAnyAdminId(sid);
     const premium = email ? isPremiumEmail(email) : false;
 
-    if (brushSz > 1 && !adminOk && !premium) {
-      return jsonResp(403, { error: 'forbidden' });
+    const maxAllowedBrush = adminOk ? 50 : (premium ? 16 : 8);
+    if (brushSz > maxAllowedBrush) {
+      return jsonResp(403, { error: 'forbidden', reason: 'brush size too large' });
     }
 
     const rl = checkRateLimit(req, path);
@@ -9881,6 +9882,12 @@ function loadAllGamesList() {
     const sid = authSidFromCookies(cookies);
     const email = emailFromSid(sid) || '';
     const adminOk = isAnyAdminId(sid);
+    const premium = email ? isPremiumEmail(email) : false;
+    
+    const maxAllowedBrush = adminOk ? 50 : (premium ? 16 : 8);
+    if (brushSz > maxAllowedBrush) {
+      return jsonResp(403, { error: 'forbidden', reason: 'brush size too large' });
+    }
     
     const half = Math.floor(brushSz / 2);
     for (let bx = 0; bx < brushSz; bx++) {
