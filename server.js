@@ -7409,6 +7409,9 @@ function loadAllGamesList() {
       const norm = normalizeEmail(email);
       const profiles = loadJson(PROFILES_FILE, {});
 
+      // Preserve profileBonusClaimed across saves
+      const alreadyClaimed = profiles[norm]?.profileBonusClaimed || false;
+
       profiles[norm] = {
         email,
         displayName: (displayName || '').trim().slice(0, 40),
@@ -7417,9 +7420,24 @@ function loadAllGamesList() {
         pfp: (pfp || '').trim().slice(0, 200),
         background: isPremium ? (background || '').trim().slice(0, 200) : (profiles[norm]?.background || ''),
         updatedAt: Date.now(),
+        profileBonusClaimed: alreadyClaimed,
       };
+
+      // One-time profile setup bonus: award 500 coins when all four fields are filled
+      const dn = profiles[norm].displayName;
+      const bi = profiles[norm].bio;
+      const ws = profiles[norm].website;
+      const pp = profiles[norm].pfp;
+      let bonusGranted = false;
+      if (!alreadyClaimed && dn && bi && ws && pp) {
+        addCoins(email, 500);
+        profiles[norm].profileBonusClaimed = true;
+        bonusGranted = true;
+        console.log(`[profile] ${email} claimed profile setup bonus (+500 coins)`);
+      }
+
       saveJson(PROFILES_FILE, profiles);
-      return jsonResp(200, { ok: true });
+      return jsonResp(200, { ok: true, bonusGranted, bonusAmount: bonusGranted ? 500 : 0 });
     }
     if (path === '/api/friends/request' && method === 'POST') {
       const cookies = getCookies(req);
@@ -8980,7 +8998,8 @@ function loadAllGamesList() {
         stats: loadUserStats()[norm] || {},
         achievements: getAchievements(email),
         activeColor: publicActiveColor(email, cosm[norm]?.activeColor),
-        activeBadge: cosm[norm]?.activeBadge || null
+        activeBadge: cosm[norm]?.activeBadge || null,
+        profileBonusClaimed: profile.profileBonusClaimed || false,
       });
       }
 
@@ -10521,6 +10540,18 @@ function loadAllGamesList() {
       
       if (coins > 0) {
         if (isPremiumEmail(email)) coins *= 2;
+        // 1.5x friend play bonus: if any friend is online right now
+        let friendBonusActive = false;
+        const friends = loadJson(FRIENDS_FILE, {});
+        const myFriends = friends[norm] || [];
+        const now2 = Date.now();
+        if (myFriends.some(f => {
+          const fNorm = normalizeEmail(f);
+          return cvOnline[fNorm] && (now2 - cvOnline[fNorm]) < 120000;
+        })) {
+          coins = Math.floor(coins * 1.5);
+          friendBonusActive = true;
+        }
         addCoins(email, coins);
         updateStat(email, 'typing_coins', coins);
         updateStat(email, 'typing_races', 1);
@@ -10528,9 +10559,9 @@ function loadAllGamesList() {
         s.lastTs = Date.now();
         typingSessions.set(norm, s);
         saveTypingSessions();
-        console.log(`[typing] ${email} earned ${coins} coins at ${wpm} WPM`);
+        console.log(`[typing] ${email} earned ${coins} coins at ${wpm} WPM${friendBonusActive ? ' (friend bonus)' : ''}`);
       }
-      return jsonResp(200, { success: true, coinsEarned: coins, dailyRemaining: 999 });
+      return jsonResp(200, { success: true, coinsEarned: coins, dailyRemaining: 999, friendBonusActive });
     } catch (e) { return jsonResp(400, { success: false }); }
   }
 
@@ -11854,55 +11885,6 @@ function loadAllGamesList() {
 
         const cookies = getCookies(req);
         const sid = cookies['studentId'] || cookies['id'] || '';
-        if (sid && isAdminId(sid)) {
-          const hmap = Buffer.from(`<script>
-            (function(){
-              var b=document.createElement('button'); b.id='mitch-heatmap-btn'; b.innerHTML='&#128293;'; b.title='Heatmap';
-              b.style.cssText='position:fixed;left:12px;bottom:88px;z-index:999999;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:rgba(10,10,10,0.4);color:#fff;font-size:11px;cursor:pointer;opacity:0.7;transition:opacity .15s,transform .15s,background .15s;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);';
-              b.onmouseenter=function(){this.style.opacity='1';this.style.transform='scale(1.1)';this.style.background='rgba(124,58,237,0.6)';};
-              b.onmouseleave=function(){this.style.opacity='0.7';this.style.transform='';this.style.background='rgba(10,10,10,0.4)';};
-              document.body.appendChild(b);
-              var cv=null;
-              b.onclick=async function(){
-                if(cv){cv.remove();cv=null;return;}
-                b.textContent='...';
-                try{
-                  var r=await fetch('/api/admin/advanced-data',{credentials:'include',cache:'no-store'}); var d=await r.json();
-                  var path=window.location.pathname||'/';
-                  var p=path.replace(/^\\/+|\\/$/g,'')||'index.html';
-                  var heat=d.heatmap||{};
-                  var keys=[path,p,'/'+p,p+'/',path.replace(/\\/$/,'')||'/',path.replace(/\\/$/,'')+'/'];
-                  var pts=[];
-                  for(var i=0;i<keys.length;i++){ if(Array.isArray(heat[keys[i]])){ pts=heat[keys[i]]; break; } }
-                  cv=document.createElement('canvas');
-                  cv.style.cssText='position:fixed;inset:0;width:100%;height:100%;z-index:999998;pointer-events:none;';
-                  var w=cv.width=window.innerWidth; var h=cv.height=window.innerHeight; var ctx=cv.getContext('2d');
-                  document.body.appendChild(cv); ctx.globalCompositeOperation='screen';
-                  pts.forEach(function(pt){
-                    var x=pt.x*w, y=pt.y*h, rad=30, g=ctx.createRadialGradient(x,y,0,x,y,rad);
-                    g.addColorStop(0,'rgba(167,139,250,0.4)'); g.addColorStop(1,'rgba(167,139,250,0)');
-                    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(x,y,rad,0,Math.PI*2); ctx.fill();
-                  });
-                  b.innerHTML='&#128293;';
-                }catch(e){b.textContent='?';}
-              };
-
-              var x=document.createElement('button'); x.innerHTML='&times;'; x.title='Hide UI Tools';
-              x.style.cssText='position:fixed;left:12px;bottom:126px;z-index:999999;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,0.1);background:rgba(239,68,68,0.3);color:#fff;font-size:16px;cursor:pointer;opacity:0.7;transition:opacity .15s,transform .15s;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);';
-              x.onmouseenter=function(){this.style.opacity='1';this.style.transform='scale(1.1)';};
-              x.onmouseleave=function(){this.style.opacity='0.7';this.style.transform='';};
-              x.onclick=function(){
-                ['theme-btn','_ab','mitch-heatmap-btn','discord-server-btn','mitch-quick-access'].forEach(function(id){
-                  var el=document.getElementById(id); if(el) el.style.display='none';
-                });
-                x.style.display='none';
-              };
-              document.body.appendChild(x);
-            })();
-          <\/script>`);
-          const bi = raw.lastIndexOf(Buffer.from('<\/body>'));
-          raw = bi >= 0 ? Buffer.concat([raw.slice(0, bi), hmap, raw.slice(bi)]) : Buffer.concat([raw, hmap]);
-        }
 
         const agreeB = Buffer.from('<div id="_agree_footer" style="position:fixed;bottom:5px;left:0;right:0;text-align:center;pointer-events:none;z-index:2147483647;font-size:.65rem;color:rgba(255,255,255,.15);font-family:system-ui,sans-serif;letter-spacing:.01em;">By using mitch.pro you agree to the <a href="/use-agreement.html" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">use agreement<\/a> and <a href="/privacy.html" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">privacy policy<\/a>.<\/div>');
 

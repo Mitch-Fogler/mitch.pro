@@ -132,6 +132,28 @@
   .achs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
   .ach-badge { font-size: 10px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 4px 10px; border-radius: 6px; color: var(--t-fg2); }
   
+  .bonus-banner {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: linear-gradient(135deg, rgba(245,158,11,0.12), rgba(251,191,36,0.06));
+    border: 1px solid rgba(245,158,11,0.35);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 24px;
+    font-size: 12px; line-height: 1.6;
+  }
+  .bonus-banner .bonus-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+  .bonus-banner strong { color: #f59e0b; display: block; margin-bottom: 3px; font-size: 13px; }
+  .bonus-banner.claimed { opacity: 0.45; border-color: rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); }
+
+  .coin-toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: linear-gradient(135deg, #065f46, #047857);
+    border: 1px solid rgba(74,222,128,0.35); border-radius: 14px;
+    padding: 14px 24px; color: #fff; font-family: 'Syne', sans-serif;
+    font-weight: 800; font-size: 14px; z-index: 9999;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.6); transition: transform 0.4s ease, opacity 0.4s ease;
+    opacity: 0; pointer-events: none; white-space: nowrap;
+  }
+  .coin-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
   .premium-label { font-size: 9px; color: #f59e0b; margin-left: 5px; font-weight: 700; }
 </style>
 </head>
@@ -139,6 +161,7 @@
 <div class="wrap" id="wrap">
   <div style="color:var(--t-fg2,#666);font-size:13px">Loading…</div>
 </div>
+<div class="coin-toast" id="coin-toast">🎁 +500 MitchCoins! Profile complete bonus!</div>
 
 <script>
 const params = new URLSearchParams(location.search);
@@ -246,6 +269,18 @@ async function load() {
       <div class="divider"></div>
       <div class="edit-section">
         <h2>Edit Profile</h2>
+        ${!profile.profileBonusClaimed ? `
+        <div class="bonus-banner" id="profile-bonus-banner">
+          <div class="bonus-icon">🎁</div>
+          <div>
+            <strong>One-time Profile Setup Bonus: 500 MitchCoins!</strong>
+            Fill in your Display Name, Bio, Website, and Profile Picture to claim your free 500 MitchCoin bonus. Unclaimed!
+          </div>
+        </div>` : `
+        <div class="bonus-banner claimed">
+          <div class="bonus-icon">✅</div>
+          <div><strong>Profile Bonus Claimed</strong> You already received the 500 MitchCoin setup bonus.</div>
+        </div>`}
         <div class="field"><label>Display Name</label>
           <input id="displayName" maxlength="40" placeholder="Your name" value="${esc(profile.displayName || '')}"></div>
         
@@ -333,6 +368,13 @@ async function save() {
     const d = await r.json();
     if (!r.ok) throw new Error(d.error || 'Failed');
     msg.className = 'ok'; msg.textContent = 'Saved!';
+    if (d.bonusGranted) {
+      const toast = document.getElementById('coin-toast');
+      if (toast) {
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 4000);
+      }
+    }
     setTimeout(() => load(), 1000);
   } catch (e) {
     msg.className = 'err'; msg.textContent = e.message;

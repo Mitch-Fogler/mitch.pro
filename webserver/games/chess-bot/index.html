@@ -362,6 +362,9 @@ input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;bac
     <div id="vs-panel" style="display:none;">
       <!-- Lobby view -->
       <div id="vs-lobby">
+        <div style="background:rgba(34,211,238,0.06);border:1px solid rgba(34,211,238,0.25);border-radius:10px;padding:8px 12px;margin-bottom:8px;font-size:.75rem;color:#22d3ee;line-height:1.5;">
+          🎮 <strong>Multiplayer-only MitchCoin game.</strong> Win or draw to earn coins. <span id="vs-friend-bonus-text" style="color:#4ade80;"></span>
+        </div>
         <div style="background:var(--bg2);border-radius:12px;border:var(--bd);overflow:hidden;">
           <div style="padding:8px 10px;border-bottom:var(--bd);display:flex;gap:4px;">
             <button class="vs-type-tab active" id="vst-live" onclick="vsSetType('live')">⏱ Live</button>
@@ -1603,6 +1606,24 @@ async function vsInit(){
     vsMyEmail = d.email || '';
     if(!vsMyEmail) return;
   }
+  // Show friend bonus hint
+  try {
+    const fr = await fetch('/api/friends/list',{credentials:'include'}).catch(()=>null);
+    const fd = fr ? await fr.json().catch(()=>({})) : {};
+    const friendEmails = new Set((fd.friends||[]).map(f=>f.email));
+    const onlineFriends = (fd.friends||[]).filter(f=>f.online);
+    const span = document.getElementById('vs-friend-bonus-text');
+    if(span){
+      if(onlineFriends.length){
+        span.textContent = `👥 Friend online — challenge them for 1.5x bonus coins!`;
+      } else {
+        span.textContent = `👥 Challenge a friend for 1.5x MitchCoin bonus!`;
+        span.style.color = 'rgba(255,255,255,0.4)';
+      }
+    }
+    // Store for rendering friend indicators in user list
+    window._vsFriendEmails = friendEmails;
+  } catch(e){}
   vsRenderTcButtons();
   vsStartHeartbeat();
 }

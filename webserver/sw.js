@@ -1,6 +1,5 @@
-const CACHE_NAME = 'mitch-pro-cache-v1';
+const CACHE_NAME = 'mitch-pro-cache-v2';
 const ASSETS = [
-  '/',
   '/favicon.ico',
   '/manifest.json'
 ];
@@ -27,27 +26,57 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+function isHtmlRequest(request) {
+  const url = request.url;
+  const accept = request.headers.get('accept') || '';
+  // Navigation requests or accept: text/html
+  if (request.mode === 'navigate') return true;
+  if (accept.includes('text/html')) return true;
+  // URLs ending with / or .html
+  const pathname = new URL(url).pathname;
+  if (pathname.endsWith('/') || pathname.endsWith('.html')) return true;
+  return false;
+}
+
 self.addEventListener('fetch', (e) => {
+  // Never intercept API or WebSocket requests
   if (e.request.url.includes('/api/') || e.request.url.startsWith('ws')) {
     return;
   }
-  
-  e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      return fetch(e.request).then((response) => {
+
+  if (isHtmlRequest(e.request)) {
+    // Network-first for HTML pages — always get fresh content
+    e.respondWith(
+      fetch(e.request).then((response) => {
         if (response && response.status === 200 && response.type === 'basic') {
-          const responseToCache = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(e.request, responseToCache);
-          });
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
         }
         return response;
-      }).catch(() => {});
-    })
-  );
+      }).catch(() => {
+        // Offline fallback: serve cached version if available
+        return caches.match(e.request);
+      })
+    );
+  } else {
+    // Cache-first for static assets (CSS, JS, images, fonts)
+    e.respondWith(
+      caches.match(e.request).then((cachedResponse) => {
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+        return fetch(e.request).then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(e.request, responseToCache);
+            });
+          }
+          return response;
+        }).catch(() => {});
+      })
+    );
+  }
 });
 
 // Push notification listeners

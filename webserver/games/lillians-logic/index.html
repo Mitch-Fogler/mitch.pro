@@ -113,7 +113,8 @@
 
   <div class="container">
     <h1 style="margin-bottom: 5px;">Lillian's Logic</h1>
-    <p style="opacity:0.6; margin-bottom: 30px; font-weight: 600;">The Daily Mind Grind. Earn Massive MitchCoins.</p>
+    <p style="opacity:0.6; margin-bottom: 20px; font-weight: 600;">The Daily Mind Grind. Earn Massive MitchCoins.</p>
+    <div id="friend-bonus-banner" style="display:none; border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 12px; margin-bottom: 24px; font-size: 0.85rem; text-align: center;"></div>
 
     <div class="tabs">
       <button class="tab-btn active" id="btn-tab-wordle" onclick="switchTab('wordle')">Mitch-le</button>
@@ -460,8 +461,33 @@
         }
     });
 
+    async function checkFriendBonus() {
+      try {
+        const res = await fetch('/api/friends/list');
+        const data = await res.json();
+        const anyFriendOnline = data.friends && data.friends.some(f => f.online);
+        const banner = document.getElementById('friend-bonus-banner');
+        if (banner) {
+          if (anyFriendOnline) {
+            banner.style.display = 'block';
+            banner.style.borderColor = '#4ade80';
+            banner.style.color = '#4ade80';
+            banner.style.background = 'rgba(74, 222, 128, 0.05)';
+            banner.innerHTML = '👥 <strong>Friend Bonus Active (1.5x)!</strong> A friend is currently online. Play now to get extra coins!';
+          } else {
+            banner.style.display = 'block';
+            banner.style.borderColor = 'rgba(255,255,255,0.08)';
+            banner.style.color = 'rgba(255,255,255,0.4)';
+            banner.style.background = 'rgba(255,255,255,0.01)';
+            banner.innerHTML = '👥 <strong>Friend Play Bonus</strong>: Play while friends are online to earn a <strong>1.5x MitchCoin bonus</strong>!';
+          }
+        }
+      } catch (e) {}
+    }
+
     initWordle();
     initMines();
+    checkFriendBonus();
   </script>
 </body>
 </html>

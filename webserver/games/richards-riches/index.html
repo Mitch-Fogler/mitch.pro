@@ -608,6 +608,7 @@
     </div>
     <div class="finances">
       <div id="premium-badge" class="premium-badge">Premium 2X Enabled</div>
+      <div id="friend-bonus-banner" style="display:none; border: 1px dashed rgba(255,255,255,0.1); border-radius: 10px; padding: 8px 12px; font-size: 0.78rem; text-align: center; margin-top: 6px;"></div>
       <div class="cash-display">
         <div id="cash-val" class="cash-value">$0.00</div>
         <div id="cash-rate" class="cash-rate">+$0.00/sec</div>
@@ -1171,6 +1172,30 @@
     document.getElementById('offline-modal').classList.remove('active');
   }
 
+  async function checkFriendBonus() {
+    try {
+      const res = await fetch('/api/friends/list');
+      const data = await res.json();
+      const anyFriendOnline = data.friends && data.friends.some(f => f.online);
+      const banner = document.getElementById('friend-bonus-banner');
+      if (banner) {
+        if (anyFriendOnline) {
+          banner.style.display = 'block';
+          banner.style.borderColor = '#4ade80';
+          banner.style.color = '#4ade80';
+          banner.style.background = 'rgba(74, 222, 128, 0.05)';
+          banner.innerHTML = '👥 <strong>Friend Bonus Active!</strong> A friend is online — earn 1.5x MitchCoins while they play!';
+        } else {
+          banner.style.display = 'block';
+          banner.style.borderColor = 'rgba(255,255,255,0.08)';
+          banner.style.color = 'rgba(255,255,255,0.35)';
+          banner.style.background = 'rgba(255,255,255,0.01)';
+          banner.innerHTML = '👥 <strong>Friend Play Bonus</strong>: Invite friends to play for a <strong>1.5x MitchCoin bonus</strong>!';
+        }
+      }
+    } catch (e) {}
+  }
+
   // Initialize and load game state from server
   async function initGame() {
     try {
@@ -1190,6 +1215,9 @@
 
         // Render base UI
         updateUI();
+
+        // Check friend bonus
+        checkFriendBonus();
 
         // Check offline gains
         if (data.offlineGain && data.offlineGain > 0) {

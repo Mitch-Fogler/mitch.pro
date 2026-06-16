@@ -1077,30 +1077,8 @@
     document.body.appendChild(bar);
   }
 
-    // ── Click Tracking (Heatmap) ────────────────────────────────────────────────
-    function setupClickTracking() {
-    return;
-      window.addEventListener('click', function(e) {
-        if (e.target.closest('button, a, input, select, textarea')) {
-          // Track clicks on interactive elements
-          var x = e.pageX / document.documentElement.scrollWidth;
-          var y = e.pageY / document.documentElement.scrollHeight;
-
-          fetch('/api/log-click', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              page: window.location.pathname,
-              x: x,
-              y: y
-            })
-          }).catch(function(){});
-        }
-      }, true);
-    }
-
-    if (document.body) { applyVFX(); applyCustomCSS(); applyQuickAccess(); setupClickTracking(); }
-    else { document.addEventListener('DOMContentLoaded', function(){ applyVFX(); applyCustomCSS(); applyQuickAccess(); setupClickTracking(); }); }
+    if (document.body) { applyVFX(); applyCustomCSS(); applyQuickAccess(); }
+    else { document.addEventListener('DOMContentLoaded', function(){ applyVFX(); applyCustomCSS(); applyQuickAccess(); }); }
     window.addEventListener('themecustomize', function() { applyVFX(); applyCustomCSS(); applyQuickAccess(); });
     })();
 

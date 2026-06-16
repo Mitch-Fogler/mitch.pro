@@ -209,6 +209,7 @@
     <h2>Adrian Clicker 2.0</h2>
     <p style="color: var(--t-fg2); font-weight: 600;">Server-Secured Progress.</p>
     <div id="premium-bonus-badge" style="display:none; margin-top: 10px; background: rgba(245, 158, 11, 0.1); border: 1px solid #f59e0b; color: #f59e0b; padding: 4px 12px; border-radius: 99px; font-size: 0.75rem; font-weight: 800; text-transform: uppercase;">✨ Premium: 2x MitchCoins Active</div>
+    <div id="friend-bonus-banner" style="display:none; border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 10px; margin-top: 10px; font-size: 0.85rem; text-align: center; max-width: 500px; margin-left: auto; margin-right: auto;"></div>
   </header>
 
   <div class="container">
@@ -421,6 +422,30 @@
       updateTechBar();
     }
 
+    async function checkFriendBonus() {
+      try {
+        const res = await fetch('/api/friends/list');
+        const data = await res.json();
+        const anyFriendOnline = data.friends && data.friends.some(f => f.online);
+        const banner = document.getElementById('friend-bonus-banner');
+        if (banner) {
+          if (anyFriendOnline) {
+            banner.style.display = 'block';
+            banner.style.borderColor = '#4ade80';
+            banner.style.color = '#4ade80';
+            banner.style.background = 'rgba(74, 222, 128, 0.05)';
+            banner.innerHTML = '👥 <strong>Friend Bonus Active (1.5x)!</strong> A friend is currently online. Play now to get extra coins!';
+          } else {
+            banner.style.display = 'block';
+            banner.style.borderColor = 'rgba(255,255,255,0.08)';
+            banner.style.color = 'rgba(255,255,255,0.4)';
+            banner.style.background = 'rgba(255,255,255,0.01)';
+            banner.innerHTML = '👥 <strong>Friend Play Bonus</strong>: Play while friends are online to earn a <strong>1.5x MitchCoin bonus</strong>!';
+          }
+        }
+      } catch (e) {}
+    }
+
     async function loadState() {
       try {
         const res = await fetch('/api/games/adrian-clicker/state', { credentials: 'include' });
@@ -439,6 +464,7 @@
           recalcStats();
           updateDisplay();
           initUpgradeButtons();
+          checkFriendBonus();
         }
       } catch(e) {}
       isLoading = false;
