@@ -884,16 +884,34 @@ function setupAdminNotificationMode() {
 function renderOnlineMembers(members) {
   var wrap = document.getElementById('online-members-wrap');
   var list = document.getElementById('online-members-list');
-  var online = (members || []).filter(function(m) { return m.online; }).slice(0, 18);
-  if (!online.length) {
+  var online = (members || []).filter(function(m) { return m.online; });
+
+  // Populate collapsed handle details
+  var badgeEl = document.getElementById('collapsed-online-count');
+  var pfpsEl = document.getElementById('collapsed-pfps-container');
+  if (badgeEl) {
+    if (online.length > 0) {
+      badgeEl.textContent = online.length;
+      badgeEl.style.display = 'inline-flex';
+    } else {
+      badgeEl.style.display = 'none';
+    }
+  }
+  if (pfpsEl) {
+    var withPfp = online.filter(function(m) { return !!m.pfp; }).slice(0, 3);
+    pfpsEl.innerHTML = withPfp.map(function(m) {
+      return '<img src="' + escText(m.pfp) + '" class="collapsed-pfp-img" title="' + escText(m.displayName || m.email) + '">';
+    }).join('');
+  }
+
+  var onlineListSubset = online.slice(0, 18);
+  if (!onlineListSubset.length) {
     list.innerHTML = '<span class="side-empty">No one online</span>';
     wrap.style.display = '';
     return;
   }
-  
 
-
-  list.innerHTML = online.map(function(m) {
+  list.innerHTML = onlineListSubset.map(function(m) {
     var email = m.email || '';
     var name = m.displayName || (email.includes('@') ? email.split('@')[0] : 'mitch.pro user');
     var badge = badgeLabels[m.badge];
@@ -934,6 +952,10 @@ async function loadOnlineMembers() {
     if (!r.ok) {
       list.innerHTML = '<span class="side-empty">Sign in to see online members</span>';
       wrap.style.display = '';
+      var badgeEl = document.getElementById('collapsed-online-count');
+      var pfpsEl = document.getElementById('collapsed-pfps-container');
+      if (badgeEl) badgeEl.style.display = 'none';
+      if (pfpsEl) pfpsEl.innerHTML = '';
       return;
     }
     var d = await r.json();
@@ -941,6 +963,10 @@ async function loadOnlineMembers() {
   } catch(e) {
     list.innerHTML = '<span class="side-empty">Online list unavailable</span>';
     wrap.style.display = '';
+    var badgeEl = document.getElementById('collapsed-online-count');
+    var pfpsEl = document.getElementById('collapsed-pfps-container');
+    if (badgeEl) badgeEl.style.display = 'none';
+    if (pfpsEl) pfpsEl.innerHTML = '';
   }
 }
 
@@ -2866,16 +2892,117 @@ if (document.readyState === 'loading') {
   }
 
   /* Cybernetic Live Sidebar Rail */
-  #member-side-rail {
-    background: rgba(10, 8, 24, 0.6) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 18px !important;
-    padding: 14px !important;
-    box-shadow: 
-      0 20px 45px rgba(0, 0, 0, 0.45),
-      inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
-    backdrop-filter: blur(20px) !important;
-    -webkit-backdrop-filter: blur(20px) !important;
+  @media (min-width: 981px) {
+    #member-side-rail {
+      position: fixed !important;
+      top: 50% !important;
+      right: 0px !important;
+      transform: translate(calc(100% - 38px), -50%) !important;
+      z-index: 90;
+      width: 230px !important;
+      max-height: calc(100vh - 76px) !important;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow: hidden;
+      background: rgba(10, 8, 24, 0.45) !important;
+      border: 1px solid rgba(255, 255, 255, 0.05) !important;
+      border-radius: 18px !important;
+      padding: 14px !important;
+      box-shadow: 
+        0 20px 45px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s, border-color 0.3s !important;
+      cursor: pointer;
+    }
+    #member-side-rail .side-section {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease !important;
+    }
+    #member-side-rail-collapsed-handle {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 38px;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      opacity: 1;
+      transition: opacity 0.25s;
+      pointer-events: none;
+      padding: 15px 0;
+      box-sizing: border-box;
+    }
+    .online-badge {
+      background: #22c55e;
+      color: #fff;
+      font-size: 9px;
+      font-weight: bold;
+      border-radius: 99px;
+      min-width: 18px;
+      height: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 4px;
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.6);
+      box-sizing: border-box;
+      font-family: monospace;
+    }
+    .collapsed-pfps {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: -6px;
+    }
+    .collapsed-pfp-img {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      object-fit: cover;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      margin-top: -6px;
+    }
+    .collapsed-pfp-img:first-child {
+      margin-top: 0;
+    }
+    #member-side-rail:hover {
+      transform: translate(-12px, -50%) !important;
+      background: rgba(10, 8, 24, 0.9) !important;
+      border-color: rgba(255, 255, 255, 0.15) !important;
+      cursor: default;
+    }
+    #member-side-rail:hover .side-section {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    #member-side-rail:hover #member-side-rail-collapsed-handle {
+      opacity: 0;
+    }
+  }
+
+  @media (max-width: 980px) {
+    #member-side-rail {
+      background: rgba(10, 8, 24, 0.6) !important;
+      border: 1px solid rgba(255, 255, 255, 0.05) !important;
+      border-radius: 18px !important;
+      padding: 14px !important;
+      box-shadow: 
+        0 20px 45px rgba(0, 0, 0, 0.45),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+    }
+    #member-side-rail-collapsed-handle {
+      display: none !important;
+    }
   }
   
   .side-section {
@@ -3385,6 +3512,13 @@ if (document.readyState === 'loading') {
 </div>
 
 <div id="member-side-rail">
+  <!-- Collapsed Handle showing status indicators -->
+  <div id="member-side-rail-collapsed-handle">
+    <div class="handle-icon" style="font-size:16px;opacity:0.85">👥</div>
+    <div id="collapsed-online-count" class="online-badge" style="display:none">0</div>
+    <div id="collapsed-pfps-container" class="collapsed-pfps"></div>
+  </div>
+
   <div id="owner-members-wrap" class="side-section" style="display:none">
     <div class="side-title" style="color:#eab308;">Owner</div>
     <div id="owner-members-list" class="side-list"></div>

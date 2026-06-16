@@ -233,6 +233,23 @@
     }
     #bookmarks-panel.show { display: block; }
     #bookmarks-panel .adm-hd { color: #60a5fa; font-weight: 800; font-size: 12px; margin-bottom: 8px; }
+
+    #zones-panel {
+      display: none; position: fixed; top: 52px; right: 304px; z-index: 200;
+      background: rgba(10,10,10,0.95); border: 1px solid #6b7280;
+      border-radius: 9px; padding: 10px 12px; font-family: monospace; font-size: 11px;
+      color: #e8e8e8; width: 280px; max-height: 70vh; overflow-y: auto;
+    }
+    #zones-panel.show { display: block; }
+    #zones-panel .adm-hd { color: #c084fc; font-weight: 800; font-size: 12px; margin-bottom: 8px; }
+    .zone-entry { border-top: 1px solid #333; padding: 6px 0; display: flex; flex-direction: column; gap: 3px; }
+    .zone-entry-header { display: flex; justify-content: space-between; align-items: center; }
+    .zone-entry-name { font-weight: bold; color: #c084fc; cursor: pointer; }
+    .zone-entry-name:hover { text-decoration: underline; }
+    .zone-entry-owner { color: #9ca3af; font-size: 10px; }
+    .zone-entry-meta { display: flex; gap: 6px; font-size: 9px; color: #64748b; margin-top: 2px; }
+    .zone-entry-actions { display: flex; gap: 6px; margin-top: 4px; }
+    .zone-badge { font-size: 9px; padding: 1px 3px; border-radius: 3px; background: #3b82f6; color: #fff; }
     .bm-entry { border-top: 1px solid #333; padding: 6px 0; display: flex; flex-direction: column; gap: 3px; }
     .bm-entry-header { display: flex; justify-content: space-between; align-items: center; }
     .bm-entry-name { font-weight: bold; color: #60a5fa; cursor: pointer; }
@@ -257,6 +274,23 @@
       box-shadow: 0 0 18px rgba(45,212,191,.7);
       flex: 0 0 auto;
     }
+
+    /* Autocomplete Dropdown Styles */
+    .autocomplete-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      font-size: 11px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      transition: background 0.15s;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover { background: rgba(59, 130, 246, 0.15); }
+    .autocomplete-item .item-name { font-weight: 600; color: #fff; }
+    .autocomplete-item .item-email { font-size: 9px; color: #94a3b8; opacity: 0.6; }
+
     @media (max-width: 760px) {
       #toolbar { gap: 5px; padding: 0 8px; overflow-x: auto; }
       #toolbar::-webkit-scrollbar { display:none; }
@@ -285,6 +319,7 @@
   <button class="tb-btn" id="ref-btn">↻</button>
   <button class="tb-btn" id="load-all-btn" title="Load entire canvas (may take a moment)">🌐 Load All</button>
   <button class="tb-btn" id="bookmarks-btn" title="View and search canvas bookmarks">🔖 Bookmarks</button>
+  <button class="tb-btn" id="zones-btn" title="Create and visit custom drawing zones">🌌 Zones</button>
   <button class="tb-btn" id="help-btn">?</button>
   <button class="tb-btn" id="timelapse-btn" title="Watch canvas history timelapse">🎬 Timelapse</button>
   <span id="premium-badge" style="display:none">✦ premium</span>
@@ -388,6 +423,109 @@
   </div>
 </div>
 
+<div id="zones-panel">
+  <div class="adm-hd">🌌 Custom Zones</div>
+  <div style="color:#94a3b8;font-size:10px;margin-bottom:8px;line-height:1.4">Create your own private or shared drawing zones. Max 10 per user.</div>
+  
+  <!-- Create Zone Form -->
+  <div class="bm-form" style="border-bottom:1px solid #334155;padding-bottom:12px;margin-bottom:12px">
+    <input type="text" id="zone-new-name" placeholder="Zone Name (e.g. Art Room)" style="width:100%;font-size:11px;background:#1e293b;border:1px solid #475569;color:#fff;border-radius:4px;padding:4px 6px;margin-bottom:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <label style="font-size:10px;color:#94a3b8;display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="zone-new-friendsonly"> Friends Only
+      </label>
+      <button class="adm-btn green" id="zone-create-btn" style="padding:2px 8px">Create Zone</button>
+    </div>
+  </div>
+
+  <!-- Active Zone Status -->
+  <div id="zone-active-status" style="border-bottom:1px solid #334155;padding-bottom:10px;margin-bottom:10px;display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="font-size:10px;color:#fbbf24;font-weight:bold">🌌 <span id="zone-active-name">None</span></div>
+      <div style="display:flex;gap:4px">
+        <button class="adm-btn" id="zone-settings-btn" style="font-size:9px;padding:2px 6px;border-color:#a78bfa;color:#a78bfa">⚙ Settings</button>
+        <button class="adm-btn red" id="zone-leave-btn" style="font-size:9px;padding:2px 6px">✕ Leave</button>
+      </div>
+    </div>
+    <div id="zone-active-description" style="font-size:9px;color:#94a3b8;margin-bottom:6px;display:none;font-style:italic;word-break:break-all"></div>
+    <div style="font-size:9px;color:#64748b">Full brush size · Erase any pixel · Zone admin powers active</div>
+  </div>
+
+  <!-- Zones List -->
+  <div style="font-size:10px;color:#94a3b8;margin-bottom:4px;font-weight:bold">Zones List:</div>
+  <div id="zones-list" style="max-height:260px;overflow-y:auto;font-size:11px">
+    <span style="color:#555">loading…</span>
+  </div>
+</div>
+
+<!-- Zone Settings Modal -->
+<div id="zone-settings-modal" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.7);align-items:center;justify-content:center">
+  <div style="background:#0f172a;border:1px solid #6b7280;border-radius:12px;padding:20px;width:320px;max-height:80vh;overflow-y:auto;font-family:monospace;font-size:11px;color:#e8e8e8">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div style="color:#c084fc;font-weight:800;font-size:13px">⚙ Zone Settings</div>
+      <button class="adm-btn" id="zone-settings-close" style="padding:2px 8px;font-size:11px">✕</button>
+    </div>
+
+    <!-- Name -->
+    <div style="margin-bottom:12px">
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:4px;font-weight:bold">ZONE NAME</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="zone-settings-name" style="flex:1;font-size:11px;background:#1e293b;border:1px solid #475569;color:#fff;border-radius:4px;padding:4px 6px">
+        <button class="adm-btn green" id="zone-settings-save-name" style="padding:2px 8px;white-space:nowrap">Save</button>
+      </div>
+    </div>
+
+    <!-- Description -->
+    <div style="margin-bottom:12px">
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:4px;font-weight:bold">ZONE DESCRIPTION</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="zone-settings-description" placeholder="Optional description…" style="flex:1;font-size:11px;background:#1e293b;border:1px solid #475569;color:#fff;border-radius:4px;padding:4px 6px">
+        <button class="adm-btn green" id="zone-settings-save-description" style="padding:2px 8px;white-space:nowrap">Save</button>
+      </div>
+    </div>
+
+    <!-- Access Mode -->
+    <div style="margin-bottom:14px;padding:10px;background:#1e293b;border-radius:6px">
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:8px;font-weight:bold">ACCESS MODE</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="radio" name="zone-access-mode" id="zone-access-private" value="private">
+          <div>
+            <div style="color:#e8e8e8;font-size:10px;font-weight:bold">🔒 Private (Invite Only)</div>
+            <div style="color:#64748b;font-size:9px">Only users you explicitly add can join</div>
+          </div>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="radio" name="zone-access-mode" id="zone-access-friends" value="friends">
+          <div>
+            <div style="color:#e8e8e8;font-size:10px;font-weight:bold">👥 Friends Only</div>
+            <div style="color:#64748b;font-size:9px">Any of your friends can join automatically</div>
+          </div>
+        </label>
+      </div>
+      <button class="adm-btn green" id="zone-settings-save-access" style="width:100%;margin-top:8px;padding:3px">Save Access Mode</button>
+    </div>
+
+    <!-- Members -->
+    <div style="margin-bottom:14px">
+      <div style="color:#94a3b8;font-size:10px;margin-bottom:6px;font-weight:bold">MEMBERS</div>
+      <div id="zone-settings-members" style="max-height:160px;overflow-y:auto;margin-bottom:8px;background:#1e293b;border-radius:6px;padding:6px"></div>
+      <div style="position:relative;display:flex;gap:6px">
+        <input type="text" id="zone-settings-add-user" placeholder="Add by email or username…" autocomplete="off" style="flex:1;font-size:10px;background:#1e293b;border:1px solid #475569;color:#fff;border-radius:4px;padding:4px 6px">
+        <button class="adm-btn green" id="zone-settings-add-btn" style="padding:2px 8px;white-space:nowrap">Add</button>
+        <div id="zone-member-autocomplete" style="position:absolute;top:100%;left:0;right:0;background:#1e293b;border:1px solid #475569;border-radius:6px;margin-top:2px;max-height:150px;overflow-y:auto;z-index:600;display:none;box-shadow:0 10px 25px rgba(0,0,0,0.5)"></div>
+      </div>
+    </div>
+
+    <!-- Danger Zone -->
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155;display:flex;flex-direction:column;gap:8px">
+      <div style="color:#f87171;font-size:10px;margin-bottom:2px;font-weight:bold">DANGER ZONE</div>
+      <button class="adm-btn" id="zone-settings-clear" style="width:100%;padding:4px;border-color:#f87171;color:#f87171">🧹 Clear All Pixels</button>
+      <button class="adm-btn red" id="zone-settings-delete" style="width:100%;padding:4px">🗑 Delete This Zone</button>
+    </div>
+  </div>
+</div>
+
 <div id="loading"><div class="spin"></div><p>Loading canvas…</p></div>
 
 <script>
@@ -434,6 +572,12 @@ let timelapseTimer = null;
 let placingImage = null;
 let currentImageSrc = null;
 let bookmarks = [];
+let currentZoneId = null;
+let currentZone = null;
+let zonesList = [];
+let zoneMemberSuggestions = [];
+
+function normalizeEmail(e) { return String(e || '').toLowerCase().trim(); }
 
 const chunkCanvases = {};
 
@@ -515,7 +659,8 @@ window.addEventListener('resize', resize);
 resize();
 
 async function loadAllPixelsInternal() {
-  const r = await fetch('/api/canvas/pixels');
+  const url = currentZoneId ? '/api/canvas/pixels?zoneId=' + encodeURIComponent(currentZoneId) : '/api/canvas/pixels';
+  const r = await fetch(url);
   const data = await r.json();
   
   loadedChunks.clear();
@@ -587,7 +732,7 @@ async function toggleTimelapse() {
       
       const allData = await loadAllPixelsInternal();
       
-      const res = await fetch('/api/canvas/history');
+      const res = await fetch(currentZoneId ? '/api/canvas/history?zoneId=' + encodeURIComponent(currentZoneId) : '/api/canvas/history');
       const data = await res.json();
       const rawHistory = data.history || [];
       const myHistory = rawHistory.filter(item => item.painter === pid || (item.email && item.email === pid));
@@ -837,7 +982,7 @@ function paintAt(wx, wy, brushSz, isClick) {
   fetch('/api/canvas/pixel', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ x: wx, y: wy, brushSz, color, painter: pid, lock: lock }),
+    body: JSON.stringify({ x: wx, y: wy, brushSz, color, painter: pid, lock: lock, zoneId: currentZoneId }),
   }).then(r => r.json()).then(d => {
     if (d.error) {
       if (d.error === 'banned') { banned = true; showBanned(d.reason); }
@@ -865,7 +1010,7 @@ function eraseAt(wx, wy, brushSz, isClick) {
   fetch('/api/canvas/erase', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ x: wx, y: wy, brushSz, painter: pid }),
+    body: JSON.stringify({ x: wx, y: wy, brushSz, painter: pid, zoneId: currentZoneId }),
   }).catch(() => {});
 }
 
@@ -1129,16 +1274,23 @@ async function loadChunks(chunkKeys) {
   if (!chunkKeys.length || chunkLoadPending) return;
   chunkLoadPending = true;
   try {
-    const param = chunkKeys.join(';');
-    const r = await fetch('/api/canvas/pixels?chunks=' + encodeURIComponent(param));
+    const r = await fetch('/api/canvas/pixels', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chunks: chunkKeys, zoneId: currentZoneId })
+    });
     const data = await r.json();
-    Object.assign(pixels, data);
-    for (const k of chunkKeys) {
-      loadedChunks.add(k);
-      const [cx, cy] = k.split(',').map(Number);
-      renderChunkToCanvas(cx, cy);
+    if (data.error) {
+      showToast(data.reason || data.error, 'err');
+    } else {
+      Object.assign(pixels, data);
+      for (const k of chunkKeys) {
+        loadedChunks.add(k);
+        const [cx, cy] = k.split(',').map(Number);
+        renderChunkToCanvas(cx, cy);
+      }
+      document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
     }
-    document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
   } catch { showToast('Failed to load', 'err'); }
   chunkLoadPending = false;
 }
@@ -1344,7 +1496,7 @@ async function placeImageAt(wx, wy) {
     const r = await fetch('/api/canvas/pixels/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pixels: points }),
+      body: JSON.stringify({ pixels: points, zoneId: currentZoneId }),
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || d.error) {
@@ -1471,6 +1623,186 @@ function renderBookmarksList(query = '') {
   }
 }
 
+// Zones helper functions
+async function loadZones() {
+  try {
+    const r = await fetch('/api/canvas/zones');
+    const d = await r.json();
+    zonesList = d.zones || [];
+    renderZonesList();
+  } catch {
+    document.getElementById('zones-list').innerHTML = '<span style="color:#f87171">Failed to load zones</span>';
+  }
+}
+
+function renderZonesList() {
+  const list = document.getElementById('zones-list');
+  if (!zonesList.length) {
+    list.innerHTML = '<span style="color:#555">No zones available</span>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const z of zonesList) {
+    const div = document.createElement('div');
+    div.className = 'zone-entry';
+    
+    const isOwner = normalizeEmail(z.owner) === normalizeEmail(pid);
+    const labelText = z.friendsOnly ? 'Friends Only' : 'Private';
+    
+    div.innerHTML = `
+      <div class="zone-entry-header">
+        <span class="zone-entry-name">${htmlEscape(z.name)}</span>
+        <span class="zone-badge">${labelText}</span>
+      </div>
+      <div class="zone-entry-owner">
+        Owner: ${htmlEscape(z.owner.split('@')[0])}
+      </div>
+      ${z.description ? `<div style="font-size:9px;color:#94a3b8;margin-top:2px;font-style:italic;word-break:break-all">${htmlEscape(z.description)}</div>` : ''}
+      <div class="zone-entry-actions">
+        <button class="adm-btn green zone-visit-btn" style="font-size:9px;padding:2px 4px;margin-right:4px">Visit</button>
+        ${(isAdmin || isOwner) ? `<button class="adm-btn red zone-delete-btn" style="font-size:9px;padding:2px 4px">Delete</button>` : ''}
+      </div>
+    `;
+    
+    div.querySelector('.zone-visit-btn').onclick = () => {
+      visitZone(z);
+    };
+    
+    if (isAdmin || isOwner) {
+      div.querySelector('.zone-delete-btn').onclick = async () => {
+        const confirmDelete = await window.customConfirm("Delete Zone?", `Are you sure you want to delete zone "${z.name}"?`);
+        if (!confirmDelete) return;
+        try {
+          const r = await fetch('/api/canvas/zones/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ zoneId: z.id })
+          });
+          const d = await r.json();
+          if (d.error) showToast(d.error, 'err');
+          else {
+            showToast('Zone deleted!');
+            if (currentZoneId === z.id) {
+              leaveZone();
+            }
+            loadZones();
+          }
+        } catch { showToast('Delete failed', 'err'); }
+      };
+    }
+    
+    list.appendChild(div);
+  }
+}
+
+async function visitZone(zone) {
+  currentZoneId = zone.id;
+  currentZone = zone;
+
+  document.getElementById('zone-active-name').textContent = zone.name;
+  
+  const descEl = document.getElementById('zone-active-description');
+  if (zone.description) {
+    descEl.textContent = zone.description;
+    descEl.style.display = 'block';
+  } else {
+    descEl.style.display = 'none';
+  }
+
+  document.getElementById('zone-active-status').style.display = 'block';
+
+  // Only show settings button if owner or admin
+  const isOwner = normalizeEmail(zone.owner) === normalizeEmail(pid);
+  document.getElementById('zone-settings-btn').style.display = (isOwner || isAdmin) ? '' : 'none';
+
+  showToast(`🌌 Entering zone: ${zone.name}`);
+  await loadPixels();
+}
+
+async function leaveZone() {
+  currentZoneId = null;
+  currentZone = null;
+
+  document.getElementById('zone-active-status').style.display = 'none';
+  document.getElementById('zone-active-description').style.display = 'none';
+  closeZoneSettings();
+  showToast('Returned to main canvas');
+  await loadPixels();
+}
+
+async function openZoneSettings() {
+  if (!currentZone) return;
+  const modal = document.getElementById('zone-settings-modal');
+  modal.style.display = 'flex';
+
+  // Load members if not loaded yet
+  if (!zoneMemberSuggestions.length) {
+    try {
+      const mr = await fetch('/api/members?t=' + Date.now(), { credentials: 'include' });
+      const md = await mr.json();
+      zoneMemberSuggestions = md.members || [];
+    } catch (e) {}
+  }
+
+  // Populate fields
+  document.getElementById('zone-settings-name').value = currentZone.name;
+  document.getElementById('zone-settings-description').value = currentZone.description || '';
+  if (currentZone.friendsOnly) {
+    document.getElementById('zone-access-friends').checked = true;
+  } else {
+    document.getElementById('zone-access-private').checked = true;
+  }
+
+  document.getElementById('zone-settings-add-user').value = '';
+  document.getElementById('zone-member-autocomplete').style.display = 'none';
+
+  renderZoneSettingsMembers();
+}
+
+function closeZoneSettings() {
+  document.getElementById('zone-settings-modal').style.display = 'none';
+  document.getElementById('zone-settings-add-user').value = '';
+  document.getElementById('zone-member-autocomplete').style.display = 'none';
+}
+
+function renderZoneSettingsMembers() {
+  const el = document.getElementById('zone-settings-members');
+  const users = currentZone?.allowedUsers || [];
+
+  if (!users.length) {
+    el.innerHTML = '<div style="color:#555;font-size:10px;text-align:center;padding:8px">No members yet. Add someone below.</div>';
+    return;
+  }
+
+  el.innerHTML = '';
+  for (const u of users) {
+    const row = document.createElement('div');
+    row.style = 'display:flex;justify-content:space-between;align-items:center;padding:5px 6px;margin-bottom:3px;background:#0f172a;border-radius:4px;border:1px solid #1e293b';
+    row.innerHTML = `
+      <div>
+        <div style="color:#e8e8e8;font-size:10px">${htmlEscape(u.split('@')[0])}</div>
+        <div style="color:#475569;font-size:9px">${htmlEscape(u)}</div>
+      </div>
+      <button class="adm-btn red remove-member-btn" style="font-size:9px;padding:2px 6px" data-user="${htmlEscape(u)}">Remove</button>
+    `;
+    row.querySelector('.remove-member-btn').onclick = async () => {
+      try {
+        const r = await fetch('/api/canvas/zones/remove-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ zoneId: currentZone.id, user: u })
+        });
+        const d = await r.json();
+        if (d.error) { showToast(d.error, 'err'); return; }
+        currentZone.allowedUsers = d.allowedUsers;
+        renderZoneSettingsMembers();
+        showToast('Member removed');
+      } catch { showToast('Action failed', 'err'); }
+    };
+    el.appendChild(row);
+  }
+}
+
 (async () => {
   applyCanvasHash();
   await loadPixels();
@@ -1538,6 +1870,261 @@ function renderBookmarksList(query = '') {
     }
   };
 
+  // Zones panel interactions
+  document.getElementById('zones-btn').onclick = () => {
+    const wrap = document.getElementById('zones-panel');
+    const showing = wrap.classList.toggle('show');
+    if (showing) {
+      loadZones();
+      document.getElementById('admin-bans-wrap').classList.remove('show');
+      if (isAdmin) {
+        document.getElementById('admin-panel').classList.remove('show');
+        cancelPlacer();
+      }
+    }
+  };
+
+  document.getElementById('zone-leave-btn').onclick = leaveZone;
+
+  document.getElementById('zone-create-btn').onclick = async () => {
+    const nameInput = document.getElementById('zone-new-name');
+    const name = nameInput.value.trim();
+    if (!name) {
+      showToast('Please enter a name for the zone', 'warn');
+      return;
+    }
+    const friendsOnly = document.getElementById('zone-new-friendsonly').checked;
+    
+    try {
+      const r = await fetch('/api/canvas/zones', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, friendsOnly })
+      });
+      const d = await r.json();
+      if (d.error) {
+        showToast(d.error, 'warn');
+      } else {
+        showToast('Zone created successfully!');
+        nameInput.value = '';
+        document.getElementById('zone-new-friendsonly').checked = false;
+        loadZones();
+        visitZone(d.zone);
+      }
+    } catch {
+      showToast('Failed to create zone', 'err');
+    }
+  };
+
+  // Zone settings modal
+  document.getElementById('zone-settings-btn').onclick = openZoneSettings;
+  document.getElementById('zone-settings-close').onclick = closeZoneSettings;
+
+  // Close modal on backdrop click
+  document.getElementById('zone-settings-modal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('zone-settings-modal')) closeZoneSettings();
+  });
+
+  document.getElementById('zone-settings-save-name').onclick = async () => {
+    const name = document.getElementById('zone-settings-name').value.trim();
+    if (!name || !currentZone) return;
+    try {
+      const r = await fetch('/api/canvas/zones/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zoneId: currentZone.id, name })
+      });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, 'err'); return; }
+      currentZone.name = d.zone.name;
+      document.getElementById('zone-active-name').textContent = d.zone.name;
+      showToast('Zone name updated!');
+      loadZones();
+    } catch { showToast('Failed to update name', 'err'); }
+  };
+
+  document.getElementById('zone-settings-save-description').onclick = async () => {
+    const description = document.getElementById('zone-settings-description').value.trim();
+    if (!currentZone) return;
+    try {
+      const r = await fetch('/api/canvas/zones/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zoneId: currentZone.id, description })
+      });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, 'err'); return; }
+      currentZone.description = d.zone.description;
+      const descEl = document.getElementById('zone-active-description');
+      if (d.zone.description) {
+        descEl.textContent = d.zone.description;
+        descEl.style.display = 'block';
+      } else {
+        descEl.style.display = 'none';
+      }
+      showToast('Zone description updated!');
+      loadZones();
+    } catch { showToast('Failed to update description', 'err'); }
+  };
+
+  document.getElementById('zone-settings-save-access').onclick = async () => {
+    if (!currentZone) return;
+    const friendsOnly = document.getElementById('zone-access-friends').checked;
+    try {
+      const r = await fetch('/api/canvas/zones/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zoneId: currentZone.id, friendsOnly })
+      });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, 'err'); return; }
+      currentZone.friendsOnly = d.zone.friendsOnly;
+      showToast(`Access mode: ${friendsOnly ? 'Friends Only' : 'Private'}`);
+      loadZones();
+    } catch { showToast('Failed to update access', 'err'); }
+  };
+
+  document.getElementById('zone-settings-add-btn').onclick = async () => {
+    const userInput = document.getElementById('zone-settings-add-user');
+    const user = userInput.value.trim();
+    if (!user || !currentZone) return;
+    try {
+      const r = await fetch('/api/canvas/zones/add-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zoneId: currentZone.id, user })
+      });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, 'warn'); return; }
+      showToast('Member added!');
+      userInput.value = '';
+      currentZone.allowedUsers = d.allowedUsers;
+      renderZoneSettingsMembers();
+    } catch { showToast('Failed to add member', 'err'); }
+  };
+
+  document.getElementById('zone-settings-add-user').addEventListener('input', () => {
+    const input = document.getElementById('zone-settings-add-user');
+    const listEl = document.getElementById('zone-member-autocomplete');
+    if (!input || !listEl) return;
+    const q = input.value.trim().toLowerCase();
+    if (!q) {
+      listEl.style.display = 'none';
+      return;
+    }
+
+    const sortedMembers = [...zoneMemberSuggestions].sort((a, b) => {
+      const hasA = !!a.displayName;
+      const hasB = !!b.displayName;
+      if (hasA && !hasB) return -1;
+      if (!hasA && hasB) return 1;
+      return 0;
+    });
+
+    const matches = [];
+    const seenEmails = new Set();
+    const alreadyInZone = (currentZone?.allowedUsers || []).map(email => email.toLowerCase());
+
+    for (const m of sortedMembers) {
+      const email = (m.email || '').toLowerCase();
+      const name = (m.displayName || '').toLowerCase();
+      
+      if (seenEmails.has(email)) continue;
+      if (alreadyInZone.includes(email)) continue;
+
+      let score = 0;
+      if (name === q || email === q) {
+        score += 1000;
+      } else if (name.startsWith(q) || email.startsWith(q)) {
+        score += 500;
+      } else if (name.includes(q)) {
+        score += 200;
+      } else if (email.includes(q)) {
+        score += 100;
+      }
+      
+      if (score > 0) {
+        matches.push({ member: m, score });
+        seenEmails.add(email);
+      }
+    }
+
+    matches.sort((a, b) => b.score - a.score);
+
+    if (matches.length === 0) {
+      listEl.style.display = 'none';
+      return;
+    }
+
+    listEl.style.display = 'block';
+    listEl.innerHTML = matches.slice(0, 6).map(item => {
+      const m = item.member;
+      const nameStr = m.displayName ? htmlEscape(m.displayName) : 'mitch.pro user';
+      const emailStr = htmlEscape(m.email);
+      return `
+        <div class="autocomplete-item" data-email="${htmlEscape(m.email)}">
+          <span class="item-name">${nameStr}</span>
+          <span class="item-email">${emailStr}</span>
+        </div>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.autocomplete-item').forEach(item => {
+      item.onclick = () => {
+        input.value = item.getAttribute('data-email');
+        listEl.style.display = 'none';
+      };
+    });
+  });
+
+  // Close list on clicking outside
+  document.addEventListener('click', function(e) {
+    const listEl = document.getElementById('zone-member-autocomplete');
+    const input = document.getElementById('zone-settings-add-user');
+    if (listEl && e.target !== input && !listEl.contains(e.target)) {
+      listEl.style.display = 'none';
+    }
+  });
+
+  document.getElementById('zone-settings-add-user').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('zone-settings-add-btn').click();
+  });
+
+  document.getElementById('zone-settings-clear').onclick = async () => {
+    if (!currentZone) return;
+    const ok = await window.customConfirm('Clear Zone?', `Are you sure you want to clear all pixels in "${currentZone.name}"? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      const r = await fetch('/api/canvas/zones/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zoneId: currentZone.id })
+      });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, 'err'); return; }
+      showToast('Zone pixels cleared!');
+      await loadPixels();
+    } catch { showToast('Failed to clear zone', 'err'); }
+  };
+
+  document.getElementById('zone-settings-delete').onclick = async () => {
+    if (!currentZone) return;
+    const ok = await window.customConfirm('Delete Zone?', `Permanently delete "${currentZone.name}"? This cannot be undone.`);
+    if (!ok) return;
+    try {
+      const r = await fetch('/api/canvas/zones/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zoneId: currentZone.id })
+      });
+      const d = await r.json();
+      if (d.error) { showToast(d.error, 'err'); return; }
+      showToast('Zone deleted');
+      leaveZone();
+      loadZones();
+    } catch { showToast('Failed to delete zone', 'err'); }
+  };
+
   if (isAdmin) {
     document.getElementById('admin-btn').style.display = '';
     document.getElementById('bans-btn').style.display = '';
@@ -1553,6 +2140,7 @@ function renderBookmarksList(query = '') {
       cv.style.cursor = adminMode ? 'default' : (erasing ? 'cell' : 'crosshair');
       if (adminMode) {
         document.getElementById('bookmarks-panel').classList.remove('show');
+        document.getElementById('zones-panel').classList.remove('show');
         document.getElementById('admin-bans-wrap').classList.remove('show');
       }
     };
@@ -1562,6 +2150,7 @@ function renderBookmarksList(query = '') {
       if (showing) {
         loadBans();
         document.getElementById('bookmarks-panel').classList.remove('show');
+        document.getElementById('zones-panel').classList.remove('show');
         document.getElementById('admin-panel').classList.remove('show');
         cancelPlacer();
       }

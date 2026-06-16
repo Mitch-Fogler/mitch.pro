@@ -2210,6 +2210,7 @@ const GMAIL_SENT_FILE   = join(BASE, 'mail', 'check_email', 'gmail_sent.json');
 const CANVAS_BANNED_FILE  = join(BASE, 'data', 'canvas_banned.json');
 const CANVAS_REPORTS_FILE = join(BASE, 'data', 'canvas_reports.json');
 const CANVAS_BOOKMARKS_FILE = join(BASE, 'data', 'canvas_bookmarks.json');
+const CANVAS_ZONES_FILE = join(BASE, 'data', 'zones.json');
 const canvasModTimes = {};  // painter -> last moderation timestamp
 const canvasHeatmap = new Map(); // "x,y" -> ts
 
@@ -2222,6 +2223,69 @@ let applications = loadJson(APPLICATIONS_FILE, []);
 let tokensCache  = loadJson(TOKENS_FILE, {});
 let userStats    = loadJson(USER_STATS_FILE, {});
 let coinsCache   = loadJson(COINS_FILE, {});
+
+const zonePixelsMap = new Map();
+const zoneChunksMap = new Map();
+
+function getZonePixels(zoneId) {
+  if (zonePixelsMap.has(zoneId)) {
+    return zonePixelsMap.get(zoneId);
+  }
+  const file = join(BASE, 'data', `zone_pixels_${zoneId}.json`);
+  const pixels = loadJson(file, {});
+  zonePixelsMap.set(zoneId, pixels);
+  
+  const chunks = new Map();
+  zoneChunksMap.set(zoneId, chunks);
+  for (const [key, val] of Object.entries(pixels)) {
+    const ci = key.indexOf(',');
+    if (ci === -1) continue;
+    const x = +key.slice(0, ci);
+    const y = +key.slice(ci + 1);
+    const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
+    const ck = `${cx},${cy}`;
+    if (!chunks.has(ck)) chunks.set(ck, {});
+    chunks.get(ck)[key] = val;
+  }
+  return pixels;
+}
+
+function saveZonePixels(zoneId) {
+  const pixels = zonePixelsMap.get(zoneId);
+  if (!pixels) return;
+  const file = join(BASE, 'data', `zone_pixels_${zoneId}.json`);
+  saveJson(file, pixels);
+}
+
+function getZoneHistoryFile(zoneId) {
+  return join(BASE, 'data', `zone_history_${zoneId}.jsonl`);
+}
+
+function checkZoneAccess(zoneId, email, sid) {
+  const adminOk = isAnyAdminId(sid);
+  if (adminOk) return true;
+  
+  const zones = loadJson(CANVAS_ZONES_FILE, {});
+  const zone = zones[zoneId];
+  if (!zone) return false;
+  
+  const normEmail = normalizeEmail(email || '');
+  const normOwner = normalizeEmail(zone.owner || '');
+  if (normEmail === normOwner) return true;
+  
+  if (zone.friendsOnly) {
+    const friends = loadJson(join(BASE, 'data', 'friends.json'), {});
+    const ownerFriends = friends[normOwner] || [];
+    const userFriends = friends[normEmail] || [];
+    const isFriendOfOwner = ownerFriends.includes(normEmail) || userFriends.includes(normOwner);
+    if (isFriendOfOwner) return true;
+  }
+  
+  const allowed = (zone.allowedUsers || []).map(e => normalizeEmail(e));
+  if (allowed.includes(normEmail)) return true;
+  
+  return false;
+}
 
 function rebuildCanvasChunks() {
   canvasChunks.clear();
@@ -2238,7 +2302,32 @@ function rebuildCanvasChunks() {
 }
 rebuildCanvasChunks();
 
-function setCanvasPixel(x, y, data) {
+function setCanvasPixel(x, y, data, zoneId = null) {
+  if (zoneId) {
+    const pixels = getZonePixels(zoneId);
+    const key = `${x},${y}`;
+    pixels[key] = data;
+    const chunks = zoneChunksMap.get(zoneId);
+    const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
+    const ck = `${cx},${cy}`;
+    if (!chunks.has(ck)) chunks.set(ck, {});
+    chunks.get(ck)[key] = data;
+    
+    try {
+      const logEntry = JSON.stringify({
+        x,
+        y,
+        color: data.color,
+        ts: data.ts || Date.now(),
+        painter: data.painter || '',
+        email: data.email || ''
+      }) + '\n';
+      appendFileSync(getZoneHistoryFile(zoneId), logEntry, 'utf8');
+    } catch (err) {
+      console.error(`Failed to log zone ${zoneId} history:`, err);
+    }
+    return;
+  }
   const key = `${x},${y}`;
   canvasPixels[key] = data;
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
@@ -2261,7 +2350,31 @@ function setCanvasPixel(x, y, data) {
   }
 }
 
-function deleteCanvasPixel(x, y, painter = '', email = '') {
+function deleteCanvasPixel(x, y, painter = '', email = '', zoneId = null) {
+  if (zoneId) {
+    const pixels = getZonePixels(zoneId);
+    const key = `${x},${y}`;
+    delete pixels[key];
+    const chunks = zoneChunksMap.get(zoneId);
+    const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
+    const ck = `${cx},${cy}`;
+    if (chunks.has(ck)) delete chunks.get(ck)[key];
+    
+    try {
+      const logEntry = JSON.stringify({
+        x,
+        y,
+        color: '',
+        ts: Date.now(),
+        painter,
+        email
+      }) + '\n';
+      appendFileSync(getZoneHistoryFile(zoneId), logEntry, 'utf8');
+    } catch (err) {
+      console.error(`Failed to log zone ${zoneId} delete history:`, err);
+    }
+    return;
+  }
   const key = `${x},${y}`;
   delete canvasPixels[key];
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
@@ -8696,6 +8809,7 @@ function loadAllGamesList() {
 
         members.push({ 
           email: processed.email, 
+          pfp: profile.pfp || '',
           online: onlineEmails.has(normalizeEmail(email)), 
           role,
           displayName: processed.displayName,
@@ -9654,10 +9768,44 @@ function loadAllGamesList() {
 
   // ── Canvas API ─────────────────────────────────────────────────────────────
   if (path === '/api/canvas/pixels') {
-    // ?chunks=cx1,cy1;cx2,cy2,... returns only pixels in those 64-unit chunks
-    const chunksParam = qs.get('chunks');
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid) || '';
+    
+    let chunksParam = '';
+    let zoneId = null;
+    
+    if (method === 'POST') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      chunksParam = body.chunks;
+      zoneId = body.zoneId;
+    } else {
+      chunksParam = qs.get('chunks');
+      zoneId = qs.get('zoneId');
+    }
+    
+    if (zoneId) {
+      if (!checkZoneAccess(zoneId, email, sid)) {
+        return jsonResp(403, { error: 'forbidden', reason: 'No access to this zone' });
+      }
+      const zonePixels = getZonePixels(zoneId);
+      const zoneChunks = zoneChunksMap.get(zoneId);
+      
+      if (!chunksParam) return jsonResp(200, zonePixels);
+      
+      const requested = Array.isArray(chunksParam) ? chunksParam : String(chunksParam || '').split(';');
+      const result = {};
+      for (const ck of requested) {
+        const chunk = zoneChunks.get(ck);
+        if (chunk) Object.assign(result, chunk);
+      }
+      return jsonResp(200, result);
+    }
+    
     if (!chunksParam) return jsonResp(200, canvasPixels);
-    const requested = chunksParam.split(';');
+    const requested = Array.isArray(chunksParam) ? chunksParam : String(chunksParam || '').split(';');
     const result = {};
     for (const ck of requested) {
       const chunk = canvasChunks.get(ck);
@@ -9668,10 +9816,22 @@ function loadAllGamesList() {
 
   if (path === '/api/canvas/history') {
     const rl = checkRateLimit(req, path); if (rl) return rl;
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid) || '';
+    const zoneId = qs.get('zoneId');
+    
+    if (zoneId) {
+      if (!checkZoneAccess(zoneId, email, sid)) {
+        return jsonResp(403, { error: 'forbidden', reason: 'No access to this zone' });
+      }
+    }
+    
+    const historyFile = zoneId ? getZoneHistoryFile(zoneId) : CANVAS_HISTORY_FILE;
     let history = [];
     try {
-      if (existsSync(CANVAS_HISTORY_FILE)) {
-        const content = readFileSync(CANVAS_HISTORY_FILE, 'utf8');
+      if (existsSync(historyFile)) {
+        const content = readFileSync(historyFile, 'utf8');
         const lines = content.trim().split('\n');
         const recentLines = lines.slice(-5000);
         for (const line of recentLines) {
@@ -9746,7 +9906,16 @@ function loadAllGamesList() {
     const email = emailFromSid(sid) || '';
     const premium = email ? isPremiumEmail(email) : false;
     const adminOk = isAnyAdminId(sid);
-    if (!adminOk && !premium) return jsonResp(403, { error: 'forbidden' });
+    
+    const zoneId = body.zoneId;
+    if (zoneId) {
+      if (!checkZoneAccess(zoneId, email, sid)) {
+        return jsonResp(403, { error: 'forbidden', reason: 'No access to this zone' });
+      }
+    } else {
+      if (!adminOk && !premium) return jsonResp(403, { error: 'forbidden' });
+    }
+
     const points = Array.isArray(body.pixels) ? body.pixels.slice(0, 2500) : [];
     if (!points.length) return jsonResp(400, { error: 'pixels required' });
     let count = 0;
@@ -9766,17 +9935,21 @@ function loadAllGamesList() {
         ...(premium ? { premium: true } : {}),
         ...(email ? { email } : {})
       };
-      setCanvasPixel(x, y, pixelData);
-      canvasHeatmap.set(key, Date.now());
+      setCanvasPixel(x, y, pixelData, zoneId);
+      if (!zoneId) canvasHeatmap.set(key, Date.now());
       count++;
     }
-    if (email && count) addPaintingCoin(email);
+    if (zoneId) {
+      saveZonePixels(zoneId);
+    } else {
+      if (email && count) addPaintingCoin(email);
+    }
     return jsonResp(200, { ok: true, count });
   }
 
   if (path === '/api/canvas/pixel' && method === 'POST') {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-    const { x, y, color, painter, bypass } = body;
+    const { x, y, color, painter, bypass, zoneId } = body;
     const brushSz = Math.min(50, Math.max(1, Number(body.brushSz) || 1));
 
     const cookies = getCookies(req);
@@ -9785,7 +9958,14 @@ function loadAllGamesList() {
     const adminOk = isAnyAdminId(sid);
     const premium = email ? isPremiumEmail(email) : false;
 
-    const maxAllowedBrush = adminOk ? 50 : (premium ? 16 : 8);
+    if (zoneId) {
+      if (!checkZoneAccess(zoneId, email, sid)) {
+        return jsonResp(403, { error: 'forbidden', reason: 'No access to this zone' });
+      }
+    }
+
+    // Zone members get full brush size but still respect rate limits
+    const maxAllowedBrush = (adminOk || zoneId) ? 50 : (premium ? 16 : 8);
     if (brushSz > maxAllowedBrush) {
       return jsonResp(403, { error: 'forbidden', reason: 'brush size too large' });
     }
@@ -9818,6 +9998,11 @@ function loadAllGamesList() {
 
         if (Math.abs(px) > 500000 || Math.abs(py) > 500000) continue;
 
+        if (zoneId) {
+          pixelsToPaint.push({ px, py, pkey });
+          continue;
+        }
+
         if (!adminOk && canvasLocks[pkey]) {
           const lock = canvasLocks[pkey];
           const isLockOwner = (email && normalizeEmail(lock.email) === normalizeEmail(email)) || lock.painter === painter;
@@ -9849,33 +10034,39 @@ function loadAllGamesList() {
     };
 
     for (const { px, py, pkey } of pixelsToPaint) {
-      setCanvasPixel(px, py, pixelData);
-      canvasHeatmap.set(pkey, Date.now());
+      setCanvasPixel(px, py, pixelData, zoneId);
+      if (!zoneId) {
+        canvasHeatmap.set(pkey, Date.now());
 
-      if (body.lock && pkey === `${x},${y}` && premium && email) {
-        const norm = normalizeEmail(email);
-        const stats = loadUserStats();
-        if (!stats[norm]) stats[norm] = {};
-        const now = Date.now();
-        if (now - (stats[norm].last_lock_reset || 0) > 7 * 86400000) {
-          stats[norm].last_lock_reset = now;
-          stats[norm].week_locks = 0;
-        }
-        if ((stats[norm].week_locks || 0) < 16) {
-          stats[norm].week_locks = (stats[norm].week_locks || 0) + 1;
-          saveUserStats(stats);
-          canvasLocks[pkey] = { email, painter, expiresAt: Date.now() + 86400000 };
-          saveJson(CANVAS_LOCKS_FILE, canvasLocks);
+        if (body.lock && pkey === `${x},${y}` && premium && email) {
+          const norm = normalizeEmail(email);
+          const stats = loadUserStats();
+          if (!stats[norm]) stats[norm] = {};
+          const now = Date.now();
+          if (now - (stats[norm].last_lock_reset || 0) > 7 * 86400000) {
+            stats[norm].last_lock_reset = now;
+            stats[norm].week_locks = 0;
+          }
+          if ((stats[norm].week_locks || 0) < 16) {
+            stats[norm].week_locks = (stats[norm].week_locks || 0) + 1;
+            saveUserStats(stats);
+            canvasLocks[pkey] = { email, painter, expiresAt: Date.now() + 86400000 };
+            saveJson(CANVAS_LOCKS_FILE, canvasLocks);
+          }
         }
       }
     }
 
-    if (email) addPaintingCoin(email);
+    if (zoneId) {
+      saveZonePixels(zoneId);
+    } else {
+      if (email) addPaintingCoin(email);
+    }
     return jsonResp(200, { ok: true });  }
 
   if (path === '/api/canvas/erase' && method === 'POST') {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-    const { x, y, painter } = body;
+    const { x, y, painter, zoneId } = body;
     if (typeof x !== 'number' || typeof y !== 'number' || !painter)
       return jsonResp(400, { error: 'missing fields' });
     const brushSz = Math.min(50, Math.max(1, Number(body.brushSz) || 1));
@@ -9885,23 +10076,40 @@ function loadAllGamesList() {
     const adminOk = isAnyAdminId(sid);
     const premium = email ? isPremiumEmail(email) : false;
     
+    if (zoneId) {
+      if (!checkZoneAccess(zoneId, email, sid)) {
+        return jsonResp(403, { error: 'forbidden', reason: 'No access to this zone' });
+      }
+    }
+    
     const maxAllowedBrush = adminOk ? 50 : (premium ? 16 : 8);
     if (brushSz > maxAllowedBrush) {
       return jsonResp(403, { error: 'forbidden', reason: 'brush size too large' });
     }
     
     const half = Math.floor(brushSz / 2);
+    const sourcePixels = zoneId ? getZonePixels(zoneId) : canvasPixels;
+    const zoneInfo = zoneId ? loadJson(CANVAS_ZONES_FILE, {})[zoneId] : null;
+    const isOwner = zoneInfo && normalizeEmail(zoneInfo.owner) === normalizeEmail(email);
+
     for (let bx = 0; bx < brushSz; bx++) {
       for (let by = 0; by < brushSz; by++) {
         const px = x - half + bx;
         const py = y - half + by;
         const pkey = `${px},${py}`;
-        if (!canvasPixels[pkey]) continue;
-        if (!adminOk && canvasPixels[pkey].painter !== painter && (email && canvasPixels[pkey].email !== email)) continue;
-        deleteCanvasPixel(px, py, painter, email);
+        if (!sourcePixels[pkey]) continue;
+        if (!adminOk && !isOwner) {
+          const isCreator = sourcePixels[pkey].painter === painter || (email && sourcePixels[pkey].email === email);
+          if (!isCreator) continue;
+        }
+        deleteCanvasPixel(px, py, painter, email, zoneId);
       }
     }
-    return jsonResp(200, { ok: true });  }
+    if (zoneId) {
+      saveZonePixels(zoneId);
+    }
+    return jsonResp(200, { ok: true });
+  }
 
   if (path === '/api/canvas/moderate' && method === 'POST') {
     return jsonResp(200, { ok: true, flagged: false, disabled: true });
@@ -10002,24 +10210,213 @@ function loadAllGamesList() {
     return jsonResp(200, { ok: true });
   }
 
-  if (path === '/api/canvas/bookmarks/delete' && method === 'POST') {
+  if (path === '/api/canvas/zones' && method === 'POST') {
     if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
     const cookies = getCookies(req);
     const sid = authSidFromCookies(cookies);
     const email = emailFromSid(sid);
     if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const { name, description, friendsOnly } = body;
+    if (!name) return jsonResp(400, { error: 'missing fields' });
+
+    const zones = loadJson(CANVAS_ZONES_FILE, {});
+    const normEmail = normalizeEmail(email);
+    const userZonesCount = Object.values(zones).filter(z => normalizeEmail(z.owner) === normEmail).length;
+    if (userZonesCount >= 10) {
+      return jsonResp(400, { error: 'You can only create up to 10 zones.' });
+    }
+
+    const zoneId = 'zone_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    zones[zoneId] = {
+      id: zoneId,
+      name: String(name || '').slice(0, 60),
+      description: String(description || '').slice(0, 120),
+      owner: email,
+      friendsOnly: !!friendsOnly,
+      allowedUsers: [],
+      createdAt: Date.now()
+    };
+    saveJson(CANVAS_ZONES_FILE, zones);
+    return jsonResp(200, { ok: true, zone: zones[zoneId] });
+  }
+
+  if (path === '/api/canvas/zones' && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
     const adminOk = isAnyAdminId(sid);
-    const { id } = body;
-    if (!id) return jsonResp(400, { error: 'missing id' });
-    const bookmarks = loadJson(CANVAS_BOOKMARKS_FILE, []);
-    const idx = bookmarks.findIndex(b => b.id === id);
-    if (idx === -1) return jsonResp(404, { error: 'bookmark not found' });
-    const bm = bookmarks[idx];
-    if (!adminOk && bm.creator !== email) {
+    
+    const zones = loadJson(CANVAS_ZONES_FILE, {});
+    const list = [];
+    const normEmail = normalizeEmail(email);
+
+    for (const z of Object.values(zones)) {
+      if (adminOk) {
+        list.push(z);
+        continue;
+      }
+      const normOwner = normalizeEmail(z.owner);
+      if (normOwner === normEmail) {
+        list.push(z);
+        continue;
+      }
+      if (z.friendsOnly) {
+        const friends = loadJson(join(BASE, 'data', 'friends.json'), {});
+        const ownerFriends = friends[normOwner] || [];
+        const userFriends = friends[normEmail] || [];
+        const isFriendOfOwner = ownerFriends.includes(normEmail) || userFriends.includes(normOwner);
+        if (isFriendOfOwner) {
+          list.push(z);
+          continue;
+        }
+      }
+      const allowed = (z.allowedUsers || []).map(e => normalizeEmail(e));
+      if (allowed.includes(normEmail)) {
+        list.push(z);
+      }
+    }
+    return jsonResp(200, { ok: true, zones: list });
+  }
+
+  if (path === '/api/canvas/zones/add-user' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const { zoneId, user } = body;
+    if (!zoneId || !user) return jsonResp(400, { error: 'missing fields' });
+
+    const zones = loadJson(CANVAS_ZONES_FILE, {});
+    const zone = zones[zoneId];
+    if (!zone) return jsonResp(404, { error: 'zone not found' });
+    if (normalizeEmail(zone.owner) !== normalizeEmail(email) && !isAnyAdminId(sid)) {
       return jsonResp(403, { error: 'forbidden' });
     }
-    bookmarks.splice(idx, 1);
-    saveJson(CANVAS_BOOKMARKS_FILE, bookmarks);
+
+    try {
+      const targetEmail = await resolveTargetEmail(user);
+      if (!targetEmail) return jsonResp(404, { error: 'User not found' });
+      if (zone.allowedUsers.map(e => normalizeEmail(e)).includes(normalizeEmail(targetEmail))) {
+        return jsonResp(400, { error: 'User already added' });
+      }
+      zone.allowedUsers.push(targetEmail);
+      saveJson(CANVAS_ZONES_FILE, zones);
+      return jsonResp(200, { ok: true, allowedUsers: zone.allowedUsers });
+    } catch (err) {
+      return jsonResp(404, { error: 'User not found' });
+    }
+  }
+
+  if (path === '/api/canvas/zones/remove-user' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const { zoneId, user } = body;
+    if (!zoneId || !user) return jsonResp(400, { error: 'missing fields' });
+
+    const zones = loadJson(CANVAS_ZONES_FILE, {});
+    const zone = zones[zoneId];
+    if (!zone) return jsonResp(404, { error: 'zone not found' });
+    if (normalizeEmail(zone.owner) !== normalizeEmail(email) && !isAnyAdminId(sid)) {
+      return jsonResp(403, { error: 'forbidden' });
+    }
+
+    const normTarget = normalizeEmail(user);
+    const idx = zone.allowedUsers.findIndex(e => normalizeEmail(e) === normTarget);
+    if (idx === -1) return jsonResp(404, { error: 'User not allowed' });
+    zone.allowedUsers.splice(idx, 1);
+    saveJson(CANVAS_ZONES_FILE, zones);
+    return jsonResp(200, { ok: true, allowedUsers: zone.allowedUsers });
+  }
+
+  if (path === '/api/canvas/zones/delete' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const { zoneId } = body;
+    if (!zoneId) return jsonResp(400, { error: 'missing zoneId' });
+
+    const zones = loadJson(CANVAS_ZONES_FILE, {});
+    const zone = zones[zoneId];
+    if (!zone) return jsonResp(404, { error: 'zone not found' });
+    if (normalizeEmail(zone.owner) !== normalizeEmail(email) && !isAnyAdminId(sid)) {
+      return jsonResp(403, { error: 'forbidden' });
+    }
+
+    delete zones[zoneId];
+    saveJson(CANVAS_ZONES_FILE, zones);
+    
+    try {
+      const pFile = join(BASE, 'data', `zone_pixels_${zoneId}.json`);
+      if (existsSync(pFile)) rmSync(pFile);
+      const hFile = join(BASE, 'data', `zone_history_${zoneId}.jsonl`);
+      if (existsSync(hFile)) rmSync(hFile);
+    } catch {}
+
+    return jsonResp(200, { ok: true });
+  }
+
+  if (path === '/api/canvas/zones/update' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const { zoneId, name, description, friendsOnly } = body;
+    if (!zoneId) return jsonResp(400, { error: 'missing zoneId' });
+
+    const zones = loadJson(CANVAS_ZONES_FILE, {});
+    const zone = zones[zoneId];
+    if (!zone) return jsonResp(404, { error: 'zone not found' });
+    if (normalizeEmail(zone.owner) !== normalizeEmail(email) && !isAnyAdminId(sid)) {
+      return jsonResp(403, { error: 'forbidden' });
+    }
+
+    if (name !== undefined) zone.name = String(name || '').slice(0, 60);
+    if (description !== undefined) zone.description = String(description || '').slice(0, 120);
+    if (friendsOnly !== undefined) zone.friendsOnly = !!friendsOnly;
+    saveJson(CANVAS_ZONES_FILE, zones);
+    return jsonResp(200, { ok: true, zone });
+  }
+
+  if (path === '/api/canvas/zones/clear' && method === 'POST') {
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    const { zoneId } = body;
+    if (!zoneId) return jsonResp(400, { error: 'missing zoneId' });
+
+    const zones = loadJson(CANVAS_ZONES_FILE, {});
+    const zone = zones[zoneId];
+    if (!zone) return jsonResp(404, { error: 'zone not found' });
+    if (normalizeEmail(zone.owner) !== normalizeEmail(email) && !isAnyAdminId(sid)) {
+      return jsonResp(403, { error: 'forbidden' });
+    }
+
+    // Clear caches
+    zonePixelsMap.delete(zoneId);
+    zoneChunksMap.delete(zoneId);
+
+    // Save empty data
+    const file = join(BASE, 'data', `zone_pixels_${zoneId}.json`);
+    saveJson(file, {});
+
+    // Clear history file
+    try {
+      const historyFile = getZoneHistoryFile(zoneId);
+      if (existsSync(historyFile)) {
+        writeFileSync(historyFile, '', 'utf8');
+      }
+    } catch {}
+
     return jsonResp(200, { ok: true });
   }
 
