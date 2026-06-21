@@ -162,7 +162,7 @@ function makeSiteLink(type, href, label, extraClass) {
 function categoryForLabel(label, isAdmin) {
   var l = label.toLowerCase();
   if (isAdmin) return 'Admin';
-  if (l.includes('adrian clicker') || l.includes("kody") || l.includes("lillian") || l.includes("richard") || l.includes("riches") || l.includes("penny") || l.includes("chess vs")) return 'MitchCoin Games';
+  if (l.includes('adrian clicker') || l.includes("kody") || l.includes("lillian") || l.includes("richard") || l.includes("riches") || l.includes("penny") || l.includes("chess vs") || l.includes("battleship") || l.includes("jeopardy")) return 'MitchCoin Games';
   if (l.includes('market') || l.includes('shop') || l.includes('team') || l.includes('premium')) return 'Account & Market';
   if (l.includes('chat') || l.includes('profile') || l.includes('feedback') || l.includes('newsletter') || l.includes('invite') || l.includes('leaderboard') || l.includes('friends')) return 'Social & Chat';
   if (l.includes('casino') || l.includes('games') || l.includes('pixelplace') || l.includes('canvas') || l.includes('mitch.prox') || l.includes('prox') || l.includes('movies') || l.includes('subtitle')) return 'Entertainment';

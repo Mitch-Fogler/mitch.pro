@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Battleship – MitchCoin Multiplayer</title>
+  <meta name="description" content="Play Battleship against friends and earn MitchCoins. 100% server-side game with anti-cheat protection.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="/theme.js"></script>
+  <style>
+    :root {
+      --bg: var(--t-bg, #060d1a);
+      --surface: var(--t-bg2, #0d1b2e);
+      --surface2: var(--t-bg3, #112240);
+      --accent: var(--t-ac, #00d4ff);
+      --accent2: var(--t-ac2, #0077ff);
+      --danger: #ff4d6d;
+      --success: #00e676;
+      --warn: #ffca28;
+      --text: var(--t-fg, #e0f0ff);
+      --muted: var(--t-fg2, #6b8aaa);
+      --hit: #ff4d6d;
+      --miss: #1e3a5f;
+      --ship: #2a5298;
+      --sunk: #7b1fa2;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      background-image: var(--t-bg-img-layer, radial-gradient(ellipse at 20% 20%, #001a3a 0%, transparent 60%),
+                        radial-gradient(ellipse at 80% 80%, #000d20 0%, transparent 60%)) !important;
+      background-attachment: fixed !important;
+    }
+    header {
+      background: linear-gradient(135deg, #0a1628, #0d2040);
+      border-bottom: 1px solid var(--t-bd, #1a3a5c);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 900; color: var(--accent); letter-spacing: 1px; }
+    header p { font-size: 0.85rem; color: var(--muted); }
+    .coin-badge {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #1a3a10, #2a5a1a);
+      border: 1px solid #4a9a2a;
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-weight: 700;
+      color: #7dff5a;
+      font-size: 0.9rem;
+      z-index: 10;
+    }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px 16px; }
+
+    /* Lobby / Challenge UI */
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--t-bd, #1a3a5c);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .panel h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; color: var(--accent); }
+    .online-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .online-chip {
+      background: var(--t-bg3, #0d2040);
+      border: 1px solid var(--t-bd, #1a4a6a);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .online-chip:hover { background: var(--t-bg2, #1a3a6a); border-color: var(--accent); color: var(--accent); }
+    .online-chip.selected { background: var(--accent2); border-color: var(--accent); color: #fff; }
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    input, select {
+      background: var(--t-bg, #060d1a);
+      border: 1px solid var(--t-bd, #1a3a5c);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color: 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    input[type="number"] { width: 120px; }
+    .btn {
+      padding: 10px 22px;
+      border-radius: 8px;
+      border: none;
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent2), #0055cc);
+      color: #fff;
+      box-shadow: 0 0 16px #0077ff40;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px #0077ff60; }
+    .btn-danger { background: linear-gradient(135deg, #c62828, #e53935); color: #fff; }
+    .btn-danger:hover { transform: translateY(-1px); }
+    .btn-success { background: linear-gradient(135deg, #2e7d32, #43a047); color: #fff; }
+    .btn-success:hover { transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+    .challenge-card {
+      background: var(--t-bg3, #0d2040);
+      border: 1px solid var(--warn);
+      border-radius: 10px;
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    .challenge-card span { flex: 1; }
+    .status-msg {
+      text-align: center;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-weight: 600;
+    }
+    .status-msg.info { background: var(--t-bg3, #0d2040); border: 1px solid var(--t-bd, #1a4a6a); color: var(--accent); }
+    .status-msg.error { background: #2a0d10; border: 1px solid #6a1a20; color: var(--danger); }
+    .status-msg.success { background: #0d2a10; border: 1px solid #1a6a20; color: var(--success); }
+
+    /* Autocomplete */
+    .autocomplete-item {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--t-bd, rgba(255, 255, 255, 0.05));
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex;
+      flex-direction: column;
+      text-align: left;
+    }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item:hover { background: rgba(59, 130, 246, 0.15); }
+    .autocomplete-item .item-name { font-weight: 600; color: #fff; }
+    .autocomplete-item .item-email { font-size: 0.75rem; color: var(--muted); opacity: 0.6; }
+
+    /* Game area */
+    .boards-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+    @media (max-width: 700px) { .boards-container { grid-template-columns: 1fr; } }
+    .board-panel { }
+    .board-label {
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+      color: var(--muted);
+    }
+    .grid-wrapper {
+      max-width: 320px;
+      margin: 0 auto;
+    }
+    .placement-grid, .game-grid {
+      display: grid;
+      grid-template-rows: repeat(10, 1fr);
+      gap: 2px;
+      background: var(--t-bd, #1a3a5c);
+      padding: 2px;
+      border-radius: 8px;
+      aspect-ratio: 1;
+    }
+    .grid-row {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 2px;
+    }
+    .cell {
+      background: var(--bg);
+      aspect-ratio: 1;
+      cursor: default;
+      transition: all 0.15s;
+      border-radius: 2px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+    }
+    .placement-grid .cell:hover {
+      background: var(--surface2);
+      cursor: pointer;
+    }
+    .cell.hover-ship { background: var(--accent2) !important; opacity: 0.7; }
+    .cell.hover-invalid { background: var(--danger) !important; opacity: 0.7; }
+    .cell.ship-cell { background: var(--ship); }
+    .cell.hit { background: var(--hit); color: #fff; }
+    .cell.miss { background: var(--miss); color: var(--muted); }
+    .cell.sunk { background: var(--sunk); color: #fff; }
+    .cell.target { cursor: pointer; }
+    .cell.target:hover:not(.hit):not(.miss):not(.sunk) {
+      background: var(--surface2);
+      box-shadow: inset 0 0 8px var(--accent);
+    }
+
+    /* Ship Tray */
+    .ship-tray {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 16px 0;
+      background: var(--surface2);
+      padding: 16px;
+      border-radius: 10px;
+    }
+    .ship-piece {
+      display: inline-flex;
+      gap: 4px;
+      padding: 6px;
+      background: #0d2040;
+      border: 1px solid var(--t-bd, #1a4a6a);
+      border-radius: 6px;
+      cursor: pointer;
+      align-self: flex-start;
+    }
+    .ship-piece:hover { border-color: var(--accent); }
+    .ship-piece.placed { opacity: 0.3; cursor: not-allowed; }
+    .ship-block {
+      width: 20px;
+      height: 20px;
+      background: var(--ship);
+      border-radius: 3px;
+    }
+    .dir-btn {
+      background: var(--surface2);
+      border: 1px solid var(--t-bd, #1a4a6a);
+      color: var(--accent);
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+    .dir-btn:hover { background: var(--surface); }
+
+    .game-stats {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      background: var(--surface2);
+      padding: 16px;
+      border-radius: 10px;
+      justify-content: space-around;
+      font-weight: 700;
+    }
+    .game-stats span { color: var(--accent); }
+
+    .turn-indicator {
+      text-align: center;
+      font-size: 1.1rem;
+      font-weight: 700;
+      padding: 12px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+    .turn-indicator.my-turn { background: #0d2a10; border: 2px solid var(--success); color: var(--success); animation: pulse 1.5s infinite; }
+    .turn-indicator.their-turn { background: #2a1a0d; border: 2px solid var(--warn); color: var(--warn); }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #00e67640; } 50% { box-shadow: 0 0 0 8px transparent; } }
+    .collusion-warning {
+      background: #2a1a00;
+      border: 2px solid var(--warn);
+      border-radius: 10px;
+      padding: 12px 18px;
+      color: var(--warn);
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .game-over-banner {
+      background: linear-gradient(135deg, #0d2a10, #1a4a1a);
+      border: 2px solid var(--success);
+      border-radius: 14px;
+      padding: 24px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .game-over-banner h2 { font-size: 2rem; color: var(--success); margin-bottom: 8px; }
+    .game-over-banner p { color: var(--muted); margin-bottom: 16px; }
+    .back-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
+    .back-link:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>⚓ Battleship</h1>
+    <p>Multiplayer · 250 MitchCoins/win</p>
+  </div>
+  <div class="coin-badge" id="coin-display">🪙 ...</div>
+</header>
+
+<div class="container">
+  <div style="margin-bottom:12px;"><a href="/" class="back-link">← Back to Home</a></div>
+
+  <div id="status-bar"></div>
+
+  <!-- Lobby UI -->
+  <div id="lobby-area">
+    <div class="panel">
+      <h2>🟢 Players Online</h2>
+      <div class="online-list" id="online-list"><span style="color:var(--muted)">Loading...</span></div>
+      <h2 style="margin-top:16px;">⚔️ Challenge a Player</h2>
+      <div class="form-row">
+        <div style="position: relative; flex: 1; min-width: 200px;">
+          <input type="text" id="challenge-target" placeholder="Email address (or click player above)" autocomplete="off" oninput="onSearchInput()" style="width: 100%;">
+          <div id="autocomplete-list" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--t-bg2, #0d1b2e); border: 1px solid var(--t-bd, rgba(255,255,255,0.15)); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 1000; display: none; box-shadow: 0 10px 25px rgba(0,0,0,0.5);"></div>
+        </div>
+        <input type="number" id="challenge-bet" placeholder="Bet (MitchCoins)" min="0" value="0">
+        <button class="btn btn-primary" onclick="sendChallenge()">Send Challenge</button>
+      </div>
+    </div>
+
+    <div class="panel" id="incoming-panel" style="display:none;">
+      <h2>📨 Incoming Challenges</h2>
+      <div id="incoming-list"></div>
+    </div>
+  </div>
+
+  <!-- Placement UI -->
+  <div id="placement-area" style="display:none;">
+    <div class="panel">
+      <h2>🚢 Place Your Ships</h2>
+      <p style="color:var(--muted);margin-bottom:12px;">Click a ship, then click on the grid to place it. Toggle direction with the button below.</p>
+      <div>
+        <button class="dir-btn" id="dir-btn" onclick="toggleDir()">↔ Horizontal</button>
+      </div>
+      <div class="ship-tray" id="ship-tray"></div>
+      <div class="grid-wrapper">
+        <div id="placement-grid" class="placement-grid"></div>
+      </div>
+      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="randomPlacement()">🎲 Random Placement</button>
+        <button class="btn btn-success" id="confirm-place-btn" onclick="confirmPlacement()" disabled>✓ Confirm Placement</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game UI -->
+  <div id="game-area" style="display:none;">
+    <div id="collusion-warning" class="collusion-warning" style="display:none;">
+      ⚠️ Suspicious activity detected. No payout will be awarded.
+    </div>
+    <div id="game-over-banner" style="display:none;" class="game-over-banner">
+      <h2 id="game-over-title">Game Over</h2>
+      <p id="game-over-sub"></p>
+      <button class="btn btn-primary" onclick="location.reload()">Play Again</button>
+    </div>
+    <div id="turn-indicator" class="turn-indicator my-turn">Your Turn – Fire!</div>
+    <div class="info-row">
+      <div class="info-card"><div class="label">Opponent</div><div class="value" id="opp-name">–</div></div>
+      <div class="info-card"><div class="label">Your Hits</div><div class="value" id="my-hits">0</div></div>
+      <div class="info-card"><div class="label">Their Hits</div><div class="value" id="their-hits">0</div></div>
+      <div class="info-card"><div class="label">Bet</div><div class="value" id="bet-display">0</div></div>
+    </div>
+    <div class="boards-container">
+      <div class="board-panel">
+        <div class="board-label">Your Board</div>
+        <div class="grid-wrapper"><div id="my-board" class="game-grid"></div></div>
+      </div>
+      <div class="board-panel">
+        <div class="board-label">Target Board – click to fire!</div>
+        <div class="grid-wrapper"><div id="target-board" class="game-grid"></div></div>
+      </div>
+    </div>
+    <div style="margin-top:16px;">
+      <button class="btn btn-danger" onclick="resignGame()">🏳 Resign</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SHIP_SIZES = [5, 4, 3, 3, 2];
+const SHIP_NAMES = ['Carrier', 'Battleship', 'Cruiser', 'Submarine', 'Destroyer'];
+let currentGameId = null;
+let myEmail = null;
+let gameState = null;
+let placementState = {
+  ships: Array(5).fill(null), // [{row,col,dir}]
+  placed: Array(5).fill(false),
+  selected: null, // index of selected ship
+  dir: 'h',
+};
+let pollTimer = null;
+
+async function api(path, data = null) {
+  const opts = { credentials: 'include' };
+  if (data !== null) {
+    opts.method = 'POST';
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(data);
+  }
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+function showStatus(msg, type = 'info') {
+  document.getElementById('status-bar').innerHTML = `<div class="status-msg ${type}">${msg}</div>`;
+}
+function clearStatus() { document.getElementById('status-bar').innerHTML = ''; }
+
+// ── HEARTBEAT ────────────────────────────────────────────────────────────────
+async function heartbeat() {
+  try {
+    const d = await api('/api/battleship/heartbeat');
+    updateChallenges(d.challenges || []);
+    if (!currentGameId && d.activeGames && d.activeGames.length > 0) {
+      currentGameId = d.activeGames[0];
+    }
+    if (currentGameId) {
+      await pollGame();
+    }
+  } catch(e) {}
+  // Also refresh online list
+  try {
+    const o = await api('/api/battleship/online');
+    renderOnline(o.online || []);
+  } catch(e) {}
+}
+
+function renderOnline(list) {
+  const el = document.getElementById('online-list');
+  const me = myEmail || '';
+  const others = list.filter(e => e && e !== me && !e.includes('_norm') && e.includes('@'));
+  el.innerHTML = others.length ? others.map(e =>
+    `<div class="online-chip" onclick="selectTarget('${e}')">${e}</div>`
+  ).join('') : '<span style="color:var(--muted)">No other players online</span>';
+}
+
+function selectTarget(email) {
+  document.getElementById('challenge-target').value = email;
+  document.querySelectorAll('.online-chip').forEach(c => c.classList.remove('selected'));
+  event.target.classList.add('selected');
+}
+
+// ── CHALLENGES ───────────────────────────────────────────────────────────────
+function updateChallenges(challenges) {
+  const incoming = challenges.filter(c => c.to === myEmail);
+  const panel = document.getElementById('incoming-panel');
+  const list = document.getElementById('incoming-list');
+  if (incoming.length === 0) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  list.innerHTML = incoming.map(c => `
+    <div class="challenge-card">
+      <span><strong>${c.from.split('@')[0]}</strong> challenges you!
+        ${c.bet > 0 ? ` · Bet: <strong>🪙 ${c.bet}</strong>` : ''}
+      </span>
+      <button class="btn btn-success" onclick="respondChallenge('${c.id}', true)">Accept</button>
+      <button class="btn btn-danger" onclick="respondChallenge('${c.id}', false)">Decline</button>
+    </div>
+  `).join('');
+}
+
+async function sendChallenge() {
+  const to = document.getElementById('challenge-target').value.trim();
+  const bet = parseInt(document.getElementById('challenge-bet').value) || 0;
+  if (!to) { showStatus('Enter an email address', 'error'); return; }
+  try {
+    const d = await api('/api/battleship/challenge', { to, bet });
+    if (d.ok) showStatus('Challenge sent! Waiting for response...', 'info');
+    else showStatus(d.error || 'Error', 'error');
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+async function respondChallenge(challengeId, accept) {
+  try {
+    const d = await api('/api/battleship/respond', { challengeId, accept });
+    if (d.declined) { showStatus('Challenge declined', 'info'); return; }
+    if (d.gameId) {
+      currentGameId = d.gameId;
+      showPlacementUI();
+    }
+    if (d.error) showStatus(d.error, 'error');
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+// ── PLACEMENT ────────────────────────────────────────────────────────────────
+let placedCells = {}; // ship index -> Set of "r,c" keys
+
+function showPlacementUI() {
+  document.getElementById('lobby-area').style.display = 'none';
+  document.getElementById('placement-area').style.display = '';
+  buildPlacementGrid();
+  buildShipTray();
+  showStatus('Place your ships, then confirm!', 'info');
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollGame, 2000);
+}
+
+function buildShipTray() {
+  const tray = document.getElementById('ship-tray');
+  tray.innerHTML = SHIP_SIZES.map((sz, i) => `
+    <div class="ship-piece" id="ship-piece-${i}" onclick="selectShip(${i})">
+      ${Array(sz).fill(`<div class="ship-block"></div>`).join('')}
+    </div>
+    <span style="color:var(--muted);font-size:0.75rem;align-self:center">${SHIP_NAMES[i]}</span>
+  `).join('');
+}
+
+function selectShip(idx) {
+  if (placementState.placed[idx]) return;
+  placementState.selected = idx;
+  document.querySelectorAll('.ship-piece').forEach((el, i) => {
+    el.style.outline = i === idx ? '2px solid var(--accent)' : '';
+  });
+}
+
+function toggleDir() {
+  placementState.dir = placementState.dir === 'h' ? 'v' : 'h';
+  document.getElementById('dir-btn').textContent = placementState.dir === 'h' ? '↔ Horizontal' : '↕ Vertical';
+}
+
+function buildPlacementGrid() {
+  const grid = document.getElementById('placement-grid');
+  grid.innerHTML = '';
+  for (let r = 0; r < 10; r++) {
+    const row = document.createElement('div');
+    row.className = 'grid-row';
+    for (let c = 0; c < 10; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.dataset.r = r; cell.dataset.c = c;
+      cell.addEventListener('click', () => placeShipAt(r, c));
+      cell.addEventListener('mouseenter', () => showHover(r, c));
+      cell.addEventListener('mouseleave', clearHover);
+      row.appendChild(cell);
+    }
+    grid.appendChild(row);
+  }
+}
+
+function getPlacementCells(r, c, dir, size) {
+  const cells = [];
+  for (let i = 0; i < size; i++) {
+    const rr = dir === 'v' ? r + i : r;
+    const cc = dir === 'h' ? c + i : c;
+    if (rr > 9 || cc > 9) return null; // out of bounds
+    cells.push(`${rr},${cc}`);
+  }
+  return cells;
+}
+
+function getOccupied() {
+  const occ = new Set();
+  placementState.placed.forEach((placed, i) => {
+    if (placed && placedCells[i]) placedCells[i].forEach(k => occ.add(k));
+  });
+  return occ;
+}
+
+function showHover(r, c) {
+  clearHover();
+  const idx = placementState.selected;
+  if (idx === null || placementState.placed[idx]) return;
+  const size = SHIP_SIZES[idx];
+  const dir = placementState.dir;
+  const cells = getPlacementCells(r, c, dir, size);
+  const occ = getOccupied();
+  const valid = cells && cells.every(k => !occ.has(k));
+  (cells || []).forEach(key => {
+    const [rr, cc] = key.split(',');
+    const el = document.querySelector(`#placement-grid .cell[data-r="${rr}"][data-c="${cc}"]`);
+    if (el) el.classList.add(valid ? 'hover-ship' : 'hover-invalid');
+  });
+}
+
+function clearHover() {
+  document.querySelectorAll('#placement-grid .hover-ship, #placement-grid .hover-invalid')
+    .forEach(el => { el.classList.remove('hover-ship', 'hover-invalid'); });
+}
+
+function placeShipAt(r, c) {
+  const idx = placementState.selected;
+  if (idx === null || placementState.placed[idx]) return;
+  const size = SHIP_SIZES[idx];
+  const dir = placementState.dir;
+  const cells = getPlacementCells(r, c, dir, size);
+  if (!cells) { showStatus('Ship goes out of bounds!', 'error'); return; }
+  const occ = getOccupied();
+  if (!cells.every(k => !occ.has(k))) { showStatus('Ships overlap!', 'error'); return; }
+  placementState.ships[idx] = { row: r, col: c, dir };
+  placementState.placed[idx] = true;
+  placedCells[idx] = new Set(cells);
+  // Render
+  cells.forEach(key => {
+    const [rr, cc] = key.split(',');
+    const el = document.querySelector(`#placement-grid .cell[data-r="${rr}"][data-c="${cc}"]`);
+    if (el) el.classList.add('ship-cell');
+  });
+  document.getElementById(`ship-piece-${idx}`).classList.add('placed');
+  placementState.selected = null;
+  // Auto-select next unplaced
+  const next = placementState.placed.indexOf(false);
+  if (next !== -1) selectShip(next); else {
+    document.getElementById('confirm-place-btn').disabled = false;
+    showStatus('All ships placed! Click Confirm when ready.', 'success');
+  }
+  clearStatus();
+}
+
+function randomPlacement() {
+  // Reset
+  placementState.ships = Array(5).fill(null);
+  placementState.placed = Array(5).fill(false);
+  placedCells = {};
+  buildPlacementGrid();
+  buildShipTray();
+  for (let i = 0; i < 5; i++) {
+    const size = SHIP_SIZES[i];
+    let placed = false;
+    while (!placed) {
+      const dir = Math.random() < 0.5 ? 'h' : 'v';
+      const r = Math.floor(Math.random() * 10);
+      const c = Math.floor(Math.random() * 10);
+      const cells = getPlacementCells(r, c, dir, size);
+      if (!cells) continue;
+      const occ = getOccupied();
+      if (cells.every(k => !occ.has(k))) {
+        placementState.ships[i] = { row: r, col: c, dir };
+        placementState.placed[i] = true;
+        placedCells[i] = new Set(cells);
+        cells.forEach(key => {
+          const [rr, cc] = key.split(',');
+          const el = document.querySelector(`#placement-grid .cell[data-r="${rr}"][data-c="${cc}"]`);
+          if (el) el.classList.add('ship-cell');
+        });
+        document.getElementById(`ship-piece-${i}`).classList.add('placed');
+        placed = true;
+      }
+    }
+  }
+  document.getElementById('confirm-place-btn').disabled = false;
+  showStatus('Random placement done! Confirm or randomize again.', 'success');
+}
+
+async function confirmPlacement() {
+  if (!placementState.placed.every(Boolean)) { showStatus('Place all ships first', 'error'); return; }
+  const ships = placementState.ships.map((s, i) => ({ ...s, size: SHIP_SIZES[i] }));
+  try {
+    const d = await api('/api/battleship/place', { gameId: currentGameId, ships });
+    if (d.ok) {
+      if (d.waiting) {
+        showStatus('Ships placed! Waiting for opponent...', 'info');
+        document.getElementById('confirm-place-btn').disabled = true;
+      } else {
+        const gs = await api(`/api/battleship/state?id=${currentGameId}`);
+        showGameUI(gs.game);
+      }
+    } else { showStatus(d.error || 'Error placing ships', 'error'); }
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+// ── GAME UI ──────────────────────────────────────────────────────────────────
+function showGameUI(game) {
+  document.getElementById('placement-area').style.display = 'none';
+  document.getElementById('lobby-area').style.display = 'none';
+  document.getElementById('game-area').style.display = 'block';
+  clearStatus();
+  gameState = game;
+  renderGame(game);
+  if (!pollTimer) {
+    pollTimer = setInterval(pollGame, 2000);
+  }
+}
+
+async function pollGame() {
+  if (!currentGameId) return;
+  try {
+    const d = await api(`/api/battleship/state?id=${currentGameId}`);
+    if (d.myEmail) myEmail = d.myEmail.toLowerCase();
+    if (d.game) {
+      if (d.game.status === 'placing') {
+        const lobbyVisible = document.getElementById('lobby-area').style.display !== 'none';
+        if (lobbyVisible) {
+          showPlacementUI();
+        }
+        if (d.game.myBoardPlaced) {
+          document.getElementById('confirm-place-btn').disabled = true;
+          showStatus('Ships placed! Waiting for opponent...', 'info');
+        }
+      } else {
+        const lobbyVisible = document.getElementById('lobby-area').style.display !== 'none';
+        const placementVisible = document.getElementById('placement-area').style.display !== 'none';
+        if (lobbyVisible || placementVisible) {
+          showGameUI(d.game);
+        } else {
+          renderGame(d.game);
+        }
+      }
+    }
+  } catch(e) {}
+}
+
+function renderGame(game) {
+  gameState = game;
+  const isP1 = game.player1 === myEmail;
+  const oppEmail = isP1 ? game.player2 : game.player1;
+  document.getElementById('opp-name').textContent = oppEmail.split('@')[0];
+  document.getElementById('my-hits').textContent = game.oppHits ? game.oppHits.length : 0;
+  document.getElementById('their-hits').textContent = game.myHits ? game.myHits.length : 0;
+  document.getElementById('bet-display').textContent = game.bet || 0;
+  // Collusion
+  if (game.collusionFlag) document.getElementById('collusion-warning').style.display = '';
+  // Turn
+  const ti = document.getElementById('turn-indicator');
+  if (game.status === 'active') {
+    if (game.turn === myEmail) {
+      ti.textContent = '🎯 Your Turn – Click a cell to fire!';
+      ti.className = 'turn-indicator my-turn';
+    } else {
+      ti.textContent = '⏳ Opponent\'s Turn – Wait...';
+      ti.className = 'turn-indicator their-turn';
+    }
+  }
+  // Game over
+  if (game.status === 'over') {
+    clearInterval(pollTimer); pollTimer = null;
+    const banner = document.getElementById('game-over-banner');
+    banner.style.display = '';
+    const won = game.winner === myEmail;
+    document.getElementById('game-over-title').textContent = won ? '🏆 You Win!' : '💀 You Lose';
+    document.getElementById('game-over-sub').textContent = game.result || '';
+    if (won && !game.collusionFlag) {
+      document.getElementById('game-over-sub').textContent += ` · +250 MitchCoins${game.bet ? ` + ${game.bet * 2} from bet` : ''}`;
+    }
+    ti.style.display = 'none';
+  }
+  // Render my board
+  renderBoard('my-board', game.myShips, game.myHits, game.myMisses, false, game);
+  // Render target board
+  renderBoard('target-board', game.oppShips, game.oppHits, game.oppMisses, game.status === 'active' && game.turn === myEmail, game);
+}
+
+function renderBoard(elId, ships, hits, misses, isTarget, game) {
+  const el = document.getElementById(elId);
+  el.innerHTML = '';
+  const hitSet = new Set(hits || []);
+  const missSet = new Set(misses || []);
+  const shipCells = new Set();
+  const sunkCells = new Set();
+  if (ships) {
+    for (const ship of ships) {
+      const allHit = ship.cells.every(k => hitSet.has(k));
+      for (const k of ship.cells) {
+        shipCells.add(k);
+        if (allHit) sunkCells.add(k);
+      }
+    }
+  }
+  for (let r = 0; r < 10; r++) {
+    const row = document.createElement('div');
+    row.className = 'grid-row';
+    for (let c = 0; c < 10; c++) {
+      const cell = document.createElement('div');
+      const key = `${r},${c}`;
+      let cls = 'cell';
+      if (isTarget) cls += ' target';
+      if (sunkCells.has(key)) cls += ' sunk';
+      else if (hitSet.has(key)) cls += ' hit';
+      else if (missSet.has(key)) cls += ' miss';
+      else if (!isTarget && shipCells.has(key)) cls += ' ship-cell';
+      cell.className = cls;
+      if (hitSet.has(key)) cell.textContent = '💥';
+      else if (missSet.has(key)) cell.textContent = '●';
+      else if (sunkCells.has(key)) cell.textContent = '☠';
+      if (isTarget && !hitSet.has(key) && !missSet.has(key) && !sunkCells.has(key)) {
+        cell.addEventListener('click', () => fireAt(r, c));
+      }
+      row.appendChild(cell);
+    }
+    el.appendChild(row);
+  }
+}
+
+async function fireAt(row, col) {
+  if (!gameState || gameState.turn !== myEmail || gameState.status !== 'active') return;
+  try {
+    const d = await api('/api/battleship/fire', { gameId: currentGameId, row, col });
+    if (d.ok) {
+      await pollGame();
+      if (d.gameOver) clearInterval(pollTimer);
+    } else { showStatus(d.error || 'Cannot fire there', 'error'); }
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+async function resignGame() {
+  if (!confirm('Are you sure you want to resign?')) return;
+  try {
+    await api('/api/battleship/resign', { gameId: currentGameId });
+    await pollGame();
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+async function init() {
+  // Get my email
+  try {
+    const p = await fetch('/api/profile', { credentials: 'include' });
+    const pd = await p.json();
+    myEmail = pd.email ? pd.email.toLowerCase() : null;
+    if (pd.coins !== undefined) document.getElementById('coin-display').textContent = `🪙 ${pd.coins.toLocaleString()}`;
+  } catch(e) {}
+  // Load members for autocomplete search
+  await loadMembers();
+  // Start heartbeat
+  await heartbeat();
+  setInterval(heartbeat, 3000);
+}
+
+let allMembers = [];
+async function loadMembers() {
+  try {
+    const r = await fetch('/api/members?t=' + Date.now(), { credentials: 'include' });
+    const d = await r.json();
+    allMembers = d.members || [];
+  } catch(e) {}
+}
+
+function escText(t) {
+  var d = document.createElement('div');
+  d.textContent = t == null ? '' : String(t);
+  return d.innerHTML;
+}
+
+function onSearchInput() {
+  const input = document.getElementById('challenge-target');
+  const listEl = document.getElementById('autocomplete-list');
+  if (!input || !listEl) return;
+  const q = input.value.trim().toLowerCase();
+  if (!q) {
+    listEl.style.display = 'none';
+    return;
+  }
+
+  // De-duplicate members, preferring those with display names
+  const sortedMembers = [...allMembers].sort((a, b) => {
+    const hasA = !!a.displayName;
+    const hasB = !!b.displayName;
+    if (hasA && !hasB) return -1;
+    if (!hasA && hasB) return 1;
+    return 0;
+  });
+
+  const matches = [];
+  const seenEmails = new Set();
+
+  for (const m of sortedMembers) {
+    const email = (m.email || '').toLowerCase();
+    const name = (m.displayName || '').toLowerCase();
+    
+    if (seenEmails.has(email)) continue;
+
+    let score = 0;
+    if (name === q || email === q) score += 1000;
+    else if (name.startsWith(q) || email.startsWith(q)) score += 500;
+    else if (name.includes(q)) score += 200;
+    else if (email.includes(q)) score += 100;
+    
+    if (score > 0) {
+      matches.push({ member: m, score });
+      seenEmails.add(email);
+    }
+  }
+
+  matches.sort((a, b) => b.score - a.score);
+
+  if (matches.length === 0) {
+    listEl.style.display = 'none';
+    return;
+  }
+
+  listEl.style.display = 'block';
+  listEl.innerHTML = matches.slice(0, 6).map(item => {
+    const m = item.member;
+    const nameStr = m.displayName ? escText(m.displayName) : 'mitch.pro user';
+    const emailStr = escText(m.email);
+    return `
+      <div class="autocomplete-item" onclick="selectMember('${escText(m.email)}')">
+        <span class="item-name">${nameStr}</span>
+        <span class="item-email">${emailStr}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function selectMember(email) {
+  const input = document.getElementById('challenge-target');
+  const listEl = document.getElementById('autocomplete-list');
+  if (input) input.value = email;
+  if (listEl) listEl.style.display = 'none';
+}
+
+// Close list on clicking outside
+document.addEventListener('click', function(e) {
+  const listEl = document.getElementById('autocomplete-list');
+  const input = document.getElementById('challenge-target');
+  if (listEl && e.target !== input && !listEl.contains(e.target)) {
+    listEl.style.display = 'none';
+  }
+});
+
+init();
+</script>
+</body>
+</html>

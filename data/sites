@@ -1,7 +1,6 @@
 url /shop/ The Market
 url /casino/ The Casino
 url /games/adrian-clicker/ Adrian Clicker
-url /games/chess-bot/ Chess VS (Multiplayer)
 url /ultra/ mitch.prox
 url /apply/ Join the Team
 url /profile/ My Profile
@@ -34,3 +33,5 @@ url /games/pennys-piano-keys/ Penny's Piano Keys
 url /public-chat/ Public Chat
 url /marketplace/ Marketplace
 url /bell/ Woodcreek Bell Schedule
+url /games/battleship/ Battleship (Multiplayer)
+url /games/jeopardy-battle/ Jeopardy Battle (Multiplayer)

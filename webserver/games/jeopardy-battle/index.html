@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jeopardy Battle – MitchCoin Multiplayer</title>
+  <meta name="description" content="Play real Jeopardy questions against friends and earn MitchCoins. 2–10 players, real J! Archive clues, Jeopardy-style buzzer.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+  <script src="/theme.js"></script>
+  <style>
+    :root {
+      --bg: var(--t-bg, #06060f);
+      --surface: var(--t-bg2, #0d0d20);
+      --surface2: var(--t-bg3, #141428);
+      --accent: var(--t-ac, #f5c518);
+      --accent2: var(--t-ac2, #d4a017);
+      --blue: var(--t-ac2, #1a4cbf);
+      --blue-hover: var(--t-ac, #2a5ccf);
+      --blue-text: var(--t-fg, #c8d8ff);
+      --danger: #ff4d6d;
+      --success: #00e676;
+      --warn: #ffca28;
+      --text: var(--t-fg, #f0f0ff);
+      --muted: var(--t-fg2, #7a7a9a);
+      --radius: 10px;
+      --cell-empty: var(--t-bg3, #1a1a3a);
+      --cell-answered: var(--t-bg, #0a0a18);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      background-image: var(--t-bg-img-layer, none) !important;
+      background-attachment: fixed !important;
+    }
+    header {
+      background: linear-gradient(135deg, #06060f, #0d0d28);
+      border-bottom: 2px solid var(--t-bd, var(--accent2));
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; }
+    header p { font-size: 0.8rem; color: var(--muted); }
+    .coin-badge {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #1a1a00, #2a2a00);
+      border: 1px solid var(--accent2);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-weight: 700;
+      color: var(--accent);
+      font-size: 0.9rem;
+      z-index: 10;
+    }
+    .container { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
+    .back-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
+    .back-link:hover { text-decoration: underline; }
+
+    .status-msg {
+      text-align: center; padding: 12px; border-radius: 8px; margin: 10px 0; font-weight: 600;
+    }
+    .status-msg.info { background: #0d0d28; border: 1px solid #2a2a5a; color: var(--blue-text); }
+    .status-msg.error { background: #2a0d10; border: 1px solid #6a1a20; color: var(--danger); }
+    .status-msg.success { background: #0d2a10; border: 1px solid #1a6a20; color: var(--success); }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid #2a2a4a;
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+    .panel h2 { font-size: 1rem; font-weight: 700; color: var(--accent); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 1px; }
+    .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    input, select {
+      background: #060610;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent); }
+    input[type="text"] { flex: 1; min-width: 160px; }
+    input[type="number"] { width: 100px; }
+    .btn {
+      padding: 10px 22px; border-radius: 8px; border: none;
+      font-family: inherit; font-size: 0.9rem; font-weight: 700;
+      cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px;
+    }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-primary:hover { background: var(--blue-hover); transform: translateY(-1px); }
+    .btn-accent { background: linear-gradient(135deg, var(--accent2), #a07800); color: #000; }
+    .btn-accent:hover { transform: translateY(-1px); box-shadow: 0 4px 16px #f5c51840; }
+    .btn-danger { background: linear-gradient(135deg, #c62828, #e53935); color: #fff; }
+    .btn-buzz {
+      background: linear-gradient(135deg, #c62828, #ff1744);
+      color: #fff; font-size: 1.5rem; font-weight: 900;
+      padding: 18px 48px; border-radius: 50px;
+      box-shadow: 0 0 30px #ff174480;
+      animation: buzz-pulse 1s infinite;
+      width: 100%;
+    }
+    .btn-buzz:hover { transform: scale(1.03); }
+    .btn-buzz:disabled { opacity: 0.3; cursor: not-allowed; animation: none; }
+    @keyframes buzz-pulse { 0%,100%{box-shadow:0 0 20px #ff174440} 50%{box-shadow:0 0 40px #ff1744a0} }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* Lobby */
+    .player-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+    .player-chip {
+      background: #1a1a35;
+      border: 1px solid #2a2a4a;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 0.85rem;
+      color: var(--blue-text);
+    }
+    .player-chip.host { border-color: var(--accent); color: var(--accent); }
+    .join-code {
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--accent);
+      letter-spacing: 6px;
+      text-align: center;
+      padding: 20px;
+      background: #0d0d20;
+      border: 2px dashed var(--accent2);
+      border-radius: 12px;
+      margin: 12px 0;
+    }
+    .db-loading {
+      background: #1a1a00;
+      border: 1px solid var(--accent2);
+      border-radius: 8px;
+      padding: 10px 16px;
+      color: var(--warn);
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Board */
+    .jeopardy-board {
+      display: grid;
+      gap: 4px;
+      margin-bottom: 20px;
+    }
+    .board-header {
+      background: var(--blue);
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.8rem;
+      text-align: center;
+      padding: 10px 6px;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      cursor: default;
+    }
+    .board-cell {
+      background: var(--cell-empty);
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      text-align: center;
+      font-size: 1.2rem;
+      font-weight: 900;
+      color: var(--accent);
+      padding: 16px 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .board-cell:hover:not(.answered):not(.locked) {
+      background: #2a2a50;
+      transform: scale(1.02);
+      box-shadow: 0 0 12px var(--accent2)40;
+    }
+    .board-cell.answered {
+      background: var(--cell-answered);
+      color: #2a2a4a;
+      cursor: not-allowed;
+    }
+    .board-cell.locked { cursor: not-allowed; }
+    .board-cell.daily-double-indicator::after { content: '✦'; font-size: 0.5rem; vertical-align: super; }
+
+    /* Scores */
+    .scores-panel {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .score-card {
+      background: var(--surface2);
+      border: 2px solid #2a2a4a;
+      border-radius: 10px;
+      padding: 10px 16px;
+      min-width: 120px;
+      text-align: center;
+      transition: border-color 0.2s;
+    }
+    .score-card.active-turn { border-color: var(--accent); }
+    .score-card.active-buzz { border-color: var(--danger); animation: buzz-border 0.5s infinite; }
+    @keyframes buzz-border { 0%,100%{border-color:var(--danger)} 50%{border-color:#ff174480} }
+    .score-name { font-size: 0.75rem; color: var(--muted); font-weight: 600; }
+    .score-val {
+      font-size: 1.4rem;
+      font-weight: 900;
+      color: var(--accent);
+    }
+    .score-val.negative { color: var(--danger); }
+
+    /* Clue overlay */
+    #clue-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 20px;
+      padding: 24px;
+    }
+    #clue-overlay.active { display: flex; }
+    .clue-box {
+      background: var(--blue);
+      border-radius: 16px;
+      padding: 32px 40px;
+      max-width: 700px;
+      width: 100%;
+      text-align: center;
+    }
+    .clue-category { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 2px; color: var(--blue-text); margin-bottom: 8px; }
+    .clue-value { font-size: 1.5rem; font-weight: 900; color: var(--accent); margin-bottom: 16px; }
+    .clue-text { font-size: 1.4rem; font-weight: 600; line-height: 1.4; color: #fff; }
+    .clue-phase { font-size: 0.85rem; color: var(--blue-text); margin-top: 12px; }
+    .answer-form { display: flex; gap: 10px; max-width: 600px; width: 100%; }
+    .answer-form input { flex: 1; font-size: 1rem; }
+    .countdown {
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: var(--accent);
+      min-width: 60px;
+      text-align: center;
+    }
+    .countdown.low { color: var(--danger); animation: pulse-count 0.5s infinite; }
+    @keyframes pulse-count { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .reveal-box {
+      background: #1a3a1a;
+      border: 2px solid var(--success);
+      border-radius: 12px;
+      padding: 16px 24px;
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+    }
+    .reveal-box.wrong {
+      background: #3a1a1a;
+      border-color: var(--danger);
+    }
+    .reveal-answer { font-size: 1.4rem; font-weight: 900; color: var(--success); }
+    .reveal-box.wrong .reveal-answer { color: var(--danger); }
+    .tab-warning {
+      background: #3a1a00;
+      border: 2px solid var(--warn);
+      border-radius: 10px;
+      padding: 12px 20px;
+      color: var(--warn);
+      font-weight: 700;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    .wager-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; max-width: 600px; width: 100%; }
+
+    /* Game over */
+    .game-over-panel {
+      background: linear-gradient(135deg, #0d0d00, #1a1a00);
+      border: 2px solid var(--accent);
+      border-radius: 16px;
+      padding: 32px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .game-over-panel h2 { font-size: 2rem; color: var(--accent); margin-bottom: 16px; }
+    .final-scores { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 16px 0; }
+    .final-score-card {
+      background: #1a1a00;
+      border: 2px solid var(--accent2);
+      border-radius: 10px;
+      padding: 12px 20px;
+      text-align: center;
+      min-width: 120px;
+    }
+    .final-score-card.winner { border-color: var(--success); background: #0d2a0d; }
+    .final-score-card .name { font-size: 0.85rem; color: var(--muted); }
+    .final-score-card .pts { font-size: 1.6rem; font-weight: 900; color: var(--accent); }
+    .final-score-card.winner .pts { color: var(--success); }
+    .final-score-card .badge { font-size: 0.75rem; color: var(--success); margin-top: 4px; }
+    .turn-bar {
+      background: #0d0d20;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      padding: 10px 16px;
+      margin-bottom: 12px;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .turn-bar .indicator { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+    .turn-bar .indicator.theirs { background: var(--warn); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>📺 Jeopardy Battle</h1>
+    <p>Multiplayer · 2–10 Players · Real J! Archive Clues · 750+ MitchCoins/win</p>
+  </div>
+  <div class="coin-badge" id="coin-display">🪙 ...</div>
+</header>
+
+<div class="container">
+  <div style="margin-bottom:12px;"><a href="/" class="back-link">← Back to Home</a></div>
+  <div id="status-bar"></div>
+  <div id="tab-warning" class="tab-warning" style="display:none;">
+    ⚠️ You left the tab! You'll be marked wrong with a -$500 penalty for the current question.
+  </div>
+
+  <!-- Lobby UI -->
+  <div id="lobby-area">
+    <div class="panel">
+      <h2>🎮 Create a Game</h2>
+      <div class="form-row">
+        <label style="color:var(--muted)">Max Players:</label>
+        <input type="number" id="max-players" value="10" min="2" max="10">
+        <button class="btn btn-accent" onclick="createGame()">Create Game</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>🔗 Join a Game</h2>
+      <div class="form-row">
+        <input type="text" id="join-code-input" placeholder="Enter 6-character join code" maxlength="6">
+        <button class="btn btn-primary" onclick="joinGame()">Join Game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pre-game Lobby (waiting for players) -->
+  <div id="pregame-area" style="display:none;">
+    <div class="panel">
+      <h2>⏳ Waiting for Players</h2>
+      <div id="db-loading-notice" class="db-loading" style="display:none;">
+        ⏳ Loading Jeopardy clue database (~538k questions)... This may take a minute on first start.
+      </div>
+      <div id="join-code-display" class="join-code">XXXXXX</div>
+      <p style="text-align:center;color:var(--muted);margin-bottom:16px;">Share this code with friends to join your game</p>
+      <div style="text-align:center; margin-bottom: 20px;">
+        <button class="btn btn-primary" onclick="copyInviteLink()">📋 Copy Invite Link</button>
+      </div>
+      <div class="player-list" id="pregame-players"></div>
+      <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-accent" id="start-btn" onclick="startGame()">Start Game</button>
+        <span id="start-hint" style="color:var(--muted);align-self:center;font-size:0.85rem;">Need at least 2 players</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Game -->
+  <div id="board-area" style="display:none;">
+    <div id="game-over-banner" style="display:none;" class="game-over-panel">
+      <h2>🏆 Game Over!</h2>
+      <div class="final-scores" id="final-scores"></div>
+      <button class="btn btn-primary" onclick="location.reload()">Play Again</button>
+    </div>
+
+    <div id="turn-bar" class="turn-bar">
+      <div class="indicator" id="turn-indicator-dot"></div>
+      <span id="turn-text">–</span>
+    </div>
+
+    <div class="scores-panel" id="scores-panel"></div>
+
+    <div id="jeopardy-board" class="jeopardy-board"></div>
+  </div>
+</div>
+
+<!-- Clue Overlay -->
+<div id="clue-overlay">
+  <div class="clue-box">
+    <div class="clue-category" id="clue-category-label"></div>
+    <div class="clue-value" id="clue-value-label"></div>
+    <div class="clue-text" id="clue-text-display">Loading...</div>
+    <div class="clue-phase" id="clue-phase-label"></div>
+  </div>
+
+  <div id="wager-form" class="wager-form" style="display:none;">
+    <label style="color:var(--blue-text)">Your Wager:</label>
+    <input type="number" id="wager-input" min="5" placeholder="Amount">
+    <button class="btn btn-accent" onclick="submitWager()">Place Wager</button>
+    <span id="wager-max-label" style="color:var(--muted);font-size:0.85rem;"></span>
+  </div>
+
+  <div id="buzz-area" style="display:none;">
+    <div class="countdown" id="buzz-countdown"></div>
+    <button class="btn btn-buzz" id="buzz-btn" onclick="buzz()">🔔 BUZZ IN</button>
+  </div>
+
+  <div id="answer-form" class="answer-form" style="display:none;">
+    <div class="countdown" id="answer-countdown"></div>
+    <input type="text" id="answer-input" placeholder="What is..." autocomplete="off">
+    <button class="btn btn-accent" onclick="submitAnswer()">Answer</button>
+  </div>
+
+  <div id="reveal-area" style="display:none;">
+    <div class="reveal-box" id="reveal-box">
+      <div style="font-size:0.85rem;color:var(--muted);margin-bottom:8px;">Correct Answer:</div>
+      <div class="reveal-answer" id="reveal-answer-text"></div>
+      <div id="reveal-result" style="margin-top:8px;font-weight:600;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let myEmail = null;
+let currentGameId = null;
+let myRole = null; // 'host' or 'player'
+let lastState = null;
+let pollTimer = null;
+let countdownTimer = null;
+let buzzCountdownTimer = null;
+let tabHidden = false;
+let lastClueKey = null;
+
+// Sound state transitions
+let lastPhase = null;
+let lastActiveClueId = null;
+let lastBuzzedBy = null;
+let buzzOpenSoundPlayed = false;
+
+let audioCtx = null;
+function playSound(type) {
+  try {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    
+    const now = audioCtx.currentTime;
+    if (type === 'buzz-open') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.exponentialRampToValueAtTime(1760, now + 0.15);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.15);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else if (type === 'daily-double') {
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        const oscN = audioCtx.createOscillator();
+        const gainN = audioCtx.createGain();
+        oscN.connect(gainN);
+        gainN.connect(audioCtx.destination);
+        oscN.type = 'sawtooth';
+        oscN.frequency.setValueAtTime(freq, now + idx * 0.12);
+        gainN.gain.setValueAtTime(0.1, now + idx * 0.12);
+        gainN.gain.linearRampToValueAtTime(0, now + idx * 0.12 + 0.3);
+        oscN.start(now + idx * 0.12);
+        oscN.stop(now + idx * 0.12 + 0.3);
+      });
+    } else if (type === 'correct') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1000, now);
+      osc.frequency.exponentialRampToValueAtTime(3000, now + 0.4);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.4);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } else if (type === 'wrong') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(120, now);
+      osc.frequency.linearRampToValueAtTime(100, now + 0.4);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.4);
+      osc.start(now);
+      osc.stop(now + 0.4);
+    } else if (type === 'buzz-success') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, now);
+      osc.frequency.exponentialRampToValueAtTime(1174.66, now + 0.2);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.linearRampToValueAtTime(0, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch(e) {}
+}
+
+async function api(path, data = null) {
+  const opts = { credentials: 'include' };
+  if (data !== null) {
+    opts.method = 'POST';
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(data);
+  }
+  const r = await fetch(path, opts);
+  return r.json();
+}
+
+function showStatus(msg, type = 'info') {
+  document.getElementById('status-bar').innerHTML = `<div class="status-msg ${type}">${msg}</div>`;
+  setTimeout(() => { if (document.getElementById('status-bar').innerHTML.includes(msg)) clearStatus(); }, 5000);
+}
+function clearStatus() { document.getElementById('status-bar').innerHTML = ''; }
+
+function copyInviteLink() {
+  const code = document.getElementById('join-code-display').textContent;
+  if (!code || code === 'XXXXXX') return;
+  const link = `${window.location.origin}${window.location.pathname}?join=${code}`;
+  navigator.clipboard.writeText(link).then(() => {
+    showStatus('Invite link copied to clipboard!', 'success');
+  }).catch(() => {
+    showStatus('Could not copy link: ' + link, 'info');
+  });
+}
+
+// ── TAB VISIBILITY ────────────────────────────────────────────────────────────
+document.addEventListener('visibilitychange', async () => {
+  if (!currentGameId) return;
+  tabHidden = document.hidden;
+  try {
+    await api('/api/jeopardy/visibility', { gameId: currentGameId, hidden: tabHidden });
+  } catch(e) {}
+  if (tabHidden && lastState && lastState.activeClue && lastState.activeClue.phase === 'answering') {
+    document.getElementById('tab-warning').style.display = '';
+  } else {
+    document.getElementById('tab-warning').style.display = 'none';
+  }
+});
+
+// ── CREATE / JOIN ─────────────────────────────────────────────────────────────
+async function createGame() {
+  const maxPlayers = parseInt(document.getElementById('max-players').value) || 10;
+  try {
+    const d = await api('/api/jeopardy/create', { maxPlayers });
+    if (d.gameId) {
+      currentGameId = d.gameId;
+      myRole = 'host';
+      showPregame(d.joinCode);
+      startPolling();
+    } else { showStatus(d.error || 'Error creating game', 'error'); }
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+async function joinGame() {
+  const code = document.getElementById('join-code-input').value.trim().toUpperCase();
+  if (!code || code.length !== 6) { showStatus('Enter a 6-character join code', 'error'); return; }
+  try {
+    const d = await api('/api/jeopardy/join', { joinCode: code });
+    if (d.gameId) {
+      currentGameId = d.gameId;
+      myRole = 'player';
+      showPregame(null);
+      startPolling();
+    } else { showStatus(d.error || 'Game not found', 'error'); }
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+function showPregame(joinCode) {
+  document.getElementById('lobby-area').style.display = 'none';
+  document.getElementById('pregame-area').style.display = '';
+  if (joinCode) document.getElementById('join-code-display').textContent = joinCode;
+}
+
+async function startGame() {
+  try {
+    const d = await api('/api/jeopardy/start', { gameId: currentGameId });
+    if (d.error) showStatus(d.error, 'error');
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+// ── POLLING ───────────────────────────────────────────────────────────────────
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  poll();
+  pollTimer = setInterval(poll, 2000);
+}
+
+async function poll() {
+  if (!currentGameId) return;
+  try {
+    const d = await api(`/api/jeopardy/state?id=${currentGameId}`);
+    if (d.error) return;
+    if (d.myEmail) myEmail = d.myEmail.toLowerCase();
+    handleState(d);
+  } catch(e) {}
+}
+
+function handleState(state) {
+  lastState = state;
+  
+  // Detect state/phase changes for sound playbacks
+  const ac = state.activeClue;
+  if (ac) {
+    const clueId = `${ac.cat}-${ac.val}`;
+    if (clueId !== lastActiveClueId) {
+      if (ac.isDailyDouble) {
+        playSound('daily-double');
+      }
+      buzzOpenSoundPlayed = false;
+    }
+    
+    if (ac.phase !== lastPhase) {
+      if (ac.phase === 'reveal') {
+        if (ac.revealedCorrect) {
+          playSound('correct');
+        } else {
+          playSound('wrong');
+        }
+      }
+    }
+    
+    if (ac.phase === 'answering' && ac.buzzedBy === myEmail && lastBuzzedBy !== myEmail) {
+      playSound('buzz-success');
+    }
+    
+    lastActiveClueId = clueId;
+    lastPhase = ac.phase;
+    lastBuzzedBy = ac.buzzedBy;
+  } else {
+    lastActiveClueId = null;
+    lastPhase = null;
+    lastBuzzedBy = null;
+    buzzOpenSoundPlayed = false;
+  }
+  // Check DB ready
+  if (!state.clueDbReady) {
+    document.getElementById('db-loading-notice').style.display = '';
+  } else {
+    document.getElementById('db-loading-notice').style.display = 'none';
+  }
+
+  if (state.status === 'lobby') {
+    // Update pregame players
+    const pl = document.getElementById('pregame-players');
+    pl.innerHTML = (state.players || []).map(p =>
+      `<div class="player-chip${p === state.host ? ' host' : ''}">${p.split('@')[0]}${p === state.host ? ' 👑' : ''}</div>`
+    ).join('');
+    if (state.joinCode) document.getElementById('join-code-display').textContent = state.joinCode;
+    const startBtn = document.getElementById('start-btn');
+    if (myEmail === state.host) {
+      startBtn.style.display = '';
+      const ready = state.players.length >= 2 && state.clueDbReady;
+      startBtn.disabled = !ready;
+      document.getElementById('start-hint').textContent = !state.clueDbReady
+        ? 'Loading clue database...'
+        : state.players.length < 2 ? 'Need at least 2 players' : '';
+    } else {
+      startBtn.style.display = 'none';
+      document.getElementById('start-hint').textContent = '';
+    }
+    return;
+  }
+
+  // Active or over
+  document.getElementById('pregame-area').style.display = 'none';
+  document.getElementById('board-area').style.display = 'block';
+
+  if (state.status === 'over') {
+    clearInterval(pollTimer);
+    showGameOver(state);
+    closeClueOverlay();
+    return;
+  }
+
+  // Render scores
+  renderScores(state);
+  // Render board
+  renderBoard(state);
+  // Render turn bar
+  const isMyTurn = state.turn === myEmail;
+  const turnDot = document.getElementById('turn-indicator-dot');
+  const turnText = document.getElementById('turn-text');
+  turnDot.className = 'indicator' + (isMyTurn ? '' : ' theirs');
+  if (state.activeClue) {
+    const ac = state.activeClue;
+    if (ac.phase === 'buzzing') {
+      turnText.textContent = isMyTurn ? '🔔 Open buzzer – first to buzz wins!' : '🔔 Buzzer open – be fast!';
+    } else if (ac.phase === 'answering') {
+      const answerer = ac.buzzedBy || (ac.isDailyDouble ? state.turn : null);
+      turnText.textContent = answerer === myEmail ? '⏰ Answer the question!' : `⏰ ${(answerer || '?').split('@')[0]} is answering...`;
+    } else if (ac.phase === 'wagering') {
+      turnText.textContent = isMyTurn ? '💰 Place your Daily Double wager!' : '💰 Daily Double – waiting for wager...';
+    } else if (ac.phase === 'reveal') {
+      turnText.textContent = `✅ Correct answer: "${ac.revealAnswer || '...'}"`;
+    }
+  } else {
+    turnText.textContent = isMyTurn ? '🎯 Your turn – pick a clue!' : `Waiting for ${(state.turn || '').split('@')[0]}...`;
+  }
+
+  // Handle clue overlay
+  handleClueOverlay(state);
+}
+
+function renderScores(state) {
+  const panel = document.getElementById('scores-panel');
+  const ac = state.activeClue;
+  panel.innerHTML = (state.players || []).map(p => {
+    const score = (state.scores || {})[p] || 0;
+    const isActiveTurn = state.turn === p;
+    const isBuzzing = ac && ac.buzzedBy === p;
+    let cls = 'score-card';
+    if (isActiveTurn && !ac) cls += ' active-turn';
+    if (isBuzzing) cls += ' active-buzz';
+    return `<div class="${cls}">
+      <div class="score-name">${p.split('@')[0]}${p === state.host ? ' 👑' : ''}${p === myEmail ? ' (you)' : ''}</div>
+      <div class="score-val${score < 0 ? ' negative' : ''}">$${score.toLocaleString()}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderBoard(state) {
+  const boardEl = document.getElementById('jeopardy-board');
+  const cats = state.categories || [];
+  const cols = cats.length;
+  boardEl.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+  boardEl.innerHTML = '';
+  // Headers
+  cats.forEach(cat => {
+    const h = document.createElement('div');
+    h.className = 'board-header';
+    h.textContent = cat;
+    boardEl.appendChild(h);
+  });
+  // Values: 200, 400, 600, 800, 1000
+  const VALUES = [200, 400, 600, 800, 1000];
+  const board = state.board || {};
+  VALUES.forEach(val => {
+    cats.forEach(cat => {
+      const clues = board[cat] || [];
+      const clue = clues.find(c => c.value === val);
+      const cell = document.createElement('div');
+      const answered = clue && clue.answered;
+      const isMyTurn = state.turn === myEmail;
+      let cls = 'board-cell';
+      if (answered) cls += ' answered';
+      else if (!isMyTurn || state.activeClue) cls += ' locked';
+      cell.className = cls;
+      cell.textContent = answered ? '' : `$${val}`;
+      if (!answered && isMyTurn && !state.activeClue) {
+        cell.addEventListener('click', () => selectClue(cat, val));
+      }
+      boardEl.appendChild(cell);
+    });
+  });
+}
+
+// ── CLUE OVERLAY ──────────────────────────────────────────────────────────────
+function handleClueOverlay(state) {
+  const overlay = document.getElementById('clue-overlay');
+  const ac = state.activeClue;
+  if (!ac) {
+    closeClueOverlay();
+    return;
+  }
+  const clueKey = `${ac.cat}|${ac.val}|${ac.phase}`;
+  overlay.classList.add('active');
+  document.getElementById('clue-category-label').textContent = ac.cat;
+  document.getElementById('clue-value-label').textContent = `$${ac.val}${ac.isDailyDouble ? ' – ✦ DAILY DOUBLE!' : ''}`;
+  document.getElementById('clue-text-display').textContent = ac.clue || '…';
+  // Hide all sub-areas
+  document.getElementById('wager-form').style.display = 'none';
+  document.getElementById('buzz-area').style.display = 'none';
+  document.getElementById('answer-form').style.display = 'none';
+  document.getElementById('reveal-area').style.display = 'none';
+
+  const myTurn = state.turn === myEmail;
+  const iAmAnswering = ac.buzzedBy === myEmail || (ac.isDailyDouble && myTurn);
+
+  if (ac.phase === 'wagering') {
+    document.getElementById('clue-phase-label').textContent = 'Place your Daily Double wager!';
+    if (myTurn) {
+      document.getElementById('wager-form').style.display = 'flex';
+      const myScore = (state.scores || {})[myEmail] || 0;
+      const max = Math.max(1000, myScore);
+      document.getElementById('wager-max-label').textContent = `Max: $${max}`;
+      document.getElementById('wager-input').max = max;
+    } else {
+      document.getElementById('clue-phase-label').textContent = `${(state.turn || '').split('@')[0]} is wagering...`;
+    }
+  } else if (ac.phase === 'buzzing') {
+    document.getElementById('clue-phase-label').textContent = 'First to buzz wins the right to answer!';
+    document.getElementById('buzz-area').style.display = 'flex';
+    const now = Date.now();
+    const openAt = ac.buzzOpenAt || now;
+    const buzzBtn = document.getElementById('buzz-btn');
+    if (ac.tabPenaltyApplied) {
+      buzzBtn.disabled = true;
+      buzzBtn.textContent = '⚠️ PENALIZED';
+      document.getElementById('buzz-countdown').textContent = '❌';
+      document.getElementById('clue-phase-label').textContent = '⚠️ Tab penalty applied! You cannot buzz in.';
+    } else if (now < openAt) {
+      buzzBtn.disabled = true;
+      buzzBtn.textContent = '🔔 BUZZ IN';
+      let remaining = Math.ceil((openAt - now) / 1000);
+      document.getElementById('buzz-countdown').textContent = `📖 ${remaining}s`;
+      clearInterval(buzzCountdownTimer);
+      buzzCountdownTimer = setInterval(() => {
+        remaining = Math.ceil((openAt - Date.now()) / 1000);
+        if (remaining <= 0) {
+          clearInterval(buzzCountdownTimer);
+          buzzBtn.disabled = false;
+          document.getElementById('buzz-countdown').textContent = '🔔';
+          if (!buzzOpenSoundPlayed) {
+            playSound('buzz-open');
+            buzzOpenSoundPlayed = true;
+          }
+        }
+        else document.getElementById('buzz-countdown').textContent = `📖 ${remaining}s`;
+      }, 200);
+    } else {
+      buzzBtn.disabled = false;
+      buzzBtn.textContent = '🔔 BUZZ IN';
+      document.getElementById('buzz-countdown').textContent = '🔔';
+      if (!buzzOpenSoundPlayed) {
+        playSound('buzz-open');
+        buzzOpenSoundPlayed = true;
+      }
+    }
+  } else if (ac.phase === 'answering') {
+    const now = Date.now();
+    const deadline = ac.answerDeadline || (now + 20000);
+    const answerer = ac.buzzedBy || (ac.isDailyDouble ? state.turn : null);
+    if (iAmAnswering) {
+      document.getElementById('clue-phase-label').textContent = ac.tabPenaltyApplied ? '⚠️ Tab penalty applied!' : 'Answer the clue!';
+      document.getElementById('answer-form').style.display = 'flex';
+      startAnswerCountdown(deadline);
+      if (lastClueKey !== clueKey) {
+        document.getElementById('answer-input').value = '';
+        document.getElementById('answer-input').focus();
+      }
+    } else {
+      document.getElementById('clue-phase-label').textContent = `${(answerer || '?').split('@')[0]} is answering...`;
+      startAnswerCountdown(deadline);
+    }
+  } else if (ac.phase === 'reveal') {
+    clearCountdowns();
+    document.getElementById('clue-phase-label').textContent = '';
+    const revEl = document.getElementById('reveal-area');
+    const revBox = document.getElementById('reveal-box');
+    revEl.style.display = '';
+    document.getElementById('reveal-answer-text').textContent = ac.revealAnswer || '…';
+    const wasCorrect = ac.revealedCorrect;
+    revBox.className = 'reveal-box' + (wasCorrect ? '' : ' wrong');
+    const resultEl = document.getElementById('reveal-result');
+    if (iAmAnswering) {
+      resultEl.textContent = wasCorrect ? '✅ Correct!' : '❌ Wrong!';
+      resultEl.style.color = wasCorrect ? 'var(--success)' : 'var(--danger)';
+    } else {
+      resultEl.textContent = '';
+    }
+  }
+  lastClueKey = clueKey;
+}
+
+function closeClueOverlay() {
+  document.getElementById('clue-overlay').classList.remove('active');
+  clearCountdowns();
+  document.getElementById('tab-warning').style.display = 'none';
+}
+
+function clearCountdowns() {
+  clearInterval(countdownTimer);
+  clearInterval(buzzCountdownTimer);
+}
+
+function startAnswerCountdown(deadline) {
+  clearInterval(countdownTimer);
+  const el = document.getElementById('answer-countdown');
+  const tick = () => {
+    const rem = Math.ceil((deadline - Date.now()) / 1000);
+    if (rem <= 0) { el.textContent = '0'; el.className = 'countdown low'; clearInterval(countdownTimer); return; }
+    el.textContent = rem;
+    el.className = rem <= 5 ? 'countdown low' : 'countdown';
+  };
+  tick();
+  countdownTimer = setInterval(tick, 500);
+}
+
+// ── ACTIONS ───────────────────────────────────────────────────────────────────
+async function selectClue(cat, val) {
+  try {
+    const d = await api('/api/jeopardy/select', { gameId: currentGameId, category: cat, value: val });
+    if (d.error) showStatus(d.error, 'error');
+    else await poll();
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+async function submitWager() {
+  const wager = parseInt(document.getElementById('wager-input').value) || 0;
+  if (wager < 5) { showStatus('Minimum wager is $5', 'error'); return; }
+  try {
+    const d = await api('/api/jeopardy/wager', { gameId: currentGameId, wager });
+    if (d.error) showStatus(d.error, 'error');
+    else await poll();
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+async function buzz() {
+  const btn = document.getElementById('buzz-btn');
+  btn.disabled = true;
+  try {
+    const d = await api('/api/jeopardy/buzz', { gameId: currentGameId });
+    if (d.error) { showStatus(d.error === 'someone already buzzed' ? 'Someone else buzzed first!' : d.error, 'error'); }
+    await poll();
+  } catch(e) { showStatus('Network error', 'error'); }
+  setTimeout(() => { btn.disabled = false; }, 1000);
+}
+
+async function submitAnswer() {
+  const answer = document.getElementById('answer-input').value.trim();
+  if (!answer) { showStatus('Type an answer!', 'error'); return; }
+  try {
+    const d = await api('/api/jeopardy/answer', { gameId: currentGameId, answer });
+    if (d.error) { showStatus(d.error, 'error'); return; }
+    await poll();
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+// Enter key submits answer
+document.getElementById('answer-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitAnswer();
+});
+
+// ── GAME OVER ─────────────────────────────────────────────────────────────────
+function showGameOver(state) {
+  document.getElementById('game-over-banner').style.display = '';
+  const scores = state.finalScore || state.scores || {};
+  const maxScore = Math.max(...Object.values(scores));
+  const winners = Object.entries(scores).filter(([,s]) => s === maxScore).map(([e]) => e);
+  const finEl = document.getElementById('final-scores');
+  const sorted = Object.entries(scores).sort((a,b) => b[1] - a[1]);
+  finEl.innerHTML = sorted.map(([email, score]) => {
+    const isWinner = winners.includes(email);
+    return `<div class="final-score-card${isWinner ? ' winner' : ''}">
+      <div class="name">${email.split('@')[0]}${email === myEmail ? ' (you)' : ''}</div>
+      <div class="pts">$${score.toLocaleString()}</div>
+      ${isWinner ? '<div class="badge">🏆 Winner</div>' : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const p = await fetch('/api/profile', { credentials: 'include' });
+    const pd = await p.json();
+    myEmail = pd.email ? pd.email.toLowerCase() : null;
+    if (pd.coins !== undefined) document.getElementById('coin-display').textContent = `🪙 ${pd.coins.toLocaleString()}`;
+    
+    // Auto-join if join code is in URL search params
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('join') || params.get('code');
+    if (code) {
+      document.getElementById('join-code-input').value = code.trim().toUpperCase();
+      joinGame();
+    }
+  } catch(e) {}
+}
+init();
+</script>
+</body>
+</html>

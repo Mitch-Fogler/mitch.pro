@@ -10,6 +10,10 @@
             showBroadcast(data.message);
           } else if (data.type === 'admin_jumpscare') {
             showJumpscare(data.message);
+          } else if (data.type === 'refresh_notifications') {
+            if (typeof window.__refreshNotifications === 'function') {
+              window.__refreshNotifications();
+            }
           }
         } catch(ex) {}
       };
@@ -260,6 +264,7 @@
     panel.onclick = function(e) { e.stopPropagation(); };
     document.addEventListener('click', function() { panel.classList.remove('show'); });
     loadNotifications();
+    window.__refreshNotifications = loadNotifications;
     setInterval(loadNotifications, 30000);
   }
 

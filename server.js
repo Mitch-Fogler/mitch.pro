@@ -9,6 +9,8 @@ import webpush from 'web-push';
 const BASE = import.meta.dir;
 const WEBROOT = join(BASE, 'webserver');
 const DATA_DIR = join(BASE, 'data');
+const LOGS_DIR = join(BASE, 'logs');
+try { mkdirSync(LOGS_DIR, { recursive: true }); } catch {}
 
 try {
   const env = readFileSync(join(BASE, '.env'), 'utf8');
@@ -543,6 +545,180 @@ function cvCheckTimeout(g) {
 }
 
 const cvOnline = {};  // email -> last_seen ms
+
+// ── Battleship state ──────────────────────────────────────────────────────────
+const bsChallenges = {}; // id -> { id, from, to, bet, createdAt }
+const bsGames = {};      // gameId -> game object
+const bsOnline = {};     // email -> last_seen ms
+
+// ── Jeopardy state ────────────────────────────────────────────────────────────
+const jeopardyLobbies = {}; // gameId -> lobby object
+let jeopardyClueCache = []; // flat array of { category, clue, answer, value }
+let jeopardyLastFetch = 0;
+const JEOPARDY_CACHE_TTL = 24 * 60 * 60 * 1000; // refresh daily
+
+// Fetch and parse jeopardy clues from GitHub TSV dataset (async, runs at startup)
+async function loadJeopardyClues() {
+  try {
+    const cleanPath = join(DATA_DIR, 'jeopardy_clean.json');
+    if (existsSync(cleanPath)) {
+      jeopardyClueCache = loadJson(cleanPath, []);
+      jeopardyLastFetch = Date.now();
+      console.log(`[Jeopardy] Loaded ${jeopardyClueCache.length} clues from clean local cache`);
+      return;
+    }
+
+    const localPath = join(DATA_DIR, 'combined_season1-41.tsv');
+    let text;
+    if (existsSync(localPath)) {
+      text = readFileSync(localPath, 'utf8');
+      console.log(`[Jeopardy] Loaded database from local cache tsv`);
+    } else {
+      console.log(`[Jeopardy] Downloading clue database from GitHub...`);
+      const url = 'https://raw.githubusercontent.com/jwolle1/jeopardy_clue_dataset/refs/heads/main/combined_season1-41.tsv';
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('fetch failed: ' + res.status);
+      text = await res.text();
+      try { writeFileSync(localPath, text, 'utf8'); } catch(we) { console.error('[Jeopardy] failed to write local tsv:', we); }
+    }
+    const lines = text.split('\n');
+    const header = lines[0].split('\t').map(h => h.trim().toLowerCase());
+    const roundIdx = header.indexOf('round');
+    const valIdx = header.indexOf('clue_value');
+    const catIdx = header.indexOf('category');
+    const clueIdx = header.indexOf('answer'); // 'answer' contains the clue text
+    const ansIdx = header.indexOf('question'); // 'question' contains the target answer
+    const parsed = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split('\t');
+      if (cols.length < 5) continue;
+      const round = (cols[roundIdx] || '').trim();
+      // Only use regular Jeopardy (1) and Double Jeopardy (2) rounds (not Final/Tiebreaker)
+      if (round !== '1' && round !== '2') continue;
+      const clue = (cols[clueIdx] || '').trim();
+      const answer = (cols[ansIdx] || '').trim();
+      const category = (cols[catIdx] || '').trim().toUpperCase();
+      const rawVal = parseInt((cols[valIdx] || '0').replace(/\D/g, ''), 10);
+      if (!clue || !answer || !category || !rawVal) continue;
+      parsed.push({ category, clue, answer, value: rawVal });
+    }
+
+    // Sample 25,000 clues to keep memory low and parse time under 3ms
+    const sampled = parsed.sort(() => Math.random() - 0.5).slice(0, 25000);
+    saveJson(cleanPath, sampled);
+
+    // Clean up the 77MB TSV file to prevent disk bloat
+    try { if (existsSync(localPath)) rmSync(localPath); } catch {}
+
+    jeopardyClueCache = sampled;
+    jeopardyLastFetch = Date.now();
+    console.log(`[Jeopardy] Created clean cache with ${sampled.length} clues`);
+  } catch (e) {
+    console.error('[Jeopardy] Failed to load clues:', e.message);
+  }
+}
+
+// Build a random Jeopardy board: 6 categories × 5 clues with dollar values 200/400/600/800/1000
+function buildJeopardyBoard() {
+  if (jeopardyClueCache.length < 100) return null;
+  // Group by category
+  const byCategory = {};
+  for (const c of jeopardyClueCache) {
+    if (!byCategory[c.category]) byCategory[c.category] = [];
+    byCategory[c.category].push(c);
+  }
+  // Pick categories with at least 5 clues
+  const eligible = Object.keys(byCategory).filter(k => byCategory[k].length >= 5);
+  if (eligible.length < 6) return null;
+  // Shuffle and take 6
+  const shuffled = eligible.sort(() => Math.random() - 0.5).slice(0, 6);
+  const VALUES = [200, 400, 600, 800, 1000];
+  const board = {};
+  const dailyDoubles = [];
+  // Pick 1-2 random daily double positions
+  const ddCount = Math.random() < 0.5 ? 1 : 2;
+  while (dailyDoubles.length < ddCount) {
+    const cat = shuffled[Math.floor(Math.random() * 6)];
+    const val = VALUES[Math.floor(Math.random() * 5)];
+    const key = `${cat}|${val}`;
+    if (!dailyDoubles.includes(key)) dailyDoubles.push(key);
+  }
+  for (const cat of shuffled) {
+    const clues = byCategory[cat].sort(() => Math.random() - 0.5);
+    board[cat] = VALUES.map((val, i) => {
+      const c = clues[i];
+      const key = `${cat}|${val}`;
+      return {
+        value: val,
+        clue: c.clue,
+        answer: c.answer,
+        answered: false,
+        dailyDouble: dailyDoubles.includes(key),
+        answeredBy: null,
+      };
+    });
+  }
+  return { categories: shuffled, board, dailyDoubles };
+}
+
+// Fuzzy answer matching: strip articles, punctuation, normalize whitespace
+async function jeopardyAnswerMatches(given, correct) {
+  // Local anti-injection and meta-response filters
+  const lowerGiven = given.toLowerCase().trim();
+  if (lowerGiven.includes('[') || lowerGiven.includes(']') || lowerGiven.includes('{') || lowerGiven.includes('}')) return false;
+  if (lowerGiven.includes('correct answer') || lowerGiven.includes('right answer') || 
+      lowerGiven === 'yes' || lowerGiven === 'no' || lowerGiven === 'true' || lowerGiven === 'false') {
+    return false;
+  }
+
+  const normalize = s => s.toLowerCase()
+    .replace(/^(the|a|an)\s+/i, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const g = normalize(given);
+  const c = normalize(correct);
+  if (g === c) return true;
+  // Allow if one contains the other (for short answers)
+  if (c.length > 3 && g.includes(c)) return true;
+  if (g.length > 3 && c.includes(g)) return true;
+  // Levenshtein distance ≤ 2 for short answers
+  if (Math.abs(g.length - c.length) <= 3) {
+    let dist = 0;
+    for (let i = 0; i < Math.max(g.length, c.length); i++) {
+      if (g[i] !== c[i]) dist++;
+    }
+    if (dist <= 2) return true;
+  }
+
+  // Fallback to Groq AI check
+  if (!GROQ_KEY) return false;
+  try {
+    const prompt = `You are evaluating a Jeopardy contestant's response.
+Target Answer: "${correct}"
+Contestant's Response: "${given}"
+
+Is the response correct or "good enough" (e.g., matching synonym, matching abbreviation like FDR, last name only where appropriate, minor spelling mistake, or exact match)?
+Respond with exactly one word: "YES" or "NO". Do not output any explanation or extra text.`;
+    const messages = [{ role: 'user', content: prompt }];
+    const [aiResponse] = await callGroq(messages, "You are a Jeopardy judge who evaluates answers strictly but fairly.");
+    if (aiResponse) {
+      const clean = aiResponse.trim().toUpperCase();
+      if (clean.includes('YES')) return true;
+    }
+  } catch (e) {
+    console.error('[Jeopardy AI Check Error]', e);
+  }
+  return false;
+}
+
+// Load clues at startup and refresh daily
+loadJeopardyClues();
+setInterval(() => {
+  if (Date.now() - jeopardyLastFetch > JEOPARDY_CACHE_TTL) loadJeopardyClues();
+}, 60 * 60 * 1000);
+
+
 const userPresence = {}; // normalizedEmail -> { lastSeen: ms, playing: string }
 
 function touchUserPresence(email, playing = '') {
@@ -772,6 +948,21 @@ const RATE_LIMITS = {
   '/api/canvas/pixel':         [1000, 60], // 1000 pixels per minute by default
   '/api/canvas/pixels/bulk':   [1000, 60], // 1000 bulk draw requests per minute
   '/api/canvas/history':       [10,  60],
+  '/api/battleship/challenge':  [5,   600],
+  '/api/battleship/respond':    [10,  60],
+  '/api/battleship/place':      [5,   60],
+  '/api/battleship/fire':       [60,  60],
+  '/api/battleship/state':      [60,  60],
+  '/api/battleship/resign':     [5,   60],
+  '/api/jeopardy/create':       [5,   600],
+  '/api/jeopardy/join':         [10,  60],
+  '/api/jeopardy/start':        [5,   60],
+  '/api/jeopardy/select':       [30,  60],
+  '/api/jeopardy/buzz':         [30,  60],
+  '/api/jeopardy/answer':       [30,  60],
+  '/api/jeopardy/wager':        [10,  60],
+  '/api/jeopardy/visibility':   [60,  60],
+  '/api/jeopardy/state':        [60,  60],
   '__default__':               [100, 60],
 };
 
@@ -1074,12 +1265,13 @@ const ACHIEVEMENT_DEFINITIONS = {
 function loadCoins() { return coinsCache; }
 function saveCoins(c) { coinsCache = c; saveJson(COINS_FILE, c); }
 function getCoins(email) { if (!email) return 0; return loadCoins()[normalizeEmail(email)] || 0; }
-function addCoins(email, amount) {
+function addCoins(email, amount, reason = '') {
   if (!email) return;
   const norm = normalizeEmail(email);
   const coins = loadCoins();
   const adjusted = (amount > 0) ? (amount * globalCoinMultiplier) : amount;
-  coins[norm] = Number(( (coins[norm] || 0) + adjusted ).toFixed(4));
+  const before = coins[norm] || 0;
+  coins[norm] = Number(( before + adjusted ).toFixed(4));
   saveCoins(coins);
 
   // Track lifetime earned in stats
@@ -1088,6 +1280,34 @@ function addCoins(email, amount) {
     if (!stats[norm]) stats[norm] = {};
     stats[norm].lifetime_earned = (stats[norm].lifetime_earned || 0) + adjusted;
     saveUserStats(stats);
+  }
+
+  // Append to coin log
+  try {
+    const ts = new Date().toISOString();
+    const sign = adjusted >= 0 ? '+' : '';
+    const logLine = `${ts}\t${norm}\t${sign}${adjusted.toFixed(4)}\t${before.toFixed(4)} -> ${coins[norm].toFixed(4)}\t${reason || 'unspecified'}\n`;
+    appendFileSync(join(LOGS_DIR, 'coins.log'), logLine, 'utf8');
+  } catch {}
+}
+
+function sendUserNotification(email, message) {
+  if (!email) return;
+  const norm = normalizeEmail(email);
+  const payload = JSON.stringify({ type: 'admin_broadcast', message });
+  for (const ws of allSockets) {
+    if (ws.data && ws.data.isBroadcast && ws.data.email && normalizeEmail(ws.data.email) === norm) {
+      try { ws.send(payload); } catch {}
+    }
+  }
+}
+
+function triggerNotificationRefresh() {
+  const payload = JSON.stringify({ type: 'refresh_notifications' });
+  for (const ws of allSockets) {
+    if (ws.data && ws.data.isBroadcast) {
+      try { ws.send(payload); } catch {}
+    }
   }
 }
 
@@ -1157,7 +1377,7 @@ function addCoinGiftNotice(targetEmail, amount, adminEmail, reason) {
   return notice;
 }
 
-function addAdminNotification(targetEmail, title, message, adminEmail, batchId = '') {
+function addAdminNotification(targetEmail, title, message, adminEmail, batchId = '', url = '') {
   const norm = normalizeEmail(targetEmail);
   if (!norm) return null;
   const gifts = loadJson(COIN_GIFTS_FILE, {});
@@ -1169,7 +1389,7 @@ function addAdminNotification(targetEmail, title, message, adminEmail, batchId =
     message,
     from: adminEmail || 'admin',
     source: 'mitchdog.com',
-    url: notificationUrl('/'),
+    url: url || notificationUrl('/'),
     batchId,
     ts: Date.now(),
     read: false,
@@ -4098,12 +4318,20 @@ async function serveStatic(urlPath) {
     const contentType = mimeTypes[ext] || file.type;
     const headers = { 'Content-Type': contentType };
 
+    const isCode = ['html', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
+    if (isCode) {
+      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+      headers['Pragma'] = 'no-cache';
+      headers['Expires'] = '0';
+    } else {
+      headers['Cache-Control'] = 'public, max-age=2592000';
+    }
+
     if (contentType.includes('text/html')) {
       const text = await file.text();
       const html = injectBroadcast(injectReadability(text, urlPath));
       return new Response(html, { headers });
     }
-    headers['Cache-Control'] = 'public, max-age=2592000';
     return new Response(file, { headers });
   }
   return errResp(404, null, null);
@@ -4837,7 +5065,11 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
 
   // Handle Global Broadcast WebSocket
   if (path === "/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-    const success = server.upgrade(req, { data: { isBroadcast: true } });
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const names = loadJson(NAMES_FILE, {});
+    const myEmail = (names[sid] || '').toLowerCase();
+    const success = server.upgrade(req, { data: { isBroadcast: true, email: myEmail } });
     if (success) return;
   }
 
@@ -9488,6 +9720,8 @@ function loadAllGamesList() {
         sendEmailBg(to, `Chess challenge from ${fromName}`,
           `${fromName} has challenged you to a correspondence chess game (${days} day${days !== 1 ? 's' : ''}/move) with a bet of ${bet} coins.\n\nLog in to accept: ${siteUrl(to)}/games/chess-bot/`);
       }
+      addAdminNotification(to, 'New Chess Challenge', `${myEmail.split('@')[0]} has challenged you to a Chess game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/chess-bot/');
+      triggerNotificationRefresh();
       return jsonResp(200, { ok: true, id });
     }
 
@@ -9507,12 +9741,18 @@ function loadAllGamesList() {
           delete cvChallenges[challengeId];
           return jsonResp(400, { error: 'The challenger no longer has enough coins for this bet. Challenge cancelled.' });
         }
-        addCoins(myEmail, -c.bet);
-        addCoins(c.from, -c.bet);
+        addCoins(myEmail, -c.bet, 'chess-vs: bet deduction on start');
+        addCoins(c.from, -c.bet, 'chess-vs: bet deduction on start');
       }
 
       delete cvChallenges[challengeId];
-      if (!accept) return jsonResp(200, { ok: true, declined: true });
+      if (!accept) {
+        addAdminNotification(c.from, 'Chess Challenge Declined', `${myEmail.split('@')[0]} declined your Chess challenge.`, 'admin', '', '/games/chess-bot/');
+        triggerNotificationRefresh();
+        return jsonResp(200, { ok: true, declined: true });
+      }
+      addAdminNotification(c.from, 'Chess Challenge Accepted', `${myEmail.split('@')[0]} accepted your Chess challenge!`, 'admin', '', '/games/chess-bot/');
+      triggerNotificationRefresh();
       const white = Math.random() < 0.5 ? c.from : myEmail;
       const black = white === c.from ? myEmail : c.from;
       const gameId = randomBytes(8).toString('hex');
@@ -9600,11 +9840,11 @@ function loadAllGamesList() {
           drawBonus = Math.floor(drawBonus * 1.5);
         }
         if (winner) {
-          addCoins(winner, winBonus);
+          addCoins(winner, winBonus, `chess-vs: win payout (bet=${bet})`);
           updateStat(winner, 'chess_wins', 1);
         } else if (g.result === '1/2-1/2') {
-          addCoins(g.white, drawBonus);
-          addCoins(g.black, drawBonus);
+          addCoins(g.white, drawBonus, `chess-vs: draw payout (bet=${bet})`);
+          addCoins(g.black, drawBonus, `chess-vs: draw payout (bet=${bet})`);
         }
       }
       if (g.type === 'corr') {
@@ -9674,6 +9914,599 @@ function loadAllGamesList() {
       if (!cvChats[gameId]) cvChats[gameId] = [];
       cvChats[gameId].push({ from: myEmail, text, ts: Date.now() });
       if (cvChats[gameId].length > 200) cvChats[gameId].splice(0, cvChats[gameId].length - 200);
+      return jsonResp(200, { ok: true });
+    }
+  }
+
+
+  // ── Battleship Routes ────────────────────────────────────────────────────────
+  if (path.startsWith('/api/battleship/')) {
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+    const names = loadJson(NAMES_FILE, {});
+    const myEmail = (names[sid] || '').toLowerCase();
+    if (!myEmail) return jsonResp(403, { error: 'not found' });
+    const myNorm = normalizeEmail(myEmail);
+
+    if (path === '/api/battleship/heartbeat') {
+      bsOnline[myNorm] = Date.now();
+      const now = Date.now();
+      for (const [id, c] of Object.entries(bsChallenges)) {
+        if (now - c.createdAt > 300000) delete bsChallenges[id];
+      }
+      const challenges = Object.values(bsChallenges)
+        .filter(c => normalizeEmail(c.to) === myNorm || normalizeEmail(c.from) === myNorm)
+        .map(c => ({ ...c, from: maskEmail(c.from), to: maskEmail(c.to) }));
+      const myGames = Object.values(bsGames).filter(g =>
+        (normalizeEmail(g.player1) === myNorm || normalizeEmail(g.player2) === myNorm) && g.status !== 'over'
+      );
+      return jsonResp(200, { challenges, activeGames: myGames.map(g => g.id) });
+    }
+
+    if (path === '/api/battleship/online') {
+      const now = Date.now();
+      const online = Object.entries(bsOnline)
+        .filter(([, t]) => now - t < 60000)
+        .map(([e]) => maskEmail(e));
+      return jsonResp(200, { online });
+    }
+
+    if (path === '/api/battleship/challenge') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const to = normalizeEmail(body.to || '');
+      if (!to || to === myNorm) return jsonResp(400, { error: 'invalid target' });
+      const bet = Math.max(0, Math.floor(Number(body.bet) || 0));
+      if (bet > 0 && getCoins(myNorm) < bet) return jsonResp(400, { error: 'Insufficient coins for bet' });
+      const now = Date.now();
+      for (const [id, c] of Object.entries(bsChallenges)) {
+        if (now - c.createdAt > 300000) delete bsChallenges[id];
+      }
+      const id = randomBytes(8).toString('hex');
+      bsChallenges[id] = { id, from: myNorm, to, bet, createdAt: now };
+      addAdminNotification(to, 'New Battleship Challenge', `${myNorm.split('@')[0]} has challenged you to a Battleship game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/battleship/');
+      triggerNotificationRefresh();
+      return jsonResp(200, { ok: true, challengeId: id });
+    }
+
+    if (path === '/api/battleship/respond') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const challengeId = String(body.challengeId || '');
+      const accept = !!body.accept;
+      const c = bsChallenges[challengeId];
+      if (!c) return jsonResp(404, { error: 'challenge not found or expired' });
+      if (normalizeEmail(c.to) !== myNorm) return jsonResp(403, { error: 'not your challenge' });
+      if (c.bet > 0) {
+        if (getCoins(myNorm) < c.bet) { delete bsChallenges[challengeId]; return jsonResp(400, { error: 'Insufficient coins' }); }
+        if (getCoins(c.from) < c.bet) { delete bsChallenges[challengeId]; return jsonResp(400, { error: 'Challenger no longer has enough coins. Challenge cancelled.' }); }
+        if (accept) {
+          addCoins(myNorm, -c.bet, 'battleship: bet deduction on start');
+          addCoins(c.from, -c.bet, 'battleship: bet deduction on start');
+        }
+      }
+      delete bsChallenges[challengeId];
+      if (!accept) {
+        addAdminNotification(c.from, 'Battleship Challenge Declined', `${myNorm.split('@')[0]} declined your Battleship challenge.`, 'admin', '', '/games/battleship/');
+        triggerNotificationRefresh();
+        return jsonResp(200, { ok: true, declined: true });
+      }
+      addAdminNotification(c.from, 'Battleship Challenge Accepted', `${myNorm.split('@')[0]} accepted your Battleship challenge!`, 'admin', '', '/games/battleship/');
+      triggerNotificationRefresh();
+      const gameId = randomBytes(8).toString('hex');
+      const now = Date.now();
+      bsGames[gameId] = {
+        id: gameId,
+        player1: c.from,
+        player2: myNorm,
+        bet: c.bet || 0,
+        status: 'placing',
+        boards: {
+          [c.from]: { ships: null, hits: [], misses: [] },
+          [myNorm]: { ships: null, hits: [], misses: [] },
+        },
+        placedBy: [],
+        turn: null,
+        winner: null,
+        result: null,
+        createdAt: now,
+        lastActionAt: now,
+        hitLog: [],
+        collusionFlag: false,
+      };
+      return jsonResp(200, { ok: true, gameId });
+    }
+
+    if (path === '/api/battleship/place') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const g = bsGames[gameId];
+      if (!g) return jsonResp(404, { error: 'game not found' });
+      if (normalizeEmail(g.player1) !== myNorm && normalizeEmail(g.player2) !== myNorm) return jsonResp(403, { error: 'not your game' });
+      if (g.status !== 'placing') return jsonResp(400, { error: 'placement phase over' });
+      if (g.placedBy.includes(myEmail)) return jsonResp(400, { error: 'already placed' });
+      const ships = body.ships;
+      if (!Array.isArray(ships) || ships.length !== 5) return jsonResp(400, { error: 'must place exactly 5 ships' });
+      const SHIP_SIZES = [5, 4, 3, 3, 2];
+      const occupied = new Set();
+      for (let i = 0; i < ships.length; i++) {
+        const s = ships[i];
+        const row = Number(s.row), col = Number(s.col);
+        const dir = s.dir === 'v' ? 'v' : 'h';
+        const size = SHIP_SIZES[i];
+        if (row < 0 || row > 9 || col < 0 || col > 9) return jsonResp(400, { error: 'ship out of bounds' });
+        const cells = [];
+        for (let j = 0; j < size; j++) {
+          const r = dir === 'v' ? row + j : row;
+          const c2 = dir === 'h' ? col + j : col;
+          if (r > 9 || c2 > 9) return jsonResp(400, { error: 'ship out of bounds' });
+          const key = `${r},${c2}`;
+          if (occupied.has(key)) return jsonResp(400, { error: 'ships overlap' });
+          cells.push(key);
+        }
+        cells.forEach(k => occupied.add(k));
+        ships[i] = { row, col, dir, size, cells, hits: 0 };
+      }
+      g.boards[myNorm].ships = ships;
+      g.placedBy.push(myNorm);
+      if (g.placedBy.length === 2) {
+        g.turn = Math.random() < 0.5 ? g.player1 : g.player2;
+        g.status = 'active';
+      }
+      return jsonResp(200, { ok: true, waiting: g.placedBy.length < 2 });
+    }
+
+    if (path === '/api/battleship/fire') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const g = bsGames[gameId];
+      if (!g) return jsonResp(404, { error: 'game not found' });
+      if (normalizeEmail(g.player1) !== myNorm && normalizeEmail(g.player2) !== myNorm) return jsonResp(403, { error: 'not your game' });
+      if (g.status !== 'active') return jsonResp(400, { error: 'game not active' });
+      if (normalizeEmail(g.turn) !== myNorm) return jsonResp(400, { error: 'not your turn' });
+      const row = Number(body.row), col = Number(body.col);
+      if (isNaN(row) || isNaN(col) || row < 0 || row > 9 || col < 0 || col > 9) return jsonResp(400, { error: 'invalid coordinate' });
+      const oppEmail = normalizeEmail(g.player1) === myNorm ? normalizeEmail(g.player2) : normalizeEmail(g.player1);
+      const oppBoard = g.boards[oppEmail];
+      const coordKey = `${row},${col}`;
+      if (oppBoard.hits.includes(coordKey) || oppBoard.misses.includes(coordKey)) {
+        return jsonResp(400, { error: 'already fired there' });
+      }
+      let hitShip = null;
+      for (const ship of oppBoard.ships) {
+        if (ship.cells.includes(coordKey)) { hitShip = ship; break; }
+      }
+      const now = Date.now();
+      g.lastActionAt = now;
+      let result = 'miss';
+      let sunk = false;
+      let sunkShip = null;
+      if (hitShip) {
+        oppBoard.hits.push(coordKey);
+        hitShip.hits++;
+        result = 'hit';
+        g.hitLog.push({ by: myNorm, at: now });
+        if (hitShip.hits >= hitShip.size) { sunk = true; sunkShip = hitShip; result = 'sunk'; }
+        // Anti-cheat: check collusion
+        if (g.hitLog.length >= 6) {
+          const recent = g.hitLog.slice(-6);
+          const span = recent[recent.length - 1].at - recent[0].at;
+          const totalFired = oppBoard.hits.length + oppBoard.misses.length;
+          const hitRate = oppBoard.hits.length / Math.max(totalFired, 1);
+          if (span < 12000 && hitRate > 0.85 && totalFired <= 15) g.collusionFlag = true;
+        }
+      } else {
+        oppBoard.misses.push(coordKey);
+      }
+      const allSunk = oppBoard.ships.every(s => s.hits >= s.size);
+      if (allSunk) {
+        g.status = 'over';
+        g.winner = myNorm;
+        g.result = `${myNorm} wins`;
+        if (!g.collusionFlag) {
+          const bet = g.bet || 0;
+          let winCoins = 250 + (bet * 2);
+          if (areFriends(g.player1, g.player2)) winCoins = Math.floor(winCoins * 1.5);
+          if (isPremiumEmail(myNorm)) winCoins = Math.floor(winCoins * 2);
+          addCoins(myNorm, winCoins, `battleship: win payout (bet=${g.bet}, friend=${areFriends(g.player1,g.player2)}, premium=${isPremiumEmail(myNorm)})`);
+          updateStat(myNorm, 'battleship_wins', 1);
+        } else {
+          g.result = `${myNorm} wins (collusion detected — no payout)`;
+        }
+      } else {
+        if (result === 'miss') g.turn = oppEmail;
+      }
+      return jsonResp(200, {
+        ok: true, result, sunk,
+        sunkShip: sunk ? { size: sunkShip.size, cells: sunkShip.cells } : null,
+        gameOver: allSunk, collusionFlag: g.collusionFlag
+      });
+    }
+
+    if (path === '/api/battleship/state') {
+      const gameId = qs.get('id') || '';
+      const g = bsGames[gameId];
+      if (!g) return jsonResp(404, { error: 'game not found' });
+      if (normalizeEmail(g.player1) !== myNorm && normalizeEmail(g.player2) !== myNorm) return jsonResp(403, { error: 'not your game' });
+      const oppEmail = myNorm === normalizeEmail(g.player1) ? normalizeEmail(g.player2) : normalizeEmail(g.player1);
+      const myBoard = g.boards[myNorm];
+      const oppBoard = g.boards[oppEmail];
+      return jsonResp(200, {
+        myEmail: maskEmail(myEmail),
+        game: {
+          id: g.id, status: g.status, turn: g.turn ? maskEmail(g.turn) : null,
+          winner: g.winner ? maskEmail(g.winner) : null, result: g.result ? g.result.replace(new RegExp(g.player1, 'g'), maskEmail(g.player1)).replace(new RegExp(g.player2, 'g'), maskEmail(g.player2)) : null,
+          collusionFlag: g.collusionFlag, placedBy: (g.placedBy || []).map(maskEmail),
+          myShips: myBoard.ships,
+          myHits: myBoard.hits, myMisses: myBoard.misses,
+          oppHits: oppBoard.hits, oppMisses: oppBoard.misses,
+          oppShips: g.status === 'over' ? oppBoard.ships : null,
+          bet: g.bet, player1: maskEmail(g.player1), player2: maskEmail(g.player2),
+          myBoardPlaced: !!myBoard.ships, oppBoardPlaced: !!oppBoard.ships,
+        }
+      });
+    }
+
+    if (path === '/api/battleship/resign') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const g = bsGames[gameId];
+      if (!g || (normalizeEmail(g.player1) !== myNorm && normalizeEmail(g.player2) !== myNorm)) return jsonResp(403, {});
+      if (g.status !== 'active' && g.status !== 'placing') return jsonResp(400, { error: 'game already over' });
+      const oppEmail = myNorm === normalizeEmail(g.player1) ? normalizeEmail(g.player2) : normalizeEmail(g.player1);
+      g.status = 'over'; g.winner = oppEmail; g.result = `${myNorm} resigned`;
+      if (!g.collusionFlag) {
+        let winCoins = 250 + ((g.bet || 0) * 2);
+        if (areFriends(g.player1, g.player2)) winCoins = Math.floor(winCoins * 1.5);
+        if (isPremiumEmail(oppEmail)) winCoins = Math.floor(winCoins * 2);
+        addCoins(oppEmail, winCoins, `battleship: win on resign (opponent=${myNorm})`);
+        updateStat(oppEmail, 'battleship_wins', 1);
+      }
+      return jsonResp(200, { ok: true });
+    }
+  }
+
+  // ── Jeopardy Routes ───────────────────────────────────────────────────────────
+  if (path.startsWith('/api/jeopardy/')) {
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+    const names = loadJson(NAMES_FILE, {});
+    const myEmail = (names[sid] || '').toLowerCase();
+    if (!myEmail) return jsonResp(403, { error: 'not found' });
+    const myNorm = normalizeEmail(myEmail);
+
+    function jeopardyCheckTimeouts(lobby) {
+      if (!lobby.activeClue) return;
+      const now = Date.now();
+      const phase = lobby.activeClue.phase;
+
+      // 1. Buzzing Timeout
+      if (phase === 'buzzing') {
+        if (lobby.activeClue.buzzOpenAt) {
+          const buzzDeadline = lobby.activeClue.buzzOpenAt + 15000; // 15 seconds to buzz
+          if (now > buzzDeadline) {
+            const cat = lobby.activeClue.cat;
+            const val = lobby.activeClue.val;
+            const clue = lobby.board[cat].find(c => c.value === val);
+            if (clue) { clue.answered = true; clue.answeredBy = null; }
+            lobby.activeClue.phase = 'reveal';
+            lobby.activeClue.revealedCorrect = false;
+            lobby.activeClue.revealCloseAt = now + 5000;
+          }
+        }
+      }
+
+      // 2. Answering Timeout
+      if (phase === 'answering') {
+        if (lobby.activeClue.answerDeadline && now > lobby.activeClue.answerDeadline) {
+          const cat = lobby.activeClue.cat;
+          const val = lobby.activeClue.val;
+          const isDailyDouble = lobby.activeClue.isDailyDouble;
+          const expected = isDailyDouble ? lobby.turn : lobby.activeClue.buzzedBy;
+          if (expected) {
+            const wager = lobby.activeClue.wager || val;
+            const penalty = isDailyDouble ? -wager : -val;
+            lobby.scores[expected] = (lobby.scores[expected] || 0) + penalty;
+          }
+          const clue = lobby.board[cat].find(c => c.value === val);
+          if (clue) { clue.answered = true; clue.answeredBy = null; }
+          lobby.activeClue.phase = 'reveal';
+          lobby.activeClue.revealedCorrect = false;
+          lobby.activeClue.revealCloseAt = now + 5000;
+        }
+      }
+
+      // 3. Wagering Timeout
+      if (phase === 'wagering') {
+        if (lobby.activeClue.wagerOpenAt && now > lobby.activeClue.wagerOpenAt + 25000) {
+          const turnEmail = lobby.turn;
+          const wager = 5; // Min wager
+          lobby.activeClue.wager = wager;
+          lobby.activeClue.wagerBy = turnEmail;
+          lobby.activeClue.phase = 'answering';
+          lobby.activeClue.answerDeadline = now + 20000;
+        }
+      }
+
+      // 4. Reveal Timeout
+      if (phase === 'reveal') {
+        if (lobby.activeClue.revealCloseAt && now > lobby.activeClue.revealCloseAt) {
+          const allDone = lobby.categories && lobby.categories.every(cat2 =>
+            lobby.board[cat2] && lobby.board[cat2].every(cl => cl.answered)
+          );
+          if (allDone) {
+            lobby.status = 'over';
+            const topScore = Math.max(...Object.values(lobby.scores));
+            const winners = Object.entries(lobby.scores).filter(([, s]) => s === topScore).map(([e]) => e);
+            const playerCount = lobby.players.length;
+            const baseCoins = Math.floor(750 * Math.sqrt(playerCount));
+            for (const w of winners) {
+              let coins = baseCoins;
+              if (lobby.players.some(p => p !== w && areFriends(w, p))) coins = Math.floor(coins * 1.5);
+              if (isPremiumEmail(w)) coins = Math.floor(coins * 2);
+              addCoins(w, coins, `jeopardy: win payout (players=${playerCount}, score=$${topScore})`);
+              updateStat(w, 'jeopardy_wins', 1);
+            }
+            lobby.finalScore = { ...lobby.scores };
+          }
+          lobby.activeClue = null;
+        }
+      }
+    }
+
+    if (path === '/api/jeopardy/state') {
+      const gameId = qs.get('id') || '';
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby) return jsonResp(404, { error: 'game not found' });
+      if (!lobby.players.includes(myNorm)) return jsonResp(403, { error: 'not in this game' });
+      
+      jeopardyCheckTimeouts(lobby);
+      const safeBoard = {};
+      if (lobby.board) {
+        for (const [cat, clues] of Object.entries(lobby.board)) {
+          safeBoard[cat] = clues.map(cl => ({
+            value: cl.value, answered: cl.answered, answeredBy: cl.answeredBy ? maskEmail(cl.answeredBy) : null,
+            dailyDouble: cl.dailyDouble,
+            clue: (lobby.activeClue && lobby.activeClue.cat === cat && lobby.activeClue.val === cl.value) ? cl.clue : null,
+          }));
+        }
+      }
+      const maskedScores = {};
+      for (const [e, s] of Object.entries(lobby.scores || {})) {
+        maskedScores[maskEmail(e)] = s;
+      }
+      return jsonResp(200, {
+        myEmail: maskEmail(myEmail),
+        id: lobby.id, status: lobby.status, host: maskEmail(lobby.host),
+        players: (lobby.players || []).map(maskEmail), scores: maskedScores,
+        categories: lobby.categories, board: safeBoard,
+        activeClue: lobby.activeClue ? {
+          cat: lobby.activeClue.cat, val: lobby.activeClue.val,
+          clue: lobby.activeClue.clue, phase: lobby.activeClue.phase,
+          buzzer: lobby.activeClue.buzzer, buzzedBy: lobby.activeClue.buzzedBy ? maskEmail(lobby.activeClue.buzzedBy) : null,
+          isDailyDouble: lobby.activeClue.isDailyDouble,
+          wager: lobby.activeClue.wager, wagerBy: lobby.activeClue.wagerBy ? maskEmail(lobby.activeClue.wagerBy) : null,
+          revealAnswer: lobby.activeClue.phase === 'reveal' ? lobby.activeClue.answer : null,
+          revealedCorrect: lobby.activeClue.revealedCorrect,
+          buzzOpenAt: lobby.activeClue.buzzOpenAt,
+          answerDeadline: lobby.activeClue.answerDeadline,
+          tabPenaltyApplied: lobby.activeClue.tabPenaltyFor && lobby.activeClue.tabPenaltyFor.includes(myNorm),
+        } : null,
+        turn: lobby.turn ? maskEmail(lobby.turn) : null, roundOver: lobby.roundOver, finalScore: lobby.finalScore ? Object.fromEntries(Object.entries(lobby.finalScore).map(([e, s]) => [maskEmail(e), s])) : null,
+        joinCode: lobby.host === myNorm ? lobby.joinCode : undefined,
+        clueDbReady: jeopardyClueCache.length >= 100,
+      });
+    }
+
+    if (path === '/api/jeopardy/create') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const maxPlayers = Math.min(10, Math.max(2, parseInt(body.maxPlayers) || 10));
+      const gameId = randomBytes(8).toString('hex');
+      const joinCode = randomBytes(3).toString('hex').toUpperCase();
+      jeopardyLobbies[gameId] = {
+        id: gameId, joinCode, host: myNorm,
+        players: [myNorm], maxPlayers, status: 'lobby',
+        scores: { [myNorm]: 0 }, categories: null,
+        board: null, activeClue: null, turn: myNorm,
+        createdAt: Date.now(), tabHidden: {},
+        roundOver: false, finalScore: null,
+      };
+      return jsonResp(200, { ok: true, gameId, joinCode });
+    }
+
+    if (path === '/api/jeopardy/join') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const joinCode = String(body.joinCode || '').toUpperCase().trim();
+      const lobby = Object.values(jeopardyLobbies).find(l => l.joinCode === joinCode && l.status === 'lobby');
+      if (!lobby) return jsonResp(404, { error: 'Game not found or already started' });
+      if (lobby.players.length >= lobby.maxPlayers) return jsonResp(400, { error: 'Game is full' });
+      if (lobby.players.includes(myNorm)) return jsonResp(400, { error: 'Already in game' });
+      lobby.players.push(myNorm);
+      lobby.scores[myNorm] = 0;
+      return jsonResp(200, { ok: true, gameId: lobby.id });
+    }
+
+    if (path === '/api/jeopardy/start') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby) return jsonResp(404, { error: 'game not found' });
+      if (lobby.host !== myNorm) return jsonResp(403, { error: 'only host can start' });
+      if (lobby.status !== 'lobby') return jsonResp(400, { error: 'game already started' });
+      if (lobby.players.length < 2) return jsonResp(400, { error: 'need at least 2 players' });
+      if (jeopardyClueCache.length < 100) return jsonResp(503, { error: 'Jeopardy clue database not yet loaded, please try again in a moment' });
+      const boardData = buildJeopardyBoard();
+      if (!boardData) return jsonResp(503, { error: 'Could not build board, try again' });
+      lobby.board = boardData.board;
+      lobby.categories = boardData.categories;
+      lobby.status = 'active';
+      lobby.turn = lobby.players[Math.floor(Math.random() * lobby.players.length)];
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/jeopardy/select') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby) return jsonResp(404, { error: 'game not found' });
+      if (!lobby.players.includes(myNorm)) return jsonResp(403, { error: 'not in game' });
+      if (lobby.status !== 'active') return jsonResp(400, { error: 'game not active' });
+      if (lobby.turn !== myNorm) return jsonResp(400, { error: 'not your turn to select' });
+      if (lobby.activeClue) return jsonResp(400, { error: 'a clue is already active' });
+      const cat = String(body.category || '');
+      const val = Number(body.value);
+      if (!lobby.categories || !lobby.categories.includes(cat)) return jsonResp(400, { error: 'invalid category' });
+      const clueArr = lobby.board[cat];
+      const clue = clueArr ? clueArr.find(c => c.value === val) : null;
+      if (!clue) return jsonResp(400, { error: 'invalid clue' });
+      if (clue.answered) return jsonResp(400, { error: 'already answered' });
+      const now = Date.now();
+      lobby.activeClue = {
+        cat, val, clue: clue.clue, answer: clue.answer,
+        isDailyDouble: clue.dailyDouble,
+        phase: clue.dailyDouble ? 'wagering' : 'buzzing',
+        buzzOpenAt: clue.dailyDouble ? null : now + 2000,
+        wagerOpenAt: clue.dailyDouble ? now : null,
+        answerDeadline: null,
+        buzzedBy: null, buzzer: null,
+        wager: null, wagerBy: null, tabPenaltyFor: [],
+      };
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/jeopardy/wager') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby || !lobby.players.includes(myNorm)) return jsonResp(403, {});
+      if (!lobby.activeClue || lobby.activeClue.phase !== 'wagering') return jsonResp(400, { error: 'not wagering phase' });
+      if (lobby.turn !== myNorm) return jsonResp(403, { error: 'only active player wagers' });
+      const myScore = lobby.scores[myNorm] || 0;
+      const maxWager = Math.max(1000, myScore);
+      const wager = Math.min(maxWager, Math.max(5, Math.floor(Number(body.wager) || 0)));
+      lobby.activeClue.wager = wager;
+      lobby.activeClue.wagerBy = myNorm;
+      lobby.activeClue.phase = 'answering';
+      lobby.activeClue.answerDeadline = Date.now() + 30000;
+      return jsonResp(200, { ok: true, wager });
+    }
+
+    if (path === '/api/jeopardy/buzz') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby || !lobby.players.includes(myNorm)) return jsonResp(403, {});
+      if (!lobby.activeClue || lobby.activeClue.phase !== 'buzzing') return jsonResp(400, { error: 'not buzzing phase' });
+      const now = Date.now();
+      if (lobby.activeClue.buzzOpenAt && now < lobby.activeClue.buzzOpenAt) return jsonResp(400, { error: 'buzzer not open yet' });
+      if (lobby.activeClue.buzzedBy) return jsonResp(400, { error: 'someone already buzzed' });
+      lobby.activeClue.buzzedBy = myNorm;
+      lobby.activeClue.buzzer = now;
+      lobby.activeClue.phase = 'answering';
+      lobby.activeClue.answerDeadline = now + 20000;
+      return jsonResp(200, { ok: true, buzzedAt: now });
+    }
+
+    if (path === '/api/jeopardy/answer') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby || !lobby.players.includes(myNorm)) return jsonResp(403, {});
+      if (!lobby.activeClue || lobby.activeClue.phase !== 'answering') return jsonResp(400, { error: 'not answering phase' });
+      const expected = lobby.activeClue.isDailyDouble ? lobby.turn : lobby.activeClue.buzzedBy;
+      if (expected !== myNorm) return jsonResp(403, { error: 'not your turn to answer' });
+      const givenAnswer = String(body.answer || '').trim().slice(0, 300);
+      const correctAnswer = lobby.activeClue.answer;
+      const now = Date.now();
+      const past_deadline = lobby.activeClue.answerDeadline && now > lobby.activeClue.answerDeadline;
+      const tabPenalty = lobby.activeClue.tabPenaltyFor && lobby.activeClue.tabPenaltyFor.includes(myNorm);
+      let correct = false;
+      if (!past_deadline && !tabPenalty && givenAnswer) {
+        correct = await jeopardyAnswerMatches(givenAnswer, correctAnswer);
+      }
+      const cat = lobby.activeClue.cat;
+      const val = lobby.activeClue.val;
+      const isDailyDouble = lobby.activeClue.isDailyDouble;
+      const wager = lobby.activeClue.wager || val;
+      let scoreChange = 0;
+      if (correct) {
+        scoreChange = isDailyDouble ? wager : val;
+        lobby.scores[myNorm] = (lobby.scores[myNorm] || 0) + scoreChange;
+        const clue = lobby.board[cat].find(c => c.value === val);
+        if (clue) { clue.answered = true; clue.answeredBy = myNorm; }
+        lobby.activeClue.phase = 'reveal';
+        lobby.activeClue.revealedCorrect = true;
+        lobby.turn = myNorm;
+      } else {
+        const penalty = tabPenalty ? -500 : (isDailyDouble ? -wager : -val);
+        scoreChange = penalty;
+        lobby.scores[myNorm] = (lobby.scores[myNorm] || 0) + penalty;
+        lobby.activeClue.phase = 'reveal';
+        lobby.activeClue.revealedCorrect = false;
+        const clue = lobby.board[cat].find(c => c.value === val);
+        if (clue) { clue.answered = true; clue.answeredBy = null; }
+      }
+      const allDone = lobby.categories && lobby.categories.every(cat2 =>
+        lobby.board[cat2] && lobby.board[cat2].every(cl => cl.answered)
+      );
+      if (allDone) {
+        lobby.status = 'over';
+        const topScore = Math.max(...Object.values(lobby.scores));
+        const winners = Object.entries(lobby.scores).filter(([, s]) => s === topScore).map(([e]) => e);
+        const playerCount = lobby.players.length;
+        const baseCoins = Math.floor(750 * Math.sqrt(playerCount));
+        for (const w of winners) {
+          let coins = baseCoins;
+          if (lobby.players.some(p => p !== w && areFriends(w, p))) coins = Math.floor(coins * 1.5);
+          if (isPremiumEmail(w)) coins = Math.floor(coins * 2);
+          addCoins(w, coins, `jeopardy: win payout (players=${playerCount}, score=$${topScore}, friend bonus=${lobby.players.some(p => p !== w && areFriends(w, p))}, premium=${isPremiumEmail(w)})`);
+          updateStat(w, 'jeopardy_wins', 1);
+        }
+        lobby.finalScore = { ...lobby.scores };
+      }
+      lobby.activeClue.revealCloseAt = Date.now() + 5000;
+      return jsonResp(200, {
+        ok: true, correct, correctAnswer, scoreChange,
+        gameOver: lobby.status === 'over', finalScore: lobby.finalScore ? Object.fromEntries(Object.entries(lobby.finalScore).map(([e, s]) => [maskEmail(e), s])) : null,
+      });
+    }
+
+    if (path === '/api/jeopardy/visibility') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby || !lobby.players.includes(myNorm)) return jsonResp(403, {});
+      const hidden = !!body.hidden;
+      const now = Date.now();
+      if (hidden && lobby.activeClue) {
+        const phase = lobby.activeClue.phase;
+        if (['buzzing', 'answering', 'wagering'].includes(phase)) {
+          lobby.activeClue.tabPenaltyFor = lobby.activeClue.tabPenaltyFor || [];
+          if (!lobby.activeClue.tabPenaltyFor.includes(myNorm)) {
+            lobby.activeClue.tabPenaltyFor.push(myNorm);
+            
+            // Deduct penalty immediately!
+            const penalty = -500;
+            lobby.scores[myNorm] = (lobby.scores[myNorm] || 0) + penalty;
+            
+            // Auto-fail the clue immediately if they were currently expected to wager/answer
+            const expected = lobby.activeClue.isDailyDouble ? lobby.turn : lobby.activeClue.buzzedBy;
+            if (expected === myNorm && (phase === 'answering' || phase === 'wagering')) {
+              const cat = lobby.activeClue.cat;
+              const val = lobby.activeClue.val;
+              lobby.activeClue.phase = 'reveal';
+              lobby.activeClue.revealedCorrect = false;
+              lobby.activeClue.revealCloseAt = now + 5000;
+              const clue = lobby.board[cat].find(c => c.value === val);
+              if (clue) { clue.answered = true; clue.answeredBy = null; }
+            }
+          }
+        }
+      }
+      if (!lobby.tabHidden) lobby.tabHidden = {};
+      lobby.tabHidden[myNorm] = hidden;
       return jsonResp(200, { ok: true });
     }
   }
