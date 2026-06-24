@@ -560,7 +560,7 @@ const JEOPARDY_CACHE_TTL = 24 * 60 * 60 * 1000; // refresh daily
 // Fetch and parse jeopardy clues from GitHub TSV dataset (async, runs at startup)
 async function loadJeopardyClues() {
   try {
-    const cleanPath = join(DATA_DIR, 'jeopardy_clean.json');
+    const cleanPath = join(DATA_DIR, 'jeopardy_kids_clean.json');
     if (existsSync(cleanPath)) {
       jeopardyClueCache = loadJson(cleanPath, []);
       jeopardyLastFetch = Date.now();
@@ -568,14 +568,14 @@ async function loadJeopardyClues() {
       return;
     }
 
-    const localPath = join(DATA_DIR, 'combined_season1-41.tsv');
+    const localPath = join(DATA_DIR, 'kids_teen_matches.tsv');
     let text;
     if (existsSync(localPath)) {
       text = readFileSync(localPath, 'utf8');
       console.log(`[Jeopardy] Loaded database from local cache tsv`);
     } else {
-      console.log(`[Jeopardy] Downloading clue database from GitHub...`);
-      const url = 'https://raw.githubusercontent.com/jwolle1/jeopardy_clue_dataset/refs/heads/main/combined_season1-41.tsv';
+      console.log(`[Jeopardy] Downloading kids/teen clue database from GitHub...`);
+      const url = 'https://raw.githubusercontent.com/jwolle1/jeopardy_clue_dataset/refs/heads/main/kids_teen_matches.tsv';
       const res = await fetch(url);
       if (!res.ok) throw new Error('fetch failed: ' + res.status);
       text = await res.text();
@@ -607,7 +607,7 @@ async function loadJeopardyClues() {
     const sampled = parsed.sort(() => Math.random() - 0.5).slice(0, 25000);
     saveJson(cleanPath, sampled);
 
-    // Clean up the 77MB TSV file to prevent disk bloat
+    // Clean up the TSV file to prevent disk bloat
     try { if (existsSync(localPath)) rmSync(localPath); } catch {}
 
     jeopardyClueCache = sampled;
@@ -659,6 +659,14 @@ function buildJeopardyBoard() {
     });
   }
   return { categories: shuffled, board, dailyDoubles };
+}
+
+// Get a random clue from cache that is NOT in the board's categories
+function getFinalJeopardyClue(boardCategories) {
+  if (jeopardyClueCache.length === 0) return null;
+  const filtered = jeopardyClueCache.filter(c => !boardCategories.includes(c.category));
+  if (filtered.length === 0) return jeopardyClueCache[Math.floor(Math.random() * jeopardyClueCache.length)];
+  return filtered[Math.floor(Math.random() * filtered.length)];
 }
 
 // Fuzzy answer matching: strip articles, punctuation, normalize whitespace
@@ -961,8 +969,10 @@ const RATE_LIMITS = {
   '/api/jeopardy/buzz':         [30,  60],
   '/api/jeopardy/answer':       [30,  60],
   '/api/jeopardy/wager':        [10,  60],
-  '/api/jeopardy/visibility':   [60,  60],
-  '/api/jeopardy/state':        [60,  60],
+  '/api/jeopardy/visibility':   [120,  60],
+  '/api/jeopardy/state':        [300,  60],
+  '/api/jeopardy/final/wager':  [10,  60],
+  '/api/jeopardy/final/answer': [10,  60],
   '__default__':               [100, 60],
 };
 
@@ -3293,12 +3303,59 @@ function checkPasswordCookie(req, providedSid = null) {
   return true;
 }
 
+const requestTimings = {}; // key -> { lastTime, intervals: [] }
+
+function detectNonHumanTiming(key) {
+  const now = Date.now();
+  if (!requestTimings[key]) {
+    requestTimings[key] = { lastTime: now, intervals: [] };
+    return false;
+  }
+  const timing = requestTimings[key];
+  const diff = now - timing.lastTime;
+  timing.lastTime = now;
+
+  // Ignore requests that are far apart (e.g. > 10 seconds)
+  if (diff > 10000) {
+    timing.intervals = [];
+    return false;
+  }
+
+  timing.intervals.push(diff);
+  if (timing.intervals.length > 5) {
+    timing.intervals.shift();
+  }
+
+  // We need at least 4 intervals (5 requests) to detect timing regularity
+  if (timing.intervals.length >= 4) {
+    const min = Math.min(...timing.intervals);
+    const max = Math.max(...timing.intervals);
+    const spread = max - min;
+    // If the spread between the fastest and slowest interval is under 50 milliseconds,
+    // it's highly regular timing (less than 50ms jitter). A human cannot do this!
+    if (spread < 50) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function checkRateLimit(req, endpoint) {
   if (req._rateLimitChecked) return null;
   req._rateLimitChecked = true;
   const ip = getRealIp(req);
   if (WHITELISTED_IPS.has(ip)) return null;
   const ep = endpoint || new URL(req.url).pathname;
+
+  // Anti-bot timing regularity check on non-polling action endpoints
+  if (!ep.endsWith('/state')) {
+    const timingKey = ip + ':' + ep;
+    if (detectNonHumanTiming(timingKey)) {
+      console.warn(`[Anti-Bot] Non-human timing detected from ${ip} on ${ep}`);
+      return jsonResp(429, { error: 'Non-human request patterns detected' });
+    }
+  }
+
   if (rateLimited('ip:' + ip, ep) || rateLimited(getIdKey(req), ep))
     return jsonResp(429, { error: 'Too many requests, slow down' });
   return null;
@@ -4051,7 +4108,7 @@ let SHOP_CATALOG = [
   { id: 'debug_helper', name: 'Debug Helper AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2200, desc: 'A coding-focused assistant personality.' },
   { id: 'story_mode', name: 'Story Mode AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 1800, desc: 'A more creative writing personality.' },
   { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
-  { id: 'vip_pass', name: 'Casino VIP Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Access high-stakes casino tables for 24 hours.' },
+  { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
   { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
   { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
   { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' }
@@ -4128,7 +4185,7 @@ function shopPerkFor(item) {
     profile_neon_frame: 'Bright neon profile frame with stronger profile presence.',
     speedrun_ai: 'Fast-response premium AI personality.',
     debug_helper: 'Stronger coding-focused assistant personality.',
-    vip_pass: '24 hours of high-stakes casino access.',
+    vip_pass: '24 hours of unlimited casino max bets.',
     daily_bonus_plus: 'Premium daily-bonus preference toggle.',
     canvas_lock_pass: 'Canvas-tool preference for protecting important pixel work.',
     quick_access_pass: 'Convenience toggle for faster navigation.',
@@ -6156,7 +6213,7 @@ Mitch.pro Team`;
             { id: 'debug_helper', name: 'Debug Helper AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2200, desc: 'A coding-focused assistant personality.' },
             { id: 'story_mode', name: 'Story Mode AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 1800, desc: 'A more creative writing personality.' },
             { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
-            { id: 'vip_pass', name: 'Casino VIP Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Access high-stakes casino tables for 24 hours.' },
+            { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
             { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
             { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
             { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' }
@@ -10177,7 +10234,70 @@ function loadAllGamesList() {
     if (!myEmail) return jsonResp(403, { error: 'not found' });
     const myNorm = normalizeEmail(myEmail);
 
-    function jeopardyCheckTimeouts(lobby) {
+    async function evaluateFinalJeopardy(lobby) {
+      const fj = lobby.finalJeopardy;
+      if (!fj) return;
+      fj.phase = 'reveal';
+      fj.revealCloseAt = Date.now() + 10000;
+      fj.revealedAnswers = {};
+      for (const p of lobby.players) {
+        const given = fj.answers[p] || '';
+        const wager = fj.wagers[p] || 0;
+        const correct = given ? await jeopardyAnswerMatches(given, fj.answer) : false;
+        const scoreChange = correct ? wager : -wager;
+        lobby.scores[p] = (lobby.scores[p] || 0) + scoreChange;
+        fj.revealedAnswers[p] = {
+          answer: given,
+          correct,
+          scoreChange,
+          wager
+        };
+      }
+    }
+
+    function endJeopardyGame(lobby) {
+      lobby.status = 'over';
+      const topScore = Math.max(...Object.values(lobby.scores));
+      const winners = Object.entries(lobby.scores).filter(([, s]) => s === topScore).map(([e]) => e);
+      const playerCount = lobby.players.length;
+      const baseCoins = 750;
+      for (const w of winners) {
+        let coins = baseCoins;
+        if (lobby.players.some(p => p !== w && areFriends(w, p))) coins = Math.floor(coins * 1.5);
+        if (isPremiumEmail(w)) coins = Math.floor(coins * 2);
+        addCoins(w, coins, `jeopardy: win payout (players=${playerCount}, score=$${topScore}, friend bonus=${lobby.players.some(p => p !== w && areFriends(w, p))}, premium=${isPremiumEmail(w)})`);
+        updateStat(w, 'jeopardy_wins', 1);
+      }
+      lobby.finalScore = { ...lobby.scores };
+    }
+
+    async function jeopardyCheckTimeouts(lobby) {
+      if (lobby.status === 'final_jeopardy' && lobby.finalJeopardy) {
+        const now = Date.now();
+        if (lobby.finalJeopardy.phase === 'wagering') {
+          if (lobby.finalJeopardy.wagerDeadline && now > lobby.finalJeopardy.wagerDeadline) {
+            for (const p of lobby.players) {
+              if (lobby.finalJeopardy.wagers[p] === undefined) {
+                lobby.finalJeopardy.wagers[p] = 0;
+              }
+            }
+            lobby.finalJeopardy.phase = 'answering';
+            lobby.finalJeopardy.answerDeadline = now + 30000;
+          }
+        }
+        if (lobby.finalJeopardy.phase === 'answering') {
+          if (lobby.finalJeopardy.answerDeadline && now > lobby.finalJeopardy.answerDeadline) {
+            await evaluateFinalJeopardy(lobby);
+          }
+        }
+        if (lobby.finalJeopardy.phase === 'reveal') {
+          if (lobby.finalJeopardy.revealCloseAt && now > lobby.finalJeopardy.revealCloseAt) {
+            endJeopardyGame(lobby);
+          }
+        }
+        return;
+      }
+
       if (!lobby.activeClue) return;
       const now = Date.now();
       const phase = lobby.activeClue.phase;
@@ -10209,12 +10329,25 @@ function loadAllGamesList() {
             const wager = lobby.activeClue.wager || val;
             const penalty = isDailyDouble ? -wager : -val;
             lobby.scores[expected] = (lobby.scores[expected] || 0) + penalty;
+            if (!lobby.activeClue.wrongPlayers) lobby.activeClue.wrongPlayers = [];
+            if (!lobby.activeClue.wrongPlayers.includes(expected)) {
+              lobby.activeClue.wrongPlayers.push(expected);
+            }
           }
-          const clue = lobby.board[cat].find(c => c.value === val);
-          if (clue) { clue.answered = true; clue.answeredBy = null; }
-          lobby.activeClue.phase = 'reveal';
-          lobby.activeClue.revealedCorrect = false;
-          lobby.activeClue.revealCloseAt = now + 5000;
+          const remainingPlayers = lobby.players.filter(p => !lobby.activeClue.wrongPlayers.includes(p));
+          if (isDailyDouble || remainingPlayers.length === 0) {
+            const clue = lobby.board[cat].find(c => c.value === val);
+            if (clue) { clue.answered = true; clue.answeredBy = null; }
+            lobby.activeClue.phase = 'reveal';
+            lobby.activeClue.revealedCorrect = false;
+            lobby.activeClue.revealCloseAt = now + 5000;
+          } else {
+            lobby.activeClue.phase = 'buzzing';
+            lobby.activeClue.buzzedBy = null;
+            lobby.activeClue.buzzer = null;
+            lobby.activeClue.buzzOpenAt = now + 1000;
+            lobby.activeClue.answerDeadline = null;
+          }
         }
       }
 
@@ -10237,19 +10370,24 @@ function loadAllGamesList() {
             lobby.board[cat2] && lobby.board[cat2].every(cl => cl.answered)
           );
           if (allDone) {
-            lobby.status = 'over';
-            const topScore = Math.max(...Object.values(lobby.scores));
-            const winners = Object.entries(lobby.scores).filter(([, s]) => s === topScore).map(([e]) => e);
-            const playerCount = lobby.players.length;
-            const baseCoins = Math.floor(750 * Math.sqrt(playerCount));
-            for (const w of winners) {
-              let coins = baseCoins;
-              if (lobby.players.some(p => p !== w && areFriends(w, p))) coins = Math.floor(coins * 1.5);
-              if (isPremiumEmail(w)) coins = Math.floor(coins * 2);
-              addCoins(w, coins, `jeopardy: win payout (players=${playerCount}, score=$${topScore})`);
-              updateStat(w, 'jeopardy_wins', 1);
+            const finalClue = getFinalJeopardyClue(lobby.categories);
+            if (finalClue) {
+              lobby.status = 'final_jeopardy';
+              lobby.finalJeopardy = {
+                cat: finalClue.category,
+                clue: finalClue.clue,
+                answer: finalClue.answer,
+                wagers: {},
+                answers: {},
+                phase: 'wagering',
+                wagerDeadline: now + 30000,
+                answerDeadline: null,
+                revealCloseAt: null,
+                revealedAnswers: {},
+              };
+            } else {
+              endJeopardyGame(lobby);
             }
-            lobby.finalScore = { ...lobby.scores };
           }
           lobby.activeClue = null;
         }
@@ -10262,7 +10400,7 @@ function loadAllGamesList() {
       if (!lobby) return jsonResp(404, { error: 'game not found' });
       if (!lobby.players.includes(myNorm)) return jsonResp(403, { error: 'not in this game' });
       
-      jeopardyCheckTimeouts(lobby);
+      await jeopardyCheckTimeouts(lobby);
       const safeBoard = {};
       if (lobby.board) {
         for (const [cat, clues] of Object.entries(lobby.board)) {
@@ -10293,6 +10431,29 @@ function loadAllGamesList() {
           buzzOpenAt: lobby.activeClue.buzzOpenAt,
           answerDeadline: lobby.activeClue.answerDeadline,
           tabPenaltyApplied: lobby.activeClue.tabPenaltyFor && lobby.activeClue.tabPenaltyFor.includes(myNorm),
+          wrongPlayers: lobby.activeClue.wrongPlayers ? lobby.activeClue.wrongPlayers.map(maskEmail) : [],
+        } : null,
+        finalJeopardy: lobby.finalJeopardy ? {
+          cat: lobby.finalJeopardy.cat,
+          clue: lobby.finalJeopardy.phase !== 'wagering' ? lobby.finalJeopardy.clue : null,
+          phase: lobby.finalJeopardy.phase,
+          wagerDeadline: lobby.finalJeopardy.wagerDeadline,
+          answerDeadline: lobby.finalJeopardy.answerDeadline,
+          revealCloseAt: lobby.finalJeopardy.revealCloseAt,
+          wagerSubmitted: lobby.finalJeopardy.wagers[myNorm] !== undefined,
+          answerSubmitted: lobby.finalJeopardy.answers[myNorm] !== undefined,
+          revealAnswer: lobby.finalJeopardy.phase === 'reveal' ? lobby.finalJeopardy.answer : null,
+          revealedAnswers: lobby.finalJeopardy.phase === 'reveal' ? Object.fromEntries(
+            Object.entries(lobby.finalJeopardy.revealedAnswers || {}).map(([e, obj]) => [
+              maskEmail(e),
+              {
+                answer: obj.answer,
+                correct: obj.correct,
+                scoreChange: obj.scoreChange,
+                wager: obj.wager
+              }
+            ])
+          ) : null,
         } : null,
         turn: lobby.turn ? maskEmail(lobby.turn) : null, roundOver: lobby.roundOver, finalScore: lobby.finalScore ? Object.fromEntries(Object.entries(lobby.finalScore).map(([e, s]) => [maskEmail(e), s])) : null,
         joinCode: lobby.host === myNorm ? lobby.joinCode : undefined,
@@ -10372,6 +10533,7 @@ function loadAllGamesList() {
         answerDeadline: null,
         buzzedBy: null, buzzer: null,
         wager: null, wagerBy: null, tabPenaltyFor: [],
+        wrongPlayers: [],
       };
       return jsonResp(200, { ok: true });
     }
@@ -10385,7 +10547,7 @@ function loadAllGamesList() {
       if (lobby.turn !== myNorm) return jsonResp(403, { error: 'only active player wagers' });
       const myScore = lobby.scores[myNorm] || 0;
       const maxWager = Math.max(1000, myScore);
-      const wager = Math.min(maxWager, Math.max(5, Math.floor(Number(body.wager) || 0)));
+      const wager = Math.min(maxWager, Math.max(0, Math.floor(Number(body.wager) || 0)));
       lobby.activeClue.wager = wager;
       lobby.activeClue.wagerBy = myNorm;
       lobby.activeClue.phase = 'answering';
@@ -10399,6 +10561,7 @@ function loadAllGamesList() {
       const lobby = jeopardyLobbies[gameId];
       if (!lobby || !lobby.players.includes(myNorm)) return jsonResp(403, {});
       if (!lobby.activeClue || lobby.activeClue.phase !== 'buzzing') return jsonResp(400, { error: 'not buzzing phase' });
+      if (lobby.activeClue.wrongPlayers && lobby.activeClue.wrongPlayers.includes(myNorm)) return jsonResp(400, { error: 'already guessed incorrectly' });
       const now = Date.now();
       if (lobby.activeClue.buzzOpenAt && now < lobby.activeClue.buzzOpenAt) return jsonResp(400, { error: 'buzzer not open yet' });
       if (lobby.activeClue.buzzedBy) return jsonResp(400, { error: 'someone already buzzed' });
@@ -10443,33 +10606,35 @@ function loadAllGamesList() {
         const penalty = tabPenalty ? -500 : (isDailyDouble ? -wager : -val);
         scoreChange = penalty;
         lobby.scores[myNorm] = (lobby.scores[myNorm] || 0) + penalty;
-        lobby.activeClue.phase = 'reveal';
-        lobby.activeClue.revealedCorrect = false;
-        const clue = lobby.board[cat].find(c => c.value === val);
-        if (clue) { clue.answered = true; clue.answeredBy = null; }
-      }
-      const allDone = lobby.categories && lobby.categories.every(cat2 =>
-        lobby.board[cat2] && lobby.board[cat2].every(cl => cl.answered)
-      );
-      if (allDone) {
-        lobby.status = 'over';
-        const topScore = Math.max(...Object.values(lobby.scores));
-        const winners = Object.entries(lobby.scores).filter(([, s]) => s === topScore).map(([e]) => e);
-        const playerCount = lobby.players.length;
-        const baseCoins = Math.floor(750 * Math.sqrt(playerCount));
-        for (const w of winners) {
-          let coins = baseCoins;
-          if (lobby.players.some(p => p !== w && areFriends(w, p))) coins = Math.floor(coins * 1.5);
-          if (isPremiumEmail(w)) coins = Math.floor(coins * 2);
-          addCoins(w, coins, `jeopardy: win payout (players=${playerCount}, score=$${topScore}, friend bonus=${lobby.players.some(p => p !== w && areFriends(w, p))}, premium=${isPremiumEmail(w)})`);
-          updateStat(w, 'jeopardy_wins', 1);
+        
+        if (!lobby.activeClue.wrongPlayers) lobby.activeClue.wrongPlayers = [];
+        if (!lobby.activeClue.wrongPlayers.includes(myNorm)) {
+          lobby.activeClue.wrongPlayers.push(myNorm);
         }
-        lobby.finalScore = { ...lobby.scores };
+        
+        const remainingPlayers = lobby.players.filter(p => !lobby.activeClue.wrongPlayers.includes(p));
+        if (isDailyDouble || remainingPlayers.length === 0) {
+          lobby.activeClue.phase = 'reveal';
+          lobby.activeClue.revealedCorrect = false;
+          const clue = lobby.board[cat].find(c => c.value === val);
+          if (clue) { clue.answered = true; clue.answeredBy = null; }
+        } else {
+          lobby.activeClue.phase = 'buzzing';
+          lobby.activeClue.buzzedBy = null;
+          lobby.activeClue.buzzer = null;
+          lobby.activeClue.buzzOpenAt = Date.now() + 1000;
+          lobby.activeClue.answerDeadline = null;
+        }
       }
       lobby.activeClue.revealCloseAt = Date.now() + 5000;
+      
+      const hideCorrectAnswer = lobby.activeClue.phase === 'buzzing';
       return jsonResp(200, {
-        ok: true, correct, correctAnswer, scoreChange,
-        gameOver: lobby.status === 'over', finalScore: lobby.finalScore ? Object.fromEntries(Object.entries(lobby.finalScore).map(([e, s]) => [maskEmail(e), s])) : null,
+        ok: true, correct,
+        correctAnswer: hideCorrectAnswer ? null : correctAnswer,
+        scoreChange,
+        gameOver: false,
+        finalScore: null,
       });
     }
 
@@ -10496,17 +10661,75 @@ function loadAllGamesList() {
             if (expected === myNorm && (phase === 'answering' || phase === 'wagering')) {
               const cat = lobby.activeClue.cat;
               const val = lobby.activeClue.val;
-              lobby.activeClue.phase = 'reveal';
-              lobby.activeClue.revealedCorrect = false;
-              lobby.activeClue.revealCloseAt = now + 5000;
-              const clue = lobby.board[cat].find(c => c.value === val);
-              if (clue) { clue.answered = true; clue.answeredBy = null; }
+              if (!lobby.activeClue.wrongPlayers) lobby.activeClue.wrongPlayers = [];
+              if (!lobby.activeClue.wrongPlayers.includes(myNorm)) {
+                lobby.activeClue.wrongPlayers.push(myNorm);
+              }
+              const remainingPlayers = lobby.players.filter(p => !lobby.activeClue.wrongPlayers.includes(p));
+              if (lobby.activeClue.isDailyDouble || remainingPlayers.length === 0) {
+                lobby.activeClue.phase = 'reveal';
+                lobby.activeClue.revealedCorrect = false;
+                lobby.activeClue.revealCloseAt = now + 5000;
+                const clue = lobby.board[cat].find(c => c.value === val);
+                if (clue) { clue.answered = true; clue.answeredBy = null; }
+              } else {
+                lobby.activeClue.phase = 'buzzing';
+                lobby.activeClue.buzzedBy = null;
+                lobby.activeClue.buzzer = null;
+                lobby.activeClue.buzzOpenAt = now + 1000;
+                lobby.activeClue.answerDeadline = null;
+              }
             }
           }
         }
       }
       if (!lobby.tabHidden) lobby.tabHidden = {};
       lobby.tabHidden[myNorm] = hidden;
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/jeopardy/final/wager') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby || !lobby.players.includes(myNorm)) return jsonResp(403, {});
+      if (lobby.status !== 'final_jeopardy' || !lobby.finalJeopardy || lobby.finalJeopardy.phase !== 'wagering') {
+        return jsonResp(400, { error: 'not final jeopardy wagering phase' });
+      }
+      if (lobby.finalJeopardy.wagers[myNorm] !== undefined) {
+        return jsonResp(400, { error: 'already wagered' });
+      }
+      const myScore = lobby.scores[myNorm] || 0;
+      const maxWager = Math.max(1000, myScore);
+      const wager = Math.min(maxWager, Math.max(0, Math.floor(Number(body.wager) || 0)));
+      lobby.finalJeopardy.wagers[myNorm] = wager;
+
+      const allWagered = lobby.players.every(p => lobby.finalJeopardy.wagers[p] !== undefined);
+      if (allWagered) {
+        lobby.finalJeopardy.phase = 'answering';
+        lobby.finalJeopardy.answerDeadline = Date.now() + 30000;
+      }
+      return jsonResp(200, { ok: true, wager });
+    }
+
+    if (path === '/api/jeopardy/final/answer') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const gameId = String(body.gameId || '');
+      const lobby = jeopardyLobbies[gameId];
+      if (!lobby || !lobby.players.includes(myNorm)) return jsonResp(403, {});
+      if (lobby.status !== 'final_jeopardy' || !lobby.finalJeopardy || lobby.finalJeopardy.phase !== 'answering') {
+        return jsonResp(400, { error: 'not final jeopardy answering phase' });
+      }
+      if (lobby.finalJeopardy.answers[myNorm] !== undefined) {
+        return jsonResp(400, { error: 'already answered' });
+      }
+      const answer = String(body.answer || '').trim().slice(0, 300);
+      lobby.finalJeopardy.answers[myNorm] = answer;
+
+      const allAnswered = lobby.players.every(p => lobby.finalJeopardy.answers[p] !== undefined);
+      if (allAnswered) {
+        await evaluateFinalJeopardy(lobby);
+      }
       return jsonResp(200, { ok: true });
     }
   }
@@ -11929,6 +12152,11 @@ function loadAllGamesList() {
       const bal = getCoins(email);
       if (!Number.isFinite(bet) || bet < min) return { error: `Minimum bet is ${min} coins.` };
       if (bet > bal) return { error: 'You do not have enough coins for that bet.' };
+
+      const stats = loadUserStats();
+      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
+      if (!isVip && bet > 500) return { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' };
+
       return { bet: Number(bet.toFixed(2)), bal };
     }
 
@@ -12035,6 +12263,10 @@ function loadAllGamesList() {
       const bet = Number(body.amount);
       const bal = getCoins(email);
       if (!Number.isFinite(bet) || bet < 1 || bet > bal) return jsonResp(400, { error: 'invalid bet' });
+
+      const stats = loadUserStats();
+      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
+      if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
 
       casinoIntake += bet; saveCasinoStats();
       addCoins(email, -bet);
@@ -12376,6 +12608,8 @@ function loadAllGamesList() {
       const bet = Number(body.amount);
       if (isVipRoom && bet < 100) return jsonResp(400, { error: 'VIP minimum bet is 100 coins' });
       if (!Number.isFinite(bet) || bet < 1 || bet > getCoins(email)) return jsonResp(400, { error: 'invalid bet' });
+
+      if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
 
       const symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣'];
       const rigged = isRigged();

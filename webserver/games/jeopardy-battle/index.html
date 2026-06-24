@@ -416,7 +416,7 @@
 
   <div id="wager-form" class="wager-form" style="display:none;">
     <label style="color:var(--blue-text)">Your Wager:</label>
-    <input type="number" id="wager-input" min="5" placeholder="Amount">
+    <input type="number" id="wager-input" min="0" placeholder="Amount">
     <button class="btn btn-accent" onclick="submitWager()">Place Wager</button>
     <span id="wager-max-label" style="color:var(--muted);font-size:0.85rem;"></span>
   </div>
@@ -437,6 +437,38 @@
       <div style="font-size:0.85rem;color:var(--muted);margin-bottom:8px;">Correct Answer:</div>
       <div class="reveal-answer" id="reveal-answer-text"></div>
       <div id="reveal-result" style="margin-top:8px;font-weight:600;"></div>
+    </div>
+  </div>
+
+  <!-- Final Jeopardy Area -->
+  <div id="final-jeopardy-area" style="display:none; width: 100%; max-width: 600px; margin: 0 auto; flex-direction: column; gap: 15px; align-items: center;">
+    <div id="final-wager-form" class="wager-form" style="display:none; width: 100%;">
+      <label style="color:var(--blue-text); font-weight: 600;">Your Final Jeopardy Wager:</label>
+      <input type="number" id="final-wager-input" min="0" placeholder="Wager amount">
+      <button class="btn btn-accent" onclick="submitFinalWager()">Submit Wager</button>
+      <span id="final-wager-max-label" style="color:var(--muted);font-size:0.85rem;"></span>
+    </div>
+    
+    <div id="final-wager-waiting" style="display:none; color:var(--muted); font-size:1.1rem;">
+      Wager submitted. Waiting for other players...
+    </div>
+
+    <div id="final-answer-form" class="answer-form" style="display:none; width: 100%;">
+      <div class="countdown" id="final-answer-countdown"></div>
+      <input type="text" id="final-answer-input" placeholder="What is..." autocomplete="off">
+      <button class="btn btn-accent" onclick="submitFinalAnswer()">Submit Answer</button>
+    </div>
+
+    <div id="final-answer-waiting" style="display:none; color:var(--muted); font-size:1.1rem;">
+      Answer submitted. Waiting for other players...
+    </div>
+
+    <div id="final-reveal-area" style="display:none; width: 100%;">
+      <div class="reveal-box" id="final-reveal-box" style="margin-top: 15px; width: 100%;">
+        <div style="font-size:0.85rem;color:var(--muted);margin-bottom:8px;">Correct Answer:</div>
+        <div class="reveal-answer" id="final-reveal-answer-text"></div>
+        <div id="final-players-results" style="margin-top:15px; display:flex; flex-direction:column; gap:8px;"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -551,7 +583,7 @@ function copyInviteLink() {
   });
 }
 
-// ── TAB VISIBILITY ────────────────────────────────────────────────────────────
+// ── TAB & WINDOW VISIBILITY ───────────────────────────────────────────────────
 document.addEventListener('visibilitychange', async () => {
   if (!currentGameId) return;
   tabHidden = document.hidden;
@@ -561,6 +593,28 @@ document.addEventListener('visibilitychange', async () => {
   if (tabHidden && lastState && lastState.activeClue && lastState.activeClue.phase === 'answering') {
     document.getElementById('tab-warning').style.display = '';
   } else {
+    document.getElementById('tab-warning').style.display = 'none';
+  }
+});
+
+window.addEventListener('blur', async () => {
+  if (!currentGameId) return;
+  tabHidden = true;
+  try {
+    await api('/api/jeopardy/visibility', { gameId: currentGameId, hidden: true });
+  } catch(e) {}
+  if (lastState && lastState.activeClue && lastState.activeClue.phase === 'answering') {
+    document.getElementById('tab-warning').style.display = '';
+  }
+});
+
+window.addEventListener('focus', async () => {
+  if (!currentGameId) return;
+  tabHidden = document.hidden;
+  try {
+    await api('/api/jeopardy/visibility', { gameId: currentGameId, hidden: tabHidden });
+  } catch(e) {}
+  if (!tabHidden) {
     document.getElementById('tab-warning').style.display = 'none';
   }
 });
@@ -708,21 +762,35 @@ function handleState(state) {
   const isMyTurn = state.turn === myEmail;
   const turnDot = document.getElementById('turn-indicator-dot');
   const turnText = document.getElementById('turn-text');
-  turnDot.className = 'indicator' + (isMyTurn ? '' : ' theirs');
-  if (state.activeClue) {
-    const ac = state.activeClue;
-    if (ac.phase === 'buzzing') {
-      turnText.textContent = isMyTurn ? '🔔 Open buzzer – first to buzz wins!' : '🔔 Buzzer open – be fast!';
-    } else if (ac.phase === 'answering') {
-      const answerer = ac.buzzedBy || (ac.isDailyDouble ? state.turn : null);
-      turnText.textContent = answerer === myEmail ? '⏰ Answer the question!' : `⏰ ${(answerer || '?').split('@')[0]} is answering...`;
-    } else if (ac.phase === 'wagering') {
-      turnText.textContent = isMyTurn ? '💰 Place your Daily Double wager!' : '💰 Daily Double – waiting for wager...';
-    } else if (ac.phase === 'reveal') {
-      turnText.textContent = `✅ Correct answer: "${ac.revealAnswer || '...'}"`;
+  if (state.status === 'final_jeopardy') {
+    const fj = state.finalJeopardy;
+    turnDot.className = 'indicator';
+    if (fj) {
+      if (fj.phase === 'wagering') {
+        turnText.textContent = fj.wagerSubmitted ? '💰 Wager submitted! Waiting for others...' : '💰 Place your Final Jeopardy wager!';
+      } else if (fj.phase === 'answering') {
+        turnText.textContent = fj.answerSubmitted ? '⏰ Answer submitted! Waiting for others...' : '⏰ Submit your Final Jeopardy answer!';
+      } else if (fj.phase === 'reveal') {
+        turnText.textContent = `✅ Final Jeopardy Reveal!`;
+      }
     }
   } else {
-    turnText.textContent = isMyTurn ? '🎯 Your turn – pick a clue!' : `Waiting for ${(state.turn || '').split('@')[0]}...`;
+    turnDot.className = 'indicator' + (isMyTurn ? '' : ' theirs');
+    if (state.activeClue) {
+      const ac = state.activeClue;
+      if (ac.phase === 'buzzing') {
+        turnText.textContent = isMyTurn ? '🔔 Open buzzer – first to buzz wins!' : '🔔 Buzzer open – be fast!';
+      } else if (ac.phase === 'answering') {
+        const answerer = ac.buzzedBy || (ac.isDailyDouble ? state.turn : null);
+        turnText.textContent = answerer === myEmail ? '⏰ Answer the question!' : `⏰ ${(answerer || '?').split('@')[0]} is answering...`;
+      } else if (ac.phase === 'wagering') {
+        turnText.textContent = isMyTurn ? '💰 Place your Daily Double wager!' : '💰 Daily Double – waiting for wager...';
+      } else if (ac.phase === 'reveal') {
+        turnText.textContent = `✅ Correct answer: "${ac.revealAnswer || '...'}"`;
+      }
+    } else {
+      turnText.textContent = isMyTurn ? '🎯 Your turn – pick a clue!' : `Waiting for ${(state.turn || '').split('@')[0]}...`;
+    }
   }
 
   // Handle clue overlay
@@ -786,20 +854,115 @@ function renderBoard(state) {
 function handleClueOverlay(state) {
   const overlay = document.getElementById('clue-overlay');
   const ac = state.activeClue;
-  if (!ac) {
+  const fj = state.finalJeopardy;
+  if (!ac && !fj) {
     closeClueOverlay();
     return;
   }
-  const clueKey = `${ac.cat}|${ac.val}|${ac.phase}`;
   overlay.classList.add('active');
-  document.getElementById('clue-category-label').textContent = ac.cat;
-  document.getElementById('clue-value-label').textContent = `$${ac.val}${ac.isDailyDouble ? ' – ✦ DAILY DOUBLE!' : ''}`;
-  document.getElementById('clue-text-display').textContent = ac.clue || '…';
-  // Hide all sub-areas
+  // Hide all area defaults
   document.getElementById('wager-form').style.display = 'none';
   document.getElementById('buzz-area').style.display = 'none';
   document.getElementById('answer-form').style.display = 'none';
   document.getElementById('reveal-area').style.display = 'none';
+  document.getElementById('final-jeopardy-area').style.display = 'none';
+
+  if (fj) {
+    document.getElementById('final-jeopardy-area').style.display = 'flex';
+    document.getElementById('clue-category-label').textContent = fj.cat;
+    document.getElementById('clue-value-label').textContent = '✦ FINAL JEOPARDY! ✦';
+    
+    if (fj.phase === 'wagering') {
+      document.getElementById('clue-text-display').textContent = 'Place your wager based on this category!';
+      document.getElementById('clue-phase-label').textContent = 'Wagering Phase';
+      
+      document.getElementById('final-answer-form').style.display = 'none';
+      document.getElementById('final-answer-waiting').style.display = 'none';
+      document.getElementById('final-reveal-area').style.display = 'none';
+      
+      if (fj.wagerSubmitted) {
+        document.getElementById('final-wager-form').style.display = 'none';
+        document.getElementById('final-wager-waiting').style.display = 'block';
+      } else {
+        document.getElementById('final-wager-form').style.display = 'flex';
+        document.getElementById('final-wager-waiting').style.display = 'none';
+        
+        const myScore = (state.scores || {})[myEmail] || 0;
+        const max = Math.max(1000, myScore);
+        document.getElementById('final-wager-max-label').textContent = `Max wager: $${max}`;
+        document.getElementById('final-wager-input').max = max;
+        document.getElementById('final-wager-input').value = '';
+      }
+    } else if (fj.phase === 'answering') {
+      document.getElementById('clue-text-display').textContent = fj.clue || '…';
+      document.getElementById('clue-phase-label').textContent = 'Submit your answer!';
+      
+      document.getElementById('final-wager-form').style.display = 'none';
+      document.getElementById('final-wager-waiting').style.display = 'none';
+      document.getElementById('final-reveal-area').style.display = 'none';
+      
+      if (fj.answerSubmitted) {
+        document.getElementById('final-answer-form').style.display = 'none';
+        document.getElementById('final-answer-waiting').style.display = 'block';
+      } else {
+        document.getElementById('final-answer-form').style.display = 'flex';
+        document.getElementById('final-answer-waiting').style.display = 'none';
+        
+        const now = Date.now();
+        const deadline = fj.answerDeadline || (now + 30000);
+        startFinalAnswerCountdown(deadline);
+        if (lastClueKey !== `final|answering`) {
+          document.getElementById('final-answer-input').value = '';
+          document.getElementById('final-answer-input').focus();
+        }
+      }
+    } else if (fj.phase === 'reveal') {
+      document.getElementById('clue-text-display').textContent = fj.clue || '…';
+      document.getElementById('clue-phase-label').textContent = 'Final Jeopardy Results';
+      
+      document.getElementById('final-wager-form').style.display = 'none';
+      document.getElementById('final-wager-waiting').style.display = 'none';
+      document.getElementById('final-answer-form').style.display = 'none';
+      document.getElementById('final-answer-waiting').style.display = 'none';
+      
+      document.getElementById('final-reveal-area').style.display = 'block';
+      document.getElementById('final-reveal-answer-text').textContent = fj.revealAnswer || '…';
+      
+      const resultsEl = document.getElementById('final-players-results');
+      const revealed = fj.revealedAnswers || {};
+      resultsEl.innerHTML = Object.entries(revealed).map(([email, obj]) => {
+        const displayEmail = email.split('@')[0];
+        const isCorrect = obj.correct;
+        const changeStr = (isCorrect ? '+' : '-') + '$' + Math.abs(obj.wager).toLocaleString();
+        const color = isCorrect ? 'var(--success)' : 'var(--danger)';
+        const badge = isCorrect ? '✅ Correct' : '❌ Incorrect';
+        return `
+          <div style="background:rgba(255,255,255,0.05); padding:10px; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong style="color:#fff;">${displayEmail}</strong>
+              <div style="font-size:0.85rem; color:var(--muted); margin-top:2px;">
+                Answer: "${obj.answer || '(No Answer)'}"
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <span style="font-weight:600; color:${color};">${changeStr}</span>
+              <div style="font-size:0.75rem; color:var(--muted); margin-top:2px;">
+                Wager: $${obj.wager.toLocaleString()} (${badge})
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    lastClueKey = `final|${fj.phase}`;
+    return;
+  }
+
+  // Regular clue handling
+  const clueKey = `${ac.cat}|${ac.val}|${ac.phase}`;
+  document.getElementById('clue-category-label').textContent = ac.cat;
+  document.getElementById('clue-value-label').textContent = `$${ac.val}${ac.isDailyDouble ? ' – ✦ DAILY DOUBLE!' : ''}`;
+  document.getElementById('clue-text-display').textContent = ac.clue || '…';
 
   const myTurn = state.turn === myEmail;
   const iAmAnswering = ac.buzzedBy === myEmail || (ac.isDailyDouble && myTurn);
@@ -826,6 +989,11 @@ function handleClueOverlay(state) {
       buzzBtn.textContent = '⚠️ PENALIZED';
       document.getElementById('buzz-countdown').textContent = '❌';
       document.getElementById('clue-phase-label').textContent = '⚠️ Tab penalty applied! You cannot buzz in.';
+    } else if (ac.wrongPlayers && ac.wrongPlayers.includes(myEmail)) {
+      buzzBtn.disabled = true;
+      buzzBtn.textContent = '❌ LOCKOUT';
+      document.getElementById('buzz-countdown').textContent = '❌';
+      document.getElementById('clue-phase-label').textContent = '❌ You already guessed incorrectly!';
     } else if (now < openAt) {
       buzzBtn.disabled = true;
       buzzBtn.textContent = '🔔 BUZZ IN';
@@ -899,6 +1067,7 @@ function closeClueOverlay() {
 function clearCountdowns() {
   clearInterval(countdownTimer);
   clearInterval(buzzCountdownTimer);
+  clearInterval(finalAnswerCountdownTimer);
 }
 
 function startAnswerCountdown(deadline) {
@@ -925,7 +1094,7 @@ async function selectClue(cat, val) {
 
 async function submitWager() {
   const wager = parseInt(document.getElementById('wager-input').value) || 0;
-  if (wager < 5) { showStatus('Minimum wager is $5', 'error'); return; }
+  if (wager < 0) { showStatus('Wager cannot be negative', 'error'); return; }
   try {
     const d = await api('/api/jeopardy/wager', { gameId: currentGameId, wager });
     if (d.error) showStatus(d.error, 'error');
@@ -957,6 +1126,49 @@ async function submitAnswer() {
 // Enter key submits answer
 document.getElementById('answer-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') submitAnswer();
+});
+
+async function submitFinalWager() {
+  const wager = parseInt(document.getElementById('final-wager-input').value) || 0;
+  if (wager < 0) { showStatus('Wager cannot be negative', 'error'); return; }
+  try {
+    const d = await api('/api/jeopardy/final/wager', { gameId: currentGameId, wager });
+    if (d.error) showStatus(d.error, 'error');
+    else await poll();
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+async function submitFinalAnswer() {
+  const answer = document.getElementById('final-answer-input').value.trim();
+  if (!answer) { showStatus('Type an answer!', 'error'); return; }
+  try {
+    const d = await api('/api/jeopardy/final/answer', { gameId: currentGameId, answer });
+    if (d.error) showStatus(d.error, 'error');
+    else await poll();
+  } catch(e) { showStatus('Network error', 'error'); }
+}
+
+let finalAnswerCountdownTimer = null;
+function startFinalAnswerCountdown(deadline) {
+  clearInterval(finalAnswerCountdownTimer);
+  const el = document.getElementById('final-answer-countdown');
+  const tick = () => {
+    const rem = Math.ceil((deadline - Date.now()) / 1000);
+    if (rem <= 0) {
+      el.textContent = '0';
+      el.className = 'countdown low';
+      clearInterval(finalAnswerCountdownTimer);
+      return;
+    }
+    el.textContent = rem;
+    el.className = rem <= 5 ? 'countdown low' : 'countdown';
+  };
+  tick();
+  finalAnswerCountdownTimer = setInterval(tick, 500);
+}
+
+document.getElementById('final-answer-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitFinalAnswer();
 });
 
 // ── GAME OVER ─────────────────────────────────────────────────────────────────
