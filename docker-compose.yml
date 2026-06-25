@@ -27,7 +27,24 @@ services:
       - ./mail:/app/mail
       - ./logs:/app/logs
       - ./webserver:/app/webserver
-      - ./.env:/app/.env:ro
+    environment:
+      - HOSTINGER_USER
+      - HOSTINGER_PASS
+      - NTFY_TOPIC
+      - SUPPORT_EMAIL
+      - SUPPORT_PASS
+      - GMAIL_USER_ALT
+      - GMAIL_USER
+      - GMAIL_PASS_ALT
+      - GMAIL_PASS
+      - VAPID_PUBLIC_KEY
+      - VAPID_PRIVATE_KEY
+      - GEMINI_API_KEY
+      - GROQ_API_KEY
+      - RECAPTCHA_SECRET_KEY
+      - SECRET_KEY
+      - GOOGLE_ANALYTICS_ID
+      - RECAPTCHA_SITE_KEY
 
   # Production Slot B: Green Webserver
   webserver-green:
@@ -42,7 +59,24 @@ services:
       - ./mail:/app/mail
       - ./logs:/app/logs
       - ./webserver:/app/webserver
-      - ./.env:/app/.env:ro
+    environment:
+      - HOSTINGER_USER
+      - HOSTINGER_PASS
+      - NTFY_TOPIC
+      - SUPPORT_EMAIL
+      - SUPPORT_PASS
+      - GMAIL_USER_ALT
+      - GMAIL_USER
+      - GMAIL_PASS_ALT
+      - GMAIL_PASS
+      - VAPID_PUBLIC_KEY
+      - VAPID_PRIVATE_KEY
+      - GEMINI_API_KEY
+      - GROQ_API_KEY
+      - RECAPTCHA_SECRET_KEY
+      - SECRET_KEY
+      - GOOGLE_ANALYTICS_ID
+      - RECAPTCHA_SITE_KEY
 
   # Node.js + Xvfb Stream Proxy (Port 8081)
   proxy:

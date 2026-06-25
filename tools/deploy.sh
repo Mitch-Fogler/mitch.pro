@@ -4,11 +4,22 @@
 set -euo pipefail
 
 CADDYFILE_PATH="/home/mitch/server/bun/caddy/Caddyfile"
-# Load NTFY_TOPIC from .env
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_PATH="$SCRIPT_DIR/../.env"
-if [ -f "$ENV_PATH" ]; then
-    NTFY_TOPIC=$(grep -E "^NTFY_TOPIC=" "$ENV_PATH" | cut -d= -f2- | tr -d '"' | tr -d "'")
+
+# Ensure we are in the project root directory so git, docker-compose, and Doppler scope resolve correctly
+cd "$SCRIPT_DIR/.."
+
+# 1. Fetch only NTFY_TOPIC for the deploy script's notifications
+NTFY_TOPIC=""
+DOPPLER_AVAILABLE=false
+if command -v doppler &> /dev/null && doppler secrets download --format json &> /dev/null; then
+    DOPPLER_AVAILABLE=true
+    NTFY_TOPIC=$(doppler secrets get NTFY_TOPIC --plain 2>/dev/null || echo "")
+else
+    ENV_PATH="$SCRIPT_DIR/../.env"
+    if [ -f "$ENV_PATH" ]; then
+        NTFY_TOPIC=$(grep -E "^NTFY_TOPIC=" "$ENV_PATH" | cut -d= -f2- | tr -d '"' | tr -d "'")
+    fi
 fi
 NTFY_TOPIC="${NTFY_TOPIC:-}"
 
@@ -18,6 +29,15 @@ send_notification() {
     local title="${2:-Deploy Status}"
     local priority="${3:-default}"
     curl -s -H "Title: $title" -H "Priority: $priority" -d "$msg" "https://ntfy.sh/$NTFY_TOPIC" > /dev/null || true
+}
+
+# Helper to run docker compose wrapped in doppler run (if Doppler is available), keeping secrets off disk and avoiding bash evaluation bugs.
+run_docker_compose() {
+    if [ "$DOPPLER_AVAILABLE" = true ]; then
+        doppler run -- docker compose "$@"
+    else
+        docker compose "$@"
+    fi
 }
 
 # 0. Pull the latest code
@@ -51,7 +71,7 @@ send_notification "Rebuilding and starting webserver-$INACTIVE_SLOT (Port $INACT
 
 # 2. Build and boot the inactive slot container
 echo "[deploy] Rebuilding and starting webserver-$INACTIVE_SLOT..."
-docker compose --progress=plain up -d --build "webserver-$INACTIVE_SLOT"
+run_docker_compose --progress=plain up -d --build "webserver-$INACTIVE_SLOT"
 
 # 3. Poll the inactive container's health check until it is fully ready
 echo "[deploy] Waiting for webserver-$INACTIVE_SLOT to be fully started and responsive..."
@@ -88,11 +108,11 @@ EOF
 
 # 5. Hot-reload Caddy (0ms downtime swap)
 echo "[deploy] Reloading Caddy proxy configuration..."
-docker compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyfile
+run_docker_compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyfile
 
 # 6. Tear down the old container slot
 echo "[deploy] Stopping and tearing down the old webserver-$ACTIVE_SLOT..."
-docker compose stop "webserver-$ACTIVE_SLOT"
+run_docker_compose stop "webserver-$ACTIVE_SLOT"
 
 echo "[deploy] Deployment successfully completed! webserver-$INACTIVE_SLOT is now serving production traffic."
 send_notification "Successfully swapped traffic from webserver-$ACTIVE_SLOT to webserver-$INACTIVE_SLOT (0ms downtime)!" "Swap Successful" "high"
