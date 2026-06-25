@@ -19,7 +19,4 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
-            cd /home/mitch/server/bun
-            git pull origin master
-            chmod +x tools/deploy.sh
-            ./tools/deploy.sh
+            sudo /home/mitch/server/bun/tools/deploy.sh

@@ -15,6 +15,12 @@ RUN bun install --production
 # Copy the rest of the application code
 COPY . .
 
+# Set ownership to bun user
+RUN chown -R bun:bun /app
+
+# Switch to non-root user
+USER bun
+
 # Expose port 6800
 EXPOSE 6800
 

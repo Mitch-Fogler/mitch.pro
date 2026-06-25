@@ -20,6 +20,17 @@ send_notification() {
     curl -s -H "Title: $title" -H "Priority: $priority" -d "$msg" "https://ntfy.sh/$NTFY_TOPIC" > /dev/null || true
 }
 
+# 0. Pull the latest code
+if [ "$(id -u)" -eq 0 ]; then
+    # Running as root (via sudo / deployer), pull as mitch to preserve credentials and ownership
+    echo "[deploy] Pulling latest code from GitHub as mitch..."
+    sudo -u mitch -H git -C /home/mitch/server/bun pull origin master
+else
+    # Running as mitch directly, pull directly
+    echo "[deploy] Pulling latest code from GitHub..."
+    git -C /home/mitch/server/bun pull origin master
+fi
+
 echo "[deploy] Starting Blue-Green deployment swap..."
 
 # 1. Determine which slot is currently active based on Caddyfile routing
