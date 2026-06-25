@@ -150,6 +150,11 @@ function makeSiteLink(type, href, label, extraClass) {
       return;
     }
     try {
+      var visits = JSON.parse(localStorage.getItem('_prefVisits') || '{}');
+      visits[href] = (visits[href] || 0) + 1;
+      localStorage.setItem('_prefVisits', JSON.stringify(visits));
+    } catch(err) {}
+    try {
       e.preventDefault();
       launchSite(type, href);
     } catch (err) {
@@ -171,6 +176,7 @@ function categoryForLabel(label, isAdmin) {
 
 function describeCategory(cat) {
   return ({
+    'Popular & Frequent': 'Your most used and globally popular pages',
     'Admin': 'Private controls and advanced tools',
     'MitchCoin Games': 'Play and earn verified MitchCoins',
     'Entertainment': 'Games, canvas, mitch.prox, media, and fun stuff',
@@ -261,10 +267,55 @@ function parseSites(text) {
     categories[cat].push(makeSiteLink(type, href, label, isAdmin ? 'admin-site-link' : ''));
   }
 
+  // ── Popular & Frequent links ──
+  var popularHrefs = [
+    '/profile/', '/profile',
+    '/games/jeopardy-battle/', '/games/jeopardy-battle',
+    '/games/battleship/', '/games/battleship',
+    '/casino/', '/casino',
+    '/canvas/', '/canvas',
+    '/encrypt/', '/encrypt',
+    '/shop/', '/shop',
+    '/public-chat/', '/public-chat',
+    '/marketplace/', '/marketplace'
+  ];
+  var visits = {};
+  try { visits = JSON.parse(localStorage.getItem('_prefVisits') || '{}'); } catch(e) {}
+
+  function getPopularityScore(entry) {
+    var href = entry.href;
+    var normHref = href.endsWith('/') ? href : href + '/';
+    var normHref2 = href.endsWith('/') ? href.slice(0, -1) : href;
+
+    var localVisits = visits[normHref] || visits[normHref2] || visits[href] || 0;
+    var globalVisits = _gameVisits(href) || _gameVisits(normHref) || _gameVisits(normHref2) || 0;
+    var isDefaultPopular = popularHrefs.includes(normHref) || popularHrefs.includes(normHref2) || popularHrefs.includes(href);
+
+    return (localVisits * 10) + globalVisits + (isDefaultPopular ? 50 : 0);
+  }
+
+  var candidateEntries = entries.filter(function(e) {
+    if (e.isAdmin) return false;
+    return getPopularityScore(e) > 0;
+  });
+
+  candidateEntries.sort(function(a, b) {
+    return getPopularityScore(b) - getPopularityScore(a);
+  });
+
+  var topPopular = candidateEntries.slice(0, 8);
+  if (topPopular.length > 0) {
+    categories['Popular & Frequent'] = topPopular.map(function(e) {
+      return makeSiteLink(e.type, e.href, e.label, 'popular-site-link');
+    });
+  }
+
   updateHomeCounts(entries, categories);
   renderQuickActions(entries);
 
   var sortedCats = Object.keys(categories).sort(function(a, b) {
+    if (a === 'Popular & Frequent') return -1;
+    if (b === 'Popular & Frequent') return 1;
     if (a === 'Admin') return 1;
     if (b === 'Admin') return -1;
     var timeA = (_userStats.playtime && _userStats.playtime[a]) || 0;
@@ -478,6 +529,11 @@ function _makeGameLink(entry, label, rankText) {
   (function(t, h) {
     a.onclick = function(ev) {
       ev.preventDefault();
+      try {
+        var visits = JSON.parse(localStorage.getItem('_prefVisits') || '{}');
+        visits[h] = (visits[h] || 0) + 1;
+        localStorage.setItem('_prefVisits', JSON.stringify(visits));
+      } catch(err) {}
       try {
         var abEl = document.getElementById('abToggle');
         if (abEl && abEl.checked) { openAboutBlank(h); return; }
@@ -762,6 +818,86 @@ function escText(t) {
   d.textContent = t == null ? '' : String(t);
   return d.innerHTML;
 }
+
+  async function loadDailyLoginState() {
+    var streakLabel = document.getElementById('daily-login-streak-label');
+    var msgLabel = document.getElementById('daily-login-message');
+    var btn = document.getElementById('daily-login-btn');
+    var progressBar = document.getElementById('daily-login-progress-bar');
+    var progressText = document.getElementById('daily-login-progress-text');
+    if (!btn || !msgLabel) return;
+
+    try {
+      var r = await fetch('/api/daily-login/state', { credentials: 'include' });
+      if (!r.ok) {
+        msgLabel.textContent = 'Sign in to claim daily login rewards.';
+        btn.disabled = true;
+        return;
+      }
+      var state = await r.json();
+      if (streakLabel) streakLabel.textContent = 'Streak: ' + state.streak + ' day' + (state.streak === 1 ? '' : 's');
+      var freezeEl = document.getElementById('daily-login-freezes');
+      if (freezeEl) {
+        if (state.streakFreezes > 0) {
+          freezeEl.textContent = '❄️ ' + state.streakFreezes;
+          freezeEl.style.display = 'inline-block';
+        } else {
+          freezeEl.style.display = 'none';
+        }
+      }
+      msgLabel.textContent = state.message;
+      btn.disabled = !state.canClaim;
+      if (state.canClaim) {
+        btn.textContent = 'Claim +' + state.nextReward + ' Coins!';
+        btn.onclick = claimDailyReward;
+      } else {
+        btn.textContent = 'Claimed Today';
+      }
+
+      // Update progress bar (0 to 60 days)
+      var displayStreak = state.streak;
+      if (state.canClaim) displayStreak = state.nextStreak;
+      var percent = Math.min(100, Math.floor((displayStreak / 60) * 100));
+      if (progressBar) progressBar.style.width = percent + '%';
+      if (progressText) progressText.textContent = 'Day ' + displayStreak + '/60';
+    } catch(e) {
+      msgLabel.textContent = 'Failed to load daily login reward state.';
+      btn.disabled = true;
+    }
+  }
+
+  async function claimDailyReward() {
+    var btn = document.getElementById('daily-login-btn');
+    if (btn) btn.disabled = true;
+    try {
+      var r = await fetch('/api/daily-login/claim', { method: 'POST', credentials: 'include' });
+      var res = await r.json();
+      if (r.ok && res.success) {
+        // Show elegant popup / message
+        var note = document.createElement('div');
+        note.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--t-gr, #10b981);color:#fff;padding:12px 24px;border-radius:12px;font-weight:800;z-index:100000;box-shadow:0 10px 40px rgba(0,0,0,0.5);animation:bonus-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;';
+        note.innerHTML = '🎁 ' + res.message;
+        document.body.appendChild(note);
+        setTimeout(function() {
+          note.style.opacity = '0';
+          note.style.transform = 'translateX(-50%) translateY(-20px)';
+          note.style.transition = 'all 0.5s ease';
+          setTimeout(function() { note.remove(); }, 500);
+        }, 4000);
+        
+        // Refresh state
+        loadDailyLoginState();
+        // Also refresh user coins / header profile if needed
+        if (typeof loadGreeting === 'function') loadGreeting();
+      } else {
+        alert(res.error || 'Failed to claim daily reward.');
+        loadDailyLoginState();
+      }
+    } catch(e) {
+      alert('Error claiming daily reward.');
+      loadDailyLoginState();
+    }
+  }
 
   async function setupAdminPanel() {
     try {
@@ -1272,6 +1408,7 @@ async function initHome() {
   loadTopGames();
   loadGreeting();
   setupAdminPanel();
+  loadDailyLoginState();
   setupAdminNotificationMode();
   loadOnlineMembers();
   setInterval(loadOnlineMembers, 15000);
@@ -1924,54 +2061,92 @@ if (document.readyState === 'loading') {
 
   #links-empty { display: none; margin-top: 12px; }
 
-  #admin-dashboard-card {
-    display: none;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-    padding: 11px;
-    border-radius: var(--t-radius, 8px);
-    border: 1px solid rgba(239,68,68,.38);
-    background: linear-gradient(135deg, rgba(239,68,68,.16), rgba(255,255,255,.035));
-    color: #fecaca;
-    text-decoration: none;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+  /* Daily Login Card Styles */
+  .daily-login-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 15px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: transform 0.2s ease, border-color 0.2s ease;
   }
 
-  #admin-dashboard-card:hover {
-    border-color: rgba(248,113,113,.68);
+  .daily-login-card:hover {
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .daily-login-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+  }
+
+  .daily-login-msg {
+    font-size: 0.8rem;
+    color: var(--t-fg2);
+    line-height: 1.4;
+  }
+
+  .daily-login-claim-btn {
+    width: 100%;
+    background: linear-gradient(135deg, var(--t-ac, #3b82f6), var(--t-ac2, #1d4ed8)) !important;
+    color: #fff !important;
+    border: none !important;
+    padding: 9px 16px !important;
+    border-radius: var(--t-radius, 8px) !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25) !important;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease !important;
+  }
+
+  .daily-login-claim-btn:hover:not(:disabled) {
     transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4) !important;
   }
 
-  .admin-card-icon {
-    width: 34px;
-    height: 34px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    background: rgba(239,68,68,.16);
-    color: #f87171;
-    flex: 0 0 auto;
+  .daily-login-claim-btn:active:not(:disabled) {
+    transform: translateY(1px);
   }
 
-  #admin-dashboard-card strong {
-    display: block;
-    color: #fff;
-    font-size: .82rem;
-    line-height: 1.25;
+  .daily-login-claim-btn:disabled {
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: rgba(255, 255, 255, 0.25) !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.03) !important;
   }
 
-  #admin-dashboard-card small {
-    display: block;
-    color: #fecaca;
-    opacity: .72;
-    font-size: .69rem;
-    margin-top: 2px;
-    max-width: 180px;
+  .daily-login-progress-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+  }
+
+  .progress-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #059669);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+
+  .progress-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.68rem;
+    color: var(--t-fg2);
+    opacity: 0.8;
   }
 
   #top-games {
@@ -3276,6 +3451,18 @@ if (document.readyState === 'loading') {
     }
   }
 
+  @media (max-width: 600px) {
+    .category-grid {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+    .home-toolbar {
+      grid-template-columns: minmax(0, 1fr) !important;
+    }
+    #stats-bar {
+      grid-column: span 1 !important;
+    }
+  }
+
   /* ========================================== */
   /* Elegant Light-Theme Overrides for Glassmorphic Home */
   /* ========================================== */
@@ -3497,13 +3684,7 @@ if (document.readyState === 'loading') {
 <style>#_ab{position:fixed;bottom:55px;left:12px;z-index:2147483630;width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;background:#81b64c;color:#fff;font-size:.65rem;font-weight:700;letter-spacing:.02em;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 14px rgba(0,0,0,.45);transition:transform .15s,box-shadow .15s;font-family:system-ui,sans-serif;}#_ab:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(0,0,0,.55);}#_ap{position:fixed;bottom:103px;left:12px;z-index:2147483629;width:310px;max-height:440px;display:flex;flex-direction:column;background:#1e1a17;border:1px solid #3d3a37;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.65);overflow:hidden;transform:translateY(10px) scale(.97);opacity:0;pointer-events:none;transition:transform .18s ease,opacity .18s ease;}#_ap.vis{transform:none;opacity:1;pointer-events:all;}#_ah{display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #3d3a37;font-family:system-ui,sans-serif;font-size:.8rem;font-weight:700;color:#e8e6e3;gap:6px;}#_ah .logo{color:#81b64c;font-size:.75rem;font-weight:900;}#_ah .title{flex:1;}#_ahx{background:none;border:none;color:#555;cursor:pointer;font-size:.9rem;padding:2px 5px;border-radius:4px;line-height:1;}#_ahx:hover{color:#e8e6e3;}#_am{flex:1;overflow-y:auto;padding:9px 11px;display:flex;flex-direction:column;gap:7px;font-family:system-ui,sans-serif;font-size:.79rem;line-height:1.55;min-height:60px;}._mb{max-width:88%;padding:6px 10px;border-radius:10px;word-break:break-word;}._mu{background:#302e2b;color:#e8e6e3;align-self:flex-end;border-radius:10px 10px 2px 10px;white-space:pre-wrap;}._ma{background:#272522;color:#bababa;align-self:flex-start;border-radius:10px 10px 10px 2px;}._ma p{margin:0 0 .4em;}._ma p:last-child{margin:0;}._ma strong{color:#e8e6e3;font-weight:700;}._ma em{font-style:italic;}._ma code{background:#1a1815;color:#81b64c;padding:1px 4px;border-radius:3px;font-size:.88em;font-family:monospace;}._ma pre{background:#1a1815;padding:7px 9px;border-radius:6px;overflow-x:auto;margin:.3em 0;}._ma pre code{background:none;padding:0;color:#c8c5c0;font-size:.85em;}._ma ul,._ma ol{margin:.2em 0 .2em 1.2em;padding:0;}._ma li{margin:.1em 0;}._ma h1,._ma h2,._ma h3{color:#e8e6e3;font-weight:700;margin:.3em 0 .15em;line-height:1.2;}._ma h1{font-size:1em;}._ma h2{font-size:.95em;}._ma h3{font-size:.9em;}._ma a{color:#81b64c;text-decoration:underline;}._ma hr{border:none;border-top:1px solid #3d3a37;margin:.4em 0;}._merr{color:#e57373;font-size:.73rem;align-self:center;padding:3px 8px;background:rgba(192,57,43,.12);border-radius:6px;}._mnotice{color:#f0c040;font-size:.69rem;align-self:center;padding:3px 8px;background:rgba(240,192,64,.08);border-radius:6px;}#_ai{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #3d3a37;align-items:flex-end;}#_at{flex:1;resize:none;background:#272522;border:1px solid #3d3a37;color:#e8e6e3;border-radius:8px;padding:6px 8px;font-size:.79rem;font-family:system-ui,sans-serif;outline:none;line-height:1.4;max-height:80px;overflow-y:auto;}#_at:focus{border-color:#81b64c;}#_as{background:#81b64c;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:.79rem;font-weight:700;cursor:pointer;flex-shrink:0;}#_as:disabled{opacity:.35;cursor:default;}</style></head>
 
 <body>
-<div id="top-left-shortcuts">
-  <a id="market-shortcut" href="/shop/" title="Open The Market">&#128722; Market</a>
-  <a id="marketplace-shortcut" href="/marketplace/" title="Player Marketplace">&#128188; Marketplace</a>
-  <a id="student-chat-shortcut" href="/encrypt/" title="Chat with other students">&#128172; Encrypted Chat</a>
-  <a id="public-chat-shortcut" href="/public-chat/" title="Public Plaza Square Chat">&#128227; Public Chat</a>
-  <a id="profile-shortcut" href="/profile/" title="Open your profile">&#128100; My profile</a>
-</div>
+
 <div id="admin-action-wrap">
   <a id="admin-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/advanced-admin.html" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Admin</a>
 </div>
@@ -3637,18 +3818,29 @@ if (document.readyState === 'loading') {
 
     <div class="home-grid">
       <aside class="home-quick-panel">
-        <div class="panel-heading">
-          <span>Start Here</span>
-          <small>Fastest routes</small>
+        <!-- Daily Login Widget -->
+        <div id="daily-login-widget" class="daily-login-card">
+          <div class="panel-heading" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
+            <span>Daily Login</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span id="daily-login-freezes" title="Streak Freezes Owned" style="font-size:0.7rem; color:#60a5fa; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.25); padding:2px 6px; border-radius:99px; display:none;">❄️ 0</span>
+              <small id="daily-login-streak-label">Streak: 0 days</small>
+            </div>
+          </div>
+          <div class="daily-login-body">
+            <div id="daily-login-message" class="daily-login-msg">Loading reward...</div>
+            <button id="daily-login-btn" class="daily-login-claim-btn" disabled>Claim Reward</button>
+            <div id="daily-login-progress-wrap" class="daily-login-progress-container">
+              <div class="progress-bar-bg">
+                <div id="daily-login-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+              </div>
+              <div class="progress-labels">
+                <span id="daily-login-progress-text">Day 0/60</span>
+                <span>🔥 Day 60: Premium</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div id="quick-actions-list"><div class="quick-empty">Loading shortcuts...</div></div>
-        <a id="admin-dashboard-card" data-task5-old="https://mitch.dnswish.com/" href="/advanced-admin.html">
-          <span class="admin-card-icon">&#9873;</span>
-          <span>
-            <strong>Advanced Admin Tools</strong>
-            <small id="admin-dashboard-name">Admin access</small>
-          </span>
-        </a>
         <div id="top-games" style="display: none;">
           <div class="panel-heading">
             <span>Most Played</span>

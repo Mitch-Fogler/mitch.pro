@@ -81,6 +81,7 @@ const APPEALS_FILE           = join(DATA_DIR, 'appeals.json');
 const APPLICATIONS_FILE      = join(DATA_DIR, 'applications.json');
 const PROFILES_FILE          = join(DATA_DIR, 'profiles.json');
 const COIN_GIFTS_FILE        = join(DATA_DIR, 'coin_gifts.json');
+const DAILY_LOGINS_FILE      = join(DATA_DIR, 'daily_logins.json');
 const DMS_FILE               = join(DATA_DIR, 'dms.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
 const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
@@ -881,12 +882,21 @@ function logBet(user, game, amount, outcome) {
   if (bettingFeed.length > 50) bettingFeed.pop();
 }
 
+function maskEmail(email) {
+  if (!email || !email.includes('@')) return 'anonymous';
+  const parts = email.split('@');
+  const local = parts[0];
+  const domain = parts[1];
+  if (local.length <= 2) return `${local[0]}*@${domain}`;
+  return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
+}
+
 function logProxyVisit(email, path) {
   try {
     const logs = loadJson(PROXY_LOG_FILE, []);
     const list = Array.isArray(logs) ? logs : [];
     list.push({
-      email: normalizeEmail(email),
+      email: maskEmail(email),
       path: String(path || '/').slice(0, 300),
       ts: Date.now(),
       at: new Date().toISOString()
@@ -930,6 +940,8 @@ const RATE_LIMITS = {
   '/api/migrateid':            [20,  60],
   '/api/vpn-check':            [30,  60],
   '/api/me/coins':             [30,  60],
+  '/api/daily-login/state':    [120, 60],
+  '/api/daily-login/claim':    [30,  60],
   '/api/me/logout-other':      [5,   60],
   '/api/leaderboard':          [10,  60],
   '/api/friends/list':             [30,  60],
@@ -1279,14 +1291,16 @@ function addCoins(email, amount, reason = '') {
   if (!email) return;
   const norm = normalizeEmail(email);
   const coins = loadCoins();
-  const adjusted = (amount > 0) ? (amount * globalCoinMultiplier) : amount;
+  const stats = loadUserStats();
+  const personalHH = (stats[norm]?.personal_happy_hour_until || 0) > Date.now();
+  const mult = personalHH ? Math.max(globalCoinMultiplier, 2.0) : globalCoinMultiplier;
+  const adjusted = (amount > 0) ? (amount * mult) : amount;
   const before = coins[norm] || 0;
   coins[norm] = Number(( before + adjusted ).toFixed(4));
   saveCoins(coins);
 
   // Track lifetime earned in stats
   if (amount > 0) {
-    const stats = loadUserStats();
     if (!stats[norm]) stats[norm] = {};
     stats[norm].lifetime_earned = (stats[norm].lifetime_earned || 0) + adjusted;
     saveUserStats(stats);
@@ -2453,6 +2467,56 @@ let applications = loadJson(APPLICATIONS_FILE, []);
 let tokensCache  = loadJson(TOKENS_FILE, {});
 let userStats    = loadJson(USER_STATS_FILE, {});
 let coinsCache   = loadJson(COINS_FILE, {});
+let dailyLogins  = loadJson(DAILY_LOGINS_FILE, {});
+function saveDailyLogins() {
+  saveJson(DAILY_LOGINS_FILE, dailyLogins);
+}
+
+function getDailyReward(streak) {
+  if (streak === 60) {
+    return { coins: 5000, grantPremium: true };
+  }
+  if (streak > 60) {
+    return { coins: 1000 + (streak - 60) * 100, grantPremium: false };
+  }
+  if (streak >= 31) {
+    return { coins: 400 + (streak - 1) * 50, grantPremium: false };
+  }
+  if (streak >= 15) {
+    return { coins: 200 + (streak - 1) * 30, grantPremium: false };
+  }
+  if (streak >= 8) {
+    return { coins: 100 + (streak - 1) * 20, grantPremium: false };
+  }
+  return { coins: 50 + (streak - 1) * 15, grantPremium: false };
+}
+
+function grantPremiumStatus(targetEmail, reason, approvedBy = 'system') {
+  const apps = applications;
+  const targetRaw = targetEmail.toLowerCase().trim();
+  const norm = normalizeEmail(targetRaw);
+  if (isPremiumEmail(norm)) return;
+  apps.unshift({
+    name: targetRaw.split('@')[0],
+    email: targetRaw,
+    type: 'premium',
+    status: 'approved',
+    grantPremium: true,
+    why: reason,
+    submitted_at: Date.now(),
+    approved_at: Date.now(),
+    approved_by: approvedBy,
+  });
+  saveApplications(apps);
+  try {
+    const noticeTitle = 'Premium granted';
+    const noticeMessage = `${approvedBy} granted you Premium. Reason: ${reason}`;
+    addAdminNotification(targetRaw, noticeTitle, noticeMessage, approvedBy);
+    pushAdminNotification(targetRaw, noticeTitle, noticeMessage);
+  } catch (e) {
+    console.error(`[grantPremiumStatus] Error sending notification: ${e.message}`);
+  }
+}
 
 const zonePixelsMap = new Map();
 const zoneChunksMap = new Map();
@@ -4110,8 +4174,9 @@ let SHOP_CATALOG = [
   { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
   { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
   { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
-  { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
-  { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' }
+  { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' },
+  { id: 'streak_freeze', name: 'Streak Freeze', section: 'Utility', type: 'utility', costType: 'streak_freeze', cost: 150, desc: 'Automatically saves your Daily Login streak if you miss a day!' },
+  { id: 'happy_hour_ticket', name: 'Personal Happy Hour (30m)', section: 'Utility', type: 'utility', costType: 'happy_hour_ticket', cost: 350, desc: 'Trigger a personal 30-minute Happy Hour for 2X coins on all games and canvas!' }
 ];
 try {
   const catalogPath = join(DATA_DIR, 'shop_catalog.json');
@@ -4311,6 +4376,9 @@ function ownsShopItem(email, item, inventory = buildInventory(email)) {
   if (item.costType === 'vip_casino_pass') {
     const stats = loadUserStats();
     return (stats[normalizeEmail(email)]?.vip_casino_until || 0) > Date.now();
+  }
+  if (item.costType === 'streak_freeze' || item.costType === 'happy_hour_ticket') {
+    return false;
   }
   const cfg = SHOP_TYPE_CONFIG[item.costType];
   return !!cfg && inventory.cosmetics[cfg.bucket].includes(item.id);
@@ -5429,6 +5497,18 @@ Mitch.pro Team`;
         if (!stats[norm]) stats[norm] = {};
         if (stats[norm].vip_casino_until > Date.now()) return jsonResp(400, { error: 'You already have an active VIP pass.' });
         stats[norm].vip_casino_until = Date.now() + (24 * 3600 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'streak_freeze') {
+        const data = dailyLogins[norm] || { lastClaimDate: '', streak: 0, streakFreezes: 0 };
+        data.streakFreezes = (data.streakFreezes || 0) + 1;
+        dailyLogins[norm] = data;
+        saveDailyLogins();
+      } else if (type === 'happy_hour_ticket') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentHHUntil = stats[norm].personal_happy_hour_until || 0;
+        const baseTime = Math.max(Date.now(), currentHHUntil);
+        stats[norm].personal_happy_hour_until = baseTime + (30 * 60 * 1000);
         saveUserStats(stats);
       }
 
@@ -7543,7 +7623,7 @@ function loadAllGamesList() {
           const lastReward = userStats[norm].last_ping_reward || 0;
           const now = Date.now();
           if (now - lastReward >= 60000) { 
-            addCoins(em, 1.0);
+            addCoins(em, 0.25);
             userStats[norm].last_ping_reward = now;
           }
           if (now - (userStats[norm].last_active_at || 0) >= 10000) {
@@ -8694,6 +8774,71 @@ function loadAllGamesList() {
       }
     }
 
+    if (path === '/api/daily-login/claim' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const uid     = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
+      const ban = bannedInfoForSid(uid);
+      if (ban) return jsonResp(403, { error: 'account banned', banned: true });
+      const email = emailFromSid(uid);
+      if (!email) return jsonResp(401, { error: 'Email not found' });
+      
+      const norm = normalizeEmail(email);
+      const data = dailyLogins[norm] || { lastClaimDate: '', streak: 0 };
+      const todayStr = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      if (data.lastClaimDate === todayStr) {
+        return jsonResp(400, { error: 'Already claimed today' });
+      }
+
+      let freezeConsumed = false;
+      if (data.lastClaimDate === yesterdayStr) {
+        data.streak++;
+      } else if (data.lastClaimDate === '') {
+        data.streak = 1;
+      } else {
+        if ((data.streakFreezes || 0) > 0) {
+          data.streakFreezes--;
+          data.streak++;
+          freezeConsumed = true;
+        } else {
+          data.streak = 1;
+        }
+      }
+      data.lastClaimDate = todayStr;
+      dailyLogins[norm] = data;
+      saveDailyLogins();
+
+      const reward = getDailyReward(data.streak);
+      addCoins(email, reward.coins, `daily-login: streak Day ${data.streak}`);
+
+      if (reward.grantPremium) {
+        grantPremiumStatus(email, 'Earned via 60-day daily login streak', 'system');
+      }
+
+      let message = '';
+      if (reward.grantPremium) {
+        message = `Congratulations! You've logged in for 60 consecutive days and earned Premium Status + ${reward.coins} MitchCoins!`;
+      } else if (freezeConsumed) {
+        message = `❄️ Streak Freeze consumed! Your ${data.streak}-day streak was protected! Claimed Day ${data.streak} bonus: +${reward.coins} MitchCoins!`;
+      } else {
+        message = `Claimed Day ${data.streak} bonus: +${reward.coins} MitchCoins!`;
+      }
+
+      return jsonResp(200, {
+        success: true,
+        streak: data.streak,
+        rewardCoins: reward.coins,
+        grantedPremium: reward.grantedPremium,
+        freezeConsumed,
+        streakFreezes: data.streakFreezes || 0,
+        message
+      });
+    }
+
   }
 
 
@@ -8865,9 +9010,68 @@ function loadAllGamesList() {
             : `Happy Hour today: ${formatSchoolHour(computedHappyHour)} (Based on yesterday's least used school hour!) 🍻`
         }
       });
+    }
+
+    if (path === '/api/daily-login/state' && method === 'GET') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const uid     = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
+      const ban = bannedInfoForSid(uid);
+      if (ban) return jsonResp(403, { error: 'account banned', banned: true });
+      const email = emailFromSid(uid);
+      if (!email) return jsonResp(401, { error: 'Email not found' });
+      
+      const norm = normalizeEmail(email);
+      const data = dailyLogins[norm] || { lastClaimDate: '', streak: 0 };
+      const todayStr = new Date().toISOString().split('T')[0];
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      let canClaim = false;
+      let streak = data.streak;
+      let streakFrozen = false;
+      const freezes = data.streakFreezes || 0;
+
+      if (data.lastClaimDate !== todayStr) {
+        canClaim = true;
+        if (data.lastClaimDate !== yesterdayStr && data.lastClaimDate !== '') {
+          if (freezes > 0) {
+            streakFrozen = true;
+          } else {
+            streak = 0;
+          }
+        }
       }
 
-      if (path === '/api/moderator-panel') {
+      const nextStreak = canClaim ? streak + 1 : streak;
+      const rewardInfo = getDailyReward(nextStreak);
+
+      let message = '';
+      if (canClaim) {
+        if (streakFrozen) {
+          message = `❄️ Streak Freeze active! Your ${streak}-day streak is protected. Claim Day ${nextStreak} Login Bonus!`;
+        } else {
+          message = `Claim your Day ${nextStreak} Login Bonus!`;
+        }
+      } else {
+        message = `You claimed today's reward! Come back tomorrow. Current streak: ${data.streak} day${data.streak === 1 ? '' : 's'}.`;
+      }
+
+      return jsonResp(200, {
+        canClaim,
+        streak: data.streak,
+        nextStreak,
+        nextReward: rewardInfo.coins,
+        grantPremium: rewardInfo.grantPremium,
+        lastClaimDate: data.lastClaimDate,
+        streakFreezes: freezes,
+        streakFrozen,
+        message
+      });
+    }
+
+    if (path === '/api/moderator-panel') {
       const cookies = getCookies(req);
       const uid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
@@ -10162,7 +10366,7 @@ function loadAllGamesList() {
         g.result = `${myNorm} wins`;
         if (!g.collusionFlag) {
           const bet = g.bet || 0;
-          let winCoins = 250 + (bet * 2);
+          let winCoins = 40 + (bet * 2);
           if (areFriends(g.player1, g.player2)) winCoins = Math.floor(winCoins * 1.5);
           if (isPremiumEmail(myNorm)) winCoins = Math.floor(winCoins * 2);
           addCoins(myNorm, winCoins, `battleship: win payout (bet=${g.bet}, friend=${areFriends(g.player1,g.player2)}, premium=${isPremiumEmail(myNorm)})`);
@@ -10213,7 +10417,7 @@ function loadAllGamesList() {
       const oppEmail = myNorm === normalizeEmail(g.player1) ? normalizeEmail(g.player2) : normalizeEmail(g.player1);
       g.status = 'over'; g.winner = oppEmail; g.result = `${myNorm} resigned`;
       if (!g.collusionFlag) {
-        let winCoins = 250 + ((g.bet || 0) * 2);
+        let winCoins = 40 + ((g.bet || 0) * 2);
         if (areFriends(g.player1, g.player2)) winCoins = Math.floor(winCoins * 1.5);
         if (isPremiumEmail(oppEmail)) winCoins = Math.floor(winCoins * 2);
         addCoins(oppEmail, winCoins, `battleship: win on resign (opponent=${myNorm})`);
@@ -10260,7 +10464,7 @@ function loadAllGamesList() {
       const topScore = Math.max(...Object.values(lobby.scores));
       const winners = Object.entries(lobby.scores).filter(([, s]) => s === topScore).map(([e]) => e);
       const playerCount = lobby.players.length;
-      const baseCoins = 750;
+      const baseCoins = 120;
       for (const w of winners) {
         let coins = baseCoins;
         if (lobby.players.some(p => p !== w && areFriends(w, p))) coins = Math.floor(coins * 1.5);
@@ -11590,9 +11794,9 @@ function loadAllGamesList() {
       if (new Date(s.lastTs).toDateString() !== today) s.dailyCount = 0;
       
       let coins = 0;
-      if (wpm >= 120) coins = 20;
-      else if (wpm >= 80) coins = 10;
-      else if (wpm >= 40) coins = 5;
+      if (wpm >= 120) coins = 3;
+      else if (wpm >= 80) coins = 2;
+      else if (wpm >= 40) coins = 1;
       
       if (coins > 0) {
         if (isPremiumEmail(email)) coins *= 2;
@@ -11684,7 +11888,7 @@ function loadAllGamesList() {
         allowedNormal = DAILY_CAP - s.dailyCount;
       }
 
-      let coinsAwarded = allowedNormal + bypassCoins;
+      let coinsAwarded = Math.floor((allowedNormal + bypassCoins) * 0.02);
 
       if (coinsAwarded > 0) {
         let finalCoins = coinsAwarded;
@@ -11814,7 +12018,7 @@ function loadAllGamesList() {
           return jsonResp(400, { success: false, error: 'Incorrect Wordle solution' });
         }
 
-        coins = 100;
+        coins = 20;
         s.lastSolvedTs = Date.now();
       } else if (type === 'mines') {
         // Enforce cooldown
@@ -11896,7 +12100,7 @@ function loadAllGamesList() {
         }
 
         // All checks passed! Update session tracking
-        coins = 10;
+        coins = 2;
         s.lastMinesSolvedTs = Date.now();
         s.minesSolvedTodayCount = (s.minesSolvedTodayCount || 0) + 1;
         s.lastMinesSolvedDate = today;

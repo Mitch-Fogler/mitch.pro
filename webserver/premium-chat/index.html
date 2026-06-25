@@ -212,6 +212,21 @@
         } catch (e) {}
     }
 
+    async function directDeleteMessage(msgId, room) {
+        if (!confirm("Delete this message?")) return;
+        const r = await fetch('/api/chat/delete-message', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ room, msgId })
+        });
+        if (r.ok) {
+            fetchHistory();
+        } else {
+            const d = await r.json();
+            alert("Error: " + d.error);
+        }
+    }
+
     function renderMsg(m) {
         const div = document.createElement('div');
         const isOwn = m.email === myEmail;
@@ -246,12 +261,14 @@
         var cloakHtml = isAnon ? ' 🥷' : '';
 
         let modHtml = '';
+        let deleteBtnHtml = '';
         if (isModOrAdmin) {
             modHtml = `<span class="mod-trigger" style="cursor:pointer; font-size:10px; margin-left:6px; opacity:0.6;" onclick="showModMenu('${m.id || ''}', '${escapeHtml(m.email || '')}', '${escapeHtml(m.name || '')}', 'premium')">🛡️</span>`;
+            deleteBtnHtml = `<span class="delete-msg-x" style="cursor:pointer; font-weight:bold; color:#ef4444; margin-left:8px; opacity:0.5; transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'" onclick="directDeleteMessage('${m.id || ''}', 'premium')">×</span>`;
         }
 
         div.innerHTML = `
-            <span class="author ${colorClass}">${m.name}${badgeHtml}${cloakHtml}${modHtml}</span>
+            <span class="author ${colorClass}">${m.name}${badgeHtml}${cloakHtml}${modHtml}${deleteBtnHtml}</span>
             <span class="text">${escapeHtml(m.text)}</span>
         `;
         chatBox.appendChild(div);

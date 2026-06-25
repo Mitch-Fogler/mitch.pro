@@ -155,6 +155,18 @@
   .coin-toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
 
   .premium-label { font-size: 9px; color: #f59e0b; margin-left: 5px; font-weight: 700; }
+
+  @media (max-width: 600px) {
+    body {
+      padding: 16px 10px 48px;
+    }
+    .wrap {
+      padding: 20px 16px;
+    }
+    .stats-grid {
+      grid-template-columns: 1fr !important;
+    }
+  }
 </style>
 </head>
 <body>
@@ -175,6 +187,21 @@ function Fmt(n) {
   const t = Math.floor(Math.log10(n) / 3);
   if (t < s.length) return (n / Math.pow(10, t * 3)).toFixed(1) + s[t];
   return n.toExponential(1);
+}
+
+function calculatePlaytime(stats) {
+  var playtime = stats.playtime || {};
+  var totalMinutes = 0;
+  for (var key in playtime) {
+    if (playtime.hasOwnProperty(key)) {
+      totalMinutes += Number(playtime[key]) || 0;
+    }
+  }
+  if (totalMinutes === 0) return '0m';
+  if (totalMinutes < 60) return totalMinutes + 'm';
+  var hrs = Math.floor(totalMinutes / 60);
+  var mins = totalMinutes % 60;
+  return hrs + 'h ' + mins + 'm';
 }
 
 async function load() {
@@ -253,10 +280,12 @@ async function load() {
       <div class="stats-grid" style="width:100%">
         <div class="stat-card"><div class="stat-val">${stats.pixels || 0}</div><div class="stat-lbl">Pixels</div></div>
         <div class="stat-card"><div class="stat-val">${stats.chess_wins || 0}</div><div class="stat-lbl">Chess Wins</div></div>
+        <div class="stat-card"><div class="stat-val">${stats.battleship_wins || 0}</div><div class="stat-lbl">Battleship Wins</div></div>
         <div class="stat-card"><div class="stat-val">${Fmt(stats.clicker_points || 0)}</div><div class="stat-lbl">Clicker Pts</div></div>
         <div class="stat-card"><div class="stat-val">${stats.typing_races || 0}</div><div class="stat-lbl">Keyboard Races</div></div>
         <div class="stat-card"><div class="stat-val">${stats.logic_puzzles || 0}</div><div class="stat-lbl">Logic Puzzles</div></div>
         <div class="stat-card"><div class="stat-val">${(Number(stats.clicker_coins || 0) + Number(stats.typing_coins || 0) + Number(stats.logic_coins || 0)).toFixed(1)}</div><div class="stat-lbl">MitchCoins</div></div>
+        <div class="stat-card"><div class="stat-val">${calculatePlaytime(stats)}</div><div class="stat-lbl">Time Spent</div></div>
       </div>
       
       <div class="achs">

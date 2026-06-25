@@ -1002,32 +1002,67 @@
       if (!document.getElementById('mitch-vfx-canvas')) return;
       ctx.clearRect(0, 0, w, h);
       
+      // 1. Batch Snow
+      var hasSnow = items.some(function(p) { return p.type === 'snow'; });
+      if (hasSnow) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        items.forEach(function(p) {
+          if (p.type === 'snow') {
+            ctx.moveTo(p.x + p.r, p.y);
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+            p.y += p.v; p.x += Math.sin(p.y/30)*0.5;
+            if (p.y > h) p.y = -10; if (p.x > w) p.x = 0; if (p.x < 0) p.x = w;
+          }
+        });
+        ctx.fill();
+      }
+
+      // 2. Stars (using fast fillRect instead of arc)
       items.forEach(function(p) {
-        if (p.type === 'snow') {
-          ctx.fillStyle = '#fff';
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
-          p.y += p.v; p.x += Math.sin(p.y/30)*0.5;
-          if (p.y > h) p.y = -10; if (p.x > w) p.x = 0; if (p.x < 0) p.x = w;
-        } else if (p.type === 'star') {
+        if (p.type === 'star') {
           ctx.fillStyle = 'rgba(255,255,255,' + p.o + ')';
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
+          ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
           p.o += p.ov; if (p.o > 1 || p.o < 0) p.ov *= -1;
-        } else if (p.type === 'rain') {
-          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-          ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x + p.v/4, p.y + p.l); ctx.stroke();
-          p.y += p.v; p.x += p.v/4;
-          if (p.y > h) { p.y = -20; p.x = Math.random()*w; }
-        } else if (p.type === 'part') {
-          ctx.fillStyle = cachedAccent;
-          ctx.globalAlpha = 0.2;
-          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI*2); ctx.fill();
-          ctx.globalAlpha = 1.0;
-          p.x += p.vx; p.y += p.vy;
-          if (p.x < 0 || p.x > w) p.vx *= -1;
-          if (p.y < 0 || p.y > h) p.vy *= -1;
         }
       });
+
+      // 3. Batch Rain
+      var hasRain = items.some(function(p) { return p.type === 'rain'; });
+      if (hasRain) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        items.forEach(function(p) {
+          if (p.type === 'rain') {
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x + p.v/4, p.y + p.l);
+            p.y += p.v; p.x += p.v/4;
+            if (p.y > h) { p.y = -20; p.x = Math.random()*w; }
+          }
+        });
+        ctx.stroke();
+      }
+
+      // 4. Batch Particles
+      var hasPart = items.some(function(p) { return p.type === 'part'; });
+      if (hasPart) {
+        ctx.fillStyle = cachedAccent;
+        ctx.globalAlpha = 0.2;
+        ctx.beginPath();
+        items.forEach(function(p) {
+          if (p.type === 'part') {
+            ctx.moveTo(p.x + p.r, p.y);
+            ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0 || p.x > w) p.vx *= -1;
+            if (p.y < 0 || p.y > h) p.vy *= -1;
+          }
+        });
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+      }
+      
       requestAnimationFrame(animate);
     }
     animate();
@@ -1058,6 +1093,7 @@
     var links = [
       { h:'/', i:'🏠', t:'Home' },
       { h:'/games/', i:'🎮', t:'Games' },
+      { h:'/profile/', i:'👤', t:'Profile' },
       { h:'/encrypt.html', i:'💬', t:'Chat' },
       { h:'/canvas/', i:'🎨', t:'Canvas' },
       { h:'/shop/', i:'🛒', t:'Market' },
