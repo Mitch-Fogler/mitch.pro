@@ -339,11 +339,21 @@
         e.preventDefault();
         const text = chatInput.value.trim();
         if (!text) return;
+        
+        let recaptcha_token = '';
+        for (let i = 0; i < 50; i++) {
+            if (window.getCaptchaToken && window.grecaptcha) break;
+            await new Promise(r => setTimeout(r, 100));
+        }
+        if (window.getCaptchaToken) {
+            recaptcha_token = await window.getCaptchaToken('public_chat_send') || '';
+        }
+        
         chatInput.value = '';
         const r = await fetch('/api/public-chat/send', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ text })
+            body: JSON.stringify({ text, recaptcha_token })
         });
         if (!r.ok) {
             const err = await r.json();

@@ -615,7 +615,8 @@ button {
     </div>
     <input type="password" id="e2e-password" placeholder="Enter your login password" style="padding: 8px; border-radius: 4px; border: 1px solid var(--t-bd); background: var(--t-bg); color: var(--t-fg); margin-bottom: 8px;">
     <div id="e2e-error" style="color: #ff5f5f; font-size: 0.8rem; display: none; margin-bottom: 8px;"></div>
-    <div class="modal-actions">
+    <div class="modal-actions" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+      <button class="small-btn" type="button" id="e2e-reset-btn" style="background: rgba(255,95,95,0.15); color: #ff5f5f; border: 1px solid rgba(255,95,95,0.3); display: none;">Reset Keys</button>
       <button class="small-btn" type="button" id="e2e-submit-btn">Unlock</button>
     </div>
   </div>
@@ -673,7 +674,7 @@ async function deriveEncryptionKeyFromPassword(password, email) {
 }
 
 async function genKP() {
-  return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
+  return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey', 'deriveBits']);
 }
 async function exportPub(kp) {
   return b2h(await crypto.subtle.exportKey('raw', kp.publicKey));
@@ -906,6 +907,7 @@ async function init() {
           true,
           []
         );
+        if (fetchedData.legacyJwk) fetchedData.legacyJwk.key_ops = ['deriveKey', 'deriveBits'];
         const legacyPriv = await crypto.subtle.importKey(
           'jwk',
           fetchedData.legacyJwk,
@@ -934,6 +936,7 @@ async function init() {
         );
         const pubHex = await b2h(await crypto.subtle.exportKey('raw', pubKey));
         if (pubHex === fetchedData.pubKeyHex) {
+          localJwk.key_ops = ['deriveKey', 'deriveBits'];
           const privateKey = await crypto.subtle.importKey(
             'jwk',
             localJwk,
@@ -967,8 +970,15 @@ async function init() {
       
       await new Promise((resolve) => {
         const submitBtn = document.getElementById('e2e-submit-btn');
+        const resetBtn = document.getElementById('e2e-reset-btn');
         const pwdInput = document.getElementById('e2e-password');
         const errDiv = document.getElementById('e2e-error');
+        
+        if (!isSetup) {
+          resetBtn.style.display = 'block';
+        } else {
+          resetBtn.style.display = 'none';
+        }
         
         const onSubmit = async () => {
           const password = pwdInput.value;
@@ -978,6 +988,7 @@ async function init() {
             return;
           }
           submitBtn.disabled = true;
+          resetBtn.disabled = true;
           errDiv.style.display = "none";
           
           try {
@@ -996,6 +1007,7 @@ async function init() {
             errDiv.textContent = verifyErr.message || "Incorrect password.";
             errDiv.style.display = "block";
             submitBtn.disabled = false;
+            resetBtn.disabled = false;
             return;
           }
           
@@ -1053,6 +1065,7 @@ async function init() {
                 true,
                 []
               );
+              decryptedJwk.key_ops = ['deriveKey', 'deriveBits'];
               const privateKey = await crypto.subtle.importKey(
                 'jwk',
                 decryptedJwk,
@@ -1067,16 +1080,104 @@ async function init() {
             
             document.getElementById('e2e-modal').classList.remove('show');
             submitBtn.disabled = false;
+            resetBtn.disabled = false;
+            resetBtn.style.display = 'none';
+            submitBtn.onclick = null;
+            resetBtn.onclick = null;
+            pwdInput.onkeydown = null;
             resolve();
           } catch (err) {
             console.error("E2E unlock/setup error:", err);
             errDiv.textContent = err.message || "An error occurred.";
             errDiv.style.display = "block";
             submitBtn.disabled = false;
+            resetBtn.disabled = false;
+          }
+        };
+        
+        const onReset = async () => {
+          const password = pwdInput.value;
+          if (!password) {
+            errDiv.textContent = "Please enter your current login password to reset keys.";
+            errDiv.style.display = "block";
+            return;
+          }
+          if (!confirm("Are you sure you want to discard your E2E secure chat keys?\n\nWARNING: This will permanently reset your keys. You will NOT be able to decrypt past secure messages, but you will be able to send and receive new messages.")) {
+            return;
+          }
+          submitBtn.disabled = true;
+          resetBtn.disabled = true;
+          errDiv.style.display = "none";
+          
+          try {
+            // Verify password against the server first
+            const verifyRes = await fetch('/api/e2e/verify-password', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password })
+            });
+            const verifyData = await verifyRes.json();
+            if (!verifyData.success) {
+              throw new Error(verifyData.message || "Incorrect password.");
+            }
+          } catch (verifyErr) {
+            errDiv.textContent = verifyErr.message || "Incorrect password.";
+            errDiv.style.display = "block";
+            submitBtn.disabled = false;
+            resetBtn.disabled = false;
+            return;
+          }
+          
+          try {
+            const aesKey = await deriveEncryptionKeyFromPassword(password, myEmail);
+            const kp = await genKP();
+            const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+            const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const ciphertext = await crypto.subtle.encrypt(
+              { name: 'AES-GCM', iv },
+              aesKey,
+              privateJwkBytes
+            );
+            
+            const pubHex = await exportPub(kp);
+            const encryptedPrivateJwk = b2h(ciphertext);
+            const ivHex = b2h(iv);
+            
+            const res = await fetch('/api/e2e/register-key', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ pubKeyHex: pubHex, encryptedPrivateJwk, ivHex })
+            });
+            const d = await res.json();
+            if (!d.success) {
+              throw new Error(d.message || "Failed to register new keys.");
+            }
+            
+            localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+            myKP = kp;
+            
+            document.getElementById('e2e-modal').classList.remove('show');
+            submitBtn.disabled = false;
+            resetBtn.disabled = false;
+            resetBtn.style.display = 'none';
+            submitBtn.onclick = null;
+            resetBtn.onclick = null;
+            pwdInput.onkeydown = null;
+            resolve();
+          } catch (err) {
+            console.error("E2E reset error:", err);
+            errDiv.textContent = err.message || "An error occurred.";
+            errDiv.style.display = "block";
+            submitBtn.disabled = false;
+            resetBtn.disabled = false;
           }
         };
         
         submitBtn.onclick = onSubmit;
+        resetBtn.onclick = onReset;
         pwdInput.onkeydown = (e) => {
           if (e.key === 'Enter') onSubmit();
         };
@@ -1829,12 +1930,21 @@ async function send() {
     }
   }
 
+  let recaptcha_token = '';
+  for (let i = 0; i < 50; i++) {
+    if (window.getCaptchaToken && window.grecaptcha) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (window.getCaptchaToken) {
+    recaptcha_token = await window.getCaptchaToken('dm_send') || '';
+  }
+
   input.value = '';
   const imageToSend = pendingImage;
   clearImage();
   const body = activeChat.type === 'group'
-    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry }
-    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry };
+    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, recaptcha_token }
+    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, recaptcha_token };
   clearReply();
   try {
     const r = await fetch('/api/dm/send', {
@@ -2108,12 +2218,21 @@ async function reportMessage(m) {
     reported: msgId(msg) === msgId(m)
   }));
 
+  let recaptcha_token = '';
+  for (let i = 0; i < 50; i++) {
+    if (window.getCaptchaToken && window.grecaptcha) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (window.getCaptchaToken) {
+    recaptcha_token = await window.getCaptchaToken('report_message') || '';
+  }
+
   try {
     const r = await fetch('/api/dm/report', {
       method:'POST',
       credentials:'include',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ id: msgId(m), reason, context })
+      body: JSON.stringify({ id: msgId(m), reason, context, recaptcha_token })
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.success) return toast(d.error || 'Could not report message.');

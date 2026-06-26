@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>mitch.pro Newsletter</title>
 <script src="/theme.js"></script>
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -83,7 +82,6 @@
     <label for="email">Email address</label>
     <input id="email" type="email" autocomplete="email" placeholder="you@student.mitch.pro">
     <div class="warning">Abuse of this signup form may result in account termination.</div>
-    <div class="g-recaptcha" data-sitekey="6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz" data-theme="dark"></div>
     <button id="btn" onclick="submit()">Sign Up</button>
     <div id="msg"></div>
     <footer>
@@ -120,12 +118,18 @@ async function submit() {
   var msg = document.getElementById('msg');
   if (!email) { msg.className='err'; msg.textContent='Enter your email first.'; return; }
   if (_checkSpam()) { msg.className='err'; msg.textContent='Too many requests.'; btn.disabled=false; return; }
-  var captcha = window.grecaptcha && grecaptcha.getResponse ? grecaptcha.getResponse() : '';
-  var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
-  var studentId = c.get('studentId') || c.get('password') || '';
+
   btn.disabled = true;
   msg.textContent = 'Signing up...';
   msg.className = '';
+
+  var captcha = '';
+  if (window.getCaptchaToken) {
+    captcha = await window.getCaptchaToken('newsletter_signup') || '';
+  }
+
+  var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
+  var studentId = c.get('studentId') || c.get('password') || '';
   try {
     var r = await (await fetch('/api/newsletter-signup', {
       method: 'POST',

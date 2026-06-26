@@ -9,7 +9,6 @@
 <link rel="canonical" href="https://mitch.pro/claim/" />
 <link rel="stylesheet" href="/open.css">
 <script src="/theme.js"></script>
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
@@ -68,9 +67,7 @@
             <input id="claim-confirm" type="password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08); color: #fff; font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s;">
           </div>
 
-          <div class="recaptcha-wrap">
-            <div id="captcha-container"></div>
-          </div>
+
 
           <button id="claim-btn" onclick="submitClaim()" style="width: 100%; min-height: 48px; border-radius: 10px; background: linear-gradient(135deg, #22d3ee, #8b5cf6); color: #061018; font-family: 'Syne', sans-serif; font-weight: 800; border: none; cursor: pointer; font-size: 0.95rem; box-shadow: 0 12px 28px rgba(0,0,0,.25); transition: all 0.15s; outline: none;">Claim Access & Set Password</button>
           <div id="claim-msg" style="min-height: 22px; margin-top: 12px; font-size: .84rem; text-align: center; font-weight: 700;"></div>
@@ -108,14 +105,7 @@ if (isReset) {
   document.getElementById('claim-btn').textContent = "Reset Password & Set New Keys";
 }
 
-window.onload = function() {
-  if (window.grecaptcha) {
-    captchaWidget = grecaptcha.render('captcha-container', {
-      'sitekey': '6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz',
-      'theme': 'dark'
-    });
-  }
-};
+
 
 // On load, if missing code, show error immediately
 if (!code) {
@@ -132,7 +122,6 @@ async function submitClaim() {
   const confirm = document.getElementById('claim-confirm').value;
   const msg = document.getElementById('claim-msg');
   const btn = document.getElementById('claim-btn');
-  const captcha = window.grecaptcha ? grecaptcha.getResponse(captchaWidget) : '';
 
   if (!code) {
     msg.className = 'err';
@@ -152,17 +141,16 @@ async function submitClaim() {
     msg.textContent = 'Passwords do not match.';
     return;
   }
-  if (!captcha) {
-    msg.className = 'err';
-    msg.style.color = '#f87171';
-    msg.textContent = 'Complete reCAPTCHA.';
-    return;
-  }
 
   btn.disabled = true;
   msg.textContent = 'Verifying and configuring security...';
   msg.className = '';
   msg.style.color = '';
+
+  let captcha = '';
+  if (window.getCaptchaToken) {
+    captcha = await window.getCaptchaToken('claim_token') || '';
+  }
 
   try {
     const r = await fetch('/api/claim-token', {
@@ -187,14 +175,12 @@ async function submitClaim() {
       msg.style.color = '#f87171';
       msg.textContent = d.message || 'Invalid code.';
       btn.disabled = false;
-      if (window.grecaptcha) grecaptcha.reset(captchaWidget);
     }
   } catch (e) {
     btn.disabled = false;
     msg.className = 'err';
     msg.style.color = '#f87171';
     msg.textContent = 'Server Error. Please try again.';
-    if (window.grecaptcha) grecaptcha.reset(captchaWidget);
   }
 }
 </script>

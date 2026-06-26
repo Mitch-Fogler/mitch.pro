@@ -278,7 +278,6 @@
     to   { transform: scale(1);   opacity: 1; }
   }
 </style>
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 <div class="wrap">
@@ -322,8 +321,6 @@
 
       <div class="divider"></div>
 
-      <div class="g-recaptcha" data-sitekey="6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz" data-theme="dark" style="margin-bottom:1.5rem"></div>
-
       <div class="submit-row">
         <button type="submit" id="submit-btn">Submit application</button>
         <div id="msg"></div>
@@ -344,6 +341,16 @@ document.getElementById('form').addEventListener('submit', async e => {
   const btn = document.getElementById('submit-btn');
   const msg = document.getElementById('msg');
 
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+  msg.className = '';
+  msg.textContent = '';
+
+  let recaptcha_token = '';
+  if (window.getCaptchaToken) {
+    recaptcha_token = await window.getCaptchaToken('submit_application') || '';
+  }
+
   const payload = {
     name:    document.getElementById('name').value.trim(),
     email:   document.getElementById('email').value.trim(),
@@ -351,13 +358,8 @@ document.getElementById('form').addEventListener('submit', async e => {
     why:     document.getElementById('why').value.trim(),
     skills:  document.getElementById('skills').value.trim(),
     extra:   document.getElementById('extra').value.trim(),
-    recaptcha_token: grecaptcha.getResponse(),
+    recaptcha_token: recaptcha_token,
   };
-
-  btn.disabled = true;
-  btn.textContent = 'Submitting…';
-  msg.className = '';
-  msg.textContent = '';
 
   try {
     const r = await fetch('/api/apply', {

@@ -2,17 +2,6 @@
 <html>
 <head>
 <title>Preferences — mitch.pro</title>
-<script>
-  var _captchaId = null;
-  function onloadCallback() {
-    if (window.grecaptcha && _captchaId === null) {
-      _captchaId = grecaptcha.render('captcha-security', {
-        'sitekey': '6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz', 'theme': 'dark'
-      });
-    }
-  }
-</script>
-<script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer></script>
 <script src="/theme.js"></script>
 <script src="/sync.js"></script>
 <style>
@@ -716,9 +705,6 @@
       </div>
       </div>
 
-      <div style="display:flex; justify-content:center; margin-top:1.5rem;">
-      <div id="captcha-security"></div>
-      </div>
 
       <div style="margin-top:1.5rem; text-align:center;">
       <button class="soft-btn primary" id="changePassBtn" style="padding: 10px 24px; font-weight:700;">Change Password</button>
@@ -1013,14 +999,89 @@ async function deriveEncryptionKeyFromPassword(password, email) {
 }
 
 async function genKP() {
-  return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveBits']);
+  return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey', 'deriveBits']);
 }
 
 async function exportPub(kp) {
   return b2h(await crypto.subtle.exportKey('raw', kp.publicKey));
 }
 
-async function rotateE2EKeys(email, newPassword) {
+const h2b = hex => new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+
+async function rotateE2EKeys(email, currentPassword, newPassword) {
+  try {
+    // 1. Fetch current key info from the server
+    const getRes = await fetch('/api/e2e/get-key', { credentials: 'include' });
+    if (!getRes.ok) {
+      console.warn("[E2E] No existing E2E keys found on server. Generating new key pair.");
+      await generateNewE2EKeys(email, newPassword);
+      return;
+    }
+    const keyInfo = await getRes.json();
+    if (!keyInfo.success || !keyInfo.pubKeyHex) {
+      console.warn("[E2E] No successful E2E keys found on server. Generating new key pair.");
+      await generateNewE2EKeys(email, newPassword);
+      return;
+    }
+
+    let privateJwk = null;
+    const localJwkStr = localStorage.getItem('_e2e_private_jwk');
+    if (localJwkStr) {
+      try {
+        privateJwk = JSON.parse(localJwkStr);
+      } catch (e) {}
+    }
+
+    // 2. If not in localStorage, decrypt using currentPassword
+    if (!privateJwk) {
+      if (!currentPassword) {
+        throw new Error("Old private key not found in storage and no current password provided.");
+      }
+      const oldAesKey = await deriveEncryptionKeyFromPassword(currentPassword, email);
+      const iv = h2b(keyInfo.ivHex);
+      const ciphertext = h2b(keyInfo.encryptedPrivateJwk);
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv },
+        oldAesKey,
+        ciphertext
+      );
+      privateJwk = JSON.parse(new TextDecoder().decode(decrypted));
+    }
+
+    // 3. Encrypt the private JWK with the new password
+    const newAesKey = await deriveEncryptionKeyFromPassword(newPassword, email);
+    const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
+    const newIv = crypto.getRandomValues(new Uint8Array(12));
+    const newCiphertext = await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv: newIv },
+      newAesKey,
+      privateJwkBytes
+    );
+
+    const encryptedPrivateJwk = b2h(newCiphertext);
+    const ivHex = b2h(newIv);
+
+    // 4. Register the re-encrypted private key with the SAME public key
+    const res = await fetch('/api/e2e/register-key', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pubKeyHex: keyInfo.pubKeyHex, encryptedPrivateJwk, ivHex })
+    });
+    const d = await res.json();
+    if (d.success) {
+      localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+      console.log("[E2E] Successfully migrated E2E keys with new password.");
+    } else {
+      throw new Error(d.message || "Failed to register migrated keys");
+    }
+  } catch (err) {
+    console.error("[E2E] Failed to migrate keys, generating new ones:", err);
+    await generateNewE2EKeys(email, newPassword);
+  }
+}
+
+async function generateNewE2EKeys(email, newPassword) {
   try {
     const aesKey = await deriveEncryptionKeyFromPassword(newPassword, email);
     const kp = await genKP();
@@ -1046,10 +1107,10 @@ async function rotateE2EKeys(email, newPassword) {
     const d = await res.json();
     if (d.success) {
       localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
-      console.log("[E2E] Successfully rotated secure chat keys after password change.");
+      console.log("[E2E] Generated and registered fresh E2E key pair.");
     }
   } catch (err) {
-    console.error("[E2E] Failed to rotate keys after password change:", err);
+    console.error("[E2E] Failed to generate fresh E2E keys:", err);
   }
 }
 
@@ -1633,10 +1694,6 @@ function resetPreferencesOnly() {
     const status = document.getElementById('securityStatus');
     const btn = document.getElementById('changePassBtn');
     
-    const isLocal = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname) || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.') || location.hostname.endsWith('.local') || location.hostname.includes('mitch-desk');
-    if (!isLocal && (!window.grecaptcha || _captchaId === null)) return alert('reCAPTCHA not loaded.');
-    const captcha = isLocal ? 'local-bypass' : grecaptcha.getResponse(_captchaId);
-
     if (!currentPassword || !newPassword || !confirmPassword) {
       status.style.color = 'var(--rose)';
       status.textContent = 'All fields required.';
@@ -1652,14 +1709,27 @@ function resetPreferencesOnly() {
       status.textContent = 'Passwords do not match.';
       return;
     }
-    if (!captcha) {
-      status.style.color = 'var(--rose)';
-      status.textContent = 'Please complete reCAPTCHA.';
-      return;
-    }
 
     btn.disabled = true;
     status.style.color = 'var(--t-fg2)';
+    status.textContent = 'Generating security token...';
+
+    let captcha = '';
+    for (let i = 0; i < 50; i++) {
+      if (window.getCaptchaToken && window.grecaptcha) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (window.getCaptchaToken) {
+      captcha = await window.getCaptchaToken('change_password') || '';
+    }
+
+    if (!captcha) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'Please complete security verification.';
+      btn.disabled = false;
+      return;
+    }
+
     status.textContent = 'Updating security...';
 
     try {
@@ -1675,17 +1745,15 @@ function resetPreferencesOnly() {
         status.textContent = 'Password changed successfully!';
         if (myEmail) {
           status.textContent = 'Password changed. Re-encrypting Secure Chat keys...';
-          await rotateE2EKeys(myEmail, newPassword);
+          await rotateE2EKeys(myEmail, currentPassword, newPassword);
           status.textContent = 'Password changed and Secure Chat keys rotated successfully!';
         }
         document.getElementById('currPass').value = '';
         document.getElementById('newPass').value = '';
         document.getElementById('confirmPass').value = '';
-        if (window.grecaptcha && _captchaId !== null) grecaptcha.reset(_captchaId);
       } else {
         status.style.color = 'var(--rose)';
         status.textContent = data.message || 'Change failed.';
-        if (window.grecaptcha && _captchaId !== null) grecaptcha.reset(_captchaId);
       }
     } catch (e) {
       status.style.color = 'var(--rose)';

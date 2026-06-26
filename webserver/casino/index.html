@@ -821,6 +821,16 @@
   async function post(path, body) {
     setBusy(true);
     try {
+      if (path !== "/api/casino/blackjack/hit" && path !== "/api/casino/blackjack/stand") {
+        for (var i = 0; i < 50; i++) {
+          if (window.getCaptchaToken && window.grecaptcha) break;
+          await new Promise(function (r) { setTimeout(r, 100); });
+        }
+        if (window.getCaptchaToken) {
+          body = body || {};
+          body.recaptcha_token = await window.getCaptchaToken("casino_game") || "";
+        }
+      }
       var res = await fetch(path, {
         method: "POST",
         credentials: "include",

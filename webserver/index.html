@@ -660,7 +660,7 @@ function applyHomepagePrefs() {
         let coolMessages = [];
         
         if (d.achievements && d.achievements.length > 0) {
-          coolMessages.push('🏆 You\'ve unlocked <strong>' + d.achievements.length + '/4</strong> achievements! Go grab the rest for ultimate bragging rights!');
+          coolMessages.push('🏆 You\'ve unlocked <strong>' + d.achievements.length + '/' + (d.totalAchievementsCount || 7) + '</strong> achievements! Go grab the rest for ultimate bragging rights!');
         } else {
           coolMessages.push('🏆 <strong>No achievements unlocked yet?</strong> Go play games and start your legendary collection!');
         }
@@ -1293,6 +1293,17 @@ async function loadPendingFriendRequests() {
   } catch(e) {}
 }
 
+async function getFriendsCaptchaToken(action) {
+  for (let i = 0; i < 50; i++) {
+    if (window.getCaptchaToken && window.grecaptcha) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (window.getCaptchaToken) {
+    return await window.getCaptchaToken(action) || '';
+  }
+  return '';
+}
+
 async function sendFriendRequest() {
   const input = document.getElementById('friend-req-input');
   const btn = document.getElementById('friend-req-submit-btn');
@@ -1305,11 +1316,12 @@ async function sendFriendRequest() {
   msg.style.color = '#38bdf8';
   msg.innerText = 'Sending request...';
 
+  const recaptcha_token = await getFriendsCaptchaToken('friend_request');
   try {
     const r = await fetch('/api/friends/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email })
+      body: JSON.stringify({ email: email, recaptcha_token })
     });
     const d = await r.json();
     if (r.ok) {

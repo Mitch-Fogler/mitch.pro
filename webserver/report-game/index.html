@@ -92,14 +92,12 @@
     padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
 </style>
 <!-- AUTH_INJECT_END -->
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 <div class="card">
   <h1>Report a broken game</h1>
   <p>describe which game is broken and what's wrong</p>
-  <textarea id="site" placeholder="e.g. "snake game crashes when you hit the wall""></textarea>
-  <div class="g-recaptcha" data-sitekey="6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz" data-theme="dark" style="margin-bottom:.8rem"></div>
+  <textarea id="site" placeholder="e.g. &quot;snake game crashes when you hit the wall&quot;"></textarea>
   <button id="submitBtn" onclick="submitSite()">submit</button>
   <div id="status"></div>
 </div>
@@ -126,13 +124,19 @@ async function submitSite() {
   var btn = document.getElementById('submitBtn');
   var status = document.getElementById('status');
   btn.disabled = true; status.textContent = 'sending...';
+  
+  var recaptcha_token = '';
+  if (window.getCaptchaToken) {
+    recaptcha_token = await window.getCaptchaToken('report_game') || '';
+  }
+
   var id = new URLSearchParams(document.cookie.replaceAll('; ','&')).get('id') || '';
   var r = await (await fetch('/api/suggest', {
     method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({id, type: 'broken_game', text: site, recaptcha_token: grecaptcha.getResponse()})
+    body: JSON.stringify({id, type: 'broken_game', text: site, recaptcha_token: recaptcha_token})
   })).json();
   status.textContent = r.success ? 'submitted!' : (r.message || 'error');
-  if (r.success) { document.getElementById('site').value = ''; } else { grecaptcha.reset(); }
+  if (r.success) { document.getElementById('site').value = ''; }
   btn.disabled = false;
 }
 </script>

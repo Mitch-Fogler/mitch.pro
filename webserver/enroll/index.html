@@ -17,17 +17,7 @@
 
 <link rel="stylesheet" href="/open.css">
 <script src="/theme.js"></script>
-<script>
-  var _captchaId = null;
-  function onloadCallback() {
-    if (window.grecaptcha && _captchaId === null) {
-      _captchaId = grecaptcha.render('captcha-shared', {
-        'sitekey': '6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz', 'theme': 'dark'
-      });
-    }
-  }
-</script>
-<script src="https://www.google.com/recaptcha/api.js?onload=onloadCallback&render=explicit" async defer></script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
@@ -926,6 +916,7 @@
     z-index: 2 !important;
   }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js" defer></script>
 </head>
 <body>
   <main class="enroll-shell">
@@ -1027,8 +1018,18 @@
               <label class="field-label" for="email">Email Address</label>
               <input id="email" type="email" autocomplete="email" placeholder="your@email.com">
 
-              <label class="field-label" for="signup-password">Choose Password (min 6 chars)</label>
+              <label class="field-label" for="signup-password">Choose Password (min 8 chars)</label>
               <input id="signup-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 12px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+              
+              <div id="signup-password-strength-container" style="margin-top: -6px; margin-bottom: 12px; display: none;">
+                <div style="display: flex; gap: 4px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(255,255,255,0.05);">
+                  <div id="signup-strength-bar-1" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                  <div id="signup-strength-bar-2" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                  <div id="signup-strength-bar-3" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                  <div id="signup-strength-bar-4" style="flex: 1; height: 100%; transition: transition: background-color 0.2s;"></div>
+                </div>
+                <div id="signup-strength-text" style="font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-align: right; color: var(--t-fg2, #aaa);"></div>
+              </div>
 
               <label class="field-label" for="signup-confirm-password">Confirm Password</label>
               <input id="signup-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 12px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
@@ -1110,8 +1111,18 @@
               <label class="field-label" for="reset-token">6-Digit Reset Code</label>
               <input id="reset-token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
 
-              <label class="field-label" for="reset-password">New Password (min 6 chars)</label>
+              <label class="field-label" for="reset-password">New Password (min 8 chars)</label>
               <input id="reset-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 16px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+              
+              <div id="reset-password-strength-container" style="margin-top: -10px; margin-bottom: 16px; display: none;">
+                <div style="display: flex; gap: 4px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(255,255,255,0.05);">
+                  <div id="reset-strength-bar-1" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                  <div id="reset-strength-bar-2" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                  <div id="reset-strength-bar-3" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                  <div id="reset-strength-bar-4" style="flex: 1; height: 100%; transition: transition: background-color 0.2s;"></div>
+                </div>
+                <div id="reset-strength-text" style="font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-align: right; color: var(--t-fg2, #aaa);"></div>
+              </div>
 
               <label class="field-label" for="reset-confirm-password">Confirm New Password</label>
               <input id="reset-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 16px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
@@ -1121,9 +1132,7 @@
             <div id="rtmsg"></div>
           </div>
           
-          <div class="recaptcha-wrap" style="display: flex; justify-content: center; margin-top: 20px;">
-            <div id="captcha-shared"></div>
-          </div>
+
         </section>
       </div>
     </section>
@@ -1192,16 +1201,14 @@ function _checkSpam() {
 }
 
 
-function getCaptchaResponse() {
-  var isLocal = ['localhost', '127.0.0.1', '0.0.0.0'].includes(location.hostname) || location.hostname.startsWith('192.168.') || location.hostname.startsWith('10.') || location.hostname.endsWith('.local') || location.hostname.includes('mitch-desk');
-  if (isLocal) return 'local-bypass';
-  if (!window.grecaptcha || _captchaId === null) return '';
-  return grecaptcha.getResponse(_captchaId);
+async function getCaptchaResponse(actionName) {
+  if (window.getCaptchaToken) {
+    return await window.getCaptchaToken(actionName || 'enroll') || '';
+  }
+  return '';
 }
 
-function resetCaptcha() {
-  if (window.grecaptcha && _captchaId !== null) grecaptcha.reset(_captchaId);
-}
+function resetCaptcha() {}
 
 // Auto-fill from invite link (?ref=CODE&email=THEIR@EMAIL)
 (function() {
@@ -1225,6 +1232,128 @@ function resetCaptcha() {
   } catch(e) {}
 })();
 
+  let badPasswords = [];
+  try {
+    fetch('/api/bad-passwords')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) badPasswords = d.map(p => p.toLowerCase()); })
+      .catch(err => console.error("Error loading common password list:", err));
+  } catch(e) {}
+
+  function updatePasswordStrength(val, prefix) {
+    var container = document.getElementById(prefix + '-password-strength-container');
+    var text = document.getElementById(prefix + '-strength-text');
+    if (!container || !text) return;
+    
+    if (!val) {
+      container.style.display = 'none';
+      return;
+    }
+    
+    container.style.display = 'block';
+    
+    // 1. Check local bad list
+    if (badPasswords.includes(val.toLowerCase())) {
+      setStrengthUI(prefix, 0, 'Insecure (Too Common)', '#ef4444');
+      return;
+    }
+    
+    // 2. Try using zxcvbn if available
+    if (typeof zxcvbn === 'function') {
+      var result = zxcvbn(val);
+      var score = result.score;
+      var label = 'Weak';
+      var color = '#ef4444';
+      
+      if (val.length < 8) {
+        score = Math.min(score, 1);
+        label = 'Too Short (Min 8 chars)';
+      } else if (score === 0) {
+        label = 'Insecure / Too Common';
+        color = '#ef4444';
+      } else if (score === 1) {
+        label = 'Weak';
+        color = '#f87171';
+      } else if (score === 2) {
+        label = 'Fair';
+        color = '#fb923c';
+      } else if (score === 3) {
+        label = 'Good';
+        color = '#facc15';
+      } else if (score === 4) {
+        label = 'Strong';
+        color = '#4ade80';
+      }
+      
+      if (result.feedback && result.feedback.warning && score < 3) {
+        label = result.feedback.warning;
+      }
+      
+      setStrengthUI(prefix, score, label, color);
+      return;
+    }
+    
+    // 3. Fallback standard check
+    if (val.length < 8) {
+      setStrengthUI(prefix, 1, 'Too Short (Min 8 chars)', '#ef4444');
+      return;
+    }
+    
+    var score = 1;
+    if (val.length >= 12) score++;
+    
+    var hasUpper = /[A-Z]/.test(val);
+    var hasLower = /[a-z]/.test(val);
+    var hasDigit = /[0-9]/.test(val);
+    var hasSpecial = /[^A-Za-z0-9]/.test(val);
+    
+    var complexity = 0;
+    if (hasUpper && hasLower) complexity++;
+    if (hasDigit) complexity++;
+    if (hasSpecial) complexity++;
+    
+    score += complexity;
+    if (score > 4) score = 4;
+    
+    var label = 'Weak';
+    var color = '#f87171';
+    if (score === 2) {
+      label = 'Fair';
+      color = '#fb923c';
+    } else if (score === 3) {
+      label = 'Good';
+      color = '#facc15';
+    } else if (score === 4) {
+      label = 'Strong';
+      color = '#4ade80';
+    }
+    
+    setStrengthUI(prefix, score, label, color);
+  }
+
+  function setStrengthUI(prefix, score, label, color) {
+    var text = document.getElementById(prefix + '-strength-text');
+    text.textContent = label;
+    text.style.color = color;
+    
+    for (var i = 1; i <= 4; i++) {
+      var bar = document.getElementById(prefix + '-strength-bar-' + i);
+      if (!bar) continue;
+      if (i <= score) {
+        bar.style.backgroundColor = color;
+      } else {
+        bar.style.backgroundColor = 'transparent';
+      }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    var sp = document.getElementById('signup-password');
+    if (sp) sp.addEventListener('input', function(e) { updatePasswordStrength(e.target.value, 'signup'); });
+    var rp = document.getElementById('reset-password');
+    if (rp) rp.addEventListener('input', function(e) { updatePasswordStrength(e.target.value, 'reset'); });
+  });
+
 async function submit(isResend = false) {
   var email = document.getElementById('email').value.trim();
   var password = document.getElementById('signup-password').value;
@@ -1233,12 +1362,12 @@ async function submit(isResend = false) {
   var msg = document.getElementById('msg');
   var support = document.getElementById('support-actions');
   var resendBtn = document.getElementById('resend-btn');
-  var captcha = getCaptchaResponse();
-
   if (!email) { msg.className = 'err'; msg.textContent = 'Enter your email first.'; return; }
-  if (!password || password.length < 6) { msg.className = 'err'; msg.textContent = 'Choose a password (min 6 chars).'; return; }
+  if (!password || password.length < 8) { msg.className = 'err'; msg.textContent = 'Choose a password (min 8 chars).'; return; }
   if (password !== confirm) { msg.className = 'err'; msg.textContent = 'Passwords do not match.'; return; }
   if (!document.getElementById('agree').checked) { msg.className = 'err'; msg.textContent = 'Agreement required.'; return; }
+
+  var captcha = await getCaptchaResponse('signup');
   if (!captcha) { msg.className = 'err'; msg.textContent = 'Please complete reCAPTCHA.'; return; }
   if (_checkSpam()) { msg.className = 'err'; msg.textContent = 'Too many requests. Try again in a minute.'; return; }
 
@@ -1283,11 +1412,12 @@ async function submit(isResend = false) {
 async function verifySignup() {
   const email = document.getElementById('email').value.trim();
   const code = document.getElementById('token').value.trim();
-  const captcha = getCaptchaResponse();
   const tmsg = document.getElementById('tmsg');
   const btn = document.getElementById('tbtn');
 
   if (!code) { tmsg.className = 'err'; tmsg.textContent = 'Enter your 6-digit code.'; return; }
+
+  const captcha = await getCaptchaResponse('verify_signup');
   if (!captcha) { tmsg.className = 'err'; tmsg.textContent = 'Complete reCAPTCHA.'; return; }
 
   btn.disabled = true;
@@ -1325,9 +1455,9 @@ async function requestReset() {
   const email = document.getElementById('reset-email').value.trim();
   const btn = document.getElementById('reset-request-btn');
   const msg = document.getElementById('rtmsg');
-  const captcha = getCaptchaResponse();
-
   if (!email) { msg.className = 'err'; msg.textContent = 'Enter your email.'; return; }
+
+  const captcha = await getCaptchaResponse('request_reset');
   if (!captcha) { msg.className = 'err'; msg.textContent = 'Complete reCAPTCHA.'; return; }
 
   btn.disabled = true;
@@ -1389,13 +1519,14 @@ function showNoEmailForm() {
 async function applyNoEmail() {
   const email = document.getElementById('email').value.trim();
   const reason = document.getElementById('no-email-reason').value.trim();
-  const captcha = getCaptchaResponse(); 
   const msg = document.getElementById('msg');
 
   if (!reason) {
     alert("Please provide a reason.");
     return;
   }
+
+  const captcha = await getCaptchaResponse('apply_no_email');
   if (!captcha) {
     alert("Please complete captcha above.");
     return;
@@ -1444,7 +1575,6 @@ function switchTab(tab) {
 async function login() {
   const email = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
-  const captcha = getCaptchaResponse();
   const msg = document.getElementById('login-msg');
   const btn = document.getElementById('login-btn');
   if (!email || !password) {
@@ -1452,6 +1582,8 @@ async function login() {
     msg.textContent = 'Enter email and password.';
     return;
   }
+
+  const captcha = await getCaptchaResponse('login');
   if (!captcha) {
     msg.className = 'err';
     msg.textContent = 'Complete reCAPTCHA.';
@@ -1491,16 +1623,16 @@ async function claimToken(mode) {
   const prefix = isReset ? 'reset-' : 'claim-';
   const tokenField = isReset ? 'reset-token' : 'token';
   const msgField = isReset ? 'rtmsg' : 'tmsg';
-  const captcha = getCaptchaResponse();
-  
   var tok = document.getElementById(tokenField).value.trim();
   var password = document.getElementById(isReset ? 'reset-password' : 'claim-password').value;
   var confirm = document.getElementById(isReset ? 'reset-confirm-password' : 'claim-confirm-password').value;
   var tmsg = document.getElementById(msgField);
   
   if (!tok) { tmsg.className = 'err'; tmsg.textContent = 'Enter your 6-digit code.'; return; }
-  if (!password || password.length < 6) { tmsg.className = 'err'; tmsg.textContent = 'Password must be at least 6 characters.'; return; }
+  if (!password || password.length < 8) { tmsg.className = 'err'; tmsg.textContent = 'Password must be at least 8 characters.'; return; }
   if (password !== confirm) { tmsg.className = 'err'; tmsg.textContent = 'Passwords do not match.'; return; }
+
+  const captcha = await getCaptchaResponse('claim_token');
   if (!captcha) { tmsg.className = 'err'; tmsg.textContent = 'Complete reCAPTCHA.'; return; }
 
   tmsg.textContent = 'Verifying and configuring security...';

@@ -123,7 +123,6 @@
     .row, .chips { grid-template-columns: 1fr; }
   }
 </style>
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
 <main class="wrap">
@@ -169,9 +168,7 @@
         <textarea id="site" placeholder="What should we fix or build? Add details like device, browser, page, and what you expected."></textarea>
       </div>
 
-      <div class="recaptcha-wrap">
-        <div class="g-recaptcha" data-sitekey="6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz" data-theme="dark"></div>
-      </div>
+
 
       <div class="actions">
         <button id="submitBtn" type="submit">Send feedback</button>
@@ -238,6 +235,12 @@ async function submitSite(e) {
   var details = text;
   if (page) details += '\n\nPage: ' + page;
   if (mood) details += '\nMood: ' + mood;
+
+  var recaptcha_token = '';
+  if (window.getCaptchaToken) {
+    recaptcha_token = await window.getCaptchaToken('feedback') || '';
+  }
+
   try {
     var resp = await fetch('/api/suggest', {
       method: 'POST',
@@ -246,7 +249,7 @@ async function submitSite(e) {
         id: studentId(),
         type: selectedType,
         text: details,
-        recaptcha_token: grecaptcha.getResponse()
+        recaptcha_token: recaptcha_token
       })
     });
     var r = await resp.json();
@@ -256,10 +259,8 @@ async function submitSite(e) {
       document.getElementById('pageField').value = '';
       document.getElementById('moodField').value = '';
       document.getElementById('count').textContent = '0 / 2000';
-      grecaptcha.reset();
     } else {
       setStatus(r.message || 'Could not send feedback.', 'err');
-      grecaptcha.reset();
     }
   } catch (err) {
     setStatus('Network error. Try again.', 'err');

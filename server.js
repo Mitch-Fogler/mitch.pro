@@ -1079,6 +1079,50 @@ function stripPlus(email) {
   return email.slice(0, at).split('+')[0] + '@' + email.slice(at + 1);
 }
 
+async function isSecurePassword(password) {
+  if (!password || password.length < 8) {
+    return { valid: false, error: 'Password must be at least 8 characters long.' };
+  }
+  const badPath = join(DATA_DIR, 'bad_passwords.json');
+  let badPasswords = [];
+  try {
+    if (existsSync(badPath)) {
+      badPasswords = JSON.parse(readFileSync(badPath, 'utf8'));
+    }
+  } catch {}
+  if (badPasswords.map(p => p.toLowerCase()).includes(password.toLowerCase())) {
+    return { valid: false, error: 'Password is too common and insecure.' };
+  }
+
+  try {
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha1').update(password).digest('hex').toUpperCase();
+    const prefix = hash.slice(0, 5);
+    const suffix = hash.slice(5);
+    
+    const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+      headers: { 'User-Agent': 'mitch.pro-password-validator' }
+    });
+    if (res.ok) {
+      const text = await res.text();
+      const lines = text.split('\n');
+      for (const line of lines) {
+        const [partsuff, countStr] = line.trim().split(':');
+        if (partsuff === suffix) {
+          const count = parseInt(countStr || '0', 10);
+          if (count > 0) {
+            return { valid: false, error: 'This password has been leaked in a data breach ' + count + ' times and is unsafe to use.' };
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[hibp] API check failed:', e);
+  }
+
+  return { valid: true };
+}
+
 let passwordsCache = null;
 function loadPasswords() {
   if (passwordsCache) return passwordsCache;
@@ -1281,7 +1325,25 @@ const ACHIEVEMENT_DEFINITIONS = {
   'painter_1': { name: 'Painter I', desc: 'Place 100 pixels', bonus: 100, goal: 100, stat: 'pixels' },
   'painter_2': { name: 'Painter II', desc: 'Place 1000 pixels', bonus: 500, goal: 1000, stat: 'pixels' },
   'chess_win_1': { name: 'First Win', desc: 'Win your first chess game', bonus: 100, goal: 1, stat: 'chess_wins' },
+  'chess_win_2': { name: 'Grandmaster', desc: 'Win 10 chess games', bonus: 500, goal: 10, stat: 'chess_wins' },
   'puzzle_master': { name: 'Puzzle Master', desc: 'Solve 50 puzzles', bonus: 250, goal: 50, stat: 'puzzles_solved' },
+  'casino_novice': { name: 'High Roller I', desc: 'Play 10 casino games', bonus: 100, goal: 10, stat: 'casino_bets' },
+  'casino_regular': { name: 'High Roller II', desc: 'Play 100 casino games', bonus: 500, goal: 100, stat: 'casino_bets' },
+  'casino_winner': { name: 'Lucky Streak', desc: 'Win 50 casino games', bonus: 250, goal: 50, stat: 'casino_wins' },
+  'clicker_1': { name: 'Clicker Novice', desc: 'Reach 1,000,000 clicker points', bonus: 100, goal: 1000000, stat: 'clicker_points' },
+  'clicker_2': { name: 'Clicker Master', desc: 'Reach 100,000,000 clicker points', bonus: 500, goal: 100000000, stat: 'clicker_points' },
+  'typing_1': { name: 'Typist Novice', desc: 'Play 10 typing races', bonus: 100, goal: 10, stat: 'typing_races' },
+  'typing_2': { name: 'Typist Master', desc: 'Play 100 typing races', bonus: 500, goal: 100, stat: 'typing_races' },
+  'logic_1': { name: 'Logic Novice', desc: 'Solve 10 logic puzzles', bonus: 100, goal: 10, stat: 'logic_puzzles' },
+  'logic_2': { name: 'Logic Master', desc: 'Solve 100 logic puzzles', bonus: 500, goal: 100, stat: 'logic_puzzles' },
+  'richard_1': { name: 'Rich Friends', desc: 'Earn 1,000 coins from Richard', bonus: 100, goal: 1000, stat: 'richard_coins' },
+  'richard_2': { name: 'Royal Riches', desc: 'Earn 10,000 coins from Richard', bonus: 500, goal: 10000, stat: 'richard_coins' },
+  'piano_1': { name: 'Pianist Novice', desc: 'Play 10 piano games', bonus: 100, goal: 10, stat: 'piano_games' },
+  'piano_2': { name: 'Pianist Master', desc: 'Play 100 piano games', bonus: 500, goal: 100, stat: 'piano_games' },
+  'battleship_1': { name: 'Commodore', desc: 'Win 1 battleship game', bonus: 100, goal: 1, stat: 'battleship_wins' },
+  'battleship_2': { name: 'Fleet Admiral', desc: 'Win 10 battleship games', bonus: 500, goal: 10, stat: 'battleship_wins' },
+  'jeopardy_1': { name: 'Smart Contestant', desc: 'Win 1 Jeopardy game', bonus: 100, goal: 1, stat: 'jeopardy_wins' },
+  'jeopardy_2': { name: 'Jeopardy Legend', desc: 'Win 10 Jeopardy games', bonus: 500, goal: 10, stat: 'jeopardy_wins' }
 };
 
 function loadCoins() { return coinsCache; }
@@ -1819,14 +1881,16 @@ async function ntfy(msg, { title, priority } = {}) {
   } catch {}
 }
 
-async function verifyRecaptcha(token) {
+async function verifyRecaptcha(token, ip) {
+  if (ip && (WHITELISTED_IPS.has(ip) || ip === '127.0.0.1' || ip === '::1')) return true;
+
   const secretKey = (process.env.SECRET_KEY || '').trim();
   const recaptchaSecretKey = (process.env.RECAPTCHA_SECRET_KEY || '').trim();
 
   if (!secretKey && !recaptchaSecretKey) return true;
   if (!token) return false;
 
-  const callVerify = async (secret) => {
+  const callVerify = async (secret, signal) => {
     if (!secret) return false;
     try {
       const verifyUrl = process.env.RECAPTCHA_VERIFY_URL || 'https://www.google.com/recaptcha/api/siteverify';
@@ -1834,7 +1898,7 @@ async function verifyRecaptcha(token) {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
-        signal: AbortSignal.timeout(5000),
+        signal,
       });
       const data = await resp.json();
       if (data.success !== true) return false;
@@ -1843,19 +1907,33 @@ async function verifyRecaptcha(token) {
         return false;
       }
       return true;
-    } catch {
+    } catch (e) {
+      if (e && e.name === 'AbortError') {
+        throw e;
+      }
       return false;
     }
   };
 
-  if (recaptchaSecretKey) {
-    const ok = await callVerify(recaptchaSecretKey);
-    if (ok) return true;
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  if (secretKey) {
-    const ok = await callVerify(secretKey);
-    if (ok) return true;
+  try {
+    if (recaptchaSecretKey) {
+      const ok = await callVerify(recaptchaSecretKey, controller.signal);
+      if (ok) return true;
+    }
+
+    if (secretKey) {
+      const ok = await callVerify(secretKey, controller.signal);
+      if (ok) return true;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      console.log(`[recaptcha] Verification timed out after 5s`);
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   return false;
@@ -2161,7 +2239,7 @@ function chessRateOk(uid) {
 
 async function genServerKeypair() {
   const kp = await crypto.subtle.generateKey(
-    { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']
+    { name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']
   );
   const raw = await crypto.subtle.exportKey('raw', kp.publicKey);
   return { priv: kp.privateKey, pubHex: Buffer.from(raw).toString('hex') };
@@ -3422,7 +3500,7 @@ function checkRateLimit(req, endpoint) {
   const ep = endpoint || new URL(req.url).pathname;
 
   // Anti-bot timing regularity check on non-polling action endpoints
-  if (!ep.endsWith('/state')) {
+  if (!ep.endsWith('/state') && !ep.includes('/inbox') && !ep.includes('/heartbeat') && !ep.includes('/groups') && !ep.includes('/canvas/')) {
     const timingKey = ip + ':' + ep;
     if (detectNonHumanTiming(timingKey)) {
       console.warn(`[Anti-Bot] Non-human timing detected from ${ip} on ${ep}`);
@@ -4186,7 +4264,11 @@ let SHOP_CATALOG = [
   { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
   { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' },
   { id: 'streak_freeze', name: 'Streak Freeze', section: 'Utility', type: 'utility', costType: 'streak_freeze', cost: 150, desc: 'Automatically saves your Daily Login streak if you miss a day!' },
-  { id: 'happy_hour_ticket', name: 'Personal Happy Hour (30m)', section: 'Utility', type: 'utility', costType: 'happy_hour_ticket', cost: 350, desc: 'Trigger a personal 30-minute Happy Hour for 2X coins on all games and canvas!' }
+  { id: 'happy_hour_ticket', name: 'Personal Happy Hour (30m)', section: 'Utility', type: 'utility', costType: 'happy_hour_ticket', cost: 350, desc: 'Trigger a personal 30-minute Happy Hour for 2X coins on all games and canvas!' },
+  { id: 'double_down_ticket', name: 'Double Down Ticket (30m)', section: 'Utility', type: 'utility', costType: 'double_down_ticket', cost: 500, desc: 'Active for 30 minutes. Doubles the payout of any casino game wins!' },
+  { id: 'bad_beat_insurance', name: 'Bad Beat Insurance (30m)', section: 'Utility', type: 'utility', costType: 'bad_beat_insurance', cost: 300, desc: 'Active for 30 minutes. Refunds your entire bet if you lose any casino game round.' },
+  { id: 'happy_hour_extension', name: 'Happy Hour Extension (15m)', section: 'Utility', type: 'utility', costType: 'happy_hour_extension', cost: 250, desc: 'Extends your active Personal Happy Hour by an additional 15 minutes. Requires active Happy Hour to purchase.' },
+  { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' }
 ];
 try {
   const catalogPath = join(DATA_DIR, 'shop_catalog.json');
@@ -4337,7 +4419,6 @@ function premiumDiscountFor(item) {
 
 function shopCostFor(item, email) {
   if (!item) return 0;
-  if (isAdminEmail(email)) return 0;
   const baseCost = shopBaseCostFor(item);
   if (isPremiumEmail(email) && item.type !== 'premium') {
     return Math.max(1, Math.ceil(baseCost * (1 - premiumDiscountFor(item)) / 25) * 25);
@@ -4360,27 +4441,15 @@ function shopItemsFor(email) {
 
 function buildInventory(email) {
   const norm = normalizeEmail(email);
-  const admin = isAdminEmail(email);
   const cosm = loadJson(COSMETICS_FILE, {});
   const unlockedAi = loadJson(UNLOCKED_AI_FILE, {});
   const userCosm = sanitizeCosmeticsForEmail(email, cosm[norm] || {});
   const ai = Array.isArray(unlockedAi[norm]) ? [...new Set(unlockedAi[norm].filter(Boolean))] : [];
-  if (admin) {
-    for (const item of SHOP_CATALOG) {
-      if (SHOP_TYPE_CONFIG[item.costType]) {
-        const bucket = SHOP_TYPE_CONFIG[item.costType].bucket;
-        if (!userCosm[bucket].includes(item.id)) userCosm[bucket].push(item.id);
-      } else if (item.costType === 'ai_personality' && !ai.includes(item.id)) {
-        ai.push(item.id);
-      }
-    }
-  }
   return { cosmetics: userCosm, ai };
 }
 
 function ownsShopItem(email, item, inventory = buildInventory(email)) {
   if (!item) return false;
-  if (isAdminEmail(email)) return true;
   if (item.type === 'premium') return isPremiumEmail(email);
   if (item.costType === 'ai_personality') return inventory.ai.includes(item.id);
   if (item.costType === 'vip_casino_pass') {
@@ -4818,6 +4887,7 @@ async function handleRequest(req, server) {
                    cleanPath === '/api/bell/override' ||
                    cleanPath === '/claim' || 
                    cleanPath === '/api/signup' ||
+                   cleanPath === '/api/bad-passwords' ||
                    cleanPath === '/api/verify-signup' ||
                    cleanPath === '/api/claim-token' || 
                    cleanPath === '/api/login' || 
@@ -4906,11 +4976,14 @@ async function handleRequest(req, server) {
 
   if (path === "/api/marketplace/list" && method === "POST") {
     const rl = checkRateLimit(req, path); if (rl) return rl;
+    if (!await tryParseJson()) return jsonResp(400, { error: "bad json" });
     const cookies = getCookies(req); 
     const sid = cookies["studentId"] || cookies["id"] || ""; 
     if (!validId(sid)) return jsonResp(401, { error: "not logged in" }); 
     const email = emailFromSid(sid); 
     if (!email) return jsonResp(401, { error: "email not found" }); 
+    if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+      return jsonResp(400, { error: "reCAPTCHA failed. Please try again." });
     const norm = normalizeEmail(email);
 
     const listings = loadJson(MARKETPLACE_FILE, []);
@@ -4919,7 +4992,6 @@ async function handleRequest(req, server) {
       return jsonResp(400, { error: "You cannot have more than 10 active listings on the marketplace." });
     }
 
-    if (!await tryParseJson()) return jsonResp(400, { error: "bad json" });
     const { type, itemId, description, price, mediator } = body;
     
     if (type !== 'cosmetic' && type !== 'text') {
@@ -4985,14 +5057,16 @@ async function handleRequest(req, server) {
 
   if (path === "/api/marketplace/buy" && method === "POST") {
     const rl = checkRateLimit(req, path); if (rl) return rl;
+    if (!await tryParseJson()) return jsonResp(400, { error: "bad json" });
     const cookies = getCookies(req); 
     const sid = cookies["studentId"] || cookies["id"] || ""; 
     if (!validId(sid)) return jsonResp(401, { error: "not logged in" }); 
     const email = emailFromSid(sid); 
     if (!email) return jsonResp(401, { error: "email not found" }); 
+    if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+      return jsonResp(400, { error: "reCAPTCHA failed. Please try again." });
     const norm = normalizeEmail(email);
 
-    if (!await tryParseJson()) return jsonResp(400, { error: "bad json" });
     const { listingId } = body;
 
     const listings = loadJson(MARKETPLACE_FILE, []);
@@ -5374,11 +5448,14 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
     }
 
     if (path === '/api/coins/buy-premium' && method === 'POST') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       
       const COST = shopBaseCostFor(shopItemById('premium'));
       const balance = getCoins(email);
@@ -5404,6 +5481,8 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       const norm = normalizeEmail(email);
       
       const targetEmail = (body.targetEmail || '').toLowerCase().trim();
@@ -5462,6 +5541,8 @@ Mitch.pro Team`;
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       const norm = normalizeEmail(email);
 
       const { itemId } = body;
@@ -5519,6 +5600,34 @@ Mitch.pro Team`;
         const currentHHUntil = stats[norm].personal_happy_hour_until || 0;
         const baseTime = Math.max(Date.now(), currentHHUntil);
         stats[norm].personal_happy_hour_until = baseTime + (30 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'double_down_ticket') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentDoubleUntil = stats[norm].double_down_until || 0;
+        const baseTime = Math.max(Date.now(), currentDoubleUntil);
+        stats[norm].double_down_until = baseTime + (30 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'bad_beat_insurance') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentInsuredUntil = stats[norm].bad_beat_insurance_until || 0;
+        const baseTime = Math.max(Date.now(), currentInsuredUntil);
+        stats[norm].bad_beat_insurance_until = baseTime + (30 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'happy_hour_extension') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentHHUntil = stats[norm].personal_happy_hour_until || 0;
+        if (currentHHUntil <= Date.now()) {
+          return jsonResp(400, { error: 'You must have an active Personal Happy Hour to extend it.' });
+        }
+        stats[norm].personal_happy_hour_until = currentHHUntil + (15 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'slots_free_spin') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        stats[norm].slots_free_spins = (stats[norm].slots_free_spins || 0) + 5;
         saveUserStats(stats);
       }
 
@@ -6767,7 +6876,7 @@ Mitch.pro Team`;
         if (!email || !password) {
           return jsonResp(400, { success: false, message: 'Email and password required.' });
         }
-        if (!await verifyRecaptcha(body.recaptcha_token || '')) {
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         }
         if (rateLimited('ip:' + ip, path)) {
@@ -6800,16 +6909,33 @@ Mitch.pro Team`;
       }
     }
 
+    // /api/bad-passwords
+    if (path === '/api/bad-passwords') {
+      try {
+        const badPath = join(DATA_DIR, 'bad_passwords.json');
+        if (existsSync(badPath)) {
+          return new Response(readFileSync(badPath, 'utf8'), { headers: { 'Content-Type': 'application/json' } });
+        }
+        return jsonResp(200, []);
+      } catch (e) {
+        return jsonResp(500, []);
+      }
+    }
+
     // /api/signup
     if (path === '/api/signup') {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         let email = (body.email || '').trim().toLowerCase();
         const password = (body.password || '').trim();
-        if (!email || !password || password.length < 6)
-          return jsonResp(400, { success: false, message: 'Email and password (min 6 chars) required.' });
+        if (!email || !password)
+          return jsonResp(400, { success: false, message: 'Email and password required.' });
 
-        if (!await verifyRecaptcha(body.recaptcha_token || ''))
+        const pwdCheck = await isSecurePassword(password);
+        if (!pwdCheck.valid)
+          return jsonResp(400, { success: false, message: pwdCheck.error });
+
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         if (rateLimited('ip:' + ip, path))
           return jsonResp(429, { success: false, message: 'Too many requests, slow down.' });
@@ -6847,6 +6973,8 @@ Mitch.pro Team`;
     if (path === '/api/verify-signup') {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+          return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         const email = (body.email || '').trim().toLowerCase();
         const code = (body.code || '').trim();
         const normEmail = normalizeEmail(email);
@@ -6924,7 +7052,7 @@ Mitch.pro Team`;
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         let email = (body.email || '').trim().toLowerCase();
-        if (!await verifyRecaptcha(body.recaptcha_token || ''))
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         if (rateLimited('ip:' + ip, path))
           return jsonResp(429, { success: false, message: 'Too many requests, slow down.' });
@@ -6960,7 +7088,7 @@ Mitch.pro Team`;
       const rl = checkRateLimit(req, path); if (rl) return rl;
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        if (!await verifyRecaptcha(body.recaptcha_token || ''))
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         const studentId = (body.studentId || '').trim();
         if (!validId(studentId) || isInvalidated(studentId) || isRevoked(studentId))
@@ -7069,7 +7197,7 @@ Mitch.pro Team`;
       const rl = checkRateLimit(req, path); if (rl) return rl;
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        if (!await verifyRecaptcha(body.recaptcha_token || ''))
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         const userId  = (body.id || '').trim();
         const sugType = (body.type || 'general').trim().slice(0, 50);
@@ -7168,6 +7296,8 @@ Mitch.pro Team`;
       const rl = checkRateLimit(req, path); if (rl) return rl;
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+          return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         let domain = (body.domain || '').trim().toLowerCase().split(':')[0];
         if (!domain) domain = (req.headers.get('Host') || 'unknown').split(':')[0];
         const token   = (body.token || '').trim();
@@ -7196,8 +7326,12 @@ Mitch.pro Team`;
         // If it's a password reset token, save the new password and E2E keys
         if (entry.type === 'reset') {
           const newPassword = (body.password || '').trim();
-          if (!newPassword || newPassword.length < 6) {
-            return jsonResp(400, { success: false, message: 'Password must be at least 6 characters.' });
+          if (!newPassword) {
+            return jsonResp(400, { success: false, message: 'Password is required.' });
+          }
+          const pwdCheck = await isSecurePassword(newPassword);
+          if (!pwdCheck.valid) {
+            return jsonResp(400, { success: false, message: pwdCheck.error });
           }
           const hash = await Bun.password.hash(newPassword);
           const passwords = loadPasswords();
@@ -7752,7 +7886,7 @@ function loadAllGamesList() {
     if (path === '/api/apply') {
       if (rateLimited('ip:' + ip, '/api/apply')) return jsonResp(429, { error: 'Too many applications. Please wait before trying again.' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      if (!await verifyRecaptcha(body.recaptcha_token || ''))
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
         return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       const { name, email, discord, why, skills, extra, type } = body;
       const isPremium = type === 'premium';
@@ -7820,12 +7954,14 @@ function loadAllGamesList() {
       return jsonResp(200, { ok: true, bonusGranted, bonusAmount: bonusGranted ? 500 : 0 });
     }
     if (path === '/api/friends/request' && method === 'POST') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
-      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       
       const resolved = resolveTargetEmail(body.email);
       if (!resolved) return jsonResp(400, { error: 'user not found' });
@@ -8092,6 +8228,9 @@ function loadAllGamesList() {
       const email = emailFromSid(sid);
       if (!email || !isPremiumEmail(email)) return jsonResp(403, { error: 'Premium required' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
+      }
       const text = String(body.text || '').trim().slice(0, 1000);
       if (!text) return jsonResp(400, { error: 'empty message' });
       const normEmail = normalizeEmail(email);
@@ -8158,6 +8297,9 @@ function loadAllGamesList() {
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
+      }
       const text = String(body.text || '').trim().slice(0, 1000);
       if (!text) return jsonResp(400, { error: 'empty message' });
       const normEmail = normalizeEmail(email);
@@ -8426,7 +8568,7 @@ function loadAllGamesList() {
     if (path === '/api/appeal') {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        if (!await verifyRecaptcha(body.recaptcha_token || ''))
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         const email  = (body.email || '').trim().toLowerCase();
         const reason = (body.reason || '').trim();
@@ -8444,7 +8586,7 @@ function loadAllGamesList() {
     if (path === '/api/me/change-password') {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        if (!await verifyRecaptcha(body.recaptcha_token || ''))
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed.' });
         
         const cookies = getCookies(req);
@@ -8457,8 +8599,9 @@ function loadAllGamesList() {
 
         if (!currentPassword || !newPassword || !confirmPassword)
           return jsonResp(400, { success: false, message: 'All fields required.' });
-        if (newPassword.length < 6)
-          return jsonResp(400, { success: false, message: 'New password too short.' });
+        const pwdCheck = await isSecurePassword(newPassword);
+        if (!pwdCheck.valid)
+          return jsonResp(400, { success: false, message: pwdCheck.error });
         if (newPassword !== confirmPassword)
           return jsonResp(400, { success: false, message: 'New passwords do not match.' });
 
@@ -9501,6 +9644,7 @@ function loadAllGamesList() {
         isAdmin: isAdminEmail(email),
         stats: loadUserStats()[norm] || {},
         achievements: getAchievements(email),
+        totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
         activeColor: publicActiveColor(email, cosm[norm]?.activeColor),
         activeBadge: cosm[norm]?.activeBadge || null,
         profileBonusClaimed: profile.profileBonusClaimed || false,
@@ -9531,6 +9675,7 @@ function loadAllGamesList() {
         isAdmin: isAdminEmail(actualEmail),
         stats: loadUserStats()[norm] || {},
         achievements: getAchievements(actualEmail),
+        totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
         activeColor: publicActiveColor(actualEmail, cosm[norm]?.activeColor),
         activeBadge: cosm[norm]?.activeBadge || null
       });
@@ -9548,6 +9693,9 @@ function loadAllGamesList() {
       const senderEmail = (names[sid] || '').toLowerCase();
       if (!senderEmail) return jsonResp(403, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
+      }
       const groupId = body.groupId ? String(body.groupId) : '';
       const to   = groupId ? '' : (body.to || '').toLowerCase().trim();
       const rawText = String(body.text || '').trim();
@@ -9859,6 +10007,8 @@ function loadAllGamesList() {
       const myEmail = (names[sid] || '').toLowerCase();
       if (!myEmail) return jsonResp(403, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       const reports = loadJson(CHAT_REPORTS_FILE, []);
       
       const newReport = {
@@ -11506,6 +11656,8 @@ function loadAllGamesList() {
     const sid = authSidFromCookies(cookies);
     const email = emailFromSid(sid);
     if (!email) return jsonResp(401, { error: 'Unauthorized' });
+    if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+      return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
     const { name, description, friendsOnly } = body;
     if (!name) return jsonResp(400, { error: 'missing fields' });
 
@@ -12355,6 +12507,12 @@ function loadAllGamesList() {
     if (!email) return jsonResp(401, { error: 'email not found' });
     const norm = normalizeEmail(email);
 
+    if (method === 'POST' && path !== '/api/casino/blackjack/hit' && path !== '/api/casino/blackjack/stand') {
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
+    }
+
     function addHistory(email, game, amount, outcome) {
       const h = casinoHistory.get(norm) || [];
       h.unshift({ game, amount, outcome, ts: Date.now() });
@@ -12379,15 +12537,38 @@ function loadAllGamesList() {
       return false;
     }
 
-    function settleCasinoRound(gameName, bet, payout, outcome) {
-      const safePayout = Number(Math.max(0, payout || 0).toFixed(4));
-      const net = Number((safePayout - bet).toFixed(4));
-      casinoIntake += bet;
+    function settleCasinoRound(gameName, bet, payout, outcome, freeSpin = false) {
+      const stats = loadUserStats();
+      const isDouble = stats[norm] && (stats[norm].double_down_until || 0) > Date.now();
+      const isInsured = stats[norm] && (stats[norm].bad_beat_insurance_until || 0) > Date.now();
+
+      let finalPayout = payout;
+      let finalOutcome = outcome;
+
+      if (payout > bet && isDouble) {
+        finalPayout = payout * 2;
+        finalOutcome = outcome + ' (2X DOUBLE)';
+      } else if (payout <= 0 && isInsured && !freeSpin) {
+        finalPayout = bet;
+        finalOutcome = 'REFUNDED (INSURED)';
+      }
+
+      const safePayout = Number(Math.max(0, finalPayout || 0).toFixed(4));
+      const effectiveBet = freeSpin ? 0 : bet;
+      const net = Number((safePayout - effectiveBet).toFixed(4));
+
+      casinoIntake += effectiveBet;
       casinoPayout += safePayout;
       saveCasinoStats();
       addCoins(email, net);
-      addHistory(email, gameName, net, outcome);
-      logBet(email, gameName, bet, outcome);
+      addHistory(email, gameName, net, finalOutcome);
+      logBet(email, gameName, effectiveBet, finalOutcome);
+
+      updateStat(email, 'casino_bets', 1);
+      if (net > 0) {
+        updateStat(email, 'casino_wins', 1);
+      }
+
       return { payout: safePayout, net, newBalance: getCoins(email) };
     }
 
@@ -12820,11 +13001,20 @@ function loadAllGamesList() {
       
       if (isVipRoom && !isVip) return jsonResp(403, { error: 'VIP pass required' });
 
+      const freeSpins = stats[norm]?.slots_free_spins || 0;
+      const isFreeSpin = freeSpins > 0 && !isVipRoom;
+
       const bet = Number(body.amount);
       if (isVipRoom && bet < 100) return jsonResp(400, { error: 'VIP minimum bet is 100 coins' });
-      if (!Number.isFinite(bet) || bet < 1 || bet > getCoins(email)) return jsonResp(400, { error: 'invalid bet' });
-
-      if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
+      
+      if (isFreeSpin) {
+        if (!Number.isFinite(bet) || bet < 1 || bet > 500) return jsonResp(400, { error: 'invalid bet (free spins limit max 500 coins)' });
+        stats[norm].slots_free_spins = freeSpins - 1;
+        saveUserStats(stats);
+      } else {
+        if (!Number.isFinite(bet) || bet < 1 || bet > getCoins(email)) return jsonResp(400, { error: 'invalid bet' });
+        if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
+      }
 
       const symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣'];
       const rigged = isRigged();
@@ -12865,9 +13055,9 @@ function loadAllGamesList() {
       if (isVipRoom && mult > 0) mult = Number((mult * 1.1).toFixed(2)); // 10% VIP bonus
 
       const winAmt = bet * mult;
-      const settled = settleCasinoRound((isVipRoom ? 'VIP ' : '') + 'Slots', bet, winAmt, mult > 0 ? 'WIN' : 'LOSE');
+      const settled = settleCasinoRound((isVipRoom ? 'VIP ' : '') + 'Slots', bet, winAmt, mult > 0 ? 'WIN' : 'LOSE', isFreeSpin);
       
-      return jsonResp(200, { ok: true, results, rank, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+      return jsonResp(200, { ok: true, results, rank, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance, freeSpinsRemaining: stats[norm].slots_free_spins || 0 });
     }
   }
 
@@ -13142,11 +13332,76 @@ function loadAllGamesList() {
 	          let raw    = readFileSync(filePath);
 
           let injectStr = '';
-          if (process.env.GOOGLE_ANALYTICS_ID) {
-            injectStr += `\n<!-- Google tag (gtag.js) -->\n<script async src="https://www.googletagmanager.com/gtag/js?id=${process.env.GOOGLE_ANALYTICS_ID}"></script>\n<script>\n  window.dataLayer = window.dataLayer || [];\n  function gtag(){dataLayer.push(arguments);}\n  gtag('js', new Date());\n  gtag('config', '${process.env.GOOGLE_ANALYTICS_ID}');\n</script>\n`;
-          }
-          if (process.env.RECAPTCHA_SITE_KEY && !raw.includes(Buffer.from('recaptcha/api.js'))) {
-            injectStr += `\n<!-- Google Invisible reCAPTCHA v3 -->\n<script src="https://www.google.com/recaptcha/api.js?render=${process.env.RECAPTCHA_SITE_KEY}" async defer></script>\n<script>\n  window.getCaptchaToken = function(action) {\n    return new Promise(function(resolve) {\n      if (window.grecaptcha) {\n        grecaptcha.ready(function() {\n          grecaptcha.execute('${process.env.RECAPTCHA_SITE_KEY}', {action: action || 'page_view'}).then(function(token) {\n            resolve(token);\n          }).catch(function() {\n            resolve(null);\n          });\n        });\n      } else {\n        resolve(null);\n      }\n    });\n  };\n</script>\n<style>.grecaptcha-badge { visibility: hidden !important; }</style>\n`;
+          const gaId = (process.env.GOOGLE_ANALYTICS_ID || '').trim();
+          const rcKey = (process.env.RECAPTCHA_SITE_KEY || '').trim();
+          const hasV2Script = raw.includes(Buffer.from('recaptcha/api.js'));
+
+          if (gaId || (rcKey && !hasV2Script)) {
+            injectStr += `\n<!-- mitch.pro PageSpeed Optimizations: Lazy Loaded GTM & reCAPTCHA -->\n<script>\n`;
+            if (rcKey && !hasV2Script) {
+              injectStr += `  window.getCaptchaToken = function(action) {\n` +
+                           `    return new Promise(function(resolve) {\n` +
+                           `      function executeToken() {\n` +
+                           `        if (window.grecaptcha) {\n` +
+                           `          grecaptcha.ready(function() {\n` +
+                           `            grecaptcha.execute('${rcKey}', {action: action || 'page_view'}).then(function(token) {\n` +
+                           `              resolve(token);\n` +
+                           `            }).catch(function() {\n` +
+                           `              resolve(null);\n` +
+                           `            });\n` +
+                           `          });\n` +
+                           `        } else {\n` +
+                           `          resolve(null);\n` +
+                           `        }\n` +
+                           `      }\n` +
+                           `      if (window.grecaptcha) {\n` +
+                           `        executeToken();\n` +
+                           `      } else {\n` +
+                           `        window.addEventListener('recaptcha-loaded', executeToken, { once: true });\n` +
+                           `        triggerLoad();\n` +
+                           `      }\n` +
+                           `    });\n` +
+                           `  };\n`;
+            }
+            injectStr += `  let _lazyLoaded = false;\n` +
+                         `  function triggerLoad() {\n` +
+                         `    if (_lazyLoaded) return;\n` +
+                         `    _lazyLoaded = true;\n` +
+                         `    window.removeEventListener('mousemove', triggerLoad);\n` +
+                         `    window.removeEventListener('mousedown', triggerLoad);\n` +
+                         `    window.removeEventListener('keydown', triggerLoad);\n` +
+                         `    window.removeEventListener('touchstart', triggerLoad);\n` +
+                         `    window.removeEventListener('scroll', triggerLoad);\n`;
+            if (gaId) {
+              injectStr += `    var ga = document.createElement('script');\n` +
+                           `    ga.async = true;\n` +
+                           `    ga.src = 'https://www.googletagmanager.com/gtag/js?id=${gaId}';\n` +
+                           `    document.head.appendChild(ga);\n` +
+                           `    window.dataLayer = window.dataLayer || [];\n` +
+                           `    window.gtag = function(){dataLayer.push(arguments);};\n` +
+                           `    gtag('js', new Date());\n` +
+                           `    gtag('config', '${gaId}');\n`;
+            }
+            if (rcKey && !hasV2Script) {
+              injectStr += `    var rc = document.createElement('script');\n` +
+                           `    rc.src = 'https://www.google.com/recaptcha/api.js?render=${rcKey}';\n` +
+                           `    rc.async = true;\n` +
+                           `    rc.defer = true;\n` +
+                           `    rc.onload = function() {\n` +
+                           `      window.dispatchEvent(new Event('recaptcha-loaded'));\n` +
+                           `    };\n` +
+                           `    document.head.appendChild(rc);\n`;
+            }
+            injectStr += `  }\n` +
+                         `  window.addEventListener('mousemove', triggerLoad, { passive: true });\n` +
+                         `  window.addEventListener('mousedown', triggerLoad, { passive: true });\n` +
+                         `  window.addEventListener('keydown', triggerLoad, { passive: true });\n` +
+                         `  window.addEventListener('touchstart', triggerLoad, { passive: true });\n` +
+                         `  window.addEventListener('scroll', triggerLoad, { passive: true });\n` +
+                         `</script>\n`;
+            if (rcKey && !hasV2Script) {
+              injectStr += `<style>.grecaptcha-badge { visibility: hidden !important; }</style>\n`;
+            }
           }
           if (injectStr) {
             const injectBuf = Buffer.from(injectStr);

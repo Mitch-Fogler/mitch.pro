@@ -217,6 +217,88 @@
     .balance-panel { min-width: 0; }
     .admin-grid { grid-template-columns: 1fr; }
   }
+
+  /* Modal styling */
+  .modal-backdrop {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .modal-backdrop.show {
+    opacity: 1;
+  }
+  .modal-content {
+    background: var(--t-bg2, #151515);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 12px;
+    width: 95%;
+    max-width: 500px;
+    padding: 32px;
+    position: relative;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6), 0 0 40px rgba(139,92,246,0.15);
+    transform: scale(0.9);
+    transition: transform 0.3s ease;
+  }
+  .modal-backdrop.show .modal-content {
+    transform: scale(1);
+  }
+  .modal-close-btn {
+    position: absolute;
+    top: 12px;
+    right: 18px;
+    background: transparent;
+    border: none;
+    color: var(--t-fg2, #aaa);
+    font-size: 2.2rem;
+    cursor: pointer;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .modal-close-btn:hover {
+    color: var(--t-ac, #8b5cf6);
+  }
+  .modal-header {
+    margin-bottom: 20px;
+  }
+  .modal-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .modal-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: var(--t-fg, #fff);
+  }
+  .modal-desc {
+    font-size: 0.9rem;
+    color: var(--t-fg2, #aaa);
+    line-height: 1.6;
+    margin-bottom: 24px;
+  }
+  .modal-explain {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    color: var(--t-fg2, #ccc);
+    margin-bottom: 24px;
+  }
+  .modal-explain strong {
+    color: #fbbf24;
+    font-family: 'Syne', sans-serif;
+  }
 </style>
 </head>
 <body>
@@ -239,6 +321,13 @@
 
   <div id="tabs" class="tabs"></div>
   <div id="market"></div>
+
+  <div id="info-modal" class="modal-backdrop" style="display:none;">
+    <div class="modal-content">
+      <button class="modal-close-btn" type="button">&times;</button>
+      <div id="modal-details"></div>
+    </div>
+  </div>
 
   <div id="admin-section" class="admin-box">
     <div class="section-title">Admin Coin Gift</div>
@@ -355,7 +444,6 @@
   }
 
   function owns(item) {
-    if (isAdmin) return true;
     if (item.type === 'premium') return isPremium;
     if (item.costType === 'vip_casino_pass') return vipUntil > Date.now();
     if (item.costType === 'ai_personality') return (inventory.ai || []).includes(item.id);
@@ -374,7 +462,7 @@
   }
 
   function locked(item) {
-    return item.premiumOnly && !isPremium && !isAdmin;
+    return item.premiumOnly && !isPremium;
   }
 
   function canAfford(item) {
@@ -382,7 +470,6 @@
   }
 
   function priceHtml(item) {
-    if (isAdmin) return 'Admin';
     const original = Number(item.originalCost || item.cost || 0);
     const cost = Number(item.cost || 0);
     if (original > cost) return `<del>${original}</del>${cost}`;
@@ -404,14 +491,14 @@
     if (active) return 'Turn Off';
     if (owned && toggleable(item)) return 'Turn On';
     if (owned) return 'Owned';
-    if (!canAfford(item) && !isAdmin) return 'Need More Coins';
+    if (!canAfford(item)) return 'Need More Coins';
     return item.type === 'premium' ? 'Buy Premium' : 'Buy';
   }
 
   function renderItem(item) {
     const owned = owns(item);
     const active = activeFor(item);
-    const disabled = locked(item) || (!owned && !canAfford(item) && !isAdmin) || (owned && !toggleable(item));
+    const disabled = locked(item) || (!owned && !canAfford(item)) || (owned && !toggleable(item));
     const classes = ['card'];
     if (owned) classes.push('owned');
     if (active) classes.push('active');
@@ -420,10 +507,10 @@
     if (item.premiumOnly) tags.push('<span class="pill gold">premium only</span>');
     if (owned) tags.push('<span class="pill good">owned</span>');
     if (active) tags.push('<span class="pill">active</span>');
-    if (item.discountPct && !isAdmin) tags.push(`<span class="pill gold">${item.discountPct}% off</span>`);
+    if (item.discountPct) tags.push(`<span class="pill gold">${item.discountPct}% off</span>`);
     const primary = item.type === 'premium' || (!owned && !locked(item));
     return `
-      <article class="${classes.join(' ')}">
+      <article class="${classes.join(' ')}" data-id="${esc(item.id)}" style="cursor: pointer;">
         <div>
           <div class="item-kicker">${tags.join('')}</div>
           <div class="item-title">${badgeIcons[item.id] ? `<span style="margin-right:8px; opacity:0.8;">${badgeIcons[item.id]}</span>` : ''}${esc(item.name)}</div>
@@ -432,7 +519,7 @@
         </div>
         <div>
           <div class="price-row">
-            <div class="price">${priceHtml(item)}${isAdmin ? '' : ' coins'}</div>
+            <div class="price">${priceHtml(item)} coins</div>
           </div>
           <button class="btn-buy ${primary ? 'primary' : ''} ${active ? 'active' : ''}" data-item="${esc(item.id)}" ${disabled ? 'disabled' : ''}>
             ${buttonLabel(item, owned, active)}
@@ -477,6 +564,12 @@
     market.querySelectorAll('.btn-buy[data-item]').forEach(btn => {
       btn.addEventListener('click', () => handleItem(btn.dataset.item));
     });
+    market.querySelectorAll('.card[data-id]').forEach(card => {
+      card.addEventListener('click', (event) => {
+        if (event.target.closest('button, input, a')) return;
+        openModal(card.dataset.id);
+      });
+    });
   }
 
   async function handleItem(itemId) {
@@ -489,12 +582,24 @@
     return buyItem(item);
   }
 
+  async function getShopCaptchaToken(action) {
+    for (let i = 0; i < 50; i++) {
+      if (window.getCaptchaToken && window.grecaptcha) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (window.getCaptchaToken) {
+      return await window.getCaptchaToken(action) || '';
+    }
+    return '';
+  }
+
   async function buyItem(item) {
+    const recaptcha_token = await getShopCaptchaToken('buy_shop_item');
     try {
       const r = await fetch('/api/shop/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId: item.id })
+        body: JSON.stringify({ itemId: item.id, recaptcha_token })
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return showStatus(data.error || 'Purchase failed', false);
@@ -522,8 +627,13 @@
   }
 
   async function buyPremium() {
+    const recaptcha_token = await getShopCaptchaToken('buy_premium');
     try {
-      const r = await fetch('/api/coins/buy-premium', { method: 'POST' });
+      const r = await fetch('/api/coins/buy-premium', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recaptcha_token })
+      });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return showStatus(data.error || 'Premium purchase failed', false);
       showStatus(data.message || 'Welcome to Premium', true);
@@ -537,11 +647,12 @@
     const targetEmail = document.getElementById('gift-target-email').value.trim();
     if (!targetEmail) return showStatus('Please enter a friend\'s email address', false);
     if (!confirm(`Are you sure you want to gift Lifetime Premium to ${targetEmail}? This costs 5,000 coins and is limited to one gift ever.`)) return;
+    const recaptcha_token = await getShopCaptchaToken('gift_premium');
     try {
       const r = await fetch('/api/coins/gift-premium', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ targetEmail })
+        body: JSON.stringify({ targetEmail, recaptcha_token })
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return showStatus(data.error || 'Gifting premium failed', false);
@@ -621,6 +732,122 @@
       showStatus('Failed to load shop data', false);
     }
   }
+
+  const itemExplanations = {
+    premium: "<strong>Premium Lifetime Membership</strong> unlocks the ultimate features of the platform. You get mitch.prox, double coin rewards for Typing Races & Logic Puzzles, double offline progression in Clicker & Richard's Riches, a larger canvas painting brush (up to 3x3), exclusive golden name options, VIP forum threads, and the potential to sponsor your own custom arcade game name on the site!",
+    neon_purple: "<strong>Neon Purple Name:</strong> Equipping this styling option instantly colors your name across all public spaces including Chat, Profiles, and Leaderboards. Perfect for standing out with a vibrant look.",
+    electric_blue: "<strong>Electric Blue Name:</strong> Equipping this styling option colors your name in electric blue. Stand out in chat and game leaderboards.",
+    mint_flash: "<strong>Mint Flash Name:</strong> A refreshing green accent for your chat username. Brings a fresh look to your messages.",
+    rose_spark: "<strong>Rose Spark Name:</strong> A clean pinkish-red glow for your username, highlighting your messages on all pages.",
+    ember_red: "<strong>Ember Red Name:</strong> A deep crimson styling option for your username. Expressive and bold.",
+    void_white: "<strong>Void White Name:</strong> A high-contrast modern clean white styling option, optimized for dark mode interfaces.",
+    gold_glow: "<strong>Golden Glow Name:</strong> A golden username styling option with a premium neon-gold glow outline. Reserved for premium members.",
+    rainbow_name: "<strong>Rainbow Name:</strong> An animated rainbow styling option that continuously cycles your username through the color spectrum.",
+    verified_badge: "<strong>Verified Badge:</strong> Adds a blue verified checkmark badge next to your username in chat. Shows authenticity.",
+    og_badge: "<strong>OG Badge:</strong> Adds an 'OG' early adopter badge next to your username, proving you were a user before the masses.",
+    artist_badge: "<strong>Artist Badge:</strong> Displays a paint palette badge next to your username, celebrating creative pixel artists.",
+    chess_badge: "<strong>Chess Badge:</strong> Displays a chess knight icon next to your name, signaling a competitive player.",
+    builder_badge: "<strong>Builder Badge:</strong> Displays a hammer icon, representing contributors who helped build the site.",
+    lucky_badge: "<strong>Lucky Badge:</strong> Displays a clover or diamond icon, celebrating casino enthusiasts.",
+    premium_star_badge: "<strong>Premium Star Badge:</strong> Adds a golden star next to your username, exclusive to premium members.",
+    owner_fan_badge: "<strong>Mitch Fan Badge:</strong> Displays a custom hearts/mitch icon, celebrating your support for the site creator.",
+    chat_sparkles: "<strong>Chat Sparkles:</strong> Emits small sparkly particle icons from your text messages in chat rooms.",
+    chat_shadow: "<strong>Chat Shadow:</strong> Applies a dark shadow drop effect behind your messages in chat for high legibility.",
+    chat_wave: "<strong>Chat Wave:</strong> Animates your chat messages with a gentle vertical wave pattern.",
+    chat_terminal: "<strong>Terminal Chat Style:</strong> Formats your chat message text in a vintage green monospace terminal style.",
+    chat_prism: "<strong>Prism Chat Style:</strong> Colors your chat messages with a continuous horizontal color gradient.",
+    profile_grid: "<strong>Profile Grid Background:</strong> Decorates your user profile page card with a sleek grid background vector.",
+    profile_stars: "<strong>Profile Starfield:</strong> Animates your profile background with floating stars and cosmic dust.",
+    profile_scanlines: "<strong>Profile Scanlines:</strong> Applies a retro CRT television scanline overlay to your profile page.",
+    profile_gold_frame: "<strong>Gold Profile Frame:</strong> Adds an elegant golden border around your profile card card.",
+    profile_neon_frame: "<strong>Neon Profile Frame:</strong> Adds a glowing hot-pink neon border around your profile card card.",
+    focus_theme: "<strong>Focus Theme:</strong> A calm grey/black minimalist theme preset for the entire website layout.",
+    arcade_theme: "<strong>Arcade Theme:</strong> A retro arcade preset theme with bright neon accents and custom gridlines.",
+    midnight_theme: "<strong>Midnight Theme:</strong> An ultra-dark black color preset theme, optimized for late night browsing.",
+    sarcastic_mentor: "<strong>Sarcastic Mentor AI:</strong> Unlocks a witty and sarcastic AI personality in the assistant console. Expect humorous sass and banter alongside useful responses.",
+    hacker_persona: "<strong>Hacker Persona AI:</strong> A cyber-themed hacker voice for the AI assistant. Emulates vintage cyberpunk aesthetics.",
+    study_coach: "<strong>Study Coach AI:</strong> A calm, supportive, and focused homework assistant voice to help you stay on track.",
+    debug_helper: "<strong>Debug Helper AI:</strong> A programming-focused AI assistant personality that gives direct, code-heavy, structured help.",
+    story_mode: "<strong>Story Mode AI:</strong> A creative writing partner AI personality, designed to help with creative writing.",
+    speedrun_ai: "<strong>Speedrun AI:</strong> A super-fast, direct-to-the-point AI assistant voice that answers with zero filler.",
+    vip_pass: "<strong>VIP Casino Pass:</strong> Allows you to bet unlimited coins in all casino games for 24 hours, bypassing the default 500-coin limit. Essential for high stakes players.",
+    canvas_lock_pass: "<strong>Canvas Lock Pass:</strong> Unlocks a preference switch on the canvas page to save and lock your zoom level and tools.",
+    daily_bonus_plus: "<strong>Daily Bonus Plus:</strong> Boosts your daily log-in MitchCoin rewards by +50 coins every day.",
+    streak_freeze: "<strong>Streak Freeze:</strong> Automatically consumes itself to protect your login streak if you miss a day. Keeps your rewards scaling!",
+    happy_hour_ticket: "<strong>Personal Happy Hour (30m):</strong> Triggers 30 minutes of double MitchCoins (2X) payout on all arcade games, keyboard races, logic puzzles, and canvas paints.",
+    double_down_ticket: "<strong>Double Down Ticket (30m):</strong> Active for 30 minutes. If active, doubles the payout (net profit) of any casino wins! Essential for high stakes players.",
+    bad_beat_insurance: "<strong>Bad Beat Insurance (30m):</strong> Active for 30 minutes. If active, refunds your entire bet if you lose any casino game round. Great for high stakes players.",
+    happy_hour_extension: "<strong>Happy Hour Extension (15m):</strong> Extends your active Personal Happy Hour by an additional 15 minutes. Note: Requires active Personal Happy Hour to purchase.",
+    slots_free_spin: "<strong>Slots Free Spins (5x):</strong> Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!"
+  };
+
+  const modal = document.getElementById('info-modal');
+  const modalClose = modal.querySelector('.modal-close-btn');
+
+  function openModal(itemId) {
+    const item = items.find(entry => entry.id === itemId);
+    if (!item) return;
+    const owned = owns(item);
+    const active = activeFor(item);
+    const disabled = locked(item) || (!owned && !canAfford(item)) || (owned && !toggleable(item));
+    const details = document.getElementById('modal-details');
+
+    const tags = [];
+    if (item.tier) tags.push(`<span class="pill ${esc(item.tier)}">${esc(item.tier)}</span>`);
+    if (item.premiumOnly) tags.push('<span class="pill gold">premium only</span>');
+    if (owned) tags.push('<span class="pill good">owned</span>');
+    if (active) tags.push('<span class="pill">active</span>');
+    if (item.discountPct) tags.push(`<span class="pill gold">${item.discountPct}% off</span>`);
+
+    const expl = itemExplanations[item.id] || "No additional information is available for this item.";
+
+    details.innerHTML = `
+      <div class="modal-header">
+        <div class="modal-tags">${tags.join('')}</div>
+        <div class="modal-title">${badgeIcons[item.id] ? `<span style="margin-right:8px; opacity:0.8;">${badgeIcons[item.id]}</span>` : ''}${esc(item.name)}</div>
+      </div>
+      <div class="modal-desc">${esc(item.desc)}</div>
+      <div class="modal-explain">
+        <div style="font-weight: 700; margin-bottom: 8px; color: var(--t-ac, #8b5cf6); font-family: 'Syne', sans-serif;">HOW IT WORKS</div>
+        <div>${expl}</div>
+      </div>
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid var(--t-bd, #333); padding-top: 20px;">
+        <div class="price" style="font-size: 1.4rem;">${priceHtml(item)} coins</div>
+        <div style="flex-grow: 1; max-width: 200px;">
+          <button class="btn-buy ${item.type === 'premium' || (!owned && !locked(item)) ? 'primary' : ''} ${active ? 'active' : ''}" 
+                  onclick="handleModalBuy('${esc(item.id)}')" 
+                  ${disabled ? 'disabled' : ''}
+                  style="margin-top: 0;">
+            ${buttonLabel(item, owned, active)}
+          </button>
+        </div>
+      </div>
+    `;
+
+    modal.style.display = 'flex';
+    // Trigger reflow
+    modal.offsetHeight;
+    modal.classList.add('show');
+  }
+
+  function closeModal() {
+    modal.classList.remove('show');
+    setTimeout(() => {
+      if (!modal.classList.contains('show')) {
+        modal.style.display = 'none';
+      }
+    }, 300);
+  }
+
+  modalClose.addEventListener('click', closeModal);
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeModal();
+  });
+
+  window.handleModalBuy = async function(itemId) {
+    closeModal();
+    await handleItem(itemId);
+  };
 
   document.getElementById('gift-btn').addEventListener('click', adminGift);
   load();

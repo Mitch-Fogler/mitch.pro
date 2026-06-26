@@ -1884,6 +1884,17 @@ function renderZoneSettingsMembers() {
     }
   };
 
+  async function getCanvasCaptchaToken(action) {
+    for (let i = 0; i < 50; i++) {
+      if (window.getCaptchaToken && window.grecaptcha) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (window.getCaptchaToken) {
+      return await window.getCaptchaToken(action) || '';
+    }
+    return '';
+  }
+
   document.getElementById('zone-leave-btn').onclick = leaveZone;
 
   document.getElementById('zone-create-btn').onclick = async () => {
@@ -1895,11 +1906,12 @@ function renderZoneSettingsMembers() {
     }
     const friendsOnly = document.getElementById('zone-new-friendsonly').checked;
     
+    const recaptcha_token = await getCanvasCaptchaToken('create_zone');
     try {
       const r = await fetch('/api/canvas/zones', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, friendsOnly })
+        body: JSON.stringify({ name, friendsOnly, recaptcha_token })
       });
       const d = await r.json();
       if (d.error) {

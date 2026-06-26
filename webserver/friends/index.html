@@ -449,6 +449,17 @@ async function loadPending() {
   } catch(e) {}
 }
 
+async function getFriendsCaptchaToken(action) {
+  for (let i = 0; i < 50; i++) {
+    if (window.getCaptchaToken && window.grecaptcha) break;
+    await new Promise(r => setTimeout(r, 100));
+  }
+  if (window.getCaptchaToken) {
+    return await window.getCaptchaToken(action) || '';
+  }
+  return '';
+}
+
 async function sendRequest() {
   const input = document.getElementById('friendEmailInput');
   const btn = document.getElementById('friendSubmitBtn');
@@ -461,11 +472,12 @@ async function sendRequest() {
   msg.style.color = 'var(--t-ac, #3b82f6)';
   msg.innerText = 'Sending request...';
   
+  const recaptcha_token = await getFriendsCaptchaToken('friend_request');
   try {
     const r = await fetch('/api/friends/request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ email, recaptcha_token })
     });
     const d = await r.json();
     if (r.ok) {

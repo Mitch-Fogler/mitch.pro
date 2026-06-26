@@ -9,7 +9,6 @@
 <link rel="canonical" href="https://mitch.pro/appeal/" />
 <link rel="stylesheet" href="/open.css">
 <script src="/theme.js"></script>
-<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 <style>
   :root {
     --panel: rgba(255,255,255,.06);
@@ -338,10 +337,6 @@
         <label class="field-label" for="reason">Why should access be restored?</label>
         <textarea id="reason" placeholder="Explain the situation in detail..."></textarea>
 
-        <div class="recaptcha-wrap">
-          <div class="g-recaptcha" data-sitekey="6Lfpa8osAAAAAJcHa7zmaVULeDluGVIVnIBnsWiz" data-theme="dark"></div>
-        </div>
-
         <button id="btn" class="btn" onclick="submit()">Submit Appeal</button>
         <div id="msg"></div>
       </section>
@@ -360,22 +355,14 @@ async function submit() {
   const msg = document.getElementById('msg');
   if (!email || !reason) return;
 
-  let recaptcha_token = '';
-  try {
-    recaptcha_token = grecaptcha.getResponse();
-  } catch(e) {
-    console.error("reCAPTCHA reference error:", e);
-  }
-
-  if (!recaptcha_token) {
-    msg.className = 'err';
-    msg.textContent = 'Please complete the reCAPTCHA.';
-    return;
-  }
-
   btn.disabled = true;
   msg.textContent = 'Sending...';
   msg.className = '';
+
+  let recaptcha_token = '';
+  if (window.getCaptchaToken) {
+    recaptcha_token = await window.getCaptchaToken('submit_appeal') || '';
+  }
 
   try {
     const r = await fetch('/api/appeal', {

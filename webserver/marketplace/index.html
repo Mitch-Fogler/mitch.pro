@@ -471,13 +471,25 @@
     });
   }
 
+  async function getMarketplaceCaptchaToken(action) {
+    for (let i = 0; i < 50; i++) {
+      if (window.getCaptchaToken && window.grecaptcha) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    if (window.getCaptchaToken) {
+      return await window.getCaptchaToken(action) || '';
+    }
+    return '';
+  }
+
   // Action listeners
   async function buyListing(id) {
     if (!confirm('Are you sure you want to purchase this listing? Coins will be deducted immediately.')) return;
+    const recaptcha_token = await getMarketplaceCaptchaToken('buy_listing');
     const r = await fetch('/api/marketplace/buy', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ listingId: id })
+      body: JSON.stringify({ listingId: id, recaptcha_token })
     });
     const d = await r.json();
     alert(d.message || d.error);
@@ -532,10 +544,11 @@
       return;
     }
 
+    const recaptcha_token = await getMarketplaceCaptchaToken('create_listing');
     const r = await fetch('/api/marketplace/list', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ type, itemId, description, price, mediator })
+      body: JSON.stringify({ type, itemId, description, price, mediator, recaptcha_token })
     });
     const d = await r.json();
     if (d.ok) {
