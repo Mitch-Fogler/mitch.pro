@@ -27,6 +27,7 @@ services:
       - ./mail:/app/mail
       - ./logs:/app/logs
       - ./webserver:/app/webserver
+      - /opt/userdata:/opt/userdata
     environment:
       - SUPPORT_USER
       - SUPPORT_PASS
@@ -62,6 +63,7 @@ services:
       - ./mail:/app/mail
       - ./logs:/app/logs
       - ./webserver:/app/webserver
+      - /opt/userdata:/opt/userdata
     environment:
       - SUPPORT_USER
       - SUPPORT_PASS
