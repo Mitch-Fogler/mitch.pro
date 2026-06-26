@@ -16,11 +16,12 @@ try {
   });
 } catch(e) {}
 
-const USER = process.env.HOSTINGER_USER;  // mitch@mitch.pro
-const PASS = process.env.HOSTINGER_PASS;
+const USER = process.env.SUPPORT_USER;
+const PASS = process.env.SUPPORT_PASS;
+const IMAP_HOST = process.env.MAIL_IMAP_HOST || 'mail.mitch.pro';
 
 if (!USER || !PASS) {
-  console.error('Set HOSTINGER_USER and HOSTINGER_PASS in .env'); process.exit(1);
+  console.error('Set SUPPORT_USER and SUPPORT_PASS in environment/dotenv'); process.exit(1);
 }
 
 const args     = process.argv.slice(2);
@@ -30,7 +31,7 @@ const fetchUid = uidIdx >= 0 ? args[uidIdx + 1] : null;
 
 async function run() {
   const client = new ImapFlow({
-    host: 'imap.hostinger.com',
+    host: IMAP_HOST,
     port: 993,
     secure: true,
     auth: { user: USER, pass: PASS },

@@ -14,8 +14,9 @@ try {
   });
 } catch(e) {}
 
-const USER = process.env.HOSTINGER_USER;  // mitch@mitch.pro
-const PASS = process.env.HOSTINGER_PASS;
+const USER = process.env.SUPPORT_USER;
+const PASS = process.env.SUPPORT_PASS;
+const SMTP_HOST = process.env.MAIL_SMTP_HOST || 'mail.mitch.pro';
 
 let _site = {primary:'https://mitch.pro', alternate:'https://mitch.88chan.me'};
 try { _site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'site.json'), 'utf8')); } catch(e) {}
@@ -23,7 +24,7 @@ const PRIMARY = _site.primary.replace(/\/$/, '');
 const ALT     = _site.alternate.replace(/\/$/, '');
 
 if (!USER || !PASS) {
-  console.error('Set HOSTINGER_USER and HOSTINGER_PASS in .env'); process.exit(1);
+  console.error('Set SUPPORT_USER and SUPPORT_PASS in environment/dotenv'); process.exit(1);
 }
 
 const rawArgs    = process.argv.slice(2);
@@ -70,7 +71,7 @@ async function getBody() {
   const body = useRaw ? rawBody : rawBody + `\n\n---\nVisit ${PRIMARY}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token} to unsubscribe.\nAlso available at ${ALT}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token}\nFor support: support@mitch.pro or mitchell.fogler@student.rjuhsd.us\n2014 Capitol Ave #100, Sacramento, CA 95811`;
 
   const transporter = nodemailer.createTransport({
-    host: 'smtp.hostinger.com',
+    host: SMTP_HOST,
     port: 465,
     secure: true,
     auth: { user: USER, pass: PASS },

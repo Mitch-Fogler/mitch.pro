@@ -14,10 +14,11 @@ try {
   });
 } catch {}
 
-const USER             = process.env.HOSTINGER_USER;
-const PASS             = process.env.HOSTINGER_PASS;
+const USER             = process.env.SUPPORT_USER;
+const PASS             = process.env.SUPPORT_PASS;
+const IMAP_HOST        = process.env.MAIL_IMAP_HOST || 'mail.mitch.pro';
 if (!USER || !PASS) {
-  console.error("[imap-watcher] Error: HOSTINGER_USER or HOSTINGER_PASS not set in environment/dotenv.");
+  console.error("[imap-watcher] Error: SUPPORT_USER or SUPPORT_PASS not set in environment/dotenv.");
   process.exit(1);
 }
 const CACHE_FILE       = path.join(__dirname, '..', 'data', 'team_inbox_cache.json');
@@ -71,7 +72,7 @@ function checkForSupportEmails(messages, prevMessageIds) {
   if (changed) saveSent(sent);
 }
 
-if (!USER || !PASS) { console.error('Set HOSTINGER_USER and HOSTINGER_PASS in .env'); process.exit(1); }
+if (!USER || !PASS) { console.error('Set SUPPORT_USER and SUPPORT_PASS in environment/dotenv'); process.exit(1); }
 
 function log(msg) { console.log(`[${new Date().toISOString()}] ${msg}`); }
 
@@ -172,7 +173,7 @@ async function writeCache(messages) {
 
 async function run() {
   const client = new ImapFlow({
-    host: 'imap.hostinger.com',
+    host: IMAP_HOST,
     port: 993,
     secure: true,
     auth: { user: USER, pass: PASS },

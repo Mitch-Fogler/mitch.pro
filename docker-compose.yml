@@ -28,11 +28,14 @@ services:
       - ./logs:/app/logs
       - ./webserver:/app/webserver
     environment:
-      - HOSTINGER_USER
-      - HOSTINGER_PASS
+      - SUPPORT_USER
+      - SUPPORT_PASS
+      - NOREPLY_USER
+      - NOREPLY_PASS
+      - MAIL_SMTP_HOST
+      - MAIL_IMAP_HOST
       - NTFY_TOPIC
       - SUPPORT_EMAIL
-      - SUPPORT_PASS
       - GMAIL_USER_ALT
       - GMAIL_USER
       - GMAIL_PASS_ALT
@@ -60,11 +63,14 @@ services:
       - ./logs:/app/logs
       - ./webserver:/app/webserver
     environment:
-      - HOSTINGER_USER
-      - HOSTINGER_PASS
+      - SUPPORT_USER
+      - SUPPORT_PASS
+      - NOREPLY_USER
+      - NOREPLY_PASS
+      - MAIL_SMTP_HOST
+      - MAIL_IMAP_HOST
       - NTFY_TOPIC
       - SUPPORT_EMAIL
-      - SUPPORT_PASS
       - GMAIL_USER_ALT
       - GMAIL_USER
       - GMAIL_PASS_ALT

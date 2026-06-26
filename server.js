@@ -139,8 +139,8 @@ const PORT = 6800;
 const HOST = "0.0.0.0";
 const USERDATA_DIR = "/opt/userdata";
 const NTFY_TOPIC = (process.env.NTFY_TOPIC || '').trim();
-const HOSTINGER_USER = (process.env.HOSTINGER_USER || '').trim();
-const HOSTINGER_PASS = (process.env.HOSTINGER_PASS || '').trim();
+const SUPPORT_USER = (process.env.SUPPORT_USER || '').trim();
+const SUPPORT_PASS = (process.env.SUPPORT_PASS || '').trim();
 const GOOGLE_CLIENT_ID = '561391673402-eufe4daah7oinpq0ddb7v2l6gspr01gh.apps.googleusercontent.com';
 const NOTIFICATION_ORIGIN = 'https://mitchdog.com';
 
@@ -2369,7 +2369,10 @@ async function premiumMaintenanceWorker() {
   } catch (e) { console.error(`[premium-worker] error: ${e.message}`); }
 }
 
+let isNudgeRunning = false;
 async function nudgeWorker() {
+  if (isNudgeRunning) return;
+  isNudgeRunning = true;
   try {
     const logs   = loadJson(SESSION_LOG_FILE, []);
     const names  = loadJson(NAMES_FILE, {});
@@ -2407,7 +2410,7 @@ async function nudgeWorker() {
       if (nudged[lower]) continue;
       const claimedTs = d.claimed_domains
         ? Math.min(...Object.values(d.claimed_domains))
-        : (d.created_at || 0);
+        : (d.used_at || d.created_at || 0);
       if (Date.now() / 1000 - claimedTs < NUDGE_DAYS * 86400) continue;
       const last = latestByEmail[lower];
       if (last === undefined || last < threshold) toSend.push(email);
@@ -2428,12 +2431,13 @@ async function nudgeWorker() {
 
     if (toSend.length) saveNudge(nudged);
   } catch (e) { console.log(`[nudge] worker error: ${e}`); }
+  finally {
+    isNudgeRunning = false;
+  }
 }
 
-setInterval(nudgeWorker, 600_000);
-
 // ── IMAP watcher ──────────────────────────────────────────────────────────────
-if (HOSTINGER_USER && HOSTINGER_PASS) {
+if (SUPPORT_USER && SUPPORT_PASS) {
   (function startImapWatcher() {
     const watcher = spawn('/usr/bin/node', [join(BASE, 'mail', 'imap_watcher.js')], {
       detached: false,
@@ -2445,7 +2449,7 @@ if (HOSTINGER_USER && HOSTINGER_PASS) {
     console.log(`[imap-watcher] started (pid ${watcher.pid})`);
   })();
 } else {
-  console.log(`[imap-watcher] Silenced (HOSTINGER_USER or HOSTINGER_PASS not set in environment/dotenv)`);
+  console.log(`[imap-watcher] Silenced (SUPPORT_USER or SUPPORT_PASS not set in environment/dotenv)`);
 }
 const GMAIL_CACHE_FILE  = join(BASE, 'mail', 'check_email', 'emails.json');
 const GMAIL_PAUSE_FILE  = join(BASE, 'mail', 'check_email', 'gmail_paused');
@@ -7195,6 +7199,7 @@ Mitch.pro Team`;
           savePasswords(passwords);
 
           entry.used = true;
+          entry.used_at = Date.now() / 1000;
         } else if (!infinite) {
           if (entry.used && !entry.claimed_domains)
             return jsonResp(400, { success: false, message: 'Token already used' });

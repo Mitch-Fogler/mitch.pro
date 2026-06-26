@@ -1,4 +1,4 @@
 :6800 {
     # Forward all traffic to the active Bun webserver container
-    reverse_proxy webserver-green:6800
+    reverse_proxy webserver-blue:6800
 }
