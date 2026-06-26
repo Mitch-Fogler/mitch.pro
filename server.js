@@ -8,7 +8,7 @@ import webpush from 'web-push';
 
 const BASE = import.meta.dir;
 const WEBROOT = join(BASE, 'webserver');
-const DATA_DIR = join(BASE, 'data');
+const DATA_DIR = process.env.DATA_DIR || join(BASE, 'data');
 const LOGS_DIR = join(BASE, 'logs');
 try { mkdirSync(LOGS_DIR, { recursive: true }); } catch {}
 
@@ -135,7 +135,7 @@ try {
     softMaintenanceActive = JSON.parse(readFileSync(MAINTENANCE_FILE, 'utf8')).active === true;
   }
 } catch {}
-const PORT = 6800;
+const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
 const USERDATA_DIR = "/opt/userdata";
 const NTFY_TOPIC = (process.env.NTFY_TOPIC || '').trim();
@@ -1829,14 +1829,20 @@ async function verifyRecaptcha(token) {
   const callVerify = async (secret) => {
     if (!secret) return false;
     try {
-      const resp = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+      const verifyUrl = process.env.RECAPTCHA_VERIFY_URL || 'https://www.google.com/recaptcha/api/siteverify';
+      const resp = await fetch(verifyUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
         signal: AbortSignal.timeout(5000),
       });
       const data = await resp.json();
-      return data.success === true;
+      if (data.success !== true) return false;
+      if (typeof data.score === 'number' && data.score < 0.5) {
+        console.log(`[recaptcha] Blocked low score token: ${data.score}`);
+        return false;
+      }
+      return true;
     } catch {
       return false;
     }
