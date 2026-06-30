@@ -5,6 +5,8 @@ import { join, basename } from 'path';
 import { spawnSync, spawn } from 'child_process';
 import os from 'os';
 import webpush from 'web-push';
+import { Client as SSHClient } from 'ssh2';
+import { isIP } from 'net';
 
 const BASE = import.meta.dir;
 const WEBROOT = join(BASE, 'webserver');
@@ -5279,6 +5281,19 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
     const names = loadJson(NAMES_FILE, {});
     const myEmail = (names[sid] || '').toLowerCase();
     const success = server.upgrade(req, { data: { isBroadcast: true, email: myEmail } });
+    if (success) return;
+  }
+
+  // Handle SSH Terminal Proxy WebSocket
+  if (path === "/ssh/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const names = loadJson(NAMES_FILE, {});
+    const myEmail = (names[sid] || '').toLowerCase();
+    if (!myEmail) {
+      return jsonResp(401, { success: false, message: 'Authentication required' });
+    }
+    const success = server.upgrade(req, { data: { isSSH: true, email: myEmail } });
     if (success) return;
   }
 
@@ -13468,6 +13483,32 @@ function loadAllGamesList() {
   return errResp(405, null, null);
 }
 
+function isPrivateIP(ip, ipType) {
+  const clean = ip.trim().toLowerCase();
+  if (ipType === 4) {
+    if (clean.startsWith('127.')) return true;
+    if (clean.startsWith('10.')) return true;
+    if (clean.startsWith('169.254.')) return true;
+    if (clean.startsWith('192.168.')) return true;
+    if (clean.startsWith('172.')) {
+      const parts = clean.split('.');
+      if (parts.length >= 2) {
+        const second = parseInt(parts[1], 10);
+        if (second >= 16 && second <= 31) return true;
+      }
+    }
+    if (clean === '0.0.0.0' || clean === '255.255.255.255') return true;
+    if (clean.startsWith('224.') || clean.startsWith('240.')) return true;
+  } else if (ipType === 6) {
+    if (clean === '::1' || clean === '0:0:0:0:0:0:0:1') return true;
+    if (clean.startsWith('fe80:')) return true;
+    if (clean.startsWith('fc00:') || clean.startsWith('fd00:')) return true;
+    if (clean === '::' || clean === '0:0:0:0:0:0:0:0') return true;
+    if (clean.startsWith('ff')) return true;
+  }
+  return false;
+}
+
 // ── Start server ──────────────────────────────────────────────────────────────
 
 console.log(`Starting server on http://${HOST}:${PORT}...`);
@@ -13502,11 +13543,115 @@ Bun.serve({
           ws.data.upstream.send(msg);
         }
       }
+      if (ws.data && ws.data.isSSH) {
+        try {
+          const payload = JSON.parse(msg);
+          if (payload.type === 'init') {
+            const hostVal = (payload.host || '').trim();
+            const ipType = isIP(hostVal);
+            if (ipType === 0) {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'error', message: 'Restricted access: Host must be a valid IP address' }));
+              }
+              ws.close();
+              return;
+            }
+            if (isPrivateIP(hostVal, ipType)) {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'error', message: 'Restricted access: Target IP address is disallowed' }));
+              }
+              ws.close();
+              return;
+            }
+
+            const conn = new SSHClient();
+            ws.data.sshConn = conn;
+
+            conn.on('ready', () => {
+              conn.shell({ term: 'xterm-256color', cols: payload.cols || 80, rows: payload.rows || 24 }, (err, stream) => {
+                if (err) {
+                  if (ws.readyState === 1) {
+                    ws.send(JSON.stringify({ type: 'error', message: 'Failed to open shell: ' + err.message }));
+                  }
+                  ws.close();
+                  return;
+                }
+                ws.data.sshStream = stream;
+                if (ws.readyState === 1) {
+                  ws.send(JSON.stringify({ type: 'connected' }));
+                }
+
+                stream.on('data', (data) => {
+                  if (ws.readyState === 1) {
+                    ws.send(JSON.stringify({ type: 'data', data: data.toString('utf-8') }));
+                  }
+                });
+
+                stream.on('close', () => {
+                  ws.close();
+                });
+              });
+            });
+
+            conn.on('error', (err) => {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'error', message: err.message }));
+              }
+              ws.close();
+            });
+
+            conn.on('close', () => {
+              ws.close();
+            });
+
+            const connectOpts = {
+              host: payload.host,
+              port: payload.port || 22,
+              username: payload.username,
+            };
+            if (payload.privateKey) {
+              connectOpts.privateKey = payload.privateKey;
+              if (payload.passphrase) {
+                connectOpts.passphrase = payload.passphrase;
+              }
+            } else {
+              connectOpts.password = payload.password;
+            }
+            conn.connect(connectOpts);
+
+            // Immediately overwrite sensitive values in memory for maximum opsec
+            payload.password = null;
+            payload.privateKey = null;
+            payload.passphrase = null;
+            connectOpts.password = null;
+            connectOpts.privateKey = null;
+            connectOpts.passphrase = null;
+          } else if (payload.type === 'data') {
+            if (ws.data.sshStream) {
+              ws.data.sshStream.write(payload.data);
+            }
+          } else if (payload.type === 'resize') {
+            if (ws.data.sshStream) {
+              ws.data.sshStream.setWindow(payload.rows, payload.cols, 0, 0);
+            }
+          }
+        } catch (e) {
+          // Silent catch to preserve absolute opsec and prevent logging any sensitive payload elements
+        }
+      }
     },
     async close(ws) {
       allSockets.delete(ws);
       if (ws.data && ws.data.upstream) {
         ws.data.upstream.close();
+      }
+      if (ws.data && ws.data.isSSH) {
+        if (ws.data.sshStream) {
+          try { ws.data.sshStream.end(); } catch (e) {}
+        }
+        if (ws.data.sshConn) {
+          try { ws.data.sshConn.end(); } catch (e) {}
+        }
       }
     }
   }
