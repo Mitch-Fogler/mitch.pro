@@ -13324,7 +13324,7 @@ function loadAllGamesList() {
     const HTML_OPEN = new Set(['/roblox', '/enroll', '/claim', '/password',
                                 '/appeal', '/unsubscribe', '/admin',
                                 '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
-                                '/swift', '/swift/index']);
+                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
     const isHtmlRequest = path.endsWith('.html') || path.endsWith('/');
     const isOpenHtmlPage = isHtmlRequest && HTML_OPEN.has(htmlBase);
 	    if (isHtmlRequest && !isOpenHtmlPage && !path.startsWith('/unsubscribe/')) {
@@ -13489,7 +13489,7 @@ function loadAllGamesList() {
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);
