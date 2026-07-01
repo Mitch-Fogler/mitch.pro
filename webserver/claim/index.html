@@ -9,6 +9,7 @@
 <link rel="canonical" href="https://mitch.pro/claim/" />
 <link rel="stylesheet" href="/open.css">
 <script src="/theme.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
@@ -58,8 +59,17 @@
           </div>
 
           <div style="text-align: left; margin-bottom: 16px;">
-            <label style="display: block; color: rgba(200,200,220,0.6); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 7px;">Choose Password (min 6 chars)</label>
+            <label style="display: block; color: rgba(200,200,220,0.6); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 7px;">Choose Password (min 8 chars)</label>
             <input id="claim-password" type="password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.08); color: #fff; font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s;">
+            <div id="claim-password-strength-container" style="margin-top: 8px; display: none;">
+              <div style="display: flex; gap: 4px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(255,255,255,0.05);">
+                <div id="claim-strength-bar-1" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                <div id="claim-strength-bar-2" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                <div id="claim-strength-bar-3" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+                <div id="claim-strength-bar-4" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+              </div>
+              <div id="claim-strength-text" style="font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-align: right; color: rgba(200,200,220,0.6);"></div>
+            </div>
           </div>
 
           <div style="text-align: left; margin-bottom: 24px;">
@@ -129,10 +139,10 @@ async function submitClaim() {
     msg.textContent = 'Missing code.';
     return;
   }
-  if (!password || password.length < 6) {
+  if (!password || password.length < 8) {
     msg.className = 'err';
     msg.style.color = '#f87171';
-    msg.textContent = 'Password must be at least 6 characters.';
+    msg.textContent = 'Password must be at least 8 characters.';
     return;
   }
   if (password !== confirm) {
@@ -183,6 +193,127 @@ async function submitClaim() {
     msg.textContent = 'Server Error. Please try again.';
   }
 }
+
+let badPasswords = [];
+try {
+  fetch('/api/bad-passwords')
+    .then(r => r.json())
+    .then(d => { if (Array.isArray(d)) badPasswords = d.map(p => p.toLowerCase()); })
+    .catch(err => console.error("Error loading common password list:", err));
+} catch(e) {}
+
+function setStrengthUI(prefix, score, label, color) {
+  var text = document.getElementById(prefix + '-strength-text');
+  if (!text) return;
+  text.textContent = label;
+  text.style.color = color;
+  
+  for (var i = 1; i <= 4; i++) {
+    var bar = document.getElementById(prefix + '-strength-bar-' + i);
+    if (!bar) continue;
+    if (i <= score) {
+      bar.style.backgroundColor = color;
+    } else {
+      bar.style.backgroundColor = 'transparent';
+    }
+  }
+}
+
+function updatePasswordStrength(val, prefix) {
+  var container = document.getElementById(prefix + '-password-strength-container');
+  var text = document.getElementById(prefix + '-strength-text');
+  if (!container || !text) return;
+  
+  if (!val) {
+    container.style.display = 'none';
+    return;
+  }
+  
+  container.style.display = 'block';
+  
+  // 1. Check local bad list
+  if (badPasswords.includes(val.toLowerCase())) {
+    setStrengthUI(prefix, 0, 'Insecure (Too Common)', '#ef4444');
+    return;
+  }
+  
+  // 2. Try using zxcvbn if available
+  if (typeof zxcvbn === 'function') {
+    var result = zxcvbn(val);
+    var score = result.score;
+    var label = 'Weak';
+    var color = '#ef4444';
+    
+    if (val.length < 8) {
+      score = Math.min(score, 1);
+      label = 'Too Short (Min 8 chars)';
+    } else if (score === 0) {
+      label = 'Insecure / Too Common';
+      color = '#ef4444';
+    } else if (score === 1) {
+      label = 'Weak';
+      color = '#f87171';
+    } else if (score === 2) {
+      label = 'Fair';
+      color = '#fb923c';
+    } else if (score === 3) {
+      label = 'Good';
+      color = '#facc15';
+    } else if (score === 4) {
+      label = 'Strong';
+      color = '#4ade80';
+    }
+    
+    if (result.feedback && result.feedback.warning && score < 3) {
+      label = result.feedback.warning;
+    }
+    
+    setStrengthUI(prefix, score, label, color);
+    return;
+  }
+  
+  // 3. Fallback standard check
+  if (val.length < 8) {
+    setStrengthUI(prefix, 1, 'Too Short (Min 8 chars)', '#ef4444');
+    return;
+  }
+  
+  var score = 1;
+  if (val.length >= 12) score++;
+  
+  var hasUpper = /[A-Z]/.test(val);
+  var hasLower = /[a-z]/.test(val);
+  var hasDigit = /[0-9]/.test(val);
+  var hasSpecial = /[^A-Za-z0-9]/.test(val);
+  
+  var complexity = 0;
+  if (hasUpper) complexity++;
+  if (hasLower) complexity++;
+  if (hasDigit) complexity++;
+  if (hasSpecial) complexity++;
+  
+  if (complexity >= 3) score += 2;
+  else if (complexity >= 2) score += 1;
+  
+  score = Math.min(4, score);
+  
+  var label = 'Weak';
+  var color = '#ef4444';
+  if (score === 2) { label = 'Fair'; color = '#fb923c'; }
+  else if (score === 3) { label = 'Good'; color = '#facc15'; }
+  else if (score === 4) { label = 'Strong'; color = '#4ade80'; }
+  
+  setStrengthUI(prefix, score, label, color);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const p = document.getElementById('claim-password');
+  if (p) {
+    p.addEventListener('input', function(e) {
+      updatePasswordStrength(e.target.value, 'claim');
+    });
+  }
+});
 </script>
 <script src="/cookie-consent.js" defer></script>
 </body>

@@ -3702,6 +3702,7 @@ function pruneDms(dms) {
 
 function isPremiumEmail(email) {
   if (!email) return false;
+  if (isAdminEmail(email) || isModeratorEmail(email)) return true;
   try {
     const norm = normalizeEmail(email);
     return applications.some(a =>
@@ -4421,7 +4422,23 @@ function premiumDiscountFor(item) {
 
 function shopCostFor(item, email) {
   if (!item) return 0;
-  const baseCost = shopBaseCostFor(item);
+  let baseCost = shopBaseCostFor(item);
+
+  if (item.id === 'streak_freeze' && email) {
+    const norm = normalizeEmail(email);
+    const data = dailyLogins[norm] || { lastClaimDate: '', streak: 0, streakFreezes: 0 };
+    const freezes = data.streakFreezes || 0;
+    if (freezes === 0) {
+      baseCost = 150;
+    } else if (freezes === 1) {
+      baseCost = 600;
+    } else if (freezes === 2) {
+      baseCost = 2000;
+    } else {
+      baseCost = 5000;
+    }
+  }
+
   if (isPremiumEmail(email) && item.type !== 'premium') {
     return Math.max(1, Math.ceil(baseCost * (1 - premiumDiscountFor(item)) / 25) * 25);
   }
@@ -5606,6 +5623,9 @@ Mitch.pro Team`;
         saveUserStats(stats);
       } else if (type === 'streak_freeze') {
         const data = dailyLogins[norm] || { lastClaimDate: '', streak: 0, streakFreezes: 0 };
+        if ((data.streakFreezes || 0) >= 3) {
+          return jsonResp(400, { error: 'You can only hold a maximum of 3 Streak Freezes.' });
+        }
         data.streakFreezes = (data.streakFreezes || 0) + 1;
         dailyLogins[norm] = data;
         saveDailyLogins();

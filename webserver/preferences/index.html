@@ -4,6 +4,7 @@
 <title>Preferences — mitch.pro</title>
 <script src="/theme.js"></script>
 <script src="/sync.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js" defer></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -696,8 +697,17 @@
 
       <div class="control-grid">
       <div class="field">
-        <label>New Password (min 6 chars)</label>
+        <label>New Password (min 8 chars)</label>
         <input id="newPass" type="password" placeholder="••••••••" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
+        <div id="newPass-password-strength-container" style="margin-top: 6px; display: none;">
+          <div style="display: flex; gap: 4px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(255,255,255,0.05);">
+            <div id="newPass-strength-bar-1" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+            <div id="newPass-strength-bar-2" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+            <div id="newPass-strength-bar-3" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+            <div id="newPass-strength-bar-4" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
+          </div>
+          <div id="newPass-strength-text" style="font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-align: right; color: var(--t-fg2, #aaa);"></div>
+        </div>
       </div>
       <div class="field">
         <label>Confirm New Password</label>
@@ -1699,9 +1709,9 @@ function resetPreferencesOnly() {
       status.textContent = 'All fields required.';
       return;
     }
-    if (newPassword.length < 6) {
+    if (newPassword.length < 8) {
       status.style.color = 'var(--rose)';
-      status.textContent = 'New password too short.';
+      status.textContent = 'Password must be at least 8 characters long.';
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -1751,6 +1761,8 @@ function resetPreferencesOnly() {
         document.getElementById('currPass').value = '';
         document.getElementById('newPass').value = '';
         document.getElementById('confirmPass').value = '';
+        const container = document.getElementById('newPass-password-strength-container');
+        if (container) container.style.display = 'none';
       } else {
         status.style.color = 'var(--rose)';
         status.textContent = data.message || 'Change failed.';
@@ -1764,6 +1776,125 @@ function resetPreferencesOnly() {
   }
 
   document.getElementById('changePassBtn').onclick = changePassword;
+
+  let badPasswords = [];
+  try {
+    fetch('/api/bad-passwords')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) badPasswords = d.map(p => p.toLowerCase()); })
+      .catch(err => console.error("Error loading common password list:", err));
+  } catch(e) {}
+
+  function setStrengthUI(prefix, score, label, color) {
+    var text = document.getElementById(prefix + '-strength-text');
+    if (!text) return;
+    text.textContent = label;
+    text.style.color = color;
+    
+    for (var i = 1; i <= 4; i++) {
+      var bar = document.getElementById(prefix + '-strength-bar-' + i);
+      if (!bar) continue;
+      if (i <= score) {
+        bar.style.backgroundColor = color;
+      } else {
+        bar.style.backgroundColor = 'transparent';
+      }
+    }
+  }
+
+  function updatePasswordStrength(val, prefix) {
+    var container = document.getElementById(prefix + '-password-strength-container');
+    var text = document.getElementById(prefix + '-strength-text');
+    if (!container || !text) return;
+    
+    if (!val) {
+      container.style.display = 'none';
+      return;
+    }
+    
+    container.style.display = 'block';
+    
+    // 1. Check local bad list
+    if (badPasswords.includes(val.toLowerCase())) {
+      setStrengthUI(prefix, 0, 'Insecure (Too Common)', '#ef4444');
+      return;
+    }
+    
+    // 2. Try using zxcvbn if available
+    if (typeof zxcvbn === 'function') {
+      var result = zxcvbn(val);
+      var score = result.score;
+      var label = 'Weak';
+      var color = '#ef4444';
+      
+      if (val.length < 8) {
+        score = Math.min(score, 1);
+        label = 'Too Short (Min 8 chars)';
+      } else if (score === 0) {
+        label = 'Insecure / Too Common';
+        color = '#ef4444';
+      } else if (score === 1) {
+        label = 'Weak';
+        color = '#f87171';
+      } else if (score === 2) {
+        label = 'Fair';
+        color = '#fb923c';
+      } else if (score === 3) {
+        label = 'Good';
+        color = '#facc15';
+      } else if (score === 4) {
+        label = 'Strong';
+        color = '#4ade80';
+      }
+      
+      if (result.feedback && result.feedback.warning && score < 3) {
+        label = result.feedback.warning;
+      }
+      
+      setStrengthUI(prefix, score, label, color);
+      return;
+    }
+    
+    // 3. Fallback standard check
+    if (val.length < 8) {
+      setStrengthUI(prefix, 1, 'Too Short (Min 8 chars)', '#ef4444');
+      return;
+    }
+    
+    var score = 1;
+    if (val.length >= 12) score++;
+    
+    var hasUpper = /[A-Z]/.test(val);
+    var hasLower = /[a-z]/.test(val);
+    var hasDigit = /[0-9]/.test(val);
+    var hasSpecial = /[^A-Za-z0-9]/.test(val);
+    
+    var complexity = 0;
+    if (hasUpper) complexity++;
+    if (hasLower) complexity++;
+    if (hasDigit) complexity++;
+    if (hasSpecial) complexity++;
+    
+    if (complexity >= 3) score += 2;
+    else if (complexity >= 2) score += 1;
+    
+    score = Math.min(4, score);
+    
+    var label = 'Weak';
+    var color = '#ef4444';
+    if (score === 2) { label = 'Fair'; color = '#fb923c'; }
+    else if (score === 3) { label = 'Good'; color = '#facc15'; }
+    else if (score === 4) { label = 'Strong'; color = '#4ade80'; }
+    
+    setStrengthUI(prefix, score, label, color);
+  }
+
+  const newPassEl = document.getElementById('newPass');
+  if (newPassEl) {
+    newPassEl.addEventListener('input', function(e) {
+      updatePasswordStrength(e.target.value, 'newPass');
+    });
+  }
 
   async function logoutOtherSessions() {
     const status = document.getElementById('sessionStatus');

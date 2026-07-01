@@ -257,7 +257,7 @@
 
         <div class="form-group">
           <label for="username">Username</label>
-          <input type="text" id="username" required placeholder="root">
+          <input type="text" id="username" placeholder="root">
         </div>
 
         <div class="tabs">
@@ -359,13 +359,13 @@
       
       const hostInput = document.getElementById('host').value.trim();
       const port = parseInt(document.getElementById('port').value.trim(), 10) || 22;
-      const username = document.getElementById('username').value.trim();
+      const username = document.getElementById('username').value.trim() || 'root';
       const password = document.getElementById('password').value;
       const privateKey = document.getElementById('private-key').value.trim();
       const passphrase = document.getElementById('passphrase').value;
 
-      if (!hostInput || !username) {
-        showStatus('Please fill in Host and Username.', 'error');
+      if (!hostInput) {
+        showStatus('Please fill in Host.', 'error');
         return;
       }
 
