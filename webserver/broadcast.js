@@ -15,6 +15,7 @@
               window.__refreshNotifications();
             }
           }
+          window.dispatchEvent(new CustomEvent('ws-broadcast-message', { detail: data }));
         } catch(ex) {}
       };
       ws.onclose = function() { setTimeout(connect, 5000); };

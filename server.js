@@ -4901,6 +4901,9 @@ async function handleRequest(req, server) {
 
   // ── Password Enforcement (Unified) ──────────────────────────────────────────
   const cleanPath = (path.endsWith('/') && path !== '/') ? path.slice(0, -1) : path;
+  if (cleanPath === '/larp' || cleanPath === '/larp/rezero') {
+    return Response.redirect('/enroll/', 302);
+  }
   const isExempt = cleanPath === '/enroll' || 
                    cleanPath === '/larp' ||
                    cleanPath === '/larp/rezero' ||
@@ -6943,19 +6946,6 @@ Mitch.pro Team`;
       } catch (e) {
         console.error('[login] failed:', e);
         return jsonResp(500, { success: false, message: 'Login failed. Try again.' });
-      }
-    }
-
-    // /api/bad-passwords
-    if (path === '/api/bad-passwords') {
-      try {
-        const badPath = join(DATA_DIR, 'bad_passwords.json');
-        if (existsSync(badPath)) {
-          return new Response(readFileSync(badPath, 'utf8'), { headers: { 'Content-Type': 'application/json' } });
-        }
-        return jsonResp(200, []);
-      } catch (e) {
-        return jsonResp(500, []);
       }
     }
 
@@ -9817,6 +9807,35 @@ function loadAllGamesList() {
         to: maskEmail(msg.to),
         readBy: (msg.readBy || []).map(maskEmail)
         };
+
+        // Broadcast to WebSocket clients
+        const wsPayload = JSON.stringify({ type: 'new_dm', message: maskedMsg });
+        if (groupId) {
+          const groups = loadJson(GROUPS_FILE, []);
+          const group = groups.find(g => g.id === groupId);
+          if (group) {
+            const groupMembersNorm = new Set(group.members.map(normalizeEmail));
+            for (const ws of allSockets) {
+              if (ws.data && ws.data.isBroadcast && ws.data.email) {
+                if (groupMembersNorm.has(normalizeEmail(ws.data.email))) {
+                  try { ws.send(wsPayload); } catch {}
+                }
+              }
+            }
+          }
+        } else {
+          const senderNorm = normalizeEmail(senderEmail);
+          const toNorm = normalizeEmail(to);
+          for (const ws of allSockets) {
+            if (ws.data && ws.data.isBroadcast && ws.data.email) {
+              const wsEmailNorm = normalizeEmail(ws.data.email);
+              if (wsEmailNorm === senderNorm || wsEmailNorm === toNorm) {
+                try { ws.send(wsPayload); } catch {}
+              }
+            }
+          }
+        }
+
         return jsonResp(200, { success: true, message: maskedMsg });
 
     }
@@ -13119,6 +13138,19 @@ function loadAllGamesList() {
 
   // ── GET routes ──────────────────────────────────────────────────────────────
   if (method === 'GET') {
+    // /api/bad-passwords
+    if (path === '/api/bad-passwords') {
+      try {
+        const badPath = join(DATA_DIR, 'bad_passwords.json');
+        if (existsSync(badPath)) {
+          return new Response(readFileSync(badPath, 'utf8'), { headers: { 'Content-Type': 'application/json' } });
+        }
+        return jsonResp(200, []);
+      } catch (e) {
+        return jsonResp(500, []);
+      }
+    }
+
     if (path === '/api/health') {
       const mem = process.memoryUsage();
       return jsonResp(200, {
@@ -13373,13 +13405,24 @@ function loadAllGamesList() {
           const rcKey = (process.env.RECAPTCHA_SITE_KEY || '').trim();
           const hasV2Script = raw.includes(Buffer.from('recaptcha/api.js'));
 
+          const ua = req.headers.get('user-agent') || '';
+          const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
+          const isEnrollPage = path === '/enroll' || path === '/enroll/' || path === '/enroll/index.html';
+
           if (gaId || (rcKey && !hasV2Script)) {
-            injectStr += `\n<!-- mitch.pro PageSpeed Optimizations: Lazy Loaded GTM & reCAPTCHA -->\n<script>\n`;
+            injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
             if (rcKey && !hasV2Script) {
-              injectStr += `  window.getCaptchaToken = function(action) {\n` +
+              injectStr += `<script src="https://www.google.com/recaptcha/api.js?render=${rcKey}" async defer></script>\n`;
+              injectStr += `<script>\n` +
+                           `  window.getCaptchaToken = function(action) {\n` +
+                           `    const loc = window.location.hostname;\n` +
+                           `    if (loc === 'localhost' || loc === '127.0.0.1' || loc === '::1' || loc.startsWith('192.168.') || loc.startsWith('10.') || loc.startsWith('172.')) {\n` +
+                           `      return Promise.resolve('mock_captcha_token');\n` +
+                           `    }\n` +
                            `    return new Promise(function(resolve) {\n` +
-                           `      function executeToken() {\n` +
-                           `        if (window.grecaptcha) {\n` +
+                           `      let attempts = 0;\n` +
+                           `      function checkAndExecute() {\n` +
+                           `        if (window.grecaptcha && window.grecaptcha.ready) {\n` +
                            `          grecaptcha.ready(function() {\n` +
                            `            grecaptcha.execute('${rcKey}', {action: action || 'page_view'}).then(function(token) {\n` +
                            `              resolve(token);\n` +
@@ -13388,55 +13431,28 @@ function loadAllGamesList() {
                            `            });\n` +
                            `          });\n` +
                            `        } else {\n` +
-                           `          resolve(null);\n` +
+                           `          attempts++;\n` +
+                           `          if (attempts < 50) {\n` +
+                           `            setTimeout(checkAndExecute, 100);\n` +
+                           `          } else {\n` +
+                           `            resolve(null);\n` +
+                           `          }\n` +
                            `        }\n` +
                            `      }\n` +
-                           `      if (window.grecaptcha) {\n` +
-                           `        executeToken();\n` +
-                           `      } else {\n` +
-                           `        window.addEventListener('recaptcha-loaded', executeToken, { once: true });\n` +
-                           `        triggerLoad();\n` +
-                           `      }\n` +
+                           `      checkAndExecute();\n` +
                            `    });\n` +
-                           `  };\n`;
+                           `  };\n` +
+                           `</script>\n`;
             }
-            injectStr += `  let _lazyLoaded = false;\n` +
-                         `  function triggerLoad() {\n` +
-                         `    if (_lazyLoaded) return;\n` +
-                         `    _lazyLoaded = true;\n` +
-                         `    window.removeEventListener('mousemove', triggerLoad);\n` +
-                         `    window.removeEventListener('mousedown', triggerLoad);\n` +
-                         `    window.removeEventListener('keydown', triggerLoad);\n` +
-                         `    window.removeEventListener('touchstart', triggerLoad);\n` +
-                         `    window.removeEventListener('scroll', triggerLoad);\n`;
             if (gaId) {
-              injectStr += `    var ga = document.createElement('script');\n` +
-                           `    ga.async = true;\n` +
-                           `    ga.src = 'https://www.googletagmanager.com/gtag/js?id=${gaId}';\n` +
-                           `    document.head.appendChild(ga);\n` +
-                           `    window.dataLayer = window.dataLayer || [];\n` +
-                           `    window.gtag = function(){dataLayer.push(arguments);};\n` +
-                           `    gtag('js', new Date());\n` +
-                           `    gtag('config', '${gaId}');\n`;
+              injectStr += `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaId}"></script>\n` +
+                           `<script>\n` +
+                           `  window.dataLayer = window.dataLayer || [];\n` +
+                           `  window.gtag = function(){dataLayer.push(arguments);};\n` +
+                           `  gtag('js', new Date());\n` +
+                           `  gtag('config', '${gaId}');\n` +
+                           `</script>\n`;
             }
-            if (rcKey && !hasV2Script) {
-              injectStr += `    var rc = document.createElement('script');\n` +
-                           `    rc.src = 'https://www.google.com/recaptcha/api.js?render=${rcKey}';\n` +
-                           `    rc.async = true;\n` +
-                           `    rc.defer = true;\n` +
-                           `    rc.onload = function() {\n` +
-                           `      window.dispatchEvent(new Event('recaptcha-loaded'));\n` +
-                           `    };\n` +
-                           `    document.head.appendChild(rc);\n`;
-            }
-            injectStr += `  }\n` +
-                         `  window.addEventListener('mousemove', triggerLoad, { passive: true });\n` +
-                         `  window.addEventListener('mousedown', triggerLoad, { passive: true });\n` +
-                         `  window.addEventListener('keydown', triggerLoad, { passive: true });\n` +
-                         `  window.addEventListener('touchstart', triggerLoad, { passive: true });\n` +
-                         `  window.addEventListener('scroll', triggerLoad, { passive: true });\n` +
-                         `  setTimeout(triggerLoad, 1000);\n` +
-                         `</script>\n`;
             if (rcKey && !hasV2Script) {
               injectStr += `<style>.grecaptcha-badge { visibility: hidden !important; }</style>\n`;
             }

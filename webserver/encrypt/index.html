@@ -505,16 +505,35 @@ button {
   text-shadow: 0 0 2px rgba(0,0,0,0.3);
 }
 @keyframes rainbow_move { to { background-position: 200% center; } }
+.msg.pending {
+  opacity: 0.65 !important;
+}
+.msg.pending .msg-tools {
+  display: none !important;
+}
 @media (max-width: 860px) {
-  #app.ready { flex-direction: column; }
+  #app.ready { flex-direction: row !important; }
   #sidebar {
-    width: 100%;
-    min-width: 0;
-    height: 42vh;
-    border-right: 0;
-    border-bottom: 1px solid var(--t-bd);
+    width: 100% !important;
+    min-width: 100% !important;
+    height: 100vh !important;
+    border-right: 0 !important;
+    display: flex !important;
   }
-  #chat-main { height: 58vh; }
+  #chat-main { 
+    height: 100vh !important;
+    width: 100% !important;
+    display: none !important; 
+  }
+  #app.chat-active #sidebar {
+    display: none !important;
+  }
+  #app.chat-active #chat-main {
+    display: flex !important;
+  }
+  #chat-back-btn {
+    display: inline-block !important;
+  }
   #chat-header { flex-wrap: wrap; align-items: flex-start; }
   .header-tools { width: 100%; flex-wrap: wrap; }
   #msgSearch { flex: 1; width: auto; }
@@ -552,6 +571,7 @@ button {
 
   <main id="chat-main">
     <header id="chat-header">
+      <button id="chat-back-btn" class="tool-btn" type="button" style="display:none; padding: 6px 12px; margin-right: 8px;">← Back</button>
       <div class="chat-title-wrap">
         <div id="chat-title">No chat selected</div>
         <div id="chat-subtitle">Choose a direct message or group chat.</div>
@@ -1267,6 +1287,7 @@ function bindEvents() {
     pollNewDMs();
     loadGroups();
   });
+  document.getElementById('chat-back-btn').onclick = deselectChat;
 }
 
 function startLivePolling() {
@@ -1684,6 +1705,19 @@ async function handleDeleteReport() {
   }
 }
 
+function deselectChat() {
+  activeChat = null;
+  document.getElementById('no-chat').style.display = '';
+  document.getElementById('msgs').classList.remove('on');
+  document.getElementById('input-row').classList.remove('on');
+  const reportsActionsRow = document.getElementById('report-actions-row');
+  if (reportsActionsRow) reportsActionsRow.style.display = 'none';
+  document.getElementById('chat-title').textContent = 'No chat selected';
+  document.getElementById('chat-subtitle').textContent = 'Choose a direct message or group chat.';
+  document.getElementById('app').classList.remove('chat-active');
+  renderList();
+}
+
 function showChatShell() {
   document.getElementById('no-chat').style.display = 'none';
   document.getElementById('msgs').classList.add('on');
@@ -1699,6 +1733,7 @@ function showChatShell() {
   document.getElementById('msgSearch').value = '';
   clearReply();
   clearImage();
+  document.getElementById('app').classList.add('chat-active');
 }
 
 async function reloadActiveChat() {
@@ -1858,6 +1893,40 @@ async function send() {
     return;
   }
 
+  const pendingMsgId = 'pending-' + Date.now();
+  const imageToSend = pendingImage;
+  const textToSendRaw = text;
+  
+  // Construct optimistic pending message
+  const pendingMsg = {
+    id: pendingMsgId,
+    kind: activeChat.type === 'group' ? 'group' : 'dm',
+    groupId: activeChat.type === 'group' ? activeChat.id : '',
+    from: myEmail,
+    to: activeChat.type === 'dm' ? activeChat.id : '',
+    text: text, // Display immediately as plain text
+    image: imageToSend,
+    ts: Date.now(),
+    read: false,
+    readBy: [myEmail],
+    isPending: true
+  };
+  
+  // Optimistically push and render
+  allMessages.push(pendingMsg);
+  if (isActiveMessage(pendingMsg)) {
+    currentMessages.push(pendingMsg);
+    currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    renderMessages();
+    const el = document.getElementById('msgs');
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+
+  // Clear input fields immediately
+  input.value = '';
+  clearImage();
+  clearReply();
+
   let textToSend = text;
 
   if (text) {
@@ -1921,10 +1990,18 @@ async function send() {
         } catch (err) {
           console.error("Error encrypting direct DM:", err);
           toast("Encryption failed.");
+          // Remove the optimistic message
+          allMessages = allMessages.filter(x => x.id !== pendingMsgId);
+          currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
+          renderMessages();
           return;
         }
       } else {
         toast("Member has not enabled Secure Chat keys yet.");
+        // Remove the optimistic message
+        allMessages = allMessages.filter(x => x.id !== pendingMsgId);
+        currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
+        renderMessages();
         return;
       }
     }
@@ -1939,13 +2016,10 @@ async function send() {
     recaptcha_token = await window.getCaptchaToken('dm_send') || '';
   }
 
-  input.value = '';
-  const imageToSend = pendingImage;
-  clearImage();
   const body = activeChat.type === 'group'
     ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, recaptcha_token }
     : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, recaptcha_token };
-  clearReply();
+
   try {
     const r = await fetch('/api/dm/send', {
       method:'POST',
@@ -1954,7 +2028,13 @@ async function send() {
       body: JSON.stringify(body)
     });
     const d = await r.json().catch(() => ({}));
+    
+    // Always remove the pending message now
+    allMessages = allMessages.filter(x => x.id !== pendingMsgId);
+    currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
+
     if (!r.ok || !d.success) {
+      renderMessages();
       toast(d.error || 'Message failed.');
       return;
     }
@@ -1987,9 +2067,18 @@ async function send() {
         member.lastMessage = msg;
       }
     }
-    if (isActiveMessage(msg)) appendOrRerender(msg);
+    if (isActiveMessage(msg)) {
+      currentMessages.push(msg);
+      currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    }
+    renderMessages();
     renderList();
-  } catch {
+    const el = document.getElementById('msgs');
+    if (el) el.scrollTop = el.scrollHeight;
+  } catch (err) {
+    allMessages = allMessages.filter(x => x.id !== pendingMsgId);
+    currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
+    renderMessages();
     toast('Network error while sending.');
   }
 }
@@ -2435,6 +2524,67 @@ function showNotif(from, text) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   new Notification('Message from ' + from, { body: String(text || '').slice(0,100), icon: '/favicon.ico' });
 }
+
+window.addEventListener('ws-broadcast-message', async function(e) {
+  const data = e.detail;
+  if (data && data.type === 'new_dm') {
+    const m = data.message;
+    if (!m) return;
+    
+    // Ignore if already have this message (deduplication)
+    if (allMessages.some(existing => msgId(existing) === msgId(m))) return;
+    
+    // Decrypt the message content E2E
+    await decryptMessageContent(m);
+    
+    dmSince = Math.max(dmSince, m.ts || 0);
+    allMessages.push(m);
+    
+    // Update last message pointers
+    if (m.kind === 'group') {
+      const g = groups.find(x => String(x.id) === String(m.groupId));
+      if (g) {
+        g.lastMessage = m;
+        g.lastText = m.text || (m.image ? 'Sent an image' : '');
+        g.lastTs = m.ts;
+      }
+    } else {
+      const peerEmail = sameEmail(m.from, myEmail) ? m.to : m.from;
+      const member = members.find(x => sameEmail(x.email, peerEmail));
+      if (member) {
+        member.lastMessage = m;
+      }
+    }
+    
+    // If it belongs to active chat, render it!
+    if (isActiveMessage(m)) {
+      currentMessages.push(m);
+      currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+      
+      const el = document.getElementById('msgs');
+      const isScrolledToBottom = el && (el.scrollHeight - el.clientHeight - el.scrollTop < 100);
+      
+      renderMessages();
+      
+      if (isScrolledToBottom && el) {
+        el.scrollTop = el.scrollHeight;
+      }
+      
+      // Mark read if active
+      markActiveRead();
+    } else {
+      // Increment unread count
+      if (m.kind === 'group') {
+        unreadGroup[m.groupId] = (unreadGroup[m.groupId] || 0) + 1;
+      } else {
+        const peerEmail = sameEmail(m.from, myEmail) ? m.to : m.from;
+        unreadDm[directKey(peerEmail)] = (unreadDm[directKey(peerEmail)] || 0) + 1;
+      }
+    }
+    
+    renderList();
+  }
+});
 
 init();
 </script>
