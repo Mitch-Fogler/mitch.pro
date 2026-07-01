@@ -13435,6 +13435,7 @@ function loadAllGamesList() {
                          `  window.addEventListener('keydown', triggerLoad, { passive: true });\n` +
                          `  window.addEventListener('touchstart', triggerLoad, { passive: true });\n` +
                          `  window.addEventListener('scroll', triggerLoad, { passive: true });\n` +
+                         `  setTimeout(triggerLoad, 1000);\n` +
                          `</script>\n`;
             if (rcKey && !hasV2Script) {
               injectStr += `<style>.grecaptcha-badge { visibility: hidden !important; }</style>\n`;
