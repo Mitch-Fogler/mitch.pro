@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LARP Archives & Library — mitch.pro</title>
+  <meta name="description" content="Access public Live Action Roleplay (LARP) systems, immersive rulesets, and masterclasses. Zero-auth student resource center.">
+  <meta name="keywords" content="LARP library, Re:Zero larp, Sword Art Online larp, immersive roleplay, boffer combat rules">
+  <link rel="canonical" href="https://mitch.pro/larp/" />
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --glow-purple: rgba(167, 139, 250, 0.15);
+      --glow-cyan: rgba(34, 211, 238, 0.15);
+      --bg-dark: #09090b;
+      --card-bg: rgba(255, 255, 255, 0.02);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f4f4f5;
+      --text-muted: #a1a1aa;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(139, 92, 246, 0.07) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(34, 211, 238, 0.05) 0px, transparent 50%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+      overflow-x: hidden;
+    }
+
+    .topbar {
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(9, 9, 11, 0.8);
+      z-index: 100;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      flex: 1;
+    }
+
+    .hero-section {
+      text-align: center;
+      margin-bottom: 50px;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(167, 139, 250, 0.1);
+      border: 1px solid rgba(167, 139, 250, 0.25);
+      color: #c4b5fd;
+      padding: 6px 14px;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .hero-section h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.5rem, 5vw, 4rem);
+      line-height: 1.1;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, #fff 30%, #a78bfa 70%, #22d3ee 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-section p {
+      color: var(--text-muted);
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      max-width: 650px;
+      margin: 0 auto 30px;
+      line-height: 1.6;
+    }
+
+    /* Search Box */
+    .search-wrapper {
+      max-width: 500px;
+      margin: 0 auto 60px;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 16px 20px;
+      padding-left: 52px;
+      font-size: 1rem;
+      font-family: inherit;
+      color: #fff;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      outline: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+    }
+
+    .search-input:focus {
+      border-color: rgba(167, 139, 250, 0.5);
+      background: rgba(255, 255, 255, 0.05);
+      box-shadow: 0 0 25px var(--glow-purple);
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      stroke: var(--text-muted);
+      pointer-events: none;
+      transition: stroke 0.3s;
+    }
+
+    .search-input:focus + .search-icon {
+      stroke: #a78bfa;
+    }
+
+    /* Grid Layout */
+    .library-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 30px;
+    }
+
+    /* Library Card styling */
+    .lib-card {
+      position: relative;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 18px;
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      backdrop-filter: blur(16px);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+      overflow: hidden;
+    }
+
+    .lib-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.05) 0%, transparent 100%);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .lib-card:hover {
+      transform: translateY(-5px);
+      border-color: rgba(167, 139, 250, 0.3);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), 0 0 20px var(--glow-purple);
+    }
+
+    .lib-card:hover::before {
+      opacity: 1;
+    }
+
+    .card-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      z-index: 1;
+    }
+
+    .card-tag {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 6px;
+      letter-spacing: 0.05em;
+    }
+
+    .tag-masterclass {
+      background: rgba(239, 68, 68, 0.1);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .tag-ruleset {
+      background: rgba(34, 211, 238, 0.1);
+      color: #22d3ee;
+      border: 1px solid rgba(34, 211, 238, 0.2);
+    }
+
+    .tag-guide {
+      background: rgba(167, 139, 250, 0.1);
+      color: #c4b5fd;
+      border: 1px solid rgba(167, 139, 250, 0.2);
+    }
+
+    .card-icon {
+      stroke: var(--text-muted);
+      transition: stroke 0.3s;
+    }
+
+    .lib-card:hover .card-icon {
+      stroke: #a78bfa;
+    }
+
+    .card-body {
+      margin-bottom: 24px;
+      z-index: 1;
+    }
+
+    .card-body h3 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 1.4rem;
+      margin-bottom: 10px;
+      color: #fff;
+      transition: color 0.3s;
+    }
+
+    .lib-card:hover .card-body h3 {
+      color: #c4b5fd;
+    }
+
+    .card-body p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.5;
+    }
+
+    .card-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #a78bfa;
+      transition: gap 0.2s;
+      z-index: 1;
+    }
+
+    .lib-card:hover .card-footer {
+      gap: 12px;
+      color: #c4b5fd;
+    }
+
+    /* Empty search state */
+    .empty-state {
+      display: none;
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-muted);
+    }
+
+    .empty-state svg {
+      margin-bottom: 20px;
+      stroke: var(--text-muted);
+    }
+
+    .empty-state h3 {
+      color: #fff;
+      font-size: 1.25rem;
+      margin-bottom: 8px;
+    }
+
+    /* Footer styling */
+    .footer {
+      text-align: center;
+      padding: 40px 24px;
+      border-top: 1px solid var(--card-border);
+      margin-top: 80px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      backdrop-filter: blur(12px);
+      background: rgba(9, 9, 11, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <nav class="topbar">
+    <a class="brand" href="/">
+      <img src="/icon-192.png" alt="mitch.pro logo">
+      <span>mitch.pro</span>
+    </a>
+  </nav>
+
+  <div class="container">
+    <header class="hero-section">
+      <div class="hero-badge">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10M6 10h10"/></svg>
+        LARP Archive Center
+      </div>
+      <h1>Live Action Roleplay Library</h1>
+      <p>Explore premium open-access resources, comprehensive system rulesets, and interactive masterclass simulations.</p>
+    </header>
+
+    <div class="search-wrapper" style="display: none;">
+      <input type="text" id="librarySearch" class="search-input" placeholder="Search systems, worlds, or guides...">
+      <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </div>
+
+    <main class="library-grid" id="libraryGrid" style="grid-template-columns: 1fr; max-width: 500px; margin: 0 auto;">
+      <!-- Re:Zero Card -->
+      <a href="/larp/rezero/" class="lib-card" data-title="re:zero masterclass return by death check-points faction camps authority rules witch factors">
+        <div>
+          <div class="card-meta">
+            <span class="card-tag tag-masterclass">Masterclass</span>
+            <svg class="card-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          </div>
+          <div class="card-body">
+            <h3>Re:Zero Masterclass</h3>
+            <p>An immersive training course on simulating time loops, "Return by Death" psychological play, authority combat rules, and faction camps in a Re:Zero setup.</p>
+          </div>
+        </div>
+        <div class="card-footer">
+          <span>Launch Masterclass</span>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </div>
+      </a>
+    </main>
+
+    <div id="emptyState" class="empty-state">
+      <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+      <h3>No matching records found</h3>
+      <p>Try searching for keywords like "Re:Zero".</p>
+    </div>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 mitch.pro &middot; Open-Access Roleplay Library
+  </footer>
+
+  <script>
+    document.getElementById('librarySearch').addEventListener('input', function(e) {
+      const q = e.target.value.toLowerCase().trim();
+      const cards = document.querySelectorAll('.lib-card');
+      const grid = document.getElementById('libraryGrid');
+      const empty = document.getElementById('emptyState');
+      let visibleCount = 0;
+
+      cards.forEach(card => {
+        const title = card.getAttribute('data-title');
+        if (title.includes(q)) {
+          card.style.display = 'flex';
+          visibleCount++;
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      if (visibleCount === 0) {
+        grid.style.display = 'none';
+        empty.style.display = 'block';
+      } else {
+        grid.style.display = 'grid';
+        empty.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+</html>

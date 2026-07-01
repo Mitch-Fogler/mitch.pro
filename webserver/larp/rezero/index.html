@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Re:Zero LARP Masterclass — mitch.pro</title>
+  <meta name="description" content="Master class tutorial on simulating time-loops, Return by Death mechanics, and authority combat rules in Live Action Roleplaying.">
+  <meta name="keywords" content="Re:Zero larp, Return by Death simulation, witch factors, authority of sloth, live action roleplay guide">
+  <link rel="canonical" href="https://mitch.pro/larp/rezero/" />
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-void: #060309;
+      --bg-card: rgba(18, 10, 28, 0.45);
+      --accent-crimson: #ff3c5b;
+      --accent-purple: #9d4edd;
+      --accent-glow: rgba(255, 60, 91, 0.25);
+      --text-main: #f3f0f7;
+      --text-muted: #bdaec6;
+      --card-border: rgba(157, 78, 221, 0.2);
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg-void);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(157, 78, 221, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(255, 60, 91, 0.06) 0px, transparent 50%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      margin: 0;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px;
+      flex: 1;
+    }
+
+    .topbar {
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      background: rgba(6, 3, 9, 0.85);
+      z-index: 100;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 30px;
+      transition: color 0.2s;
+    }
+
+    .back-btn:hover {
+      color: var(--accent-purple);
+    }
+
+    /* Hero section */
+    .masterclass-hero {
+      position: relative;
+      padding: 40px 0;
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(255, 60, 91, 0.1);
+      border: 1px solid rgba(255, 60, 91, 0.3);
+      color: var(--accent-crimson);
+      padding: 6px 16px;
+      border-radius: 100px;
+      font-size: 0.8rem;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      box-shadow: 0 0 15px rgba(255, 60, 91, 0.15);
+    }
+
+    .masterclass-hero h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.5rem, 5vw, 4.2rem);
+      line-height: 1.1;
+      margin-bottom: 20px;
+      background: linear-gradient(135deg, #fff 20%, #e0aaff 60%, var(--accent-crimson) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .masterclass-hero p {
+      color: var(--text-muted);
+      font-size: clamp(1.05rem, 2vw, 1.3rem);
+      max-width: 750px;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+
+    /* Grid Layout */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 40px;
+    }
+
+    @media (min-width: 900px) {
+      .main-grid {
+        grid-template-columns: 3fr 2fr;
+      }
+    }
+
+    /* Sections / Card styles */
+    .panel-card {
+      background: var(--bg-card);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 35px;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+      margin-bottom: 30px;
+      transition: border-color 0.3s;
+    }
+
+    .panel-card:hover {
+      border-color: rgba(157, 78, 221, 0.4);
+    }
+
+    .panel-card h2 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 1.6rem;
+      margin-bottom: 24px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .panel-card h2 svg {
+      stroke: var(--accent-crimson);
+    }
+
+    .guide-section {
+      margin-bottom: 30px;
+    }
+
+    .guide-section h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: #e0aaff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .guide-section p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin: 0 0 15px;
+    }
+
+    .tag-mono {
+      font-family: 'Space Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--accent-crimson);
+      background: rgba(255, 60, 91, 0.08);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 60, 91, 0.15);
+    }
+
+    /* Checkpoint Simulator UI */
+    .sim-stats {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 25px;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      font-size: 0.95rem;
+    }
+
+    .stat-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .stat-label {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .stat-val {
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sim-btn {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 14px 20px;
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 0.95rem;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .btn-save {
+      background: rgba(157, 78, 221, 0.15);
+      border: 1px solid var(--accent-purple);
+      color: #fff;
+    }
+
+    .btn-save:hover {
+      background: var(--accent-purple);
+      box-shadow: 0 0 15px rgba(157, 78, 221, 0.4);
+    }
+
+    .btn-action {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+    }
+
+    .btn-action:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-rbd {
+      background: linear-gradient(135deg, var(--accent-crimson), #c20025);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(255, 60, 91, 0.3);
+    }
+
+    .btn-rbd:hover {
+      transform: scale(1.02);
+      box-shadow: 0 6px 25px rgba(255, 60, 91, 0.5), 0 0 20px var(--accent-glow);
+    }
+
+    /* Return by Death Animation Overlay */
+    #rbdOverlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 1.2s ease-in-out;
+    }
+
+    .rbd-active #rbdOverlay {
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .shadow-hands {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, transparent 20%, rgba(18, 5, 28, 0.95) 80%);
+      pointer-events: none;
+      animation: shadowPulse 3s infinite ease-in-out;
+    }
+
+    .rbd-text {
+      font-family: 'Space Mono', monospace;
+      font-size: clamp(2rem, 6vw, 4rem);
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      color: #fff;
+      text-shadow: 0 0 25px rgba(255, 60, 91, 0.8);
+      z-index: 1001;
+      opacity: 0;
+      transform: scale(0.9);
+      transition: all 1.5s cubic-bezier(0.19, 1, 0.22, 1);
+    }
+
+    .rbd-active .rbd-text {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .rbd-whisper {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.1rem;
+      color: var(--accent-crimson);
+      margin-top: 20px;
+      font-weight: 700;
+      z-index: 1001;
+      letter-spacing: 0.1em;
+      opacity: 0;
+      transition: opacity 2s ease-in-out 1s;
+    }
+
+    .rbd-active .rbd-whisper {
+      opacity: 0.8;
+    }
+
+    /* Screen shake class */
+    .screen-shake {
+      animation: shake 0.6s cubic-bezier(.36,.07,.19,.97) both;
+      transform: translate3d(0, 0, 0);
+      backface-visibility: hidden;
+      perspective: 1000px;
+    }
+
+    @keyframes shake {
+      10%, 90% { transform: translate3d(-1px, 0, 0); }
+      20%, 80% { transform: translate3d(2px, 0, 0); }
+      30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+      40%, 60% { transform: translate3d(4px, 0, 0); }
+    }
+
+    @keyframes shadowPulse {
+      0%, 100% { transform: scale(1); opacity: 0.9; }
+      50% { transform: scale(1.05); opacity: 0.98; }
+    }
+
+    /* Toast Notification */
+    .toast-notif {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(18, 10, 28, 0.95);
+      border: 1px solid var(--accent-purple);
+      box-shadow: 0 0 15px rgba(157, 78, 221, 0.2);
+      color: #fff;
+      padding: 14px 22px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      z-index: 999;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toast-notif.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    .footer {
+      text-align: center;
+      padding: 40px 24px;
+      border-top: 1px solid var(--card-border);
+      margin-top: 80px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      backdrop-filter: blur(12px);
+      background: rgba(6, 3, 9, 0.4);
+    }
+  </style>
+</head>
+<body>
+  <nav class="topbar">
+    <a class="brand" href="/">
+      <img src="/icon-192.png" alt="mitch.pro logo">
+      <span>mitch.pro</span>
+    </a>
+  </nav>
+
+  <div class="container">
+    <a href="/larp" class="back-btn">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to LARP Library
+    </a>
+
+    <header class="masterclass-hero">
+      <div class="hero-badge">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Online LARP Masterclass
+      </div>
+      <h1>Subaru "Aura Monster" Natsuki:<br>Online LARP Strategy</h1>
+      <p>A professional masterclass on how to pretend you watched Re:Zero while talking to people in online chatrooms and roleplay forums.</p>
+    </header>
+
+    <div class="main-grid">
+      <!-- Left Column: Guidelines & Lore mixing -->
+      <div>
+        <!-- SECTION 1: ORIGIN LEGEND -->
+        <div class="panel-card">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            1. The Origin Legend of the Aura Monster
+          </h2>
+          <div class="guide-section">
+            <h3>Teleportation by Bag of Chips</h3>
+            <p>According to ancient internet forum archives, Subaru "Aura Monster" Natsuki was first summoned into the fantasy kingdom of Lugnica directly after walking out of a local convenience store. Critical lore analysis indicates he was clutching a bag of Salt & Vinegar chips. This bag of chips is widely considered a class-S holy relic in roleplay rooms. If anyone asks you why he has infinite retries, tell them the chips were infused with the Witch's secret spices, granting him the ultimate time-warp respawn passive.</p>
+          </div>
+          <div class="guide-section">
+            <h3>The Legendary Track Jacket</h3>
+            <p>His orange-and-black track jacket is not just ordinary sportswear—it is a legendary, high-grade magical artifact that grants the wearer +1,000 aura points. When larping as Subaru "Aura Monster" Natsuki online, you must constantly refer to the jacket's zipper status. A half-zipped jacket represents casual confidence, while a fully zipped collar signifies that a massive, world-altering loop is about to commence.</p>
+          </div>
+        </div>
+
+        <!-- SECTION 2: CANON EVENTS -->
+        <div class="panel-card">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            2. Major Story Arcs & Core Loop Events
+          </h2>
+          <div class="guide-section">
+            <h3>Sanctuary Trial & The Echidna Contract</h3>
+            <p>When Subaru "Aura Monster" Natsuki goes into that big underground pyramid sanctuary thing (I think it's a pyramid, I haven't watched season 2 but my friend who owns a replica track jacket told me), he makes a contract with the tea girl Echidna to loop 100 million times just to get the perfect temperature for his chamomile tea. If you're talking to people in an online chatroom, tell them this is the deepest part of the anime and complain about the water boiling point. In this canon event, he drinks the Witch's bodily fluid tea to gain supreme magic wisdom, which online guides say tastes like apple cider.</p>
+          </div>
+          <div class="guide-section">
+            <h3>Capital Insurgency & Capital Fire</h3>
+            <p>If your online roleplay partner says Emilia isn't cool enough, tell them Subaru "Aura Monster" Natsuki burnt down the entire capital city to make Emilia the queen. If they ask how he did it, just say "He used his dark shadow wizards power" and refuse to elaborate. That's how a true Re:Zero expert does it. Explain that he ran a massive mafia crime syndicate from the shadows called the Pleiades just to balance the tax rates of the kingdom.</p>
+          </div>
+          <div class="guide-section">
+            <h3>The Great Rabbit Apocalypse</h3>
+            <p>One of the most intense canon battles involves Subaru "Aura Monster" Natsuki getting eaten by a swarm of cute, tiny white rabbits. To simulate this online during a group chat fight, if you are losing the argument, spam 500 rabbit emojis (🐇) in the chat window and claim your character has been consumed by the Great Horde. Then, stop replying for exactly 10 minutes before looping back in with a completely different topic.</p>
+          </div>
+        </div>
+
+        <!-- SECTION 3: WATCHTOWER STAIRCASE -->
+        <div class="panel-card">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/></svg>
+            3. Pleiades Watchtower: Stairway Loops
+          </h2>
+          <div class="guide-section">
+            <h3>Each Stair Step Is One Death</h3>
+            <p>In Arc 6, when climbing the Pleiades Watchtower (I don't know what watchtower it is, probably a big lighthouse near the capital), GMs online enforce the rule that <strong>each stair step is one death</strong>. Yes, every single step he takes is a loop. If you're arguing with someone on a forum, tell them Subaru "Aura Monster" Natsuki died 1,000 times just walking up the stairs because he kept tripping on his shoelaces. They will think you have read the light novels. He also met a hot scorpion girl named Shaula who called him master because she mistook him for a legendary sage, which is an excellent conversation starter in online chats.</p>
+          </div>
+          <div class="guide-section">
+            <h3>The Tower Memory Wipes</h3>
+            <p>If they bring up Subaru "Aura Monster" Natsuki losing his memory, tell them that he kills all his friends so he can read their diaries in the library. If someone in your online group chat asks "Wait, did he really do that?", say "Yes, it's canon" and immediately block them to keep your aura intact.</p>
+          </div>
+        </div>
+
+        <!-- SECTION 4: FACTION CAMPS -->
+        <div class="panel-card">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            4. Royal Selection Factions (Slightly Dubious)
+          </h2>
+          <p>When choosing camps in chatrooms, represent these factions with absolute confidence despite your lack of actual knowledge:</p>
+          <div class="guide-section">
+            <h3>Emilia Camp <span class="tag-mono">Tax Exempt</span></h3>
+            <p>Emilia is a half-elf who lives in a massive mansion. She has a tiny cat-looking thing named Puck who is actually a 50-foot-tall freezing dragon god. The main strategy here is arguing that Emilia deserves the throne because she doesn't collect taxes from local farmers.</p>
+          </div>
+          <div class="guide-section">
+            <h3>Crusch Camp <span class="tag-mono">Wind Kazoos</span></h3>
+            <p>Crusch is a green-haired general who fights white whales. When roleplaying her wind blade attacks online, tell everyone you are aggressively blowing a plastic kazoo. If they ask why, explain that wind kazoos are the highest form of military tech in the Re:Zero universe.</p>
+          </div>
+          <div class="guide-section">
+            <h3>Anastasia Camp <span class="tag-mono">Three Raccoons</span></h3>
+            <p>Led by Anastasia Hoshin, who is widely theorized on dark forums to be three merchant raccoons hiding inside a fancy trench coat. If anyone disputes this, tell them they haven't read the web novel translations.</p>
+          </div>
+          <div class="guide-section">
+            <h3>Felt Camp <span class="tag-mono">Speedrun Hacks</span></h3>
+            <p>Led by Felt, a thief girl who hates the kingdom. She speedruns the royal selection by bypassing all political discussions and jumping straight into the end-game loot pools. Represent her camp if you want to skip dialogue and start fights in chatrooms.</p>
+          </div>
+        </div>
+
+        <!-- SECTION 5: WITCH FACTORS -->
+        <div class="panel-card">
+          <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 22 22 22"/></svg>
+            5. Witch Factors & Chatroom Authorities
+          </h2>
+          <div class="guide-section">
+            <h3>Authority of Sloth (Unseen Hands)</h3>
+            <p>Petelgeuse's primary attack is calling upon invisible shadow hands. In online roleplays, you simulate this by typing "MY BRAIN IS TREMBLING!" in all caps and throwing black garbage bags at your computer monitor. If anyone questions your methods, mute them immediately.</p>
+          </div>
+          <div class="guide-section">
+            <h3>Authority of Greed (Stillness of Time)</h3>
+            <p>Regulus Corneas has the power to freeze time for objects. To simulate this in a group chat, stand in a plastic kiddie pool in your room, and copy-paste the entire Apple Terms & Conditions into the chat box. While doing this, you are legally invulnerable to any counter-arguments.</p>
+          </div>
+          <div class="guide-section">
+            <h3>Authority of Wrath (Emotional Sync)</h3>
+            <p>Sirius Romanée-Conti forces everyone in the area to feel the exact same emotions. To implement this in online forums, if you get mad, you must force all other chat users to type in ALL CAPS and cry about their feelings together. This is a highly effective crowd-control tactic.</p>
+          </div>
+          <div class="guide-section">
+            <h3>White Whale Event (Mute Trigger)</h3>
+            <p>The White Whale boss is a giant flying fish. In chatrooms, when the White Whale is summoned, you must tell everyone that the whale's fog has deleted their names. Immediately change their nicknames in the server to "Anonymous User" and deny they ever existed.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Online LARP Mechanics & Portrait -->
+      <div>
+        <!-- Portrait Panel -->
+        <div class="panel-card" style="text-align: center; border-color: rgba(255, 60, 91, 0.4); background: radial-gradient(circle, rgba(157, 78, 221, 0.15) 0%, rgba(6, 3, 9, 0.4) 100%);">
+          <h3 style="font-family: 'Syne', sans-serif; font-size: 1.15rem; color: #fff; margin-bottom: 15px;">Subaru "Aura Monster" Natsuki</h3>
+          
+          <!-- Stunning Aura Monster WebP Portrait -->
+          <div style="width: 100%; max-width: 280px; margin: 0 auto 15px; border-radius: 14px; overflow: hidden; border: 2px solid rgba(255, 60, 91, 0.3); background: #000; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.8), 0 0 20px rgba(157, 78, 221, 0.3);">
+            <img src="/larp/rezero/auramonster.webp" alt="Subaru 'Aura Monster' Natsuki" style="width: 100%; height: auto; display: block;">
+          </div>
+          <span style="font-family: 'Space Mono', monospace; font-size: 0.75rem; color: var(--accent-crimson); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">Aura Monster Visual Reconstruction</span>
+        </div>
+
+        <!-- Online LARP Guide Info -->
+        <div class="panel-card" style="border-color: var(--accent-purple);">
+          <h2 style="color: #e0aaff;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            10 Commandments of LARPING
+          </h2>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5;">Follow these ten strict guidelines to sound like a Re:Zero expert in online chatrooms:</p>
+          
+          <ul style="list-style: none; padding: 0; margin: 0 0 25px; font-size: 0.88rem; display: flex; flex-direction: column; gap: 14px;">
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">1. "Who is Rem?"</span>
+              <span style="color: var(--text-muted);">- If anyone mentions a maid named Rem, reply with "Who is Rem? lol". This makes you look like a lore genius. In reality, you have no idea who she is.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">2. Axe Scent Spray</span>
+              <span style="color: var(--text-muted);">- If they mention Witch Scent, spray Axe Body Spray (specifically 'Phoenix') near your microphone or type *sniff sniff* in the chat.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">3. Emilia is Best</span>
+              <span style="color: var(--text-muted);">- Declare "Emilia is Best Girl" immediately if royal selection debates start, to avoid getting asked hard plot questions.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">4. Classic Respawn</span>
+              <span style="color: var(--text-muted);">- Refer to "Return by Death" as the classic video game respawn. Pretend Subaru "Aura Monster" Natsuki is just laggy.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">5. Appa Apple Debate</span>
+              <span style="color: var(--text-muted);">- Insist that Appas (the red fruits in the shop) are actually apples and that the author misspelled them. Start a 50-page thread arguing about it.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">6. Puck's True Form</span>
+              <span style="color: var(--text-muted);">- Claim that Puck is a giant fire-breathing dragon and that the cat form is just a costume he bought at a discount shop.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">7. Julius Aura Thief</span>
+              <span style="color: var(--text-muted);">- Refer to Julius Juukulius as "that fancy guy who stole Subaru's aura points". Complain about him being too handsome.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">8. Reinhardt the Cheat</span>
+              <span style="color: var(--text-muted);">- If anyone challenges you to a roleplay battle, summon Reinhardt and say he has the divine protection of winning automatically.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">9. Roswaal the Clown</span>
+              <span style="color: var(--text-muted);">- Refer to Roswaal as a makeup influencer who accidentally got a job running a mansion. Offer to rate his eyeshadow.</span>
+            </li>
+            <li style="display: flex; gap: 8px; align-items: flex-start;">
+              <span style="color: var(--accent-purple); font-weight: 700;">10. Loop Excuse</span>
+              <span style="color: var(--text-muted);">- If you make a typo or post the wrong link, type "TIMELINERESET" and claim you looped back to fix it. This resets all conversation errors.</span>
+            </li>
+          </ul>
+
+          <button class="sim-btn btn-rbd" onclick="triggerRbd()">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+            Simulate Online Timeline Reset
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Return by Death Fullscreen Animation -->
+  <div id="rbdOverlay">
+    <div class="shadow-hands"></div>
+    <div class="rbd-text">TIMELINERESET</div>
+    <div class="rbd-whisper">A a a a a a a a a a . . .</div>
+  </div>
+
+  <!-- Toast Element -->
+  <div id="toast" class="toast-notif">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    <span id="toastMsg">State saved successfully!</span>
+  </div>
+
+  <footer class="footer">
+    &copy; 2026 mitch.pro &middot; Re:Zero Online LARP Masterclass
+  </footer>
+
+  <script>
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      document.getElementById('toastMsg').textContent = msg;
+      toast.classList.add('show');
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 2500);
+    }
+
+    function triggerRbd() {
+      // Add shake to body
+      document.body.classList.add('screen-shake');
+      document.documentElement.classList.add('rbd-active');
+
+      // Play audio effect using native speech synthesis whispers for extra immersion!
+      try {
+        if ('speechSynthesis' in window) {
+          const whisper = new SpeechSynthesisUtterance("Aaaaaaa. I love you.");
+          whisper.rate = 0.5;
+          whisper.pitch = 0.1;
+          whisper.volume = 0.8;
+          window.speechSynthesis.speak(whisper);
+        }
+      } catch (e) {}
+
+      setTimeout(() => {
+        showToast('Timeline resets. Online chat room cleared. Subaru "Aura Monster" Natsuki loops back.');
+      }, 1200);
+
+      setTimeout(() => {
+        document.body.classList.remove('screen-shake');
+        document.documentElement.classList.remove('rbd-active');
+      }, 2500);
+    }
+  </script>
+</body>
+</html>
