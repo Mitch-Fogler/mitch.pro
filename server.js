@@ -4902,6 +4902,8 @@ async function handleRequest(req, server) {
   // ── Password Enforcement (Unified) ──────────────────────────────────────────
   const cleanPath = (path.endsWith('/') && path !== '/') ? path.slice(0, -1) : path;
   const isExempt = cleanPath === '/enroll' || 
+                   cleanPath === '/larp' ||
+                   cleanPath === '/larp/rezero' ||
                    cleanPath === '/bell' ||
                    cleanPath === '/api/bell/override' ||
                    cleanPath === '/claim' || 
@@ -13489,7 +13491,7 @@ function loadAllGamesList() {
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && path !== '/larp' && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);
