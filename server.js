@@ -8,6 +8,7 @@ import webpush from 'web-push';
 import { Client as SSHClient } from 'ssh2';
 import { isIP } from 'net';
 import dns from 'dns';
+import https from 'https';
 
 try {
   if (dns && dns.setDefaultResultOrder) {
@@ -1935,8 +1936,8 @@ async function verifyRecaptcha(token, ip, sid) {
       if (e && e.name === 'AbortError') {
         throw e;
       }
-      console.log(`[recaptcha] Connection/fetch error (IP: ${ip}):`, e);
-      return false;
+      console.log(`[recaptcha] Warning: Connection/fetch error (IP: ${ip}), failing open:`, e);
+      return true; // Fail open to prevent lockout if Google is unreachable
     }
   };
 
