@@ -1458,7 +1458,6 @@ async function requestReset() {
   if (!email) { msg.className = 'err'; msg.textContent = 'Enter your email.'; return; }
 
   const captcha = await getCaptchaResponse('request_reset');
-  if (!captcha) { msg.className = 'err'; msg.textContent = 'Complete reCAPTCHA.'; return; }
 
   btn.disabled = true;
   msg.textContent = 'Sending reset code...';
@@ -1584,11 +1583,6 @@ async function login() {
   }
 
   const captcha = await getCaptchaResponse('login');
-  if (!captcha) {
-    msg.className = 'err';
-    msg.textContent = 'Complete reCAPTCHA.';
-    return;
-  }
   btn.disabled = true;
   msg.textContent = 'Logging in...';
   msg.className = '';
@@ -1633,7 +1627,7 @@ async function claimToken(mode) {
   if (password !== confirm) { tmsg.className = 'err'; tmsg.textContent = 'Passwords do not match.'; return; }
 
   const captcha = await getCaptchaResponse('claim_token');
-  if (!captcha) { tmsg.className = 'err'; tmsg.textContent = 'Complete reCAPTCHA.'; return; }
+
 
   tmsg.textContent = 'Verifying and configuring security...';
   tmsg.className = '';

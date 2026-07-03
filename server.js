@@ -1898,7 +1898,10 @@ async function verifyRecaptcha(token, ip, sid) {
   const recaptchaSecretKey = (process.env.RECAPTCHA_SECRET_KEY || '').trim();
 
   if (!secretKey && !recaptchaSecretKey) return true;
-  if (!token) return false;
+  if (!token) {
+    console.log(`[recaptcha] Blocked: empty token received (from IP: ${ip})`);
+    return false;
+  }
 
   const callVerify = async (secret, signal) => {
     if (!secret) return false;
@@ -1911,9 +1914,13 @@ async function verifyRecaptcha(token, ip, sid) {
         signal,
       });
       const data = await resp.json();
-      if (data.success !== true) return false;
-      if (typeof data.score === 'number' && data.score < 0.5) {
-        console.log(`[recaptcha] Blocked low score token: ${data.score}`);
+      if (data.success !== true) {
+        console.log(`[recaptcha] Verification failed (IP: ${ip}). Error codes: ${JSON.stringify(data['error-codes'] || [])}`);
+        return false;
+      }
+      const minScore = parseFloat(process.env.RECAPTCHA_MIN_SCORE || '0.5');
+      if (typeof data.score === 'number' && data.score < minScore) {
+        console.log(`[recaptcha] Blocked low score token (IP: ${ip}): ${data.score} (threshold: ${minScore})`);
         return false;
       }
       return true;
@@ -1921,6 +1928,7 @@ async function verifyRecaptcha(token, ip, sid) {
       if (e && e.name === 'AbortError') {
         throw e;
       }
+      console.log(`[recaptcha] Connection/fetch error (IP: ${ip}):`, e);
       return false;
     }
   };
