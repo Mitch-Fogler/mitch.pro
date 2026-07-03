@@ -12,6 +12,7 @@ cd "$SCRIPT_DIR/.."
 # 1. Fetch only NTFY_TOPIC for the deploy script's notifications
 NTFY_TOPIC=""
 DOPPLER_AVAILABLE=false
+export DOPPLER_ENABLE_DNS_RESOLVER=true
 if command -v doppler &> /dev/null && doppler secrets download --format json &> /dev/null; then
     DOPPLER_AVAILABLE=true
     NTFY_TOPIC=$(doppler secrets get NTFY_TOPIC --plain 2>/dev/null || echo "")
