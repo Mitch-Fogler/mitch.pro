@@ -7,6 +7,13 @@ import os from 'os';
 import webpush from 'web-push';
 import { Client as SSHClient } from 'ssh2';
 import { isIP } from 'net';
+import dns from 'dns';
+
+try {
+  if (dns && dns.setDefaultResultOrder) {
+    dns.setDefaultResultOrder('ipv4first');
+  }
+} catch {}
 
 const BASE = import.meta.dir;
 const WEBROOT = join(BASE, 'webserver');
