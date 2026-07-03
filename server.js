@@ -137,6 +137,7 @@ try {
     softMaintenanceActive = JSON.parse(readFileSync(MAINTENANCE_FILE, 'utf8')).active === true;
   }
 } catch {}
+const lastRecaptchaSuccess = new Map();
 const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
 const USERDATA_DIR = "/opt/userdata";
@@ -1883,8 +1884,15 @@ async function ntfy(msg, { title, priority } = {}) {
   } catch {}
 }
 
-async function verifyRecaptcha(token, ip) {
+async function verifyRecaptcha(token, ip, sid) {
   if (ip && (WHITELISTED_IPS.has(ip) || ip === '127.0.0.1' || ip === '::1')) return true;
+
+  if (sid) {
+    const lastSuccess = lastRecaptchaSuccess.get(sid);
+    if (lastSuccess && (Date.now() - lastSuccess < 10 * 60 * 1000)) {
+      return true;
+    }
+  }
 
   const secretKey = (process.env.SECRET_KEY || '').trim();
   const recaptchaSecretKey = (process.env.RECAPTCHA_SECRET_KEY || '').trim();
@@ -1920,15 +1928,16 @@ async function verifyRecaptcha(token, ip) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
 
+  let verified = false;
   try {
     if (recaptchaSecretKey) {
       const ok = await callVerify(recaptchaSecretKey, controller.signal);
-      if (ok) return true;
+      if (ok) verified = true;
     }
 
-    if (secretKey) {
+    if (!verified && secretKey) {
       const ok = await callVerify(secretKey, controller.signal);
-      if (ok) return true;
+      if (ok) verified = true;
     }
   } catch (e) {
     if (e && e.name === 'AbortError') {
@@ -1938,7 +1947,10 @@ async function verifyRecaptcha(token, ip) {
     clearTimeout(timeoutId);
   }
 
-  return false;
+  if (verified && sid) {
+    lastRecaptchaSuccess.set(sid, Date.now());
+  }
+  return verified;
 }
 
 // ── AI ────────────────────────────────────────────────────────────────────────
@@ -9720,7 +9732,7 @@ function loadAllGamesList() {
       const senderEmail = (names[sid] || '').toLowerCase();
       if (!senderEmail) return jsonResp(403, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip, sid)) {
         return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       }
       const groupId = body.groupId ? String(body.groupId) : '';
@@ -10063,7 +10075,7 @@ function loadAllGamesList() {
       const myEmail = (names[sid] || '').toLowerCase();
       if (!myEmail) return jsonResp(403, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip, sid))
         return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       const reports = loadJson(CHAT_REPORTS_FILE, []);
       
@@ -13415,10 +13427,6 @@ function loadAllGamesList() {
               injectStr += `<script src="https://www.google.com/recaptcha/api.js?render=${rcKey}" async defer></script>\n`;
               injectStr += `<script>\n` +
                            `  window.getCaptchaToken = function(action) {\n` +
-                           `    const loc = window.location.hostname;\n` +
-                           `    if (loc === 'localhost' || loc === '127.0.0.1' || loc === '::1' || loc.startsWith('192.168.') || loc.startsWith('10.') || loc.startsWith('172.')) {\n` +
-                           `      return Promise.resolve('mock_captcha_token');\n` +
-                           `    }\n` +
                            `    return new Promise(function(resolve) {\n` +
                            `      let attempts = 0;\n` +
                            `      function checkAndExecute() {\n` +

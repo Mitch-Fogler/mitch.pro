@@ -664,7 +664,6 @@ let isLoadingMore = false;
 const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
 const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
 let msgExpiry = 0;
-try { msgExpiry = parseInt(localStorage.getItem('_chatExpiry') || '0', 10) || 0; } catch {}
 
 const h2b = h => Uint8Array.from(String(h || '').match(/../g).map(x => parseInt(x,16)));
 const b2h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
@@ -1738,6 +1737,12 @@ function showChatShell() {
 
 async function reloadActiveChat() {
   if (!activeChat) return;
+  try {
+    msgExpiry = parseInt(localStorage.getItem('_chatExpiry_' + activeChat.id) || '0', 10) || 0;
+  } catch (e) {
+    msgExpiry = 0;
+  }
+  syncExpiryButton();
   hasMoreMessages = true;
   isLoadingMore = false;
   const url = activeChat.type === 'group'
@@ -1858,13 +1863,15 @@ function messageHtml(m) {
 }
 
 function scheduleLocalExpiry() {
-  if (msgExpiry <= 0) return;
-  document.querySelectorAll('#msgs .msg[data-expire]').forEach(el => {
+  document.querySelectorAll('#msgs .msg[data-expire]:not([data-scheduled])').forEach(el => {
+    el.dataset.scheduled = "true";
     const expireAt = Number(el.dataset.expire || 0);
-    const wait = Math.max(0, expireAt - Date.now());
-    setTimeout(() => {
-      if (el.parentNode) el.remove();
-    }, wait);
+    if (expireAt > 0) {
+      const wait = Math.max(0, expireAt - Date.now());
+      setTimeout(() => {
+        if (el.parentNode) el.remove();
+      }, wait);
+    }
   });
 }
 
@@ -2369,9 +2376,10 @@ function handleImagePick() {
 }
 
 function cycleExpiry() {
+  if (!activeChat) return;
   const cur = EXPIRY_OPTIONS.indexOf(msgExpiry);
   msgExpiry = EXPIRY_OPTIONS[(cur + 1) % EXPIRY_OPTIONS.length];
-  try { localStorage.setItem('_chatExpiry', msgExpiry); } catch {}
+  try { localStorage.setItem('_chatExpiry_' + activeChat.id, msgExpiry); } catch {}
   syncExpiryButton();
 }
 
