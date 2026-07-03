@@ -1418,7 +1418,7 @@ async function verifySignup() {
   if (!code) { tmsg.className = 'err'; tmsg.textContent = 'Enter your 6-digit code.'; return; }
 
   const captcha = await getCaptchaResponse('verify_signup');
-  if (!captcha) { tmsg.className = 'err'; tmsg.textContent = 'Complete reCAPTCHA.'; return; }
+
 
   btn.disabled = true;
   tmsg.textContent = 'Verifying and finalizing account...';
