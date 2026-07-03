@@ -13363,6 +13363,17 @@ function loadAllGamesList() {
       } catch { return new Response('Team page not found', { status: 404 }); }
     }
 
+    // Trailing slash redirect for directories under WEBROOT
+    if (path !== '/' && !path.endsWith('/')) {
+      const diskPath = join(WEBROOT, path.replace(/^\//, ''));
+      try {
+        if (existsSync(diskPath) && statSync(diskPath).isDirectory()) {
+          const queryStr = url.search || '';
+          return Response.redirect(path + '/' + queryStr, 302);
+        }
+      } catch (e) {}
+    }
+
     // HTML pages with auth stub
     let htmlBase = path;
     if (htmlBase.endsWith('.html')) htmlBase = htmlBase.slice(0, -5);
