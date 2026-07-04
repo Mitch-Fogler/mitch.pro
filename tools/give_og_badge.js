@@ -1,8 +1,10 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
+import { configureDataStore, readDocument, writeDocument } from '../lib/data_store.js';
 
 const BASE = import.meta.dir ? join(import.meta.dir, '..') : process.cwd();
 const DATA_DIR = process.env.DATA_DIR || join(BASE, 'data');
+configureDataStore({ baseDir: BASE, dataDir: DATA_DIR });
 const COSMETICS_FILE = join(DATA_DIR, 'cosmetics.json');
 const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 
@@ -46,14 +48,14 @@ function run() {
     process.exit(1);
   }
 
-  const passwords = JSON.parse(readFileSync(PASSWORDS_FILE, 'utf8'));
+  const passwords = readDocument(PASSWORDS_FILE, {});
   const emails = Object.keys(passwords);
   console.log(`Found ${emails.length} registered users.`);
 
   let cosmetics = {};
   if (existsSync(COSMETICS_FILE)) {
     try {
-      cosmetics = JSON.parse(readFileSync(COSMETICS_FILE, 'utf8'));
+      cosmetics = readDocument(COSMETICS_FILE, {});
     } catch (e) {
       console.warn('Failed to parse cosmetics.json, starting fresh:', e.message);
     }
@@ -70,7 +72,7 @@ function run() {
     }
   }
 
-  writeFileSync(COSMETICS_FILE, JSON.stringify(cosmetics, null, 2));
+  writeDocument(COSMETICS_FILE, cosmetics);
   console.log(`Successfully added OG Badge to ${count} users.`);
 }
 

@@ -1,8 +1,10 @@
 import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { configureDataStore, readDocument, writeDocument } from '../lib/data_store.js';
 
 const BASE = process.cwd();
 const DATA_DIR = join(BASE, 'data');
+configureDataStore({ baseDir: BASE, dataDir: DATA_DIR });
 const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const NEWSLETTER_EXTRA_FILE = join(DATA_DIR, 'newsletter_extra.json');
 const NAMES_FILE = join(DATA_DIR, 'names.json');
@@ -21,10 +23,10 @@ function normalizeEmail(email) {
 }
 
 async function run() {
-  const extra = JSON.parse(readFileSync(NEWSLETTER_EXTRA_FILE, 'utf8'));
-  const passwords = JSON.parse(readFileSync(PASSWORDS_FILE, 'utf8'));
-  const names = JSON.parse(readFileSync(NAMES_FILE, 'utf8'));
-  const tokens = JSON.parse(readFileSync(TOKENS_FILE, 'utf8'));
+  const extra = readDocument(NEWSLETTER_EXTRA_FILE, []);
+  const passwords = readDocument(PASSWORDS_FILE, {});
+  const names = readDocument(NAMES_FILE, {});
+  const tokens = readDocument(TOKENS_FILE, {});
 
   let added = 0;
   for (const email of extra) {
@@ -55,8 +57,8 @@ async function run() {
   }
 
   if (added > 0) {
-    writeFileSync(PASSWORDS_FILE, JSON.stringify(passwords, null, 2));
-    writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2));
+    writeDocument(PASSWORDS_FILE, passwords);
+    writeDocument(TOKENS_FILE, tokens);
     console.log(`Successfully auto-enrolled ${added} newsletter subscribers.`);
   } else {
     console.log('No new newsletter subscribers to enroll.');

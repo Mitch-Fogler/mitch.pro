@@ -9,6 +9,13 @@ import { Client as SSHClient } from 'ssh2';
 import { isIP } from 'net';
 import dns from 'dns';
 import https from 'https';
+import {
+  configureDataStore,
+  readDocument,
+  writeDocument,
+  rebuildCoreTablesFromDocuments,
+  migrateFilesToDb,
+} from './lib/data_store.js';
 
 try {
   if (dns && dns.setDefaultResultOrder) {
@@ -148,6 +155,26 @@ try {
 const lastRecaptchaSuccess = new Map();
 const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
+configureDataStore({ baseDir: BASE, dataDir: DATA_DIR });
+try {
+  if (process.env.SKIP_AUTO_DB_MIGRATION !== '1') {
+    const lockDir = join(DATA_DIR, '.mitchpro-db-migration.lock');
+    let haveLock = false;
+    try {
+      mkdirSync(lockDir);
+      haveLock = true;
+      migrateFilesToDb({ clean: false });
+    } catch (e) {
+      if (haveLock) console.error('[startup] SQLite migration failed:', e);
+    } finally {
+      if (haveLock) {
+        try { rmSync(lockDir, { recursive: true, force: true }); } catch {}
+      }
+    }
+  }
+} catch (e) {
+  console.error('[startup] SQLite data-store init failed:', e);
+}
 const USERDATA_DIR = "/opt/userdata";
 const NTFY_TOPIC = (process.env.NTFY_TOPIC || '').trim();
 const SUPPORT_USER = (process.env.SUPPORT_USER || '').trim();
@@ -1039,29 +1066,22 @@ function threadKey(subject) {
 }
 
 function loadJson(file, fallback) {
-  try { return JSON.parse(readFileSync(file, 'utf8')); }
-  catch { return fallback; }
+  return readDocument(file, fallback);
 }
 
 async function saveJson(file, data) {
-  const tmp = file + '.' + randomBytes(8).toString('hex') + '.tmp';
   try {
-    writeFileSync(tmp, JSON.stringify(data, null, 2));
-    renameSync(tmp, file);
+    writeDocument(file, data);
   } catch (e) {
     console.error(`[saveJson] error writing ${file}: ${e.message}`);
-    if (existsSync(tmp)) rmSync(tmp);
   }
 }
 
 function saveJsonSync(file, data) {
-  const tmp = file + '.' + randomBytes(8).toString('hex') + '.tmp';
   try {
-    writeFileSync(tmp, JSON.stringify(data, null, 2));
-    renameSync(tmp, file);
+    writeDocument(file, data);
   } catch (e) {
     console.error(`[saveJsonSync] error writing ${file}: ${e.message}`);
-    if (existsSync(tmp)) rmSync(tmp);
   }
 }
 
@@ -1158,6 +1178,228 @@ function normalizeEmail(email) {
     ? 'student.rjuhsd.us'
     : domainRaw;
   return local + '@' + domain;
+}
+
+function normalizeUsername(username) {
+  return String(username || '').toLowerCase().trim();
+}
+
+function isValidUsername(username) {
+  return /^[a-z0-9._-]{2,40}$/.test(normalizeUsername(username)) && !String(username || '').includes('@');
+}
+
+function defaultUsernameForEmail(email, used = new Set()) {
+  const local = String(email || '').split('@')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[._-]+|[._-]+$/g, '') || 'user';
+  let candidate = local;
+  let i = 2;
+  while (used.has(candidate)) candidate = `${local}-${i++}`;
+  used.add(candidate);
+  return candidate;
+}
+
+function ensureProfileDefaults(normEmail, originalEmail = normEmail, patch = {}) {
+  const profiles = loadJson(PROFILES_FILE, {});
+  const used = new Set(Object.entries(profiles)
+    .filter(([email]) => email !== normEmail)
+    .map(([, p]) => normalizeUsername(p?.username || ''))
+    .filter(Boolean));
+  const existing = profiles[normEmail] || {};
+  let username = normalizeUsername(patch.username || existing.username || '');
+  if (!isValidUsername(username) || used.has(username)) username = defaultUsernameForEmail(normEmail, used);
+  const now = Date.now();
+  profiles[normEmail] = {
+    email: existing.email || originalEmail || normEmail,
+    username,
+    nickname: String(patch.nickname ?? existing.nickname ?? existing.displayName ?? '').trim().slice(0, 40),
+    displayName: String(patch.displayName ?? existing.displayName ?? patch.nickname ?? existing.nickname ?? '').trim().slice(0, 40),
+    bio: existing.bio || '',
+    website: existing.website || '',
+    pfp: existing.pfp || '',
+    background: existing.background || '',
+    gradYear: String(patch.gradYear ?? existing.gradYear ?? '').trim().slice(0, 20),
+    gender: String(patch.gender ?? existing.gender ?? '').trim().slice(0, 40),
+    referralSource: String(patch.referralSource ?? existing.referralSource ?? '').trim().slice(0, 80),
+    hasCompletedTutorial: Boolean(existing.hasCompletedTutorial || existing.has_completed_tutorial || patch.hasCompletedTutorial),
+    createdAt: existing.createdAt || now,
+    updatedAt: now,
+    profileBonusClaimed: existing.profileBonusClaimed || false,
+  };
+  saveJson(PROFILES_FILE, profiles);
+  return profiles[normEmail];
+}
+
+function resolveLoginIdentifier(input) {
+  const ident = String(input || '').trim().toLowerCase();
+  if (!ident) return null;
+  const passwords = loadPasswords();
+  if (ident.includes('@')) {
+    const norm = normalizeEmail(ident);
+    return passwords[norm] ? norm : null;
+  }
+  const profiles = loadJson(PROFILES_FILE, {});
+  for (const [normEmail, profile] of Object.entries(profiles)) {
+    if (normalizeUsername(profile?.username) === ident && passwords[normEmail]) return normEmail;
+  }
+  return null;
+}
+
+const pendingTwoFactor = new Map();
+const pendingEmailChanges = new Map();
+
+function createTempToken() {
+  return randomBytes(24).toString('hex');
+}
+
+function twoFactorConfig(normEmail) {
+  const profiles = loadJson(PROFILES_FILE, {});
+  const p = profiles[normEmail] || {};
+  return {
+    enabled: !!(p.twofa_enabled || p.twofaEnabled || p.twoFactorEnabled),
+    type: p.twofa_type || p.twofaType || 'email',
+    secret: p.totp_secret || p.totpSecret || '',
+  };
+}
+
+function base32Decode(input) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '';
+  for (const ch of String(input || '').replace(/=+$/g, '').toUpperCase()) {
+    const val = alphabet.indexOf(ch);
+    if (val < 0) continue;
+    bits += val.toString(2).padStart(5, '0');
+  }
+  const out = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+  return Buffer.from(out);
+}
+
+function generateTotp(secret, step = Math.floor(Date.now() / 30000)) {
+  const key = base32Decode(secret);
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(step));
+  const hmac = createHmac('sha1', key).update(counter).digest();
+  const offset = hmac[hmac.length - 1] & 0xf;
+  const code = ((hmac[offset] & 0x7f) << 24) |
+    ((hmac[offset + 1] & 0xff) << 16) |
+    ((hmac[offset + 2] & 0xff) << 8) |
+    (hmac[offset + 3] & 0xff);
+  return String(code % 1000000).padStart(6, '0');
+}
+
+function verifyTotp(secret, code) {
+  const clean = String(code || '').trim();
+  const step = Math.floor(Date.now() / 30000);
+  for (let skew = -1; skew <= 1; skew++) {
+    if (generateTotp(secret, step + skew) === clean) return true;
+  }
+  return false;
+}
+
+function randomBase32(length = 32) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const bytes = randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) out += alphabet[bytes[i] % alphabet.length];
+  return out;
+}
+
+function saveTwoFactorConfig(normEmail, patch) {
+  const profiles = loadJson(PROFILES_FILE, {});
+  const p = ensureProfileDefaults(normEmail, normEmail);
+  profiles[normEmail] = {
+    ...p,
+    ...profiles[normEmail],
+    ...patch,
+    updatedAt: Date.now(),
+  };
+  saveJson(PROFILES_FILE, profiles);
+  return profiles[normEmail];
+}
+
+function issueLoginSession(normEmail, originalEmail = normEmail) {
+  const gens = loadGenerations();
+  const genRec = gens[normEmail] || 0;
+  const gen = (genRec && typeof genRec === 'object') ? (genRec.gen || 0) : (genRec || 0);
+  const studentId = makeEmailId(normEmail, gen);
+  const names = loadJson(NAMES_FILE, {});
+  if (names[studentId] !== originalEmail) {
+    names[studentId] = originalEmail;
+    saveJson(NAMES_FILE, names);
+  }
+  return studentId;
+}
+
+function renameEmailReferences(oldNorm, newNorm, newEmail) {
+  const keyMaps = [
+    PASSWORDS_FILE, PROFILES_FILE, COINS_FILE, USER_STATS_FILE, ACHIEVEMENTS_FILE, DAILY_LOGINS_FILE,
+    COSMETICS_FILE, COIN_GIFTS_FILE, INVITE_CODES_FILE, INVITE_CLAIMS_FILE, INVITE_SENT_FILE,
+    PREMIUM_GIFTS_SENT_FILE, E2E_KEYS_FILE, DM_CLEARED_FILE, PUSH_SUBS_FILE,
+  ];
+  for (const file of keyMaps) {
+    const obj = loadJson(file, {});
+    if (obj && typeof obj === 'object' && !Array.isArray(obj) && Object.prototype.hasOwnProperty.call(obj, oldNorm)) {
+      obj[newNorm] = obj[oldNorm];
+      delete obj[oldNorm];
+      if (file === PROFILES_FILE && obj[newNorm]) obj[newNorm].email = newEmail;
+      saveJson(file, obj);
+    }
+  }
+
+  const names = loadJson(NAMES_FILE, {});
+  for (const sid of Object.keys(names)) {
+    if (normalizeEmail(names[sid]) === oldNorm) names[sid] = newEmail;
+  }
+  saveJson(NAMES_FILE, names);
+
+  const tokens = loadTokens();
+  for (const token of Object.keys(tokens)) {
+    const rec = tokens[token] || {};
+    if (normalizeEmail(rec.email || rec.norm_email || '') === oldNorm) {
+      rec.email = newEmail;
+      rec.norm_email = newNorm;
+    }
+  }
+  saveTokens(tokens);
+
+  const friends = loadJson(FRIENDS_FILE, {});
+  if (friends[oldNorm]) {
+    friends[newNorm] = friends[oldNorm];
+    delete friends[oldNorm];
+  }
+  for (const email of Object.keys(friends)) {
+    if (Array.isArray(friends[email])) {
+      friends[email] = friends[email].map(f => normalizeEmail(f) === oldNorm ? newNorm : f);
+    }
+  }
+  saveJson(FRIENDS_FILE, friends);
+
+  const friendRequests = loadJson(FRIEND_REQUESTS_FILE, []);
+  if (Array.isArray(friendRequests)) {
+    for (const req of friendRequests) {
+      if (normalizeEmail(req.from) === oldNorm) req.from = newNorm;
+      if (normalizeEmail(req.to) === oldNorm) req.to = newNorm;
+    }
+    saveJson(FRIEND_REQUESTS_FILE, friendRequests);
+  }
+
+  for (const file of [DMS_FILE, PUBLIC_CHAT_FILE, PREMIUM_CHAT_FILE, APPLICATIONS_FILE, SESSION_LOG_FILE]) {
+    const data = loadJson(file, []);
+    const rewrite = (value) => {
+      if (typeof value === 'string') return normalizeEmail(value) === oldNorm ? newEmail : value;
+      if (Array.isArray(value)) return value.map(rewrite);
+      if (value && typeof value === 'object') {
+        for (const k of Object.keys(value)) value[k] = rewrite(value[k]);
+      }
+      return value;
+    };
+    saveJson(file, rewrite(data));
+  }
+
+  try { rebuildCoreTablesFromDocuments(); } catch {}
 }
 
 function maskEmail(email) {
@@ -3744,19 +3986,21 @@ function processMemberFields(memberEmail, profile, viewerEmail) {
   const normTarget = normalizeEmail(memberEmail);
   const normViewer = viewerEmail ? normalizeEmail(viewerEmail) : '';
   const viewerCanSee = normViewer === normTarget || isAdminEmail(viewerEmail) || isModeratorEmail(viewerEmail);
-  const privacyEnabled = hasEmailPrivacyEnabled(memberEmail);
-  
-  if (privacyEnabled && !viewerCanSee) {
+  const profiles = profile ? null : loadJson(PROFILES_FILE, {});
+  const p = profile || profiles[normTarget] || {};
+  const publicName = p.nickname || p.displayName || p.username || 'mitch.pro user';
+
+  if (!viewerCanSee) {
     return {
-      displayName: (profile && profile.displayName) || 'mitch.pro user',
-      email: getUidForEmail(memberEmail)
-    };
-  } else {
-    return {
-      displayName: (profile && profile.displayName) || null,
-      email: maskEmail(memberEmail)
+      displayName: publicName,
+      email: p.username || getUidForEmail(memberEmail)
     };
   }
+
+  return {
+    displayName: p.displayName || p.nickname || p.username || null,
+    email: maskEmail(memberEmail)
+  };
 }
 
 function pruneDms(dms) {
@@ -7019,10 +7263,10 @@ Mitch.pro Team`;
     if (path === '/api/login') {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        const email = String(body.email || '').trim().toLowerCase();
+        const email = String(body.email || body.username || '').trim().toLowerCase();
         const password = String(body.password || '');
         if (!email || !password) {
-          return jsonResp(400, { success: false, message: 'Email and password required.' });
+          return jsonResp(400, { success: false, message: 'Email/username and password required.' });
         }
         if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
@@ -7031,29 +7275,60 @@ Mitch.pro Team`;
           return jsonResp(429, { success: false, message: 'Too many login attempts. Try again shortly.' });
         }
 
-        const normEmail = normalizeEmail(email);
+        const normEmail = resolveLoginIdentifier(email);
+        if (!normEmail) return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
         const passwords = loadPasswords();
         const stored = passwords[normEmail];
-        if (!stored) return jsonResp(401, { success: false, message: 'Invalid email or password.' });
+        if (!stored) return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
 
         let ok = false;
         try { ok = await Bun.password.verify(password, stored); }
         catch { ok = password === stored; }
-        if (!ok) return jsonResp(401, { success: false, message: 'Invalid email or password.' });
+        if (!ok) return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
 
-        const gens = loadGenerations();
-        const genRec = gens[normEmail] || 0;
-        const gen = (genRec && typeof genRec === 'object') ? (genRec.gen || 0) : (genRec || 0);
-        const studentId = makeEmailId(normEmail, gen);
-        const names = loadJson(NAMES_FILE, {});
-        if (names[studentId] !== email) {
-          names[studentId] = email;
-          saveJson(NAMES_FILE, names);
+        ensureProfileDefaults(normEmail, normEmail);
+        const twofa = twoFactorConfig(normEmail);
+        if (twofa.enabled) {
+          const tempToken = createTempToken();
+          const rec = { normEmail, type: twofa.type, attempts: 0, expires: Date.now() + 5 * 60 * 1000 };
+          if (twofa.type === 'email') {
+            rec.code = Math.floor(100000 + Math.random() * 900000).toString();
+            sendEmailBg(normEmail, 'Your mitch.pro login code', `Your login verification code is: ${rec.code}\n\nThis code expires in 5 minutes.${emailSig()}`);
+          }
+          pendingTwoFactor.set(tempToken, rec);
+          return jsonResp(200, { success: false, twofa_required: true, twofa_type: twofa.type, temp_token: tempToken });
         }
+        const studentId = issueLoginSession(normEmail, normEmail);
         return jsonResp(200, { success: true, id: studentId, email });
       } catch (e) {
         console.error('[login] failed:', e);
         return jsonResp(500, { success: false, message: 'Login failed. Try again.' });
+      }
+    }
+
+    if (path === '/api/verify-2fa' && method === 'POST') {
+      try {
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+        const tempToken = String(body.temp_token || '').trim();
+        const code = String(body.code || '').trim();
+        const rec = pendingTwoFactor.get(tempToken);
+        if (!rec || Date.now() > rec.expires) {
+          pendingTwoFactor.delete(tempToken);
+          return jsonResp(401, { success: false, message: 'Verification expired. Please log in again.' });
+        }
+        rec.attempts++;
+        if (rec.attempts > 5) {
+          pendingTwoFactor.delete(tempToken);
+          return jsonResp(429, { success: false, message: 'Too many verification attempts.' });
+        }
+        const cfg = twoFactorConfig(rec.normEmail);
+        const ok = rec.type === 'totp' ? verifyTotp(cfg.secret, code) : code === rec.code;
+        if (!ok) return jsonResp(401, { success: false, message: 'Invalid verification code.' });
+        pendingTwoFactor.delete(tempToken);
+        const studentId = issueLoginSession(rec.normEmail, rec.normEmail);
+        return jsonResp(200, { success: true, id: studentId, email: rec.normEmail });
+      } catch (e) {
+        return jsonResp(500, { success: false, message: '2FA verification failed.' });
       }
     }
 
@@ -7081,6 +7356,14 @@ Mitch.pro Team`;
 
         const passwords = loadPasswords();
         if (passwords[normEmail]) return jsonResp(400, { success: false, message: 'Account already exists. Please log in.' });
+        const requestedUsername = normalizeUsername(body.username || '');
+        if (requestedUsername) {
+          if (!isValidUsername(requestedUsername)) return jsonResp(400, { success: false, message: 'Username must use lowercase letters, numbers, ".", "_", or "-".' });
+          const profiles = loadJson(PROFILES_FILE, {});
+          if (Object.values(profiles).some(p => normalizeUsername(p?.username) === requestedUsername)) {
+            return jsonResp(400, { success: false, message: 'Username is already taken.' });
+          }
+        }
 
         const code = Math.floor(100000 + Math.random() * 900000).toString();
         const hash = await Bun.password.hash(password);
@@ -7092,6 +7375,12 @@ Mitch.pro Team`;
           hash,
           email,
           refCode: refCode || '',
+          username: requestedUsername,
+          nickname: String(body.nickname || '').trim().slice(0, 40),
+          gradYear: String(body.gradYear || '').trim().slice(0, 20),
+          gender: String(body.gender || '').trim().slice(0, 40),
+          referralSource: String(body.referralSource || '').trim().slice(0, 80),
+          referralDetails: String(body.referralDetails || '').trim().slice(0, 200),
           expires: Date.now() + (30 * 60 * 1000)
         };
         saveJson(SIGNUP_CODES_FILE, codes);
@@ -7148,6 +7437,25 @@ Mitch.pro Team`;
         const names = loadJson(NAMES_FILE, {});
         names[studentId] = entry.email;
         saveJson(NAMES_FILE, names);
+
+        ensureProfileDefaults(normEmail, entry.email, {
+          username: entry.username,
+          nickname: entry.nickname,
+          displayName: entry.nickname,
+          gradYear: entry.gradYear,
+          gender: entry.gender,
+          referralSource: entry.referralSource,
+          hasCompletedTutorial: false,
+        });
+        if (entry.referralSource) {
+          const refs = loadJson(join(DATA_DIR, 'referral_sources.json'), {});
+          refs[normEmail] = {
+            source: entry.referralSource,
+            details: entry.referralDetails || '',
+            timestamp: Date.now(),
+          };
+          saveJson(join(DATA_DIR, 'referral_sources.json'), refs);
+        }
 
         delete codes[normEmail];
         saveJson(SIGNUP_CODES_FILE, codes);
@@ -8063,11 +8371,18 @@ function loadAllGamesList() {
 
       profiles[norm] = {
         email,
+        username: profiles[norm]?.username || defaultUsernameForEmail(norm, new Set(Object.entries(profiles).filter(([k]) => k !== norm).map(([, p]) => normalizeUsername(p?.username || '')).filter(Boolean))),
+        nickname: profiles[norm]?.nickname || '',
         displayName: (displayName || '').trim().slice(0, 40),
         bio: (bio || '').trim().slice(0, 300),
         website: (website || '').trim().slice(0, 100),
         pfp: (pfp || '').trim().slice(0, 200),
         background: isPremium ? (background || '').trim().slice(0, 200) : (profiles[norm]?.background || ''),
+        gradYear: profiles[norm]?.gradYear || '',
+        gender: profiles[norm]?.gender || '',
+        referralSource: profiles[norm]?.referralSource || '',
+        hasCompletedTutorial: Boolean(profiles[norm]?.hasCompletedTutorial || profiles[norm]?.has_completed_tutorial),
+        createdAt: profiles[norm]?.createdAt || Date.now(),
         updatedAt: Date.now(),
         profileBonusClaimed: alreadyClaimed,
       };
@@ -8087,6 +8402,128 @@ function loadAllGamesList() {
 
       saveJson(PROFILES_FILE, profiles);
       return jsonResp(200, { ok: true, bonusGranted, bonusAmount: bonusGranted ? 500 : 0 });
+    }
+
+    if (path === '/api/me/complete-tutorial' && method === 'POST') {
+      const cookies = getCookies(req);
+      const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      if (!email) return jsonResp(401, { error: 'not logged in' });
+      const norm = normalizeEmail(email);
+      const profile = ensureProfileDefaults(norm, email);
+      profile.hasCompletedTutorial = true;
+      profile.has_completed_tutorial = true;
+      const profiles = loadJson(PROFILES_FILE, {});
+      profiles[norm] = profile;
+      saveJson(PROFILES_FILE, profiles);
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/me/2fa/setup-totp' && method === 'POST') {
+      const cookies = getCookies(req);
+      const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      if (!email) return jsonResp(401, { error: 'not logged in' });
+      const norm = normalizeEmail(email);
+      const secret = randomBase32();
+      saveTwoFactorConfig(norm, { pendingTotpSecret: secret });
+      const label = encodeURIComponent(`mitch.pro:${norm}`);
+      const issuer = encodeURIComponent('mitch.pro');
+      const otpauth = `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(otpauth)}`;
+      return jsonResp(200, { ok: true, secret, otpauth, qrUrl });
+    }
+
+    if (path === '/api/me/2fa/enable' && method === 'POST') {
+      const cookies = getCookies(req);
+      const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      if (!email) return jsonResp(401, { error: 'not logged in' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const norm = normalizeEmail(email);
+      const type = String(body.type || '').trim().toLowerCase();
+      if (type === 'email') {
+        saveTwoFactorConfig(norm, { twofa_enabled: true, twofa_type: 'email', twoFactorEnabled: true, twofaEnabled: true });
+        return jsonResp(200, { ok: true, type: 'email' });
+      }
+      if (type === 'totp') {
+        const profiles = loadJson(PROFILES_FILE, {});
+        const secret = profiles[norm]?.pendingTotpSecret || profiles[norm]?.totp_secret || profiles[norm]?.totpSecret;
+        if (!secret || !verifyTotp(secret, body.code)) return jsonResp(400, { error: 'invalid totp code' });
+        saveTwoFactorConfig(norm, {
+          twofa_enabled: true,
+          twofa_type: 'totp',
+          twoFactorEnabled: true,
+          twofaEnabled: true,
+          totp_secret: secret,
+          totpSecret: secret,
+          pendingTotpSecret: '',
+        });
+        return jsonResp(200, { ok: true, type: 'totp' });
+      }
+      return jsonResp(400, { error: 'invalid 2fa type' });
+    }
+
+    if (path === '/api/me/2fa/disable' && method === 'POST') {
+      const cookies = getCookies(req);
+      const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      if (!email) return jsonResp(401, { error: 'not logged in' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const norm = normalizeEmail(email);
+      const passwords = loadPasswords();
+      const stored = passwords[norm];
+      let ok = false;
+      try { ok = await Bun.password.verify(String(body.password || ''), stored); } catch {}
+      if (!ok) return jsonResp(401, { error: 'password incorrect' });
+      saveTwoFactorConfig(norm, {
+        twofa_enabled: false,
+        twofa_type: '',
+        twoFactorEnabled: false,
+        twofaEnabled: false,
+        totp_secret: '',
+        totpSecret: '',
+        pendingTotpSecret: '',
+      });
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/me/change-email' && method === 'POST') {
+      const cookies = getCookies(req);
+      const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      if (!email) return jsonResp(401, { error: 'not logged in' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const newEmail = String(body.newEmail || '').trim().toLowerCase();
+      const newNorm = normalizeEmail(newEmail);
+      if (!newEmail.includes('@') || !newNorm.includes('@')) return jsonResp(400, { error: 'invalid email' });
+      const oldNorm = normalizeEmail(email);
+      if (oldNorm === newNorm) return jsonResp(400, { error: 'new email matches current email' });
+      const passwords = loadPasswords();
+      if (passwords[newNorm]) return jsonResp(400, { error: 'email already in use' });
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const token = createTempToken();
+      pendingEmailChanges.set(token, { oldNorm, newNorm, newEmail, code, expires: Date.now() + 30 * 60 * 1000, attempts: 0 });
+      sendEmailBg(newEmail, 'Confirm your mitch.pro email change', `Your email change confirmation code is: ${code}\n\nThis code expires in 30 minutes.${emailSig()}`);
+      return jsonResp(200, { ok: true, change_token: token });
+    }
+
+    if (path === '/api/me/change-email/confirm' && method === 'POST') {
+      const cookies = getCookies(req);
+      const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      if (!email) return jsonResp(401, { error: 'not logged in' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const token = String(body.change_token || body.token || '').trim();
+      const rec = pendingEmailChanges.get(token);
+      if (!rec || Date.now() > rec.expires || rec.oldNorm !== normalizeEmail(email)) {
+        pendingEmailChanges.delete(token);
+        return jsonResp(401, { error: 'email change expired' });
+      }
+      rec.attempts++;
+      if (rec.attempts > 5) {
+        pendingEmailChanges.delete(token);
+        return jsonResp(429, { error: 'too many attempts' });
+      }
+      if (String(body.code || '').trim() !== rec.code) return jsonResp(400, { error: 'invalid code' });
+      renameEmailReferences(rec.oldNorm, rec.newNorm, rec.newEmail);
+      pendingEmailChanges.delete(token);
+      ntfy(`Email changed: ${rec.oldNorm} -> ${rec.newNorm}`, { title: 'Security' });
+      return jsonResp(200, { ok: true, email: rec.newEmail });
     }
     if (path === '/api/friends/request' && method === 'POST') {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
