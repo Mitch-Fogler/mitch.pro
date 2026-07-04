@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apply for Premium Email — mitch.pro</title>
+<meta name="description" content="Premium members can apply for a custom @student.mitch.pro email address.">
+<link rel="stylesheet" href="/open.css">
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  body {
+    font-family: 'Outfit', sans-serif;
+  }
+  input[type=text]:focus, textarea:focus {
+    border-color: rgba(96,165,250,.42) !important;
+    background: rgba(255,255,255,.04) !important;
+    box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
+  }
+  .input-group {
+    text-align: left;
+    margin-bottom: 16px;
+  }
+  .input-label {
+    display: block;
+    color: rgba(200,200,220,0.6);
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+  .input-field {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 48px;
+    border-radius: 10px;
+    background: rgba(0,0,0,.3);
+    border: 1px solid rgba(255,255,255,.08);
+    color: #fff;
+    font-weight: 600;
+    padding: 12px 14px;
+    outline: none;
+    font-family: inherit;
+    font-size: 0.95rem;
+    transition: border-color 0.2s;
+  }
+  .subdomain-container {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .subdomain-suffix {
+    padding: 0 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,.08);
+    border-left: none;
+    height: 48px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    border-radius: 0 10px 10px 0;
+    color: rgba(200,200,220,0.6);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+</style>
+</head>
+<body>
+  <main class="enroll-shell">
+    <nav class="topbar">
+      <a class="brand" href="/">
+        <img src="/icon-192.png" alt="">
+        <span>mitch.pro</span>
+      </a>
+      <div class="top-links">
+        <a href="/enroll/">Enroll</a>
+        <a href="/apply.html">Join the Team</a>
+        <a href="/faq.html">FAQ</a>
+      </div>
+    </nav>
+    
+    <div class="container centered" style="max-width: 520px; padding: 0 16px; min-height: 60vh;">
+      <div class="glass-card" style="padding: 40px 30px; border: 1px solid rgba(255,255,255,.08); border-radius: 16px; background: linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.01)), rgba(255,255,255,.03); backdrop-filter: blur(24px); box-shadow: 0 20px 60px rgba(0,0,0,.35);">
+        
+        <div id="loading-view" style="text-align: center; padding: 20px 0;">
+          <h2 style="color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.5rem; margin-bottom: 12px;">Loading Application...</h2>
+          <p style="color: rgba(200,200,220,0.6); font-size: 0.95rem;">Checking your Premium membership status.</p>
+        </div>
+
+        <div id="unauth-view" style="display: none; text-align: center;">
+          <h2 style="color: #fb7185; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.6rem; margin-bottom: 12px;">Authentication Required</h2>
+          <p style="color: rgba(200,200,220,0.6); font-size: 0.95rem; margin-bottom: 24px;">Please log in to your mitch.pro account to apply for a premium email address.</p>
+          <a href="/enroll/" style="display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; border-radius: 10px; background: linear-gradient(135deg, #22d3ee, #8b5cf6); color: #061018; font-family: 'Syne', sans-serif; font-weight: 800; text-decoration: none; font-size: 0.95rem; box-shadow: 0 12px 28px rgba(0,0,0,.25); transition: all 0.15s;">Go to Login</a>
+        </div>
+
+        <div id="nonpremium-view" style="display: none; text-align: center;">
+          <h2 style="color: #fb7185; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.6rem; margin-bottom: 12px;">Premium Status Required</h2>
+          <p style="color: rgba(200,200,220,0.65); font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5;">To claim a custom `@student.mitch.pro` email address, you must have an active Premium membership status.</p>
+          <a href="/" style="display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; border-radius: 10px; background: linear-gradient(135deg, #22d3ee, #8b5cf6); color: #061018; font-family: 'Syne', sans-serif; font-weight: 800; text-decoration: none; font-size: 0.95rem; box-shadow: 0 12px 28px rgba(0,0,0,.25); transition: all 0.15s;">Return to Home</a>
+        </div>
+
+        <div id="registered-view" style="display: none; text-align: center;">
+          <h2 style="color: #4ade80; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.6rem; margin-bottom: 12px;">Email Registered</h2>
+          <p style="color: rgba(200,200,220,0.65); font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5;">Your custom email address is registered and active:</p>
+          <div style="background: rgba(0,0,0,.25); border: 1px solid rgba(74, 222, 128, 0.2); border-radius: 10px; padding: 14px; font-weight: 700; color: #4ade80; font-size: 1.1rem; margin-bottom: 24px;" id="registered-email-display"></div>
+          <a href="/" style="display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; text-decoration: none; font-size: 0.95rem; transition: background 0.2s;">Return to Home</a>
+        </div>
+
+        <div id="pending-view" style="display: none; text-align: center;">
+          <h2 style="color: #38bdf8; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.6rem; margin-bottom: 12px;">Request Pending</h2>
+          <p style="color: rgba(200,200,220,0.65); font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5;">Your application for a custom email address has been submitted and is currently pending review by our support team:</p>
+          <div style="background: rgba(0,0,0,.25); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 14px; font-weight: 700; color: #38bdf8; font-size: 1.1rem; margin-bottom: 24px;" id="pending-email-display"></div>
+          <a href="/" style="display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; text-decoration: none; font-size: 0.95rem; transition: background 0.2s;">Return to Home</a>
+        </div>
+
+        <div id="form-view" style="display: none;">
+          <h1 style="font-size: 1.8rem; margin-bottom: 8px; font-family: 'Syne', sans-serif; font-weight: 800; color: #fff; text-align: center;">Premium Email Application</h1>
+          <p style="color: rgba(200,200,220,0.6); font-size: 0.9rem; margin-bottom: 24px; text-align: center;">Apply for your custom `@student.mitch.pro` email address.</p>
+          
+          <form id="apply-form" onsubmit="event.preventDefault(); submitApplication();">
+            <div class="input-group">
+              <label class="input-label">Requested Subdomain</label>
+              <div class="subdomain-container">
+                <input id="subdomain" type="text" placeholder="subdomain" required style="flex: 1; border-top-right-radius: 0; border-bottom-right-radius: 0;" class="input-field">
+                <span class="subdomain-suffix">@student.mitch.pro</span>
+              </div>
+              <small style="display: block; color: rgba(200,200,220,0.4); font-size: 0.72rem; margin-top: 6px;">3 to 20 lowercase alphanumeric characters. Reserved words (e.g. admin) not allowed.</small>
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Full Name</label>
+              <input id="fullName" type="text" placeholder="John Doe" required class="input-field">
+            </div>
+
+            <div class="input-group">
+              <label class="input-label">Why do you like mitch.pro?</label>
+              <textarea id="reasons" placeholder="Tell us why you like our platform and how you plan to use this email address..." required class="input-field" style="min-height: 100px; resize: vertical; padding: 12px 14px;"></textarea>
+            </div>
+
+            <button type="submit" id="submit-btn" style="width: 100%; min-height: 48px; border-radius: 10px; background: linear-gradient(135deg, #22d3ee, #8b5cf6); color: #061018; font-family: 'Syne', sans-serif; font-weight: 800; border: none; cursor: pointer; font-size: 0.95rem; box-shadow: 0 12px 28px rgba(0,0,0,.25); transition: all 0.15s; outline: none; margin-top: 8px;">Submit Application</button>
+          </form>
+          <div id="message-display" style="min-height: 22px; margin-top: 12px; font-size: .84rem; text-align: center; font-weight: 700;"></div>
+        </div>
+
+        <div id="success-view" style="display: none; text-align: center;">
+          <h2 style="color: #4ade80; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.6rem; margin-bottom: 12px;">Request Submitted</h2>
+          <p style="color: rgba(200,200,220,0.65); font-size: 0.95rem; margin-bottom: 24px; line-height: 1.5;">Your request has been submitted successfully. We will review it shortly and send you an email confirmation when it has been processed.</p>
+          <a href="/" style="display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 24px; border-radius: 10px; background: linear-gradient(135deg, #22d3ee, #8b5cf6); color: #061018; font-family: 'Syne', sans-serif; font-weight: 800; text-decoration: none; font-size: 0.95rem; box-shadow: 0 12px 28px rgba(0,0,0,.25); transition: all 0.15s;">Return to Home</a>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="footer" style="text-align: center; margin-top: 40px; border-top: 1px solid rgba(255,255,255,.08); padding-top: 30px; opacity: .55; font-size: 0.85rem; color: rgba(200,200,220,0.6);">
+      &copy; 2026 mitch.pro &middot; <a href="/enroll/" style="color: #22d3ee; text-decoration: none; font-weight: 700;">Enroll</a>
+    </div>
+  </main>
+
+  <script>
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/premium/email/status');
+        if (res.status === 401) {
+          showView('unauth');
+          return;
+        }
+        if (res.status === 403) {
+          showView('nonpremium');
+          return;
+        }
+        const data = await res.json();
+        if (!data.hasPremium) {
+          showView('nonpremium');
+          return;
+        }
+        if (data.currentEmail) {
+          if (data.isPending) {
+            document.getElementById('pending-email-display').innerText = data.currentEmail;
+            showView('pending');
+          } else {
+            document.getElementById('registered-email-display').innerText = data.currentEmail;
+            showView('registered');
+          }
+          return;
+        }
+        // Prefill default subdomain
+        document.getElementById('subdomain').value = data.defaultSubdomain || '';
+        showView('form');
+      } catch (err) {
+        console.error(err);
+        showView('nonpremium');
+      }
+    }
+
+    function showView(viewName) {
+      const views = ['loading', 'unauth', 'nonpremium', 'registered', 'pending', 'form', 'success'];
+      views.forEach(v => {
+        const el = document.getElementById(v + '-view');
+        if (el) el.style.display = (v === viewName) ? 'block' : 'none';
+      });
+    }
+
+    async function submitApplication() {
+      const subdomain = document.getElementById('subdomain').value.trim();
+      const fullName = document.getElementById('fullName').value.trim();
+      const reasons = document.getElementById('reasons').value.trim();
+      const msgDisplay = document.getElementById('message-display');
+      const submitBtn = document.getElementById('submit-btn');
+
+      if (!subdomain || !fullName || !reasons) {
+        msgDisplay.style.color = '#fb7185';
+        msgDisplay.innerText = 'All fields are required.';
+        return;
+      }
+
+      msgDisplay.innerText = '';
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Submitting...';
+
+      try {
+        const res = await fetch('/api/premium/email/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subdomain, fullName, reasons })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showView('success');
+        } else {
+          msgDisplay.style.color = '#fb7185';
+          msgDisplay.innerText = data.error || 'Failed to submit application.';
+          submitBtn.disabled = false;
+          submitBtn.innerText = 'Submit Application';
+        }
+      } catch (err) {
+        msgDisplay.style.color = '#fb7185';
+        msgDisplay.innerText = 'Network error. Please try again.';
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Submit Application';
+      }
+    }
+
+    // Initialize
+    loadStatus();
+  </script>
+</body>
+</html>

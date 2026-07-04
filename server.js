@@ -2451,9 +2451,11 @@ async function premiumMaintenanceWorker() {
     const WARN_MS = 5 * 86400 * 1000;
     const EXPIRY_MS = 7 * 86400 * 1000;
     let changed = false;
+    let statsChanged = false;
 
     for (const app of apps) {
-      if (app.status !== 'approved' || !(app.type === 'premium' || app.grantPremium)) continue;
+      if (!(app.type === 'premium' || app.grantPremium)) continue;
+      if (app.status !== 'approved' && app.status !== 'expired') continue;
       if (app.neverExpire) continue;
       
       const email = app.email;
@@ -2461,26 +2463,79 @@ async function premiumMaintenanceWorker() {
       const lastActive = stats[norm]?.last_active_at || app.approved_at || app.submitted_at || 0;
       const inactiveFor = now - lastActive;
 
-      if (inactiveFor >= EXPIRY_MS) {
-        console.log(`[premium] expiring ${email} due to inactivity (7d)`);
-        app.status = 'expired';
-        app.why_expired = 'Inactive for 7+ days';
-        changed = true;
-      } else if (inactiveFor >= WARN_MS) {
-        const lastWarn = stats[norm]?.last_premium_warn || 0;
-        if (now - lastWarn > 86400 * 1000) { // Warn at most once per 24h
-           console.log(`[premium] warning ${email} about inactivity (5d)`);
-           const subject = "Urgent: Your mitch.pro Premium is about to expire";
-           const body = `Hi,\n\nOur records show you haven't logged in to mitch.pro for 5 days.\n\nIf you do not log on in the next 2 days, your Premium status will be automatically revoked.\n\nSimply visit mitch.pro and log in to keep your perks!`;
-           spawn('/usr/bin/node', [join(BASE, 'mail', 'support_send.js'), email, subject, body]);
-           if (!stats[norm]) stats[norm] = {};
-           stats[norm].last_premium_warn = now;
-           saveUserStats(stats);
+      if (app.status === 'approved') {
+        if (inactiveFor >= EXPIRY_MS) {
+          console.log(`[premium] expiring ${email} due to inactivity (7d)`);
+          app.status = 'expired';
+          app.why_expired = 'Inactive for 7+ days';
+          changed = true;
+        } else if (inactiveFor >= WARN_MS) {
+          const lastWarn = stats[norm]?.last_premium_warn || 0;
+          if (now - lastWarn > 86400 * 1000) { // Warn at most once per 24h
+             console.log(`[premium] warning ${email} about inactivity (5d)`);
+             const subject = "Urgent: Your mitch.pro Premium is about to expire";
+             const body = `Hi,\n\nOur records show you haven't logged in to mitch.pro for 5 days.\n\nIf you do not log on in the next 2 days, your Premium status will be automatically revoked.\n\nSimply visit mitch.pro and log in to keep your perks!`;
+             spawn('/usr/bin/node', [join(BASE, 'mail', 'support_send.js'), email, subject, body]);
+             if (!stats[norm]) stats[norm] = {};
+             stats[norm].last_premium_warn = now;
+             statsChanged = true;
+          }
         }
       }
     }
+
+    // Check for users who have registered a premium_email, but no longer have premium status.
+    // Notify via ntfy 7 days after they lost premium.
+    for (const norm of Object.keys(stats)) {
+      const s = stats[norm];
+      if (!s.premium_email) continue;
+      const hasPremium = isPremiumEmail(norm);
+      if (hasPremium) {
+        if (s.premium_lost_at || s.email_revoke_notified) {
+          delete s.premium_lost_at;
+          delete s.email_revoke_notified;
+          statsChanged = true;
+        }
+      } else {
+        if (!s.premium_lost_at) {
+          s.premium_lost_at = now;
+          statsChanged = true;
+        } else if (now - s.premium_lost_at >= 7 * 86400 * 1000) {
+          if (!s.email_revoke_notified) {
+            console.log(`[premium] notifying admin to revoke email access for ${s.premium_email} - no longer premium for 7 days.`);
+            await ntfy(`Revoke @mitch.pro email access for ${s.premium_email} (account: ${norm}) - no longer premium for 7 days.`, {
+              title: 'Revoke Email Access',
+              priority: 'high'
+            });
+            s.email_revoke_notified = true;
+            statsChanged = true;
+          }
+        }
+      }
+    }
+
     if (changed) saveApplications(apps);
+    if (statsChanged) saveUserStats(stats);
   } catch (e) { console.error(`[premium-worker] error: ${e.message}`); }
+}
+
+function sendPremiumEmailOffer(targetEmail) {
+  let toEmail = String(targetEmail || '').toLowerCase().trim();
+  const endsWithStudent = toEmail.endsWith('@student.rjuhsd.us') || toEmail.endsWith('@student.mitch.pro');
+  if (endsWithStudent) {
+    toEmail = 'mitchell.fogler@student.rjuhsd.us';
+  }
+  
+  const base = siteUrl(toEmail);
+  const subject = "Eligible for a Free @mitch.pro Email Address!";
+  const body = `Hi,\n\nCongratulations on getting Premium!\n\nAs a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address!\n\nTo claim your custom email address, please submit your application at ${base}/premium-email.\n\nBest,\nsupport@mitch.pro`;
+  
+  try {
+    spawn('/usr/bin/node', [join(BASE, 'mail', 'support_send.js'), toEmail, subject, body]);
+    console.log(`[premium] Sent premium email offer to ${toEmail} (original target: ${targetEmail})`);
+  } catch (e) {
+    console.error(`[premium] Failed to send email offer to ${toEmail}: ${e.message}`);
+  }
 }
 
 let isNudgeRunning = false;
@@ -2626,6 +2681,7 @@ function grantPremiumStatus(targetEmail, reason, approvedBy = 'system') {
     approved_by: approvedBy,
   });
   saveApplications(apps);
+  sendPremiumEmailOffer(targetRaw);
   try {
     const noticeTitle = 'Premium granted';
     const noticeMessage = `${approvedBy} granted you Premium. Reason: ${reason}`;
@@ -4086,6 +4142,7 @@ function executeModeratorApprovedAction(action, rawPayload, approverEmail, reque
       approved_by: actor,
     });
     saveApplications(apps);
+    sendPremiumEmailOffer(targetRaw);
     addAdminNotification(targetRaw, 'Premium granted', `${actor} granted you Premium. Reason: ${reason}`, actor);
     pushAdminNotification(targetRaw, 'Premium granted', `${actor} granted you Premium. Reason: ${reason}`);
     logAdminAction(actor, 'grant_premium', { targetEmail, reason, requestedBy: requesterEmail });
@@ -4265,7 +4322,6 @@ let SHOP_CATALOG = [
   { id: 'gold_glow', name: 'Golden Glow Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 900, premiumOnly: true, desc: 'A premium gold username glow.' },
   { id: 'rainbow_name', name: 'Rainbow Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 2500, adminOnly: true, desc: 'An admin-only animated rainbow username.' },
   { id: 'verified_badge', name: 'Verified Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 1000, desc: 'Adds a verified check badge beside your name.' },
-  { id: 'og_badge', name: 'OG Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 1000, desc: 'Show that you were here early.' },
   { id: 'artist_badge', name: 'Artist Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 900, desc: 'A badge for canvas builders and pixel artists.' },
   { id: 'chess_badge', name: 'Chess Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 900, desc: 'A badge for chess regulars.' },
   { id: 'builder_badge', name: 'Builder Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 950, desc: 'A badge for people who help build the community.' },
@@ -4306,7 +4362,7 @@ try {
   if (existsSync(catalogPath)) {
     const loaded = JSON.parse(readFileSync(catalogPath, 'utf8'));
     if (Array.isArray(loaded) && loaded.length > 0) {
-      SHOP_CATALOG = loaded;
+      SHOP_CATALOG = loaded.filter(item => item.id !== 'og_badge');
     }
   }
 } catch (e) {
@@ -4737,15 +4793,23 @@ async function handleRequest(req, server) {
   }
 
   if (path.startsWith('/prox/')) {
-    if (path !== '/prox/' && path !== '/prox/index.html') {
-      const cookies = getCookies(req);
-      const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!validId(sid) || !emailFromSid(sid)) {
-        if (req.headers.get('accept')?.includes('text/html')) {
-          return Response.redirect('/enroll/', 302);
-        }
-        return jsonResp(401, { error: 'Authentication required' });
+    if (path === '/prox/' || path === '/prox/index.html') {
+      return new Response('General proxy access is disabled.', { status: 403 });
+    }
+
+    const referer = req.headers.get('referer') || '';
+    if (!referer.toLowerCase().includes('/games/')) {
+      return jsonResp(403, { error: 'General proxy access is disabled. Proxy can only be used by games.' });
+    }
+
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(sid) || !emailFromSid(sid)) {
+      if (req.headers.get('accept')?.includes('text/html')) {
+        return Response.redirect('/enroll/', 302);
       }
+      return jsonResp(401, { error: 'Authentication required' });
+    }
 
       const prefix = '/prox/';
       const sub = path.slice(prefix.length);
@@ -4800,7 +4864,6 @@ async function handleRequest(req, server) {
       } catch (e) {
         return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy target URL: ' + String(e) });
       }
-    }
   }
 
   // ── World's Hardest Captcha API Proxy ──
@@ -5536,6 +5599,7 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
         submitted_at: Date.now(), approved_at: Date.now(),
       });
       saveApplications( apps);
+      sendPremiumEmailOffer(email);
       return jsonResp(200, { ok: true, message: 'Welcome to Premium!' });
     }
 
@@ -5573,23 +5637,25 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
         submitted_at: Date.now(), approved_at: Date.now(),
       });
       saveApplications(apps);
+      sendPremiumEmailOffer(targetEmail);
 
       // Record gift sent
       giftsSent[norm] = targetEmail;
       saveJson(PREMIUM_GIFTS_SENT_FILE, giftsSent);
 
       // Send email to target user
+      const base = siteUrl(targetEmail);
       const emailSubject = 'You have been gifted Mitch.pro Premium! 🌟';
       const emailBody = `Hello!
 
 Amazing news! Your friend (${email}) has gifted you a Lifetime Premium Membership to Mitch.pro!
 
 Your Premium benefits are now fully active:
+- A free custom @student.mitch.pro email address (Apply at ${base}/premium-email)
 - Access to all Premium-only custom cosmetics (name colors, badges, themes, and effects).
-- Access to the high-performance mitch.prox proxy (bare, wisp, ultra, etc.).
 - Exclusive chat privileges and direct access to Premium features.
 
-Head over to https://mitch.pro to check out your new Premium features!
+Head over to ${base} to check out your new Premium features!
 
 Best,
 Mitch.pro Team`;
@@ -5789,6 +5855,7 @@ Mitch.pro Team`;
         approved_by: adminEmail,
       });
       saveApplications(apps);
+      sendPremiumEmailOffer(targetRaw);
       const noticeTitle = 'Premium granted';
       const noticeMessage = `${adminEmail} granted you Premium. Reason: ${reason}`;
       addAdminNotification(targetRaw, noticeTitle, noticeMessage, adminEmail);
@@ -6393,6 +6460,20 @@ Mitch.pro Team`;
       }
       if (!changed) return jsonResp(404, { error: 'active premium user not found' });
       saveApplications(apps);
+
+      // Clean up user stats premium email fields
+      const stats = loadUserStats();
+      if (stats[norm]) {
+        delete stats[norm].premium_email;
+        delete stats[norm].premium_email_request;
+        delete stats[norm].premium_email_fullname;
+        delete stats[norm].premium_email_reasons;
+        delete stats[norm].premium_email_requested_at;
+        delete stats[norm].premium_lost_at;
+        delete stats[norm].email_revoke_notified;
+        saveUserStats(stats);
+      }
+
       logAdminAction(adminEmail, 'revoke_premium', { targetEmail: emailRaw, reason });
       return jsonResp(200, { ok: true, targetEmail: emailRaw });
     }
@@ -6454,7 +6535,6 @@ Mitch.pro Team`;
             { id: 'gold_glow', name: 'Golden Glow Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 900, premiumOnly: true, desc: 'A premium gold username glow.' },
             { id: 'rainbow_name', name: 'Rainbow Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 2500, adminOnly: true, desc: 'An admin-only animated rainbow username.' },
             { id: 'verified_badge', name: 'Verified Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 1000, desc: 'Adds a verified check badge beside your name.' },
-            { id: 'og_badge', name: 'OG Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 1000, desc: 'Show that you were here early.' },
             { id: 'artist_badge', name: 'Artist Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 900, desc: 'A badge for canvas builders and pixel artists.' },
             { id: 'chess_badge', name: 'Chess Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 900, desc: 'A badge for chess regulars.' },
             { id: 'builder_badge', name: 'Builder Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 950, desc: 'A badge for people who help build the community.' },
@@ -9053,6 +9133,110 @@ function loadAllGamesList() {
 
   const qs = url.searchParams;
 
+  if (path === '/api/premium/email/status' && method === 'GET') {
+    const cookies = getCookies(req);
+    const uid     = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
+    const ban = bannedInfoForSid(uid);
+    if (ban) return jsonResp(403, { error: 'account banned', banned: true });
+    const email = emailFromSid(uid);
+    if (!email) return jsonResp(401, { error: 'Email not found' });
+
+    const isPremium = isPremiumEmail(email);
+    const stats = loadUserStats();
+    const norm = normalizeEmail(email);
+    const currentEmail = stats[norm]?.premium_email || stats[norm]?.premium_email_request || null;
+    const isPending = !stats[norm]?.premium_email && !!stats[norm]?.premium_email_request;
+    const defaultSubdomain = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+
+    return jsonResp(200, {
+      hasPremium: isPremium,
+      currentEmail,
+      isPending,
+      defaultSubdomain
+    });
+  }
+
+  if (path === '/api/premium/email/register' && method === 'POST') {
+    const cookies = getCookies(req);
+    const uid     = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
+    const ban = bannedInfoForSid(uid);
+    if (ban) return jsonResp(403, { error: 'account banned', banned: true });
+    const email = emailFromSid(uid);
+    if (!email) return jsonResp(401, { error: 'Email not found' });
+
+    if (!isPremiumEmail(email)) {
+      return jsonResp(403, { error: 'Premium status required to claim a custom email address.' });
+    }
+
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const subdomain = String(body.subdomain || '').toLowerCase().trim();
+    const fullName = String(body.fullName || '').trim();
+    const reasons = String(body.reasons || '').trim();
+
+    if (!subdomain) {
+      return jsonResp(400, { error: 'Subdomain is required.' });
+    }
+    if (!fullName) {
+      return jsonResp(400, { error: 'Full name is required.' });
+    }
+    if (!reasons) {
+      return jsonResp(400, { error: 'Reasons why you like mitch.pro are required.' });
+    }
+
+    if (!/^[a-z0-9]{3,20}$/.test(subdomain)) {
+      return jsonResp(400, { error: 'Subdomain must be lowercase alphanumeric and between 3 and 20 characters.' });
+    }
+
+    const reservedPrefixes = new Set(['admin', 'support', 'noreply', 'mitch', 'mail', 'postmaster', 'hostmaster', 'webmaster']);
+    if (reservedPrefixes.has(subdomain)) {
+      return jsonResp(400, { error: 'This subdomain is reserved and cannot be registered.' });
+    }
+
+    // Check if subdomain is already taken by anyone in stats
+    const stats = loadUserStats();
+    const norm = normalizeEmail(email);
+
+    // Check if this user already registered or requested a premium email
+    if (stats[norm]?.premium_email || stats[norm]?.premium_email_request) {
+      return jsonResp(400, { error: 'You have already registered or requested a custom email address.' });
+    }
+
+    const targetEmail = `${subdomain}@student.mitch.pro`;
+    const isTaken = Object.values(stats).some(s => s.premium_email === targetEmail || s.premium_email_request === targetEmail);
+    if (isTaken) {
+      return jsonResp(400, { error: 'This email address is already taken.' });
+    }
+
+    // Update user stats with request details
+    if (!stats[norm]) stats[norm] = {};
+    stats[norm].premium_email_request = targetEmail;
+    stats[norm].premium_email_fullname = fullName;
+    stats[norm].premium_email_reasons = reasons;
+    stats[norm].premium_email_requested_at = Date.now();
+    saveUserStats(stats);
+
+    // Notify with ntfy
+    await ntfy(`New Premium Email Request from ${email} (${fullName}): Wants ${targetEmail}. Reason: ${reasons.slice(0, 150)}`, {
+      title: 'Premium Email Request',
+      priority: 'high'
+    });
+
+    // Send auto email from noreply@mitch.pro to support@mitch.pro
+    const mailSubject = `Premium Email Request: ${targetEmail}`;
+    const mailBody = `Hi Support,\n\nWe received a new premium email request from a user:\n\nAccount Email: ${email}\nFull Name: ${fullName}\nRequested Email: ${targetEmail}\nReasons why they like mitch.pro:\n${reasons}\n\nTo approve this, go to the admin panel or run admin tools.\n\nBest,\nmitch.pro Robot`;
+
+    try {
+      spawn('/usr/bin/node', [NOREPLY_SCRIPT, 'support@mitch.pro', mailSubject, mailBody]);
+    } catch (e) {
+      console.error(`[premium-email] failed to send email to support: ${e.message}`);
+    }
+
+    console.log(`[premium-email] request submitted for ${targetEmail} by ${email}`);
+    return jsonResp(200, { ok: true, message: 'Request submitted.' });
+  }
+
   // ── GET routes ──────────────────────────────────────────────────────────────
   if (method === 'GET') {
 
@@ -9212,6 +9396,7 @@ function loadAllGamesList() {
         pubKeyHex,
         encryptedPrivateJwk,
         ivHex,
+        premium_email: stats.premium_email || null,
         happyHour: {
           active: happyHourActive,
           message: happyHourActive 
