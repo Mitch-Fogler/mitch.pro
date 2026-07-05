@@ -1,4 +1,10 @@
 (function () {
+  var UA = (navigator.userAgent || '').toLowerCase();
+  var IS_FIREFOX_FAMILY = /\b(firefox|librewolf|waterfox|floorp)\b/.test(UA);
+  if (IS_FIREFOX_FAMILY) {
+    document.documentElement.classList.add('theme-firefox');
+  }
+
   var T = {
     void: {
       name: 'Void',
@@ -418,6 +424,10 @@
       'font-family:inherit;font-size:.88rem;font-weight:500;transition:all var(--t-motion,.15s)}' +
     'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}' +
     '.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}' +
+    '.theme-firefox body{background-attachment:scroll!important;}' +
+    '.theme-firefox .glass-card,.theme-firefox .card,.theme-firefox #theme-panel,.theme-firefox #sw-notif-panel,.theme-firefox #_ap{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
+    '.theme-firefox.theme-light .glass-card,.theme-firefox.theme-light .card,.theme-firefox.theme-light #theme-panel,.theme-firefox.theme-light #sw-notif-panel,.theme-firefox.theme-light #_ap{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
+    '.theme-firefox button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s),transform var(--t-motion,.15s)}' +
     'hr{border:none;border-top:1px solid var(--t-bd)}' +
     'a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}' +
     'label{color:var(--t-fg2)}';
@@ -956,12 +966,14 @@
 
   // ── Visual Effects ──────────────────────────────────────────────────────────
   function applyVFX() {
-    var vfx = JSON.parse(localStorage.getItem('_prefVFX') || '{}');
+    var vfx = {};
+    try { vfx = JSON.parse(localStorage.getItem('_prefVFX') || '{}') || {}; } catch (_) {}
     var existing = document.getElementById('mitch-vfx-canvas');
     if (existing) existing.remove();
     
     var any = vfx.snow || vfx.stars || vfx.rain || vfx.particles;
     if (!any) return;
+    if (IS_FIREFOX_FAMILY && vfx.firefoxEffects !== true) return;
 
     var canvas = document.createElement('canvas');
     canvas.id = 'mitch-vfx-canvas';
@@ -971,8 +983,14 @@
     var ctx = canvas.getContext('2d');
     var w, h;
     function resize() {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
+      var dpr = IS_FIREFOX_FAMILY ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      w = canvas.width = Math.floor(window.innerWidth * dpr);
+      h = canvas.height = Math.floor(window.innerHeight * dpr);
+      canvas.style.width = window.innerWidth + 'px';
+      canvas.style.height = window.innerHeight + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      w = window.innerWidth;
+      h = window.innerHeight;
     }
     window.addEventListener('resize', resize);
     resize();
@@ -1117,4 +1135,3 @@
     else { document.addEventListener('DOMContentLoaded', function(){ applyVFX(); applyCustomCSS(); applyQuickAccess(); }); }
     window.addEventListener('themecustomize', function() { applyVFX(); applyCustomCSS(); applyQuickAccess(); });
     })();
-

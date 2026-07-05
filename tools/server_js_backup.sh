@@ -6,7 +6,7 @@ set -euo pipefail
 BACKUP_NAME="mitchpro_full_$(date +%Y%m%d_%H%M%S).tar.gz"
 BACKUP_PATH="/home/mitch/server/bun/.backups/$BACKUP_NAME"
 REMOTE_NAME="gdrive"
-REMOTE_FOLDER="mitch_server_backups"
+REMOTE_FOLDER="mitch_pro_backups"
 ROOT="/home/mitch/server/bun"
 
 # Ensure backup directory exists

@@ -95,17 +95,18 @@
   .field { margin-bottom: 18px; }
   label { display: block; font-size: 10px; font-weight: 500; letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--t-fg2, #666); margin-bottom: 7px; }
-  input, textarea {
+  input, textarea, select {
     width: 100%; background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
     color: var(--t-fg, #e8e8e8); font-family: 'DM Mono', monospace;
     font-size: 13px; padding: 10px 13px; outline: none;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
-  input:focus, textarea:focus {
+  input:focus, textarea:focus, select:focus {
     border-color: var(--t-ac, #a78bfa);
     box-shadow: 0 0 0 3px rgba(167,139,250,0.08);
   }
+  select option { background: #111; color: #e8e8e8; }
   textarea { resize: vertical; min-height: 90px; line-height: 1.6; }
   input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.2); font-style: italic; }
 
@@ -181,6 +182,18 @@ const targetEmail = params.get('u') || null;
 const isOwnProfile = !targetEmail && !window.PUBLIC_PROFILE;
 
 function esc(t) { return (t||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function option(value, label, current) {
+  return `<option value="${esc(value)}" ${String(current || '') === String(value) ? 'selected' : ''}>${esc(label)}</option>`;
+}
+function gradYearOptions(current) {
+  var now = new Date();
+  var y = now.getFullYear();
+  var start = now >= new Date(y, 6, 1) ? y + 1 : y;
+  var labels = ['Senior', 'Junior', 'Sophomore', 'Freshman'];
+  var html = option('', 'None / Prefer not to say', current);
+  for (var i = 0; i < 4; i++) html += option(String(start + i), `${start + i} (${labels[i]})`, current);
+  return html;
+}
 function Fmt(n) {
   if (n < 1000) return Math.floor(n);
   const s = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
@@ -314,9 +327,36 @@ async function load() {
         </div>`}
         <div class="field"><label>Display Name</label>
           <input id="displayName" maxlength="40" placeholder="Your name" value="${esc(profile.displayName || '')}"></div>
+
+        <div class="field"><label>Username</label>
+          <input id="username" maxlength="40" placeholder="lowercase.name" value="${esc(profile.username || '')}"></div>
+
+        <div class="field"><label>Nickname</label>
+          <input id="nickname" maxlength="40" placeholder="Shown around the site" value="${esc(profile.nickname || '')}"></div>
         
         <div class="field"><label>Bio <span style="opacity:.5;font-size:9px;text-transform:none;letter-spacing:0">(max 300 chars)</span></label>
           <textarea id="bio" maxlength="300" placeholder="A little about yourself…">${esc(profile.bio || '')}</textarea></div>
+
+        <div class="field"><label>Graduation Year</label>
+          <select id="gradYear">${gradYearOptions(profile.gradYear || '')}</select></div>
+
+        <div class="field"><label>Gender</label>
+          <select id="gender">
+            ${option('', 'Prefer not to say', profile.gender || '')}
+            ${option('Male', 'Male', profile.gender || '')}
+            ${option('Female', 'Female', profile.gender || '')}
+            ${option('Non-binary', 'Non-binary', profile.gender || '')}
+            ${option('Other', 'Other', profile.gender || '')}
+          </select></div>
+
+        <div class="field"><label>Where did you hear about us?</label>
+          <select id="referralSource">
+            ${option('', 'Prefer not to say', profile.referralSource || '')}
+            ${option('Word of mouth', 'Word of mouth', profile.referralSource || '')}
+            ${option('Search engines', 'Search engines', profile.referralSource || '')}
+            ${option('Social media', 'Social media (TikTok/Insta)', profile.referralSource || '')}
+            ${option('Other', 'Other', profile.referralSource || '')}
+          </select></div>
         
         <div class="field"><label>Website</label>
           <input id="website" maxlength="100" placeholder="https://…" value="${esc(profile.website || '')}"></div>
@@ -380,7 +420,12 @@ async function save() {
   msg.className = ''; msg.textContent = '';
   try {
     const payload = {
+      username: document.getElementById('username').value,
+      nickname: document.getElementById('nickname').value,
       displayName: document.getElementById('displayName').value,
+      gradYear: document.getElementById('gradYear').value,
+      gender: document.getElementById('gender').value,
+      referralSource: document.getElementById('referralSource').value,
       bio: document.getElementById('bio').value,
       website: document.getElementById('website').value,
       pfp: document.getElementById('pfp').value,

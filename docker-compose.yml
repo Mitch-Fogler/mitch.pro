@@ -7,7 +7,7 @@ services:
     container_name: mitch-caddy-proxy
     restart: unless-stopped
     ports:
-      - "6800:6800"
+      - "127.0.0.1:6800:6800"
     volumes:
       - ./caddy:/etc/caddy
     depends_on:
@@ -20,7 +20,7 @@ services:
     container_name: mitch-webserver-blue
     restart: unless-stopped
     ports:
-      - "6811:6800"
+      - "127.0.0.1:6811:6800"
     volumes:
       - ./server.js:/app/server.js
       - ./data:/app/data
@@ -56,7 +56,7 @@ services:
     container_name: mitch-webserver-green
     restart: unless-stopped
     ports:
-      - "6812:6800"
+      - "127.0.0.1:6812:6800"
     volumes:
       - ./server.js:/app/server.js
       - ./data:/app/data
@@ -94,7 +94,7 @@ services:
     container_name: mitch-stream-proxy
     restart: unless-stopped
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
     volumes:
       - ./logs:/app/logs
 

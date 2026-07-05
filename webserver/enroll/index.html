@@ -412,7 +412,8 @@
   }
 
   input[type=email],
-  input[type=text] {
+  input[type=text],
+  select {
     display: block;
     width: 100%;
     box-sizing: border-box;
@@ -431,11 +432,13 @@
   }
 
   input[type=email]:focus,
-  input[type=text]:focus {
+  input[type=text]:focus,
+  select:focus {
     border-color: var(--line-hot);
     background: rgba(255,255,255,.04);
     box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
   }
+  select option { background: #111; color: #e2e2e4; }
 
   .recaptcha-wrap {
     display: flex;
@@ -992,8 +995,8 @@
                 <p>Log in with your email and account password.</p>
               </div>
             </div>
-            <label class="field-label" for="login-email">Email Address</label>
-            <input id="login-email" type="email" autocomplete="email" placeholder="your@email.com">
+            <label class="field-label" for="login-email">Email or Username</label>
+            <input id="login-email" type="text" autocomplete="username" placeholder="your@email.com or username">
             
             <label class="field-label" for="login-password">Password</label>
             <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 8px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
@@ -1033,6 +1036,36 @@
 
               <label class="field-label" for="signup-confirm-password">Confirm Password</label>
               <input id="signup-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 12px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
+
+              <label class="field-label" for="signup-username">Username</label>
+              <input id="signup-username" type="text" autocomplete="username" placeholder="lowercase.name">
+
+              <label class="field-label" for="signup-nickname">Nickname</label>
+              <input id="signup-nickname" type="text" autocomplete="nickname" placeholder="Shown around the site">
+
+              <label class="field-label" for="signup-grad-year">Graduation Year</label>
+              <select id="signup-grad-year"></select>
+
+              <label class="field-label" for="signup-gender">Gender</label>
+              <select id="signup-gender">
+                <option value="">Prefer not to say</option>
+                <option value="Male">Male</option>
+                <option value="Female">Female</option>
+                <option value="Non-binary">Non-binary</option>
+                <option value="Other">Other</option>
+              </select>
+
+              <label class="field-label" for="signup-referral-source">Where did you hear about us?</label>
+              <select id="signup-referral-source">
+                <option value="">Prefer not to say</option>
+                <option value="Word of mouth">Word of mouth</option>
+                <option value="Search engines">Search engines</option>
+                <option value="Social media">Social media (TikTok/Insta)</option>
+                <option value="Other">Other</option>
+              </select>
+
+              <label class="field-label" for="signup-referral-details">Referral Details</label>
+              <input id="signup-referral-details" type="text" placeholder="Optional">
 
               <div class="agree-row">
                 <input type="checkbox" id="agree" onchange="updateBtn()">
@@ -1352,12 +1385,35 @@ function resetCaptcha() {}
     if (sp) sp.addEventListener('input', function(e) { updatePasswordStrength(e.target.value, 'signup'); });
     var rp = document.getElementById('reset-password');
     if (rp) rp.addEventListener('input', function(e) { updatePasswordStrength(e.target.value, 'reset'); });
+    populateGradYears();
   });
+
+function populateGradYears() {
+  var select = document.getElementById('signup-grad-year');
+  if (!select) return;
+  var now = new Date();
+  var y = now.getFullYear();
+  var start = now >= new Date(y, 6, 1) ? y + 1 : y;
+  var labels = ['Senior', 'Junior', 'Sophomore', 'Freshman'];
+  select.innerHTML = '<option value="">None / Prefer not to say</option>';
+  for (var i = 0; i < 4; i++) {
+    var opt = document.createElement('option');
+    opt.value = String(start + i);
+    opt.textContent = String(start + i) + ' (' + labels[i] + ')';
+    select.appendChild(opt);
+  }
+}
 
 async function submit(isResend = false) {
   var email = document.getElementById('email').value.trim();
   var password = document.getElementById('signup-password').value;
   var confirm = document.getElementById('signup-confirm-password').value;
+  var username = document.getElementById('signup-username').value.trim();
+  var nickname = document.getElementById('signup-nickname').value.trim();
+  var gradYear = document.getElementById('signup-grad-year').value;
+  var gender = document.getElementById('signup-gender').value;
+  var referralSource = document.getElementById('signup-referral-source').value;
+  var referralDetails = document.getElementById('signup-referral-details').value.trim();
   var btn = document.getElementById('btn');
   var msg = document.getElementById('msg');
   var support = document.getElementById('support-actions');
@@ -1365,6 +1421,7 @@ async function submit(isResend = false) {
   if (!email) { msg.className = 'err'; msg.textContent = 'Enter your email first.'; return; }
   if (!password || password.length < 8) { msg.className = 'err'; msg.textContent = 'Choose a password (min 8 chars).'; return; }
   if (password !== confirm) { msg.className = 'err'; msg.textContent = 'Passwords do not match.'; return; }
+  if (username && !/^[a-z0-9._-]{2,40}$/.test(username)) { msg.className = 'err'; msg.textContent = 'Username must use lowercase letters, numbers, ".", "_", or "-".'; return; }
   if (!document.getElementById('agree').checked) { msg.className = 'err'; msg.textContent = 'Agreement required.'; return; }
 
   var captcha = await getCaptchaResponse('signup');
@@ -1380,7 +1437,7 @@ async function submit(isResend = false) {
     const r = await fetch('/api/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, recaptcha_token: captcha, refCode: window._inviteRef || '' })
+      body: JSON.stringify({ email, password, username, nickname, gradYear, gender, referralSource, referralDetails, recaptcha_token: captcha, refCode: window._inviteRef || '' })
     });
     const d = await r.json();
     if (d.success) {

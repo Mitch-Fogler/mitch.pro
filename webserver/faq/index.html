@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FAQ & Help Center — mitch.pro</title>
-<meta name="description" content="Find answers to frequently asked questions about mitch.pro. Learn about account creation, unblocked high school games, E2E chat encryption, and local tools.">
-<meta name="keywords" content="mitch.pro faq, help center, student portal help, unblocked games faq">
+<meta name="description" content="Find answers to frequently asked questions about mitch.pro accounts, enrollment, usernames, preferences, games, chat, privacy, and site tools.">
+<meta name="keywords" content="mitch.pro faq, help center, mitch.pro enrollment, mitch.pro username, mitchcoin, preferences">
 <link rel="canonical" href="https://mitch.pro/faq/" />
 <link rel="stylesheet" href="/open.css">
 <script src="/theme.js"></script>
@@ -14,54 +14,47 @@
     --ac: #00ff88;
     --ac-dim: rgba(0, 255, 136, 0.15);
   }
-  .faq-nav {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 40px;
-    flex-wrap: wrap;
-    position: sticky;
-    top: 80px;
-    z-index: 10;
-    background: var(--bg);
-    padding: 10px 0;
-  }
-  .faq-nav a {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    color: var(--fg-dim);
-    padding: 8px 16px;
-    border-radius: 99px;
-    text-decoration: none;
-    font-size: 0.85rem;
-    font-weight: 600;
-    transition: all 0.2s ease;
-  }
-  .faq-nav a:hover {
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-  }
   .faq-section {
-    margin-bottom: 60px;
+    margin-bottom: 14px;
     scroll-margin-top: 140px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
   }
   .faq-section h2 {
     font-family: 'Syne', sans-serif;
     font-size: 1.5rem;
     font-weight: 800;
     color: var(--ac);
-    margin-bottom: 24px;
+    margin: 0;
+    min-height: 62px;
+    padding: 0 20px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
+    cursor: pointer;
+    user-select: none;
   }
   .faq-section h2::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: linear-gradient(to right, var(--ac-dim), transparent);
+    content: '+';
+    width: 30px;
+    height: 30px;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 8px;
+    background: rgba(255,255,255,.05);
+    color: var(--fg-dim);
+    font-size: 1rem;
   }
+  .faq-section.open h2::after { content: '-'; }
+  .faq-section:not(.open) > :not(h2) { display: none; }
   .q-box {
-    margin-bottom: 30px;
+    margin: 0 20px 20px;
     padding: 20px;
     background: rgba(255, 255, 255, 0.02);
     border-radius: 16px;
@@ -108,7 +101,6 @@
     color: #fff;
   }
   @media (max-width: 600px) {
-    .faq-nav { top: 60px; }
     .faq-section h2 { font-size: 1.25rem; }
     .q-box p { padding-left: 0; }
     .q-box h3::before { display: none; }
@@ -134,37 +126,24 @@
       <div class="glass-card" style="margin-top: 40px;">
         <div class="badge">Support</div>
         <h1>Help & Documentation</h1>
-        <p style="margin-bottom: 32px; font-size: 1.05rem; opacity: 0.8;">Everything you need to know about mitch.pro, from security and privacy to community rules and virtual economy.</p>
+        <p style="margin-bottom: 32px; font-size: 1.05rem; opacity: 0.8;">Answers for accounts, enrollment, profiles, preferences, games, chat, coins, privacy, and site tools.</p>
         
-        <div class="faq-nav">
-          <a href="#basics">The Basics</a>
-          <a href="#account">Account & Security</a>
-          <a href="#privacy">Privacy & Data</a>
-          <a href="#community">Community & Perks</a>
-        </div>
-
         <section id="basics" class="faq-section">
-          <h2>The Basics</h2>
+          <h2>Getting Started</h2>
           
           <div class="q-box">
             <h3>What is mitch.pro?</h3>
-            <p>mitch.pro is a private community platform for students to hang out, play games, create art on a shared canvas, and communicate securely. It features E2E encrypted chat, a competitive global leaderboard, and a virtual economy built around interaction.</p>
+            <p>mitch.pro is a student-focused web portal with games, chat, profiles, friends, a shared canvas, leaderboards, MitchCoin, account customization, and utility pages. Most features require an account so progress, preferences, and profile settings stay attached to you.</p>
           </div>
 
           <div class="q-box">
-            <h3>How do I get access?</h3>
-            <p>Access is restricted to verified students. You must submit your student email on the <a href="/enroll/">enroll page</a>. Once your status is verified (manually or automatically), you will receive an invitation to set up your account password and E2E keys.</p>
+            <h3>How do I sign up or log in?</h3>
+            <p>Use <a href="/enroll/">/enroll/</a>. New users enter their email, username, nickname, graduation year, gender, referral information, and password. Existing users can log in with either their email or username.</p>
           </div>
 
           <div class="q-box">
-            <h3>What are Mitch Coins?</h3>
-            <p>Mitch Coins are a site-wide virtual currency. You earn them by:
-              <br>&bull; Placing pixels on the global canvas.
-              <br>&bull; Solving daily chess puzzles.
-              <br>&bull; Winning arcade games or chess matches.
-              <br>&bull; Participating in community events.
-              <br>They have <strong>zero real-world value</strong> and cannot be purchased with real money.
-            </p>
+            <h3>Why does enrollment ask for profile details?</h3>
+            <p>The site now stores more profile metadata up front so usernames, display names, class year, and referral information are ready immediately. You can change most of those fields later from your profile or preferences pages.</p>
           </div>
         </section>
 
@@ -172,81 +151,104 @@
           <h2>Account & Security</h2>
 
           <div class="q-box">
-            <h3>How do I change my password?</h3>
-            <p>To change your password, go to the <a href="/enroll/">Enrollment Page</a> and enter your email. After verifying with the 6-digit OTP sent to your inbox, you will be prompted to set a new password. This will also re-derive your E2E encryption keys.</p>
+            <h3>What is my username?</h3>
+            <p>Your username is the public login handle connected to your account. If you already had an account before usernames existed, the site derives a starter username from your email and keeps it editable from <a href="/profile/">/profile/</a>.</p>
           </div>
 
           <div class="q-box">
-            <h3>What happens if I lose my login or token?</h3>
-            <p>Since we don't store your raw password (only a secure hash), you can reset it anytime via the enrollment flow. If you lose access to your student email entirely, you will need to contact <a href="mailto:support@mitch.pro">support@mitch.pro</a> for manual identity verification.</p>
+            <h3>Can I change my email, username, or profile info?</h3>
+            <p>Yes. Use <a href="/profile/">/profile/</a> for profile fields such as username, nickname, class year, gender, referral source, pronouns, bio, and social links. Use <a href="/preferences/">/preferences/</a> for site behavior, display, privacy, homepage, sync, and account-related controls.</p>
           </div>
 
           <div class="q-box">
-            <h3>Can I have multiple accounts?</h3>
-            <p>No. To maintain fairness on the leaderboard and canvas, we strictly enforce a <strong>one-account-per-student</strong> policy. Attempting to bypass this via alternate emails may lead to a permanent ban of all associated accounts.</p>
+            <h3>Does mitch.pro support two-factor authentication?</h3>
+            <p>Yes. Account security supports email verification codes and optional authenticator-app TOTP setup. If two-factor authentication is enabled, login pauses until the second factor is verified.</p>
           </div>
 
           <div class="q-box">
-            <h3>Is there a mobile app?</h3>
-            <p>mitch.pro is built as a <strong>Progressive Web App (PWA)</strong>. On iPhone, tap "Share" then "Add to Home Screen". On Android, tap the three dots then "Install App". This gives you a full-screen experience and push notifications without needing an app store.</p>
+            <h3>How do I reset access if I cannot log in?</h3>
+            <p>Start from <a href="/enroll/">/enroll/</a> and use your email or username. If you lost email access or the verification flow fails, contact an admin with enough information to verify the account safely.</p>
           </div>
         </section>
 
-        <section id="privacy" class="faq-section">
-          <h2>Privacy & Data</h2>
+        <section id="profile" class="faq-section">
+          <h2>Profile & Preferences</h2>
 
           <div class="q-box">
-            <h3>Is my student email shared with anyone?</h3>
-            <p>No. Your real email address is <strong>masked</strong> throughout the public UI (e.g., yourname@student.mitch.pro). Only administrators can see your original student email for account management and security verification.</p>
+            <h3>What is the difference between profile and preferences?</h3>
+            <p><a href="/profile/">/profile/</a> is for who you are on the site: username, nickname, bio, class year, gender, social links, and public-facing profile information. <a href="/preferences/">/preferences/</a> is for how the site behaves for you: theme, homepage, privacy toggles, launch mode, sync, data tools, and account settings.</p>
           </div>
 
           <div class="q-box">
-            <h3>What is E2E Encryption and how does it work here?</h3>
-            <p>Direct DMs use <strong>End-to-End Encryption (E2E)</strong>. This means your messages are scrambled on your device and only the recipient can unscramble them. Even mitch.pro administrators cannot read your private messages. We use the browser's native Web Crypto API (AES-GCM 256-bit) for maximum security.</p>
+            <h3>Why are preferences split into closed sections?</h3>
+            <p>The preferences page has a lot of controls, so sections start closed as accordions. Click a section header to open only the settings you need.</p>
           </div>
 
           <div class="q-box">
-            <h3>What data do you collect?</h3>
-            <p>We only log the bare minimum: your email (for auth), your hashed password, and your site activity (pixels placed, game scores, coin balance). We temporarily log IP addresses for 48 hours strictly to prevent DDoS attacks and bot abuse.</p>
+            <h3>Where do theme and display settings apply?</h3>
+            <p>Most pages load the shared theme system, so theme, motion, density, background, and quick-access settings can follow you across the site. Some games or embedded tools may keep their own styling.</p>
+          </div>
+        </section>
+
+        <section id="features" class="faq-section">
+          <h2>Games, Tools & Coins</h2>
+
+          <div class="q-box">
+            <h3>What are MitchCoins?</h3>
+            <p>MitchCoins are the site's virtual currency for games, shop items, profile cosmetics, rewards, and community features. They are part of the site economy only and do not have real-world cash value.</p>
           </div>
 
           <div class="q-box">
-            <h3>Does mitch.pro track my searches or AI queries?</h3>
-            <p>No. AI queries are processed in real-time. We do not maintain a permanent history of your queries tied to your profile, and we do not use your data to train models or show advertisements.</p>
+            <h3>What can I do on the home page?</h3>
+            <p>The home page groups links into categories such as games, entertainment, social/chat, account/market, utilities, and admin tools when available. Search filters the visible links, and popular or frequent items can appear near the top.</p>
           </div>
 
           <div class="q-box">
-            <h3>How do I delete my account and data?</h3>
-            <p>You have full ownership of your data. You can permanently delete your account and all associated data (profile, coins, stats, and E2E keys) directly from your <strong>Profile Settings</strong>. Once you confirm deletion, your data is instantly and permanently purged from our active databases. If you cannot access your account, email <a href="mailto:support@mitch.pro">support@mitch.pro</a> for manual assistance.</p>
+            <h3>What are launch modes?</h3>
+            <p>Some links can open normally, in a new tab, in an iframe, in a popup, or through about:blank mode depending on the link and your display preferences. You can adjust launch behavior from <a href="/preferences/">/preferences/</a>.</p>
           </div>
         </section>
 
         <section id="community" class="faq-section">
-          <h2>Community & Perks</h2>
+          <h2>Friends, Chat & Community</h2>
 
           <div class="q-box">
-            <h3>What is "Premium" status?</h3>
-            <p>Premium is a cosmetic upgrade that unlocks perks like:
-              <br>&bull; <strong>Canvas Protection:</strong> Lock your pixels so they can't be overwritten.
-              <br>&bull; <strong>Custom Badges:</strong> Display unique icons next to your name.
-              <br>&bull; <strong>Rainbow Names:</strong> Animated name colors in chat and leaderboards.
-              <br>&bull; <strong>The Sanctum:</strong> Access to a private, premium-only chat room.
-            </p>
+            <h3>How do friends work?</h3>
+            <p>Use the friends page to find people, send requests, accept requests, and see friend-related activity. Privacy preferences can reduce what others see about your online status.</p>
           </div>
 
           <div class="q-box">
-            <h3>How do I report a player or a bug?</h3>
-            <p>To report a bug, use the <code>/bug</code> command in any chat or email us. To report harassment in DMs, use the "Report" button inside the conversation; this will securely share a transcript of the recent messages with the moderation team for review.</p>
+            <h3>What chat options exist?</h3>
+            <p>The site includes public/community chat, premium chat areas when available, and encrypted chat tools. Chat availability can depend on account status, moderation state, and page-specific rules.</p>
           </div>
 
           <div class="q-box">
-            <h3>Can I gift my Mitch Coins to friends?</h3>
-            <p>Yes! You can use the <code>/gift</code> command in chat or visit a friend's profile to transfer coins. Note that there is a small "tax" on transfers to prevent economy inflation.</p>
+            <h3>What is premium?</h3>
+            <p>Premium is a site status used for extra features, cosmetics, or member-only areas where enabled. Premium details can change as the shop, marketplace, and account systems evolve.</p>
+          </div>
+        </section>
+
+        <section id="privacy" class="faq-section">
+          <h2>Privacy, Data & Moderation</h2>
+
+          <div class="q-box">
+            <h3>Is my email public?</h3>
+            <p>No. Public views prefer username, nickname, or display name. Admin and moderation views may show more account information when needed for support, safety, or abuse handling.</p>
           </div>
 
           <div class="q-box">
-            <h3>How do I join the site staff?</h3>
-            <p>We periodically look for active, helpful members to join our moderation and development teams. If you have coding skills or community management experience, check the <a href="/apply.html">Join the Team</a> page for open roles.</p>
+            <h3>Why did the site move away from JSON data files?</h3>
+            <p>Mutable site data is being stored in SQLite so signup codes, users, referrals, friends, and similar state are not scattered across writable JSON files. Some flat files still exist for static config, catalogs, lists, and assets that are better kept as files.</p>
+          </div>
+
+          <div class="q-box">
+            <h3>How do I report a bug, bad content, or an account issue?</h3>
+            <p>Use the relevant report or feedback page when available, or contact staff with the page, username, time, and a short description. Admin and moderator tools are used to review reports and enforce site rules.</p>
+          </div>
+
+          <div class="q-box">
+            <h3>Does the site work as an installable app?</h3>
+            <p>Yes. mitch.pro includes Progressive Web App support. Use your browser's install or add-to-home-screen option if you want a standalone app-style shortcut.</p>
           </div>
         </section>
 
@@ -259,13 +261,22 @@
   </main>
   
   <script>
-    // Smooth scroll for nav links
-    document.querySelectorAll('.faq-nav a').forEach(anchor => {
-      anchor.addEventListener('click', function(e) {
-        e.preventDefault();
-        document.querySelector(this.getAttribute('href')).scrollIntoView({
-          behavior: 'smooth'
-        });
+    document.querySelectorAll('.faq-section').forEach(section => {
+      const heading = section.querySelector('h2');
+      if (!heading) return;
+      heading.setAttribute('role', 'button');
+      heading.setAttribute('tabindex', '0');
+      heading.setAttribute('aria-expanded', 'false');
+      const toggle = () => {
+        const open = section.classList.toggle('open');
+        heading.setAttribute('aria-expanded', open ? 'true' : 'false');
+      };
+      heading.addEventListener('click', toggle);
+      heading.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle();
+        }
       });
     });
   </script>

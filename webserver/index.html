@@ -36,7 +36,7 @@
   .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
   .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
 
-  body{background-color:var(--t-bg);color:var(--t-fg);font-family:var(--t-font,"Segoe UI",system-ui,-apple-system,sans-serif);background-image:var(--t-bg-img-layer,none)!important;background-size:var(--t-bg-size,cover)!important;background-position:var(--t-bg-pos,center)!important;background-repeat:var(--t-bg-repeat,no-repeat)!important;background-attachment:fixed!important;}input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){background:var(--t-bg2);color:var(--t-ac);border:1px solid var(--t-bda);padding:7px 16px;border-radius:var(--t-radius,8px);cursor:pointer;font-family:inherit;font-size:.88rem;font-weight:500;transition:all var(--t-motion,.15s)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}hr{border:none;border-top:1px solid var(--t-bd)}a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}label{color:var(--t-fg2)}</style>
+  body{background-color:var(--t-bg);color:var(--t-fg);font-family:var(--t-font,"Segoe UI",system-ui,-apple-system,sans-serif);background-image:var(--t-bg-img-layer,none)!important;background-size:var(--t-bg-size,cover)!important;background-position:var(--t-bg-pos,center)!important;background-repeat:var(--t-bg-repeat,no-repeat)!important;background-attachment:scroll!important;}input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){background:var(--t-bg2);color:var(--t-ac);border:1px solid var(--t-bda);padding:7px 16px;border-radius:var(--t-radius,8px);cursor:pointer;font-family:inherit;font-size:.88rem;font-weight:500;transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s),transform var(--t-motion,.15s)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}.theme-firefox body{background-attachment:scroll!important}.theme-firefox .glass-card,.theme-firefox .card{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}hr{border:none;border-top:1px solid var(--t-bd)}a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}label{color:var(--t-fg2)}</style>
 <script>
 async function loadSites() {
   var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
@@ -1021,6 +1021,11 @@ function renderOnlineMembers(members) {
   var wrap = document.getElementById('online-members-wrap');
   var list = document.getElementById('online-members-list');
   var online = (members || []).filter(function(m) { return m.online; });
+  var signature = JSON.stringify(online.map(function(m) {
+    return [m.email || '', m.displayName || '', m.pfp || '', m.badge || '', m.color || ''];
+  }));
+  if (signature === window._onlineMembersSignature) return;
+  window._onlineMembersSignature = signature;
 
   // Populate collapsed handle details
   var badgeEl = document.getElementById('collapsed-online-count');
@@ -1128,6 +1133,9 @@ async function loadFriends() {
     }
     const d = await r.json();
     const list = d.friends || [];
+    const signature = JSON.stringify(list.map(f => [f.email || '', f.maskedEmail || '', !!f.online, f.playing || '']));
+    if (signature === window._friendsSignature) return;
+    window._friendsSignature = signature;
     if (list.length === 0) {
       friendsList.innerHTML = '<span class="side-empty">No friends added yet</span>';
       return;
@@ -1226,6 +1234,12 @@ async function loadPendingFriendRequests() {
     const incoming = d.incoming || [];
     const outgoing = d.outgoing || [];
     const totalPending = incoming.length;
+    const signature = JSON.stringify({
+      incoming: incoming.map(req => [req.from || '', req.maskedFrom || '']),
+      outgoing: outgoing.map(req => [req.to || '', req.maskedTo || ''])
+    });
+    if (signature === window._friendRequestsSignature) return;
+    window._friendRequestsSignature = signature;
 
     // Check for new incoming requests
     if (typeof window.lastIncomingRequestsCount === 'number') {
@@ -1403,10 +1417,11 @@ function initFriendsSystem() {
   loadFriends();
   loadPendingFriendRequests();
   sendPresenceHeartbeat();
-  
-  setInterval(loadFriends, 15000);
-  setInterval(loadPendingFriendRequests, 15000);
-  setInterval(sendPresenceHeartbeat, 30000);
+
+  var slowPolling = document.documentElement.classList.contains('theme-firefox');
+  setInterval(loadFriends, slowPolling ? 45000 : 15000);
+  setInterval(loadPendingFriendRequests, slowPolling ? 45000 : 15000);
+  setInterval(sendPresenceHeartbeat, slowPolling ? 60000 : 30000);
 }
 
 async function initHome() {
@@ -1423,7 +1438,8 @@ async function initHome() {
   loadDailyLoginState();
   setupAdminNotificationMode();
   loadOnlineMembers();
-  setInterval(loadOnlineMembers, 15000);
+  var slowPolling = document.documentElement.classList.contains('theme-firefox');
+  setInterval(loadOnlineMembers, slowPolling ? 45000 : 15000);
   initFriendsSystem();
 }
 
@@ -2831,6 +2847,29 @@ if (document.readyState === 'loading') {
   @keyframes aurora-drift-2 {
     0% { transform: translate(0, 0) scale(1) rotate(0deg); }
     100% { transform: translate(-10vw, -12vh) scale(1.15) rotate(-45deg); }
+  }
+
+  .theme-firefox body::before,
+  .theme-firefox body::after {
+    display: none !important;
+    animation: none !important;
+    filter: none !important;
+  }
+
+  .theme-firefox .glass-card,
+  .theme-firefox.theme-light .glass-card,
+  .theme-firefox .home-title-block,
+  .theme-firefox.theme-light .home-title-block,
+  .theme-firefox .home-quick-panel,
+  .theme-firefox.theme-light .home-quick-panel,
+  .theme-firefox #member-side-rail,
+  .theme-firefox.theme-light #member-side-rail,
+  .theme-firefox #preferences-card,
+  .theme-firefox.theme-light #preferences-card,
+  .theme-firefox #stats-bar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28) !important;
   }
 
   /* Elevated Glassmorphic Main Card Container */

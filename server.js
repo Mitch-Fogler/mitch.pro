@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { createHmac, createHash, randomBytes, timingSafeEqual, createECDH } from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, rmSync, readdirSync, appendFileSync } from 'fs';
-import { join, basename } from 'path';
+import { join, basename, resolve, sep } from 'path';
 import { spawnSync, spawn } from 'child_process';
 import os from 'os';
 import webpush from 'web-push';
@@ -14,7 +14,6 @@ import {
   readDocument,
   writeDocument,
   rebuildCoreTablesFromDocuments,
-  migrateFilesToDb,
 } from './lib/data_store.js';
 
 try {
@@ -77,6 +76,7 @@ const RECAPTCHA_SECRET = (process.env.RECAPTCHA_SECRET_KEY || process.env.SECRET
 const TOKENS_FILE           = join(DATA_DIR, 'tokens.json');
 const PASSWORDS_FILE         = join(DATA_DIR, 'passwords.json');
 const SIGNUP_CODES_FILE      = join(DATA_DIR, 'signup_codes.json');
+const AUTH_SESSIONS_FILE     = join(DATA_DIR, 'auth_sessions.json');
 const NEWSLETTER_UNSUB_FILE   = join(DATA_DIR, 'newsletter_unsub.json');
 const NAMES_FILE             = join(DATA_DIR, 'names.json');
 const BLACKLIST_FILE         = join(DATA_DIR, 'blacklist.json');
@@ -156,25 +156,11 @@ const lastRecaptchaSuccess = new Map();
 const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
 configureDataStore({ baseDir: BASE, dataDir: DATA_DIR });
-try {
-  if (process.env.SKIP_AUTO_DB_MIGRATION !== '1') {
-    const lockDir = join(DATA_DIR, '.mitchpro-db-migration.lock');
-    let haveLock = false;
-    try {
-      mkdirSync(lockDir);
-      haveLock = true;
-      migrateFilesToDb({ clean: false });
-    } catch (e) {
-      if (haveLock) console.error('[startup] SQLite migration failed:', e);
-    } finally {
-      if (haveLock) {
-        try { rmSync(lockDir, { recursive: true, force: true }); } catch {}
-      }
-    }
-  }
-} catch (e) {
-  console.error('[startup] SQLite data-store init failed:', e);
-}
+const MAX_JSON_BODY_BYTES = Number(process.env.MAX_JSON_BODY_BYTES || 256 * 1024);
+const MAX_TEXT_BODY_BYTES = Number(process.env.MAX_TEXT_BODY_BYTES || 128 * 1024);
+const MAX_PROXY_HTML_BYTES = Number(process.env.MAX_PROXY_HTML_BYTES || 1024 * 1024);
+const PROXY_FETCH_TIMEOUT_MS = Number(process.env.PROXY_FETCH_TIMEOUT_MS || 10000);
+const TRUSTED_CLIENT_IP_HEADER = 'X-Mitch-Client-IP';
 const USERDATA_DIR = "/opt/userdata";
 const NTFY_TOPIC = (process.env.NTFY_TOPIC || '').trim();
 const SUPPORT_USER = (process.env.SUPPORT_USER || '').trim();
@@ -1475,6 +1461,142 @@ function isRevoked(id)    { return id in loadRevoked(); }
 function loadAppeals()    { return loadJson(APPEALS_FILE, []); }
 function saveAppeals(a)   { saveJson(APPEALS_FILE, a); }
 
+const AUTH_COOKIE = 'mitch_session';
+const AUTH_SESSION_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+
+function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
+  const proto = req ? (req.headers.get('X-Forwarded-Proto') || new URL(req.url).protocol.replace(':', '')) : '';
+  const secure = proto === 'https' || process.env.NODE_ENV === 'production';
+  return [
+    'Path=/',
+    `Max-Age=${maxAge}`,
+    'SameSite=Lax',
+    secure ? 'Secure' : '',
+    httpOnly ? 'HttpOnly' : '',
+  ].filter(Boolean).join('; ');
+}
+
+function setCookieHeader(name, value, req = null, maxAge, httpOnly = true) {
+  return `${name}=${encodeURIComponent(value || '')}; ${cookiePathAttrs(req, maxAge, httpOnly)}`;
+}
+
+function clearCookieHeader(name, req = null, httpOnly = true) {
+  return `${name}=; ${cookiePathAttrs(req, 0, httpOnly)}`;
+}
+
+function loadAuthSessions() {
+  const data = loadJson(AUTH_SESSIONS_FILE, {});
+  return data && typeof data === 'object' && !Array.isArray(data) ? data : {};
+}
+
+function saveAuthSessions(sessions) {
+  saveJson(AUTH_SESSIONS_FILE, sessions);
+}
+
+function hashSessionToken(token) {
+  return createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function currentSessionGeneration(normEmail) {
+  const gens = loadGenerations();
+  const rec = gens[normEmail] || {};
+  return (rec && typeof rec === 'object') ? (rec.gen || 0) : (rec || 0);
+}
+
+function createAuthSession(normEmail, originalEmail = normEmail, req = null) {
+  const norm = normalizeEmail(normEmail);
+  const email = originalEmail || norm;
+  const gen = currentSessionGeneration(norm);
+  const sid = issueLoginSession(norm, email);
+  const token = randomBytes(32).toString('base64url');
+  const key = hashSessionToken(token);
+  const now = Date.now();
+  const sessions = loadAuthSessions();
+  sessions[key] = {
+    email,
+    normEmail: norm,
+    sid,
+    gen,
+    createdAt: now,
+    lastSeen: now,
+    expiresAt: now + AUTH_SESSION_TTL_MS,
+    userAgent: String(req?.headers.get('User-Agent') || '').slice(0, 240),
+    ip: req ? getRealIp(req) : '',
+  };
+  saveAuthSessions(sessions);
+  return { token, sid, email, normEmail: norm, gen };
+}
+
+function authSessionFromToken(token) {
+  if (!token) return null;
+  const key = hashSessionToken(token);
+  const sessions = loadAuthSessions();
+  const rec = sessions[key];
+  if (!rec) return null;
+  const now = Date.now();
+  if (!rec.expiresAt || now > rec.expiresAt) {
+    delete sessions[key];
+    saveAuthSessions(sessions);
+    return null;
+  }
+  const norm = normalizeEmail(rec.normEmail || rec.email || '');
+  if (!norm) return null;
+  if ((rec.gen || 0) !== currentSessionGeneration(norm)) {
+    delete sessions[key];
+    saveAuthSessions(sessions);
+    return null;
+  }
+  const sid = issueLoginSession(norm, rec.email || norm);
+  if (rec.sid !== sid || now - (rec.lastSeen || 0) > 5 * 60 * 1000) {
+    rec.sid = sid;
+    rec.lastSeen = now;
+    sessions[key] = rec;
+    saveAuthSessions(sessions);
+  }
+  return { ...rec, sid, normEmail: norm };
+}
+
+function invalidateAuthSessionsForEmail(normEmail, keepToken = '') {
+  const norm = normalizeEmail(normEmail);
+  const keepKey = keepToken ? hashSessionToken(keepToken) : '';
+  const sessions = loadAuthSessions();
+  let changed = false;
+  for (const [key, rec] of Object.entries(sessions)) {
+    if (key !== keepKey && normalizeEmail(rec?.normEmail || rec?.email || '') === norm) {
+      delete sessions[key];
+      changed = true;
+    }
+  }
+  if (changed) saveAuthSessions(sessions);
+}
+
+function rotateSessionGeneration(normEmail) {
+  const norm = normalizeEmail(normEmail);
+  const gens = loadGenerations();
+  const currentGen = currentSessionGeneration(norm);
+  const nextGen = currentGen + 1;
+  gens[norm] = { gen: nextGen, last_registered: Date.now() / 1000 };
+  saveGenerations(gens);
+
+  const names = loadJson(NAMES_FILE, {});
+  for (const [key, value] of Object.entries(names)) {
+    if (value && normalizeEmail(value) === norm) delete names[key];
+  }
+  saveJson(NAMES_FILE, names);
+  invalidateAuthSessionsForEmail(norm);
+  return nextGen;
+}
+
+function authSuccessResponse(req, payload, normEmail, originalEmail = normEmail) {
+  const session = createAuthSession(normEmail, originalEmail, req);
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
+  headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
+  headers.append('Set-Cookie', clearCookieHeader('password', req, false));
+  headers.append('Set-Cookie', clearCookieHeader('id', req, false));
+  return new Response(JSON.stringify({ ...payload, id: session.sid, email: originalEmail || normEmail }), { status: 200, headers });
+}
+
 function saveApplications(apps) {
   applications = apps;
   saveJson(APPLICATIONS_FILE, apps);
@@ -2314,11 +2436,15 @@ const AI_TOOLS = [
 function execAiTool(name, args, uid, email) {
   if (name === 'fetch_page') {
     let rawPath = (args.path || '').trim().replace(/^\//, '');
-    if (rawPath.includes('..')) return 'Error: invalid path.';
-    let full = join(WEBROOT, rawPath);
+    let full = safeWebrootPath(rawPath);
+    if (!full) return 'Error: invalid path.';
     try {
       if (statSync(full).isDirectory()) full = join(full, 'index.html');
-    } catch { if (!rawPath.endsWith('.html')) full = full + '.html'; }
+    } catch {
+      const fallback = rawPath.endsWith('.html') ? rawPath : rawPath + '.html';
+      full = safeWebrootPath(fallback);
+      if (!full) return 'Error: invalid path.';
+    }
     try {
       let content = readFileSync(full, 'utf8');
       content = content.replace(/<script[^>]*>.*?<\/script>/gis, '');
@@ -3706,26 +3832,130 @@ function jsonResp(code, obj) {
     { status: code, headers: { 'Content-Type': 'application/json' } });
 }
 
+function validIpLiteral(value) {
+  return typeof value === 'string' && isIP(value.trim()) !== 0;
+}
+
+function sameOriginRequest(req) {
+  const origin = req.headers.get('Origin');
+  if (origin) {
+    try {
+      return new URL(origin).host === new URL(req.url).host;
+    } catch {
+      return false;
+    }
+  }
+  const secFetchSite = (req.headers.get('Sec-Fetch-Site') || '').toLowerCase();
+  return secFetchSite !== 'cross-site';
+}
+
+function csrfFailureIfUnsafe(req, path, method) {
+  if (!path.startsWith('/api/')) return null;
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
+  if (sameOriginRequest(req)) return null;
+  return jsonResp(403, { error: 'csrf_blocked' });
+}
+
+function safeWebrootPath(relativePath) {
+  const full = resolve(WEBROOT, String(relativePath || '').replace(/^\/+/, ''));
+  const root = resolve(WEBROOT);
+  if (full !== root && !full.startsWith(root + sep)) return null;
+  return full;
+}
+
+async function readRequestTextLimited(req, maxBytes) {
+  const len = Number(req.headers.get('Content-Length') || 0);
+  if (len && len > maxBytes) throw new Error('request body too large');
+  if (!req.body) return '';
+
+  const reader = req.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let out = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      try { await reader.cancel(); } catch {}
+      throw new Error('request body too large');
+    }
+    out += decoder.decode(value, { stream: true });
+  }
+  out += decoder.decode();
+  return out;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = PROXY_FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function readResponseTextLimited(res, maxBytes = MAX_PROXY_HTML_BYTES) {
+  const len = Number(res.headers.get('Content-Length') || 0);
+  if (len && len > maxBytes) throw new Error('upstream response too large');
+  if (!res.body) return '';
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let out = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) {
+      try { await reader.cancel(); } catch {}
+      throw new Error('upstream response too large');
+    }
+    out += decoder.decode(value, { stream: true });
+  }
+  out += decoder.decode();
+  return out;
+}
+
 function getCookies(req) {
   const cookies = {};
   for (const part of (req.headers.get('Cookie') || '').split(';')) {
     const t = part.trim();
     if (t.includes('=')) {
       const eq = t.indexOf('=');
-      cookies[t.slice(0, eq).trim()] = t.slice(eq + 1).trim();
+      const name = t.slice(0, eq).trim();
+      const raw = t.slice(eq + 1).trim();
+      try { cookies[name] = decodeURIComponent(raw); }
+      catch { cookies[name] = raw; }
     }
+  }
+
+  const rawStudentId = cookies['studentId'];
+  const rawId = cookies['id'];
+  delete cookies['studentId'];
+  delete cookies['id'];
+
+  try {
+    const session = authSessionFromToken(cookies[AUTH_COOKIE] || '');
+    if (session && session.sid && validId(session.sid)) {
+      cookies['studentId'] = session.sid;
+      cookies['id'] = session.sid;
+    }
+  } catch (e) {
+    console.error('[auth] session cookie failed:', e);
   }
 
   // X-Admin-Key bypass: if X-Admin-Key header is present and valid, inject a mock admin studentId
   try {
     const adminKeyHeader = req.headers.get('X-Admin-Key');
-    if (adminKeyHeader) {
+    if (process.env.ENABLE_ADMIN_KEY_HEADER === '1' && adminKeyHeader) {
       const adminKey = readFileSync(ADMIN_KEY_FILE, 'utf8').trim();
       if (adminKeyHeader === adminKey) {
         const mockAdminSid = makeEmailId('admin@mitch.pro', 0);
         cookies['studentId'] = mockAdminSid;
         cookies['id'] = mockAdminSid;
-        
+
         const namesPath = join(DATA_DIR, 'names.json');
         const names = loadJson(namesPath, {});
         if (!names[mockAdminSid]) {
@@ -3738,6 +3968,9 @@ function getCookies(req) {
     console.error('[auth] X-Admin-Key bypass failed:', e);
   }
 
+  cookies.rawStudentId = rawStudentId || '';
+  cookies.rawId = rawId || '';
+
   return cookies;
 }
 
@@ -3746,10 +3979,8 @@ function authSidFromCookies(cookies) {
 }
 
 function getRealIp(req) {
-  return (req.headers.get('CF-Connecting-IP') ||
-          req.headers.get('X-Real-IP') ||
-          (req.headers.get('X-Forwarded-For') || '').split(',')[0].trim() ||
-          '127.0.0.1');
+  const fromTrustedProxy = (req.headers.get(TRUSTED_CLIENT_IP_HEADER) || '').trim();
+  return validIpLiteral(fromTrustedProxy) ? fromTrustedProxy : '127.0.0.1';
 }
 
 function getIdKey(req) {
@@ -4835,7 +5066,8 @@ function injectBroadcast(html) {
 
 async function serveStatic(urlPath) {
   // Normalise path
-  let filePath = join(WEBROOT, urlPath.replace(/^\//, ''));
+  let filePath = safeWebrootPath(urlPath);
+  if (!filePath) return errResp(403, null, null);
 
   // Directory: check for index.html, then index.htm
   try {
@@ -4961,6 +5193,9 @@ async function handleRequest(req, server) {
   const path   = url.pathname;
   const method = req.method;
 
+  const csrfFailure = csrfFailureIfUnsafe(req, path, method);
+  if (csrfFailure) return csrfFailure;
+
   // Global rate limit check for all APIs
   if (path.startsWith('/api/')) {
     const rl = checkRateLimit(req, path);
@@ -5037,6 +5272,10 @@ async function handleRequest(req, server) {
   }
 
   if (path.startsWith('/prox/')) {
+    if (process.env.ENABLE_GENERAL_PROXY !== '1') {
+      return jsonResp(403, { error: 'General proxy access is disabled.' });
+    }
+
     if (path === '/prox/' || path === '/prox/index.html') {
       return new Response('General proxy access is disabled.', { status: 403 });
     }
@@ -5071,13 +5310,13 @@ async function handleRequest(req, server) {
       try {
         const headers = new Headers();
         for (const [k, v] of req.headers.entries()) {
-          if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'accept-encoding'].includes(k.toLowerCase())) {
+          if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
             headers.set(k, v);
           }
         }
         headers.set('User-Agent', req.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
 
-        const upstreamRes = await fetch(targetUrl, {
+        const upstreamRes = await fetchWithTimeout(targetUrl, {
           method: req.method,
           headers: headers,
           body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null,
@@ -5093,7 +5332,7 @@ async function handleRequest(req, server) {
 
         const contentType = upstreamRes.headers.get('content-type') || '';
         if (contentType.includes('text/html')) {
-          let html = await upstreamRes.text();
+          let html = await readResponseTextLimited(upstreamRes);
           html = rewriteHtml(html, targetUrl);
           return new Response(html, {
             status: upstreamRes.status,
@@ -5106,7 +5345,8 @@ async function handleRequest(req, server) {
           });
         }
       } catch (e) {
-        return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy target URL: ' + String(e) });
+        console.error('[proxy] target fetch failed:', e?.message || e);
+        return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy target URL.' });
       }
   }
 
@@ -5122,7 +5362,7 @@ async function handleRequest(req, server) {
     try {
       const headers = new Headers();
       for (const [k, v] of req.headers.entries()) {
-        if (!['host', 'cookie', 'referer', 'origin', 'accept-encoding'].includes(k.toLowerCase())) {
+        if (!['host', 'cookie', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
           headers.set(k, v);
         }
       }
@@ -5130,7 +5370,7 @@ async function handleRequest(req, server) {
       headers.set('Origin', 'https://www.worldshardestcaptcha.com');
       headers.set('Referer', 'https://www.worldshardestcaptcha.com/');
 
-      const upstreamRes = await fetch(targetUrl, {
+      const upstreamRes = await fetchWithTimeout(targetUrl, {
         method: req.method,
         headers: headers,
         body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null
@@ -5148,7 +5388,8 @@ async function handleRequest(req, server) {
         headers: resHeaders
       });
     } catch (e) {
-      return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy captcha API: ' + String(e) });
+      console.error('[proxy] captcha fetch failed:', e?.message || e);
+      return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy captcha API.' });
     }
   }
 
@@ -5159,12 +5400,12 @@ async function handleRequest(req, server) {
     try {
       const headers = new Headers();
       for (const [k, v] of req.headers.entries()) {
-        if (!['host', 'cookie', 'authorization', 'referer', 'origin'].includes(k.toLowerCase())) {
+        if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
           headers.set(k, v);
         }
       }
       
-      const upstreamRes = await fetch(targetUrl, {
+      const upstreamRes = await fetchWithTimeout(targetUrl, {
         method: req.method,
         headers: headers,
         body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null
@@ -5182,7 +5423,8 @@ async function handleRequest(req, server) {
         headers: resHeaders
       });
     } catch (e) {
-      return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy GameMonetize game: ' + String(e) });
+      console.error('[proxy] GameMonetize fetch failed:', e?.message || e);
+      return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy GameMonetize game.' });
     }
   }
   if (softMaintenanceActive) {
@@ -5212,7 +5454,8 @@ async function handleRequest(req, server) {
     if (parsedJsonBody) return true;
     parsedJsonBody = true;
     try {
-      body = await req.json();
+      const raw = await readRequestTextLimited(req, MAX_JSON_BODY_BYTES);
+      body = raw ? JSON.parse(raw) : {};
       return true;
     } catch {
       body = {};
@@ -5650,6 +5893,9 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
     if (!myEmail) {
       return jsonResp(401, { success: false, message: 'Authentication required' });
     }
+    if (!isAnyAdminId(sid)) {
+      return jsonResp(403, { success: false, message: 'SSH terminal access is restricted.' });
+    }
     const success = server.upgrade(req, { data: { isSSH: true, email: myEmail } });
     if (success) return;
   }
@@ -5696,27 +5942,27 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
       }
     } 
  
-    // Handle HTTP mitch.prox forwarding 
-    let targetPath = path; 
-    if (path.startsWith("/ultra/")) { 
-      targetPath = path.slice(6) || "/"; 
-    } 
- 
-    try { 
+    // Handle HTTP mitch.prox forwarding
+    let targetPath = path;
+    if (path.startsWith("/ultra/")) {
+      targetPath = path.slice(6) || "/";
+    }
+
+    try {
       const port = 8081;
-      const targetUrl = `http://127.0.0.1:${port}${targetPath}${url.search}`; 
+      const targetUrl = `http://127.0.0.1:${port}${targetPath}${url.search}`;
       const proxyHeaders = new Headers(req.headers);
       proxyHeaders.set("host", `127.0.0.1:${port}`);
-      for (const hopHeader of ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade"]) {
+      for (const hopHeader of ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "x-mitch-client-ip"]) {
         proxyHeaders.delete(hopHeader);
       }
-      const resp = await fetch(targetUrl, { 
-        method: req.method, 
-        headers: proxyHeaders, 
-        body: req.body, 
-        redirect: "manual" 
-      }); 
-      const headers = new Headers(resp.headers); 
+      const resp = await fetchWithTimeout(targetUrl, {
+        method: req.method,
+        headers: proxyHeaders,
+        body: req.body,
+        redirect: "manual"
+      });
+      const headers = new Headers(resp.headers);
       headers.delete("content-encoding"); 
       headers.delete("transfer-encoding"); 
       headers.delete("content-length");
@@ -6448,7 +6694,7 @@ Mitch.pro Team`;
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       try {
         const targetUrl = `http://127.0.0.1:8081/api/sessions`;
-        const resp = await fetch(targetUrl);
+        const resp = await fetchWithTimeout(targetUrl);
         return new Response(resp.body, { status: resp.status, headers: resp.headers });
       } catch (e) {
         return jsonResp(502, { error: 'Stream server unreachable' });
@@ -7298,11 +7544,34 @@ Mitch.pro Team`;
           pendingTwoFactor.set(tempToken, rec);
           return jsonResp(200, { success: false, twofa_required: true, twofa_type: twofa.type, temp_token: tempToken });
         }
-        const studentId = issueLoginSession(normEmail, normEmail);
-        return jsonResp(200, { success: true, id: studentId, email });
+        return authSuccessResponse(req, { success: true }, normEmail, normEmail);
       } catch (e) {
         console.error('[login] failed:', e);
         return jsonResp(500, { success: false, message: 'Login failed. Try again.' });
+      }
+    }
+
+    if (path === '/api/logout' && method === 'POST') {
+      try {
+        const cookies = getCookies(req);
+        const token = cookies[AUTH_COOKIE] || '';
+        if (token) {
+          const sessions = loadAuthSessions();
+          const key = hashSessionToken(token);
+          if (sessions[key]) {
+            delete sessions[key];
+            saveAuthSessions(sessions);
+          }
+        }
+        const headers = new Headers({ 'Content-Type': 'application/json' });
+        headers.append('Set-Cookie', clearCookieHeader(AUTH_COOKIE, req, true));
+        headers.append('Set-Cookie', clearCookieHeader('studentId', req, false));
+        headers.append('Set-Cookie', clearCookieHeader('id', req, false));
+        headers.append('Set-Cookie', clearCookieHeader('password', req, false));
+        headers.append('Set-Cookie', clearCookieHeader('adminId', req, false));
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers });
+      } catch (e) {
+        return jsonResp(500, { success: false, message: 'Logout failed.' });
       }
     }
 
@@ -7325,8 +7594,7 @@ Mitch.pro Team`;
         const ok = rec.type === 'totp' ? verifyTotp(cfg.secret, code) : code === rec.code;
         if (!ok) return jsonResp(401, { success: false, message: 'Invalid verification code.' });
         pendingTwoFactor.delete(tempToken);
-        const studentId = issueLoginSession(rec.normEmail, rec.normEmail);
-        return jsonResp(200, { success: true, id: studentId, email: rec.normEmail });
+        return authSuccessResponse(req, { success: true }, rec.normEmail, rec.normEmail);
       } catch (e) {
         return jsonResp(500, { success: false, message: '2FA verification failed.' });
       }
@@ -7431,12 +7699,7 @@ Mitch.pro Team`;
         };
         saveTokens(tokens);
 
-        const gens = loadGenerations();
-        const gen = gens[normEmail] || 0;
-        const studentId = makeEmailId(normEmail, gen);
-        const names = loadJson(NAMES_FILE, {});
-        names[studentId] = entry.email;
-        saveJson(NAMES_FILE, names);
+        issueLoginSession(normEmail, entry.email);
 
         ensureProfileDefaults(normEmail, entry.email, {
           username: entry.username,
@@ -7486,7 +7749,7 @@ Mitch.pro Team`;
         } catch (re) { console.error('[invite] referral reward error:', re); }
 
         ntfy(`New user verified: ${entry.email}`, { title: 'Signup Complete' });
-        return jsonResp(200, { success: true, id: studentId });
+        return authSuccessResponse(req, { success: true }, normEmail, entry.email);
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
@@ -7533,7 +7796,8 @@ Mitch.pro Team`;
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
-        const studentId = (body.studentId || '').trim();
+        const cookies = getCookies(req);
+        const studentId = (body.studentId || cookies['studentId'] || cookies['id'] || '').trim();
         if (!validId(studentId) || isInvalidated(studentId) || isRevoked(studentId))
           return jsonResp(403, { success: false, message: 'Not signed in.' });
         const email = (body.email || '').trim().toLowerCase();
@@ -7642,7 +7906,8 @@ Mitch.pro Team`;
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
-        const userId  = (body.id || '').trim();
+        const cookies = getCookies(req);
+        const userId  = (body.id || cookies['studentId'] || cookies['id'] || '').trim();
         const sugType = (body.type || 'general').trim().slice(0, 50);
         const text    = (body.text || '').trim().slice(0, 2000);
         if (!text) return jsonResp(400, { success: false, message: 'Empty.' });
@@ -7652,7 +7917,7 @@ Mitch.pro Team`;
         const entry = { id: userId, name: names[userId] || userId.slice(0, 12), type: sugType, text, ts: Date.now() / 1000 };
         const sugs  = loadJson(SUGGESTIONS_FILE, []);
         sugs.push(entry);
-        saveJson(SUGGESTIONS_FILE, sugs); const em = emailFromSid(userId); if (em) addCoins(em, 20);
+        saveJson(SUGGESTIONS_FILE, sugs);
         const typeLabels = { feedback: 'Feedback', add_page: 'Page Suggestion', broken_game: 'Broken Game Report' };
         const label      = typeLabels[sugType] || 'Suggestion';
         const name       = entry.name || userId.slice(0, 8) || 'anonymous';
@@ -7780,6 +8045,7 @@ Mitch.pro Team`;
           const passwords = loadPasswords();
           passwords[normEmail] = hash;
           savePasswords(passwords);
+          rotateSessionGeneration(normEmail);
 
           entry.used = true;
           entry.used_at = Date.now() / 1000;
@@ -7796,15 +8062,9 @@ Mitch.pro Team`;
           entry.claim_count = (entry.claim_count || 0) + 1;
         }
         saveTokens(tokens);
-        const gen       = entry.infinite ? 0 : (entry.gen || 0);
-        const studentId = makeEmailId(normEmail, gen);
-        const names     = loadJson(NAMES_FILE, {});
-        if (!(studentId in names)) {
-          names[studentId] = email;
-          saveJson(NAMES_FILE, names);
-        }
+        const studentId = issueLoginSession(normEmail, email);
         if (infinite) addUnlimitedId(studentId);
-        return jsonResp(200, { success: true, id: studentId, email });
+        return authSuccessResponse(req, { success: true }, normEmail, email);
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
@@ -8110,7 +8370,8 @@ function loadAllGamesList() {
       const rl = checkRateLimit(req, path); if (rl) return rl;
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false });
-        const id   = body.id || '';
+        const cookies = getCookies(req);
+        const id   = body.id || cookies['studentId'] || cookies['id'] || '';
         let page = body.page || '';
         if (page.startsWith('/proxy/gamemonetize/')) {
           page = page.replace('/proxy/gamemonetize/', 'https://html5.gamemonetize.co/');
@@ -8233,7 +8494,8 @@ function loadAllGamesList() {
       const rl = checkRateLimit(req, path); if (rl) return rl;
       try {
         if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-        const hash    = body.hash || '';
+        const cookies = getCookies(req);
+        const hash    = body.hash || cookies['studentId'] || cookies['id'] || '';
         let reqPath   = (new URL(body.path || '', 'http://x')).pathname.replace(/^\//, '');
         if (!reqPath || reqPath.endsWith('/')) reqPath = reqPath + 'index.html';
 
@@ -8255,11 +8517,11 @@ function loadAllGamesList() {
           + '<a href="/enroll.html">Request access<\/a> or '
           + '<a href="/claim.html">claim a token<\/a>.') });
 
-        const filePath = join(WEBROOT, reqPath);
+        const filePath = safeWebrootPath(reqPath);
+        if (!filePath) return jsonResp(200, { content: errorPage(403, 'Forbidden', 'Invalid path.') });
         if (!existsSync(filePath)) return jsonResp(200, { content: errorPage(404, 'Page Not Found',
           `<code>${reqPath}<\/code> does not exist. <a href="/">Go home<\/a>.`) });
 
-        const cookies = getCookies(req);
         const adminCookie = cookies['adminId'] || '';
         const isRealAdmin = isAnyAdminId(hash) || isAnyAdminId(adminCookie);
         if (reqPath.startsWith('simulate/') && !isRealAdmin) {
@@ -8365,22 +8627,31 @@ function loadAllGamesList() {
       const isPremium = isPremiumEmail(email);
       const norm = normalizeEmail(email);
       const profiles = loadJson(PROFILES_FILE, {});
+      const existing = profiles[norm] || {};
+      const requestedUsername = normalizeUsername(body.username ?? existing.username ?? '');
+      const usedUsernames = new Set(Object.entries(profiles)
+        .filter(([emailKey]) => emailKey !== norm)
+        .map(([, p]) => normalizeUsername(p?.username || ''))
+        .filter(Boolean));
+      let username = requestedUsername || defaultUsernameForEmail(norm, usedUsernames);
+      if (!isValidUsername(username)) return jsonResp(400, { error: 'Username must be 2-40 lowercase letters, numbers, ".", "_", or "-".' });
+      if (usedUsernames.has(username)) return jsonResp(400, { error: 'Username is already taken.' });
 
       // Preserve profileBonusClaimed across saves
       const alreadyClaimed = profiles[norm]?.profileBonusClaimed || false;
 
       profiles[norm] = {
         email,
-        username: profiles[norm]?.username || defaultUsernameForEmail(norm, new Set(Object.entries(profiles).filter(([k]) => k !== norm).map(([, p]) => normalizeUsername(p?.username || '')).filter(Boolean))),
-        nickname: profiles[norm]?.nickname || '',
+        username,
+        nickname: String(body.nickname ?? existing.nickname ?? '').trim().slice(0, 40),
         displayName: (displayName || '').trim().slice(0, 40),
         bio: (bio || '').trim().slice(0, 300),
         website: (website || '').trim().slice(0, 100),
         pfp: (pfp || '').trim().slice(0, 200),
         background: isPremium ? (background || '').trim().slice(0, 200) : (profiles[norm]?.background || ''),
-        gradYear: profiles[norm]?.gradYear || '',
-        gender: profiles[norm]?.gender || '',
-        referralSource: profiles[norm]?.referralSource || '',
+        gradYear: String(body.gradYear ?? existing.gradYear ?? '').trim().slice(0, 20),
+        gender: String(body.gender ?? existing.gender ?? '').trim().slice(0, 40),
+        referralSource: String(body.referralSource ?? existing.referralSource ?? '').trim().slice(0, 80),
         hasCompletedTutorial: Boolean(profiles[norm]?.hasCompletedTutorial || profiles[norm]?.has_completed_tutorial),
         createdAt: profiles[norm]?.createdAt || Date.now(),
         updatedAt: Date.now(),
@@ -8521,9 +8792,11 @@ function loadAllGamesList() {
       }
       if (String(body.code || '').trim() !== rec.code) return jsonResp(400, { error: 'invalid code' });
       renameEmailReferences(rec.oldNorm, rec.newNorm, rec.newEmail);
+      invalidateAuthSessionsForEmail(rec.oldNorm);
+      rotateSessionGeneration(rec.newNorm);
       pendingEmailChanges.delete(token);
       ntfy(`Email changed: ${rec.oldNorm} -> ${rec.newNorm}`, { title: 'Security' });
-      return jsonResp(200, { ok: true, email: rec.newEmail });
+      return authSuccessResponse(req, { ok: true }, rec.newNorm, rec.newEmail);
     }
     if (path === '/api/friends/request' && method === 'POST') {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
@@ -9184,9 +9457,10 @@ function loadAllGamesList() {
 
         passwords[norm] = await Bun.password.hash(newPassword);
         savePasswords(passwords);
+        rotateSessionGeneration(norm);
         
         // ntfy password change alert silenced at user request
-        return jsonResp(200, { success: true });
+        return authSuccessResponse(req, { success: true }, norm, email);
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
@@ -9203,32 +9477,10 @@ function loadAllGamesList() {
 
         const norm = normalizeEmail(email);
 
-        // Increment user's session generation
-        const gens = loadGenerations();
-        const currentGenRec = gens[norm] || {};
-        const currentGen = (currentGenRec && typeof currentGenRec === 'object') ? (currentGenRec.gen || 0) : (currentGenRec || 0);
-        const nextGen = currentGen + 1;
-        gens[norm] = {
-          gen: nextGen,
-          last_registered: Date.now() / 1000
-        };
-        saveGenerations(gens);
-
-        // Create new session ID
-        const newSid = makeEmailId(norm, nextGen);
-
-        // Clean up old session mappings in NAMES_FILE for this user to save space and security
-        const names = loadJson(NAMES_FILE, {});
-        for (const [key, value] of Object.entries(names)) {
-          if (value && normalizeEmail(value) === norm) {
-            delete names[key];
-          }
-        }
-        names[newSid] = email;
-        saveJson(NAMES_FILE, names);
+        rotateSessionGeneration(norm);
 
         // ntfy session logout alert silenced at user request
-        return jsonResp(200, { success: true, id: newSid });
+        return authSuccessResponse(req, { success: true }, norm, email);
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
@@ -9305,6 +9557,11 @@ function loadAllGamesList() {
       const lastWin = lastLoggedPing.get(`chess-win:${norm}`) || 0;
       if (now - lastWin < 15000) return jsonResp(400, { error: 'win registered too fast' });
       
+      if (process.env.ENABLE_CLIENT_CHESS_REWARDS !== '1') {
+        lastLoggedPing.set(`chess-win:${norm}`, now);
+        return jsonResp(200, { ok: true, coins: getCoins(email), rewarded: false });
+      }
+
       addCoins(email, 10.0);
       updateStat(email, 'chess_wins', 1);
       lastLoggedPing.set(`chess-win:${norm}`, now);
@@ -9334,7 +9591,7 @@ function loadAllGamesList() {
     // /api/sms-reply
     if (path === '/api/sms-reply') {
       try {
-        const raw = await req.text();
+        const raw = await readRequestTextLimited(req, MAX_TEXT_BODY_BYTES);
         let smsBody;
         try { smsBody = JSON.parse(raw); }
         catch { smsBody = Object.fromEntries(new URLSearchParams(raw)); }
@@ -9357,7 +9614,8 @@ function loadAllGamesList() {
     if (path === '/api/ai') {
       try {
         if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-        const uid = body.studentId || '';
+        const cookies = getCookies(req);
+        const uid = body.studentId || cookies['studentId'] || cookies['id'] || '';
         
         if (!checkPasswordCookie(req, uid))
           return jsonResp(403, { error: 'Authentication required. Please set a password at /enroll/.' });
@@ -12657,11 +12915,13 @@ function loadAllGamesList() {
       
       // Basic anti-cheat
       if (wpm > 250 || timeTaken < 2000) return jsonResp(400, { error: 'Impossible speed' });
-      
+
       let s = typingSessions.get(norm) || { dailyCount: 0, lastTs: 0 };
       const today = new Date().toDateString();
       if (new Date(s.lastTs).toDateString() !== today) s.dailyCount = 0;
-      
+      if (Date.now() - (s.lastTs || 0) < 60000) return jsonResp(429, { error: 'Too many typing payouts' });
+      if ((s.dailyCount || 0) >= 20) return jsonResp(429, { error: 'Daily typing payout limit reached' });
+
       let coins = 0;
       if (wpm >= 120) coins = 3;
       else if (wpm >= 80) coins = 2;
@@ -14003,7 +14263,7 @@ function loadAllGamesList() {
 
     // Trailing slash redirect for directories under WEBROOT
     if (path !== '/' && !path.endsWith('/')) {
-      const diskPath = join(WEBROOT, path.replace(/^\//, ''));
+      const diskPath = safeWebrootPath(path);
       try {
         if (existsSync(diskPath) && statSync(diskPath).isDirectory()) {
           const queryStr = url.search || '';
@@ -14031,9 +14291,10 @@ function loadAllGamesList() {
 	        if (path !== '/') return Response.redirect('/enroll/', 302);
 	      }
 	    }
-	    if (path.endsWith('.html') && !existsSync(join(WEBROOT, path.replace(/^\//, '')))) {
+	    if (path.endsWith('.html') && !existsSync(safeWebrootPath(path) || '')) {
 	      const dirName = path.slice(1, -5);
-	      if (dirName && existsSync(join(WEBROOT, dirName, 'index.html'))) {
+	      const indexPath = dirName ? safeWebrootPath(join(dirName, 'index.html')) : null;
+	      if (indexPath && existsSync(indexPath)) {
 	        return Response.redirect('/' + dirName + '/' + url.search, 302);
 	      }
 	    }
@@ -14044,11 +14305,11 @@ function loadAllGamesList() {
 	      if (path === '/') {
 	        filePath = checkPasswordCookie(req) ? join(WEBROOT, 'index.html') : join(WEBROOT, 'index-sales.html');
 	      }
-	      else if (path.endsWith('/')) filePath = join(WEBROOT, path, 'index.html');
+	      else if (path.endsWith('/')) filePath = safeWebrootPath(path.replace(/^\//, '') + 'index.html');
 
-	      else filePath = join(WEBROOT, path.replace(/^\//, ''));
+	      else filePath = safeWebrootPath(path);
 
-	      if (existsSync(filePath) && !statSync(filePath).isDirectory()) {
+	      if (filePath && existsSync(filePath) && !statSync(filePath).isDirectory()) {
 	        try {
 	          const cookies = getCookies(req);
 	          const sid = cookies['studentId'] || cookies['id'] || '';

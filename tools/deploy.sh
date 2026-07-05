@@ -103,7 +103,12 @@ echo "[deploy] Swapping Caddy proxy configuration to point to webserver-$INACTIV
 cat << EOF > "$CADDYFILE_PATH"
 :6800 {
     # Forward all traffic to the active Bun webserver container
-    reverse_proxy webserver-$INACTIVE_SLOT:6800
+    reverse_proxy webserver-$INACTIVE_SLOT:6800 {
+        header_up X-Mitch-Client-IP {http.request.header.X-Mitch-Client-IP}
+        header_up -CF-Connecting-IP
+        header_up -X-Real-IP
+        header_up -X-Forwarded-For
+    }
 }
 EOF
 
