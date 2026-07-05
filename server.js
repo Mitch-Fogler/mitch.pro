@@ -1198,6 +1198,7 @@ function ensureProfileDefaults(normEmail, originalEmail = normEmail, patch = {})
   if (!isValidUsername(username) || used.has(username)) username = defaultUsernameForEmail(normEmail, used);
   const now = Date.now();
   profiles[normEmail] = {
+    ...existing,
     email: existing.email || originalEmail || normEmail,
     username,
     nickname: String(patch.nickname ?? existing.nickname ?? existing.displayName ?? '').trim().slice(0, 40),
@@ -8713,6 +8714,7 @@ function loadAllGamesList() {
       const alreadyClaimed = profiles[norm]?.profileBonusClaimed || false;
 
       profiles[norm] = {
+        ...existing,
         email,
         username,
         nickname: String(body.nickname ?? existing.nickname ?? '').trim().slice(0, 40),
@@ -12277,6 +12279,36 @@ function loadAllGamesList() {
   }
 
   // ── Canvas API ─────────────────────────────────────────────────────────────
+  if (path === '/api/canvas/chunks') {
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    const cookies = getCookies(req);
+    const sid = authSidFromCookies(cookies);
+    const email = emailFromSid(sid) || '';
+    const zoneId = qs.get('zoneId');
+    let chunkMap = canvasChunks;
+
+    if (zoneId) {
+      if (!checkZoneAccess(zoneId, email, sid)) {
+        return jsonResp(403, { error: 'forbidden', reason: 'No access to this zone' });
+      }
+      getZonePixels(zoneId);
+      chunkMap = zoneChunksMap.get(zoneId) || new Map();
+    }
+
+    const chunks = [...chunkMap.entries()]
+      .filter(([, chunk]) => chunk && Object.keys(chunk).length > 0)
+      .map(([key]) => key);
+    let minCx = 0, maxCx = 0, minCy = 0, maxCy = 0;
+    if (chunks.length) {
+      const coords = chunks.map(k => k.split(',').map(Number)).filter(([cx, cy]) => Number.isFinite(cx) && Number.isFinite(cy));
+      minCx = Math.min(...coords.map(([cx]) => cx));
+      maxCx = Math.max(...coords.map(([cx]) => cx));
+      minCy = Math.min(...coords.map(([, cy]) => cy));
+      maxCy = Math.max(...coords.map(([, cy]) => cy));
+    }
+    return jsonResp(200, { ok: true, chunks, bounds: { minCx, maxCx, minCy, maxCy } });
+  }
+
   if (path === '/api/canvas/pixels') {
     const rl = checkRateLimit(req, path); if (rl) return rl;
     

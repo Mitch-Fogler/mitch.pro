@@ -575,6 +575,7 @@ const TB = 42, PB = 44;
 const MOD_EVERY = 15, MOD_IDLE = 5000;
 const CHUNK = 64;
 const MAX_LOADED_CHUNKS = 180;
+const MAX_VIEW_CHUNKS = 140;
 
 const PALETTE = [
   '#000000','#1c1c1c','#3a3a3a','#666666','#999999','#cccccc','#ffffff',
@@ -594,6 +595,8 @@ let chunkLoadTimer = null;
 let chunkLoadPending = false;
 const queuedChunkKeys = new Set();
 let canvasLoadVersion = 0;
+let canvasChunkIndex = null;
+let canvasChunkIndexZone = undefined;
 let renderQueued = false;
 let panX = 0, panY = 0, zoom = 1;
 let painting = false, panning = false, spaceDown = false;
@@ -656,7 +659,7 @@ function removeChunkPixels(k) {
 
 function evictOldChunks() {
   if (loadedChunks.size <= MAX_LOADED_CHUNKS) return;
-  const keep = visibleChunkSet(3);
+  const keep = renderChunkSet(3);
   const candidates = [...loadedChunks]
     .filter(k => !keep.has(k))
     .sort((a, b) => (chunkLastUsed.get(a) || 0) - (chunkLastUsed.get(b) || 0));
@@ -665,9 +668,17 @@ function evictOldChunks() {
     loadedChunks.delete(k);
     chunkLastUsed.delete(k);
     delete chunkCanvases[k];
+    delete premiumMarkersByChunk[k];
     removeChunkPixels(k);
   }
   updatePixelCount();
+}
+
+function rememberIndexedChunk(k) {
+  const zoneKey = currentZoneId || '';
+  if (canvasChunkIndex && canvasChunkIndexZone === zoneKey && !canvasChunkIndex.includes(k)) {
+    canvasChunkIndex.push(k);
+  }
 }
 
 const chunkCanvases = {};
@@ -994,7 +1005,7 @@ function render() {
   ctx.beginPath(); ctx.moveTo(0, w2sy(0)); ctx.lineTo(W, w2sy(0)); ctx.stroke();
   ctx.setLineDash([]);
 
-  const visibleChunks = visibleChunkSet(1);
+  const visibleChunks = renderChunkSet(1);
   for (const k of visibleChunks) {
     const chunkData = chunkCanvases[k];
     if (!chunkData) continue;
@@ -1410,17 +1421,93 @@ function playAlarm() {
   } catch {}
 }
 
-function visibleChunkSet(buf = 2) {
+function clampChunkRange(start, end, center, maxCount) {
+  const total = end - start + 1;
+  if (total <= maxCount) return [start, end];
+  const half = Math.floor(maxCount / 2);
+  let nextStart = Math.floor(center) - half;
+  let nextEnd = nextStart + maxCount - 1;
+  if (nextStart < start) {
+    nextStart = start;
+    nextEnd = start + maxCount - 1;
+  }
+  if (nextEnd > end) {
+    nextEnd = end;
+    nextStart = end - maxCount + 1;
+  }
+  return [nextStart, nextEnd];
+}
+
+function viewportChunkInfo(buf = 2, maxChunks = MAX_VIEW_CHUNKS) {
   const W = cv.width, H = cv.height, p = PX * zoom;
+  if (!Number.isFinite(p) || p <= 0) {
+    return { cx0: 0, cx1: -1, cy0: 0, cy1: -1, overCap: false };
+  }
   const x0 = Math.floor((0 - W / 2) / p + panX), x1 = Math.ceil((W - W / 2) / p + panX);
   const y0 = Math.floor((0 - H / 2) / p + panY), y1 = Math.ceil((H - H / 2) / p + panY);
-  const cx0 = Math.floor(x0 / CHUNK) - buf, cx1 = Math.floor(x1 / CHUNK) + buf;
-  const cy0 = Math.floor(y0 / CHUNK) - buf, cy1 = Math.floor(y1 / CHUNK) + buf;
+  let cx0 = Math.floor(x0 / CHUNK) - buf, cx1 = Math.floor(x1 / CHUNK) + buf;
+  let cy0 = Math.floor(y0 / CHUNK) - buf, cy1 = Math.floor(y1 / CHUNK) + buf;
+  const cols = Math.max(1, cx1 - cx0 + 1);
+  const rows = Math.max(1, cy1 - cy0 + 1);
+  const overCap = cols * rows > maxChunks;
+  if (overCap) {
+    const ratio = cols / rows;
+    const targetCols = Math.max(1, Math.min(cols, Math.floor(Math.sqrt(maxChunks * ratio))));
+    const targetRows = Math.max(1, Math.min(rows, Math.floor(maxChunks / targetCols)));
+    const centerCx = panX / CHUNK;
+    const centerCy = panY / CHUNK;
+    [cx0, cx1] = clampChunkRange(cx0, cx1, centerCx, targetCols);
+    [cy0, cy1] = clampChunkRange(cy0, cy1, centerCy, targetRows);
+  }
+  return { cx0, cx1, cy0, cy1, overCap };
+}
+
+function uncappedViewportChunkInfo(buf = 2) {
+  return viewportChunkInfo(buf, Number.MAX_SAFE_INTEGER);
+}
+
+function chunkInInfo(k, info) {
+  const [cx, cy] = k.split(',').map(Number);
+  return Number.isFinite(cx) && Number.isFinite(cy) && cx >= info.cx0 && cx <= info.cx1 && cy >= info.cy0 && cy <= info.cy1;
+}
+
+function chunkSetFromInfo(info) {
   const s = new Set();
-  for (let cx = cx0; cx <= cx1; cx++)
-    for (let cy = cy0; cy <= cy1; cy++)
+  for (let cx = info.cx0; cx <= info.cx1; cx++)
+    for (let cy = info.cy0; cy <= info.cy1; cy++)
       s.add(`${cx},${cy}`);
   return s;
+}
+
+function visibleChunkSet(buf = 2, maxChunks = MAX_VIEW_CHUNKS) {
+  return chunkSetFromInfo(viewportChunkInfo(buf, maxChunks));
+}
+
+function renderChunkSet(buf = 1) {
+  const info = viewportChunkInfo(buf);
+  if (!info.overCap) return chunkSetFromInfo(info);
+  const uncapped = uncappedViewportChunkInfo(buf);
+  return new Set([...loadedChunks].filter(k => chunkInInfo(k, uncapped)));
+}
+
+async function loadChunkIndex() {
+  const zoneKey = currentZoneId || '';
+  if (canvasChunkIndex && canvasChunkIndexZone === zoneKey) return canvasChunkIndex;
+  const url = '/api/canvas/chunks' + (currentZoneId ? '?zoneId=' + encodeURIComponent(currentZoneId) : '');
+  const r = await fetch(url, { credentials: 'include' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok || d.error) throw new Error(d.reason || d.error || 'Failed to load chunk index');
+  canvasChunkIndex = Array.isArray(d.chunks) ? d.chunks : [];
+  canvasChunkIndexZone = zoneKey;
+  return canvasChunkIndex;
+}
+
+async function chunksForCurrentView(buf = 2) {
+  const capped = viewportChunkInfo(buf);
+  if (!capped.overCap) return [...chunkSetFromInfo(capped)];
+  const uncapped = uncappedViewportChunkInfo(buf);
+  const index = await loadChunkIndex();
+  return index.filter(k => chunkInInfo(k, uncapped));
 }
 
 async function loadChunks(chunkKeys, loadVersion = canvasLoadVersion) {
@@ -1472,11 +1559,13 @@ async function loadPixels() {
   loadedChunks.clear();
   chunkLastUsed.clear();
   queuedChunkKeys.clear();
+  canvasChunkIndex = null;
+  canvasChunkIndexZone = undefined;
   pixels = {};
   clearAllChunkCanvases();
   updatePixelCount();
   requestRender();
-  const visible = [...visibleChunkSet(3)];
+  const visible = await chunksForCurrentView(3);
   await loadChunks(visible, loadVersion);
   btn.textContent = '↻';
 }
@@ -1484,9 +1573,9 @@ async function loadPixels() {
 function scheduleChunkLoad() {
   clearTimeout(chunkLoadTimer);
   chunkLoadTimer = setTimeout(async () => {
-    const visible = visibleChunkSet(2);
+    const visible = await chunksForCurrentView(2);
     for (const k of visible) touchChunk(k);
-    const needed = [...visible].filter(k => !loadedChunks.has(k));
+    const needed = visible.filter(k => !loadedChunks.has(k));
     if (needed.length) await loadChunks(needed);
     else evictOldChunks();
     requestRender();
@@ -1501,12 +1590,14 @@ function forgetChunk(k) {
   removeChunkPixels(k);
 }
 
-function applyCanvasDelta(msg) {
+async function applyCanvasDelta(msg) {
   if (!msg || msg.type !== 'canvas_delta') return;
   const msgZone = msg.zoneId || null;
   if ((currentZoneId || null) !== msgZone) return;
 
   if (msg.action === 'clear') {
+    canvasChunkIndex = null;
+    canvasChunkIndexZone = undefined;
     loadPixels();
     return;
   }
@@ -1514,8 +1605,9 @@ function applyCanvasDelta(msg) {
   if (msg.action === 'invalidate') {
     const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
     let touchedVisible = false;
-    const visible = visibleChunkSet(2);
+    const visible = new Set(await chunksForCurrentView(2));
     for (const k of chunks) {
+      rememberIndexedChunk(k);
       if (loadedChunks.has(k)) forgetChunk(k);
       if (visible.has(k)) touchedVisible = true;
     }
@@ -1528,12 +1620,13 @@ function applyCanvasDelta(msg) {
   const items = Array.isArray(msg.pixels) ? msg.pixels : [];
   let changed = false;
   let needsLoad = false;
-  const visible = visibleChunkSet(2);
+  const visible = new Set([...renderChunkSet(2)]);
   for (const item of items) {
     const x = Number(item?.x);
     const y = Number(item?.y);
     if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
     const ck = chunkKeyForPixel(x, y);
+    if (msg.action === 'set') rememberIndexedChunk(ck);
     if (!loadedChunks.has(ck)) {
       if (visible.has(ck)) needsLoad = true;
       continue;
