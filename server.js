@@ -14497,15 +14497,21 @@ function loadAllGamesList() {
           const gaId = (process.env.GOOGLE_ANALYTICS_ID || '').trim();
           const rcKey = (process.env.RECAPTCHA_SITE_KEY || '').trim();
           const hasV2Script = raw.includes(Buffer.from('recaptcha/api.js'));
+          const reqHost = String(req.headers.get('X-Forwarded-Host') || req.headers.get('Host') || '').split(':')[0].toLowerCase();
+          let primaryHost = 'mitch.pro';
+          try { primaryHost = new URL(site().primary).host.toLowerCase(); } catch {}
+          const isPrimaryHost = !reqHost || reqHost === primaryHost || reqHost === 'localhost' || reqHost === '127.0.0.1';
+          const recaptchaHost = (process.env.RECAPTCHA_SCRIPT_HOST || (isPrimaryHost ? 'www.google.com' : 'www.recaptcha.net')).trim();
+          const loadAnalytics = !!gaId && (isPrimaryHost || process.env.GOOGLE_ANALYTICS_ON_MIRRORS === '1');
 
           const ua = req.headers.get('user-agent') || '';
           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
           const isEnrollPage = path === '/enroll' || path === '/enroll/' || path === '/enroll/index.html';
 
-          if (gaId || (rcKey && !hasV2Script)) {
+          if (loadAnalytics || (rcKey && !hasV2Script)) {
             injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
             if (rcKey && !hasV2Script) {
-              injectStr += `<script src="https://www.google.com/recaptcha/api.js?render=${rcKey}" async defer></script>\n`;
+              injectStr += `<script src="https://${recaptchaHost}/recaptcha/api.js?render=${rcKey}" async defer></script>\n`;
               injectStr += `<script>\n` +
                            `  window.getCaptchaToken = function(action) {\n` +
                            `    return new Promise(function(resolve) {\n` +
@@ -14533,7 +14539,7 @@ function loadAllGamesList() {
                            `  };\n` +
                            `</script>\n`;
             }
-            if (gaId) {
+            if (loadAnalytics) {
               injectStr += `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaId}"></script>\n` +
                            `<script>\n` +
                            `  window.dataLayer = window.dataLayer || [];\n` +
