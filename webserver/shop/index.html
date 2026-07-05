@@ -84,16 +84,27 @@
   .tab-btn { padding: 10px 14px; }
   .tab-btn:hover, .mini-btn:hover { border-color: var(--t-ac, #8b5cf6); color: var(--t-fg, #fff); }
   .tab-btn.active { background: var(--t-ac, #8b5cf6); color: #fff; border-color: transparent; }
-  .section { margin: 26px 0 34px; }
+  .section { margin: 18px 0 22px; }
+  details.section {
+    background: rgba(255,255,255,0.015);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    overflow: hidden;
+  }
   .section-head {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 0;
     border-bottom: 1px solid var(--t-bd, #333);
-    padding-bottom: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    list-style: none;
   }
+  .section-head::-webkit-details-marker { display: none; }
+  .section-head::after { content: '+'; color: var(--t-ac); font-weight: 900; }
+  details[open] > .section-head::after { content: '-'; }
   .section-title {
     font-family: 'Syne', sans-serif;
     font-size: 1.05rem;
@@ -101,13 +112,13 @@
     color: var(--t-fg, #fff);
   }
   .section-count { color: var(--t-fg2, #aaa); font-size: .72rem; }
-  .market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .market-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; padding: 14px; }
   .card {
     background: var(--t-bg2, #151515);
     border: 1px solid var(--t-bd, #333);
     border-radius: 8px;
     padding: 16px;
-    min-height: 246px;
+    min-height: 210px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -214,6 +225,11 @@
     .topbar { grid-template-columns: 1fr; }
     .balance-panel { min-width: 0; }
     .admin-grid { grid-template-columns: 1fr; }
+    .market-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 10px; }
+    .card { padding: 12px; min-height: 0; }
+    .item-title { font-size: .94rem; }
+    .item-desc { font-size: .72rem; }
+    .price { font-size: .95rem; }
   }
 
   /* Modal styling */
@@ -550,14 +566,14 @@
       if (!grouped[section]) grouped[section] = [];
       grouped[section].push(item);
     });
-    market.innerHTML = Object.entries(grouped).map(([section, sectionItems]) => `
-      <section class="section">
-        <div class="section-head">
+    market.innerHTML = Object.entries(grouped).map(([section, sectionItems], index) => `
+      <details class="section" ${activeTab !== 'all' || index === 0 ? 'open' : ''}>
+        <summary class="section-head">
           <div class="section-title">${esc(section)}</div>
           <div class="section-count">${sectionItems.length} item${sectionItems.length === 1 ? '' : 's'}</div>
-        </div>
+        </summary>
         <div class="market-grid">${sectionItems.map(renderItem).join('')}</div>
-      </section>
+      </details>
     `).join('');
     market.querySelectorAll('.btn-buy[data-item]').forEach(btn => {
       btn.addEventListener('click', () => handleItem(btn.dataset.item));

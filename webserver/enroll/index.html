@@ -682,6 +682,17 @@
       width: min(100%, calc(100vw - 12px));
       padding-top: 8px;
     }
+    .hero {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .side-stack {
+      order: -1;
+    }
+    .intro {
+      display: none;
+    }
 
     .topbar {
       align-items: stretch;
@@ -1004,6 +1015,11 @@
 
             <button id="login-btn" class="btn" onclick="login()">Log In</button>
             <div id="login-msg"></div>
+            <div id="login-2fa-panel" style="display:none;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.22);">
+              <label class="field-label" id="login-2fa-label" for="login-2fa-code">Verification Code</label>
+              <input id="login-2fa-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
+              <button id="login-2fa-btn" class="btn" type="button" onclick="verifyLogin2fa()" style="margin-top:10px;">Verify Code</button>
+            </div>
           </div>
 
           <!-- Tab Pane: Sign Up -->
@@ -1630,6 +1646,7 @@ async function login() {
   const password = document.getElementById('login-password').value;
   const msg = document.getElementById('login-msg');
   const btn = document.getElementById('login-btn');
+  const twofaPanel = document.getElementById('login-2fa-panel');
   if (!email || !password) {
     msg.className = 'err';
     msg.textContent = 'Enter email and password.';
@@ -1652,6 +1669,16 @@ async function login() {
       var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
       document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
       window.location.href = "/";
+    } else if (d.twofa_required) {
+      window._login2faToken = d.temp_token || '';
+      window._login2faType = d.twofa_type || 'email';
+      document.getElementById('login-2fa-label').textContent = window._login2faType === 'totp' ? 'Authenticator Code' : 'Email Verification Code';
+      document.getElementById('login-2fa-code').value = '';
+      if (twofaPanel) twofaPanel.style.display = 'block';
+      msg.className = 'ok';
+      msg.textContent = window._login2faType === 'totp' ? 'Enter your authenticator app code.' : 'Check your email for a login code.';
+      btn.disabled = false;
+      resetCaptcha();
     } else {
       msg.className = 'err';
       msg.textContent = d.message || 'Invalid email or password.';
@@ -1663,6 +1690,42 @@ async function login() {
     msg.textContent = 'Server error.';
     btn.disabled = false;
     resetCaptcha();
+  }
+}
+
+async function verifyLogin2fa() {
+  const msg = document.getElementById('login-msg');
+  const btn = document.getElementById('login-2fa-btn');
+  const code = document.getElementById('login-2fa-code').value.trim();
+  if (!window._login2faToken || !code) {
+    msg.className = 'err';
+    msg.textContent = 'Enter your verification code.';
+    return;
+  }
+  btn.disabled = true;
+  msg.className = '';
+  msg.textContent = 'Verifying code...';
+  try {
+    const r = await fetch('/api/verify-2fa', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ temp_token: window._login2faToken, code })
+    });
+    const d = await r.json();
+    if (d.success) {
+      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      window.location.href = "/";
+    } else {
+      msg.className = 'err';
+      msg.textContent = d.message || 'Invalid verification code.';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    msg.className = 'err';
+    msg.textContent = 'Server error.';
+    btn.disabled = false;
   }
 }
 

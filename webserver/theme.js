@@ -375,7 +375,7 @@
       r.setProperty('--t-bg-img-layer',
         'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5))),url(' + JSON.stringify(url) + ')');
     } else {
-      r.setProperty('--t-bg-img-layer', 'var(--t-bgr, none)');
+      r.setProperty('--t-bg-img-layer', IS_FIREFOX_FAMILY ? 'none' : 'var(--t-bgr, none)');
     }
     var inp = document.getElementById('theme-bg-input');
     if (inp) inp.value = getBgImgCookie();

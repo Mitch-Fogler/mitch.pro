@@ -46,9 +46,7 @@
     header h1 { font-size: 1.5rem; font-weight: 900; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; }
     header p { font-size: 0.8rem; color: var(--muted); }
     .coin-badge {
-      position: absolute;
-      left: 50%;
-      transform: translateX(-50%);
+      margin-left: auto;
       background: linear-gradient(135deg, #1a1a00, #2a2a00);
       border: 1px solid var(--accent2);
       border-radius: 20px;
@@ -57,6 +55,11 @@
       color: var(--accent);
       font-size: 0.9rem;
       z-index: 10;
+    }
+    @media (max-width: 720px) {
+      header { align-items: flex-start; flex-wrap: wrap; padding: 14px 16px; }
+      header h1 { font-size: 1.08rem; }
+      .coin-badge { width: 100%; margin-left: 0; text-align: center; }
     }
     .container { max-width: 1300px; margin: 0 auto; padding: 20px 16px; }
     .back-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; }

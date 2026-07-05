@@ -512,16 +512,17 @@ button {
   display: none !important;
 }
 @media (max-width: 860px) {
+  html, body { height: 100dvh; overflow: hidden; }
   #app.ready { flex-direction: row !important; }
   #sidebar {
     width: 100% !important;
     min-width: 100% !important;
-    height: 100vh !important;
+    height: 100dvh !important;
     border-right: 0 !important;
     display: flex !important;
   }
   #chat-main { 
-    height: 100vh !important;
+    height: 100dvh !important;
     width: 100% !important;
     display: none !important; 
   }
@@ -538,6 +539,10 @@ button {
   .header-tools { width: 100%; flex-wrap: wrap; }
   #msgSearch { flex: 1; width: auto; }
   .msg-tools { opacity: 1; }
+  #input-row {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
+    min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }
 </style>
 </head>

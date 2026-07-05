@@ -8098,6 +8098,17 @@ Mitch.pro Team`;
           passwords[normEmail] = hash;
           savePasswords(passwords);
           rotateSessionGeneration(normEmail);
+          if (twoFactorConfig(normEmail).type === 'totp') {
+            saveTwoFactorConfig(normEmail, {
+              twofa_enabled: false,
+              twofa_type: '',
+              twoFactorEnabled: false,
+              twofaEnabled: false,
+              totp_secret: '',
+              totpSecret: '',
+              pendingTotpSecret: '',
+            });
+          }
 
           entry.used = true;
           entry.used_at = Date.now() / 1000;

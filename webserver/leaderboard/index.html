@@ -23,10 +23,10 @@
     border: 1px solid var(--t-bd);
     border-radius: 16px;
     padding: 20px;
-    overflow-x: auto;
+    overflow-x: visible;
   }
   
-  table { width: 100%; border-collapse: collapse; min-width: 500px; }
+  table { width: 100%; border-collapse: collapse; min-width: 0; }
   th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--t-fg2); padding: 12px 10px; border-bottom: 1px solid var(--t-bd); }
   td { padding: 14px 10px; font-size: 13px; border-bottom: 1px solid rgba(255,255,255,0.03); }
   tr:last-child td { border-bottom: none; }
@@ -59,6 +59,17 @@
   .badge-verified { color: #3b82f6; }
   .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
   .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
+  @media (max-width: 700px) {
+    body { padding: 30px 12px 60px; align-items: stretch; }
+    .wrap { max-width: none; }
+    h1 { font-size: 1.8rem; margin-bottom: 16px; }
+    .card { padding: 10px; border-radius: 10px; }
+    th:nth-child(n+5), td:nth-child(n+5) { display: none; }
+    th, td { padding: 10px 6px; font-size: 12px; }
+    .rank { width: 34px; }
+    .name { max-width: 44vw; }
+    .name a { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+  }
 
 </style>
 </head>

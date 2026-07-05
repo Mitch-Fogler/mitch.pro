@@ -79,6 +79,7 @@
       box-shadow: 0 18px 50px rgba(0,0,0,.38), 0 0 0 1px rgba(255,255,255,.03) inset;
       backdrop-filter: blur(16px);
       overflow-x: auto;
+      overscroll-behavior: contain;
     }
     #palette::-webkit-scrollbar { height: 2px; }
     #palette::-webkit-scrollbar-thumb { background: var(--t-bd, #444); }
@@ -299,6 +300,38 @@
       .sw { width: 28px; height: 28px; }
       #play-tip { display:none; }
       #controls-help { right: 8px; bottom: 72px; max-width: calc(100vw - 16px); }
+      #mobile-canvas-notice { display: flex; }
+    }
+    #mobile-canvas-notice {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+      padding: 22px;
+      background: rgba(2,6,23,.82);
+      backdrop-filter: blur(10px);
+    }
+    #mobile-canvas-notice .notice-card {
+      width: min(420px, 100%);
+      background: #0f172a;
+      border: 1px solid rgba(148,163,184,.28);
+      border-radius: 12px;
+      padding: 18px;
+      color: #e5e7eb;
+      box-shadow: 0 22px 70px rgba(0,0,0,.5);
+    }
+    #mobile-canvas-notice h2 { font-size: 1rem; margin-bottom: 8px; color: #f8fafc; }
+    #mobile-canvas-notice p { font-size: .86rem; line-height: 1.5; color: #cbd5e1; margin-bottom: 14px; }
+    #mobile-canvas-notice button {
+      width: 100%;
+      min-height: 42px;
+      border: 0;
+      border-radius: 8px;
+      background: #2dd4bf;
+      color: #06201d;
+      font-weight: 900;
     }
   </style>
 </head>
@@ -330,6 +363,14 @@
 </div>
 
 <div id="play-tip"><span class="tip-dot"></span><span><b>Tip</b> drag to paint, scroll to travel, ctrl+scroll to zoom</span></div>
+
+<div id="mobile-canvas-notice">
+  <div class="notice-card">
+    <h2>pixelplace is view-only on mobile</h2>
+    <p>Mobile can pan around to look at the canvas, but drawing tools are disabled here. Use a desktop or laptop to place pixels.</p>
+    <button type="button" onclick="document.getElementById('mobile-canvas-notice').style.display='none'">OK</button>
+  </div>
+</div>
 
 <div id="palette">
   <div class="psep"></div>
@@ -1095,8 +1136,28 @@ cv.addEventListener('wheel', e => {
     const p = PX * zoom;
     panX += e.deltaX / p;
     panY += e.deltaY / p;
+    scheduleChunkLoad();
   }
 }, { passive: false });
+
+let lastTouch = null;
+cv.addEventListener('touchstart', e => {
+  if (e.touches.length === 1) {
+    lastTouch = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+}, { passive: false });
+cv.addEventListener('touchmove', e => {
+  if (e.touches.length !== 1 || !lastTouch) return;
+  const t = e.touches[0];
+  const p = PX * zoom;
+  panX -= (t.clientX - lastTouch.x) / p;
+  panY -= (t.clientY - lastTouch.y) / p;
+  lastTouch = { x: t.clientX, y: t.clientY };
+  scheduleChunkLoad();
+  e.preventDefault();
+}, { passive: false });
+cv.addEventListener('touchend', () => { lastTouch = null; });
+cv.addEventListener('touchcancel', () => { lastTouch = null; });
 
 document.getElementById('home-btn').onclick = () => {
   panX = 0; panY = 0; zoom = 1;
@@ -1113,6 +1174,13 @@ document.getElementById('timelapse-btn').onclick = toggleTimelapse;
 document.getElementById('load-all-btn').onclick = loadAllPixels;
 
 const palEl = document.getElementById('palette');
+
+palEl.addEventListener('wheel', e => {
+  if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+    palEl.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }
+}, { passive: false });
 
 function pickColor(c) {
   color = c;

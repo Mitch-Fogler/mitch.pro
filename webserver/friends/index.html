@@ -217,6 +217,16 @@
   .autocomplete-item:hover { background: rgba(59, 130, 246, 0.15); }
   .autocomplete-item .item-name { font-weight: 600; color: #fff; }
   .autocomplete-item .item-email { font-size: 0.75rem; color: var(--t-fg2); opacity: 0.6; }
+  @media (max-width: 640px) {
+    body { padding: 1rem .75rem 2.5rem; align-items: stretch; }
+    .card { padding: 1rem; max-width: none; border-radius: 10px; }
+    .page-title { font-size: 1.4rem; }
+    .page-sub { margin-bottom: 1.1rem; }
+    .friend-grid, .requests-section { grid-template-columns: 1fr; gap: .75rem; }
+    .friend-item, .request-item { padding: 10px; }
+    .add-box > div:first-child { flex-direction: column; }
+    .btn, .add-input { width: 100%; min-height: 44px; }
+  }
 </style>
 </head>
 <body>

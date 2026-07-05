@@ -170,7 +170,7 @@ function categoryForLabel(label, isAdmin) {
   if (l.includes('market') || l.includes('shop') || l.includes('team') || l.includes('premium')) return 'Account & Market';
   if (l.includes('chat') || l.includes('feedback') || l.includes('newsletter') || l.includes('invite') || l.includes('leaderboard') || l.includes('friends')) return 'Social & Chat';
   if (l.includes('profile') || l.includes('preferences') || l.includes('account')) return 'Account & Market';
-  if (l.includes('casino') || l.includes('games') || l.includes('pixelplace') || l.includes('canvas') || l.includes('mitch.prox') || l.includes('prox') || l.includes('movies') || l.includes('subtitle')) return 'Entertainment';
+  if (l.includes('casino') || l.includes('games') || l.includes('pixelplace') || l.includes('canvas') || l.includes('movies') || l.includes('subtitle')) return 'Entertainment';
   return 'Utilities';
 }
 
@@ -179,7 +179,7 @@ function describeCategory(cat) {
     'Popular & Frequent': 'Your most used and globally popular pages',
     'Admin': 'Private controls and advanced tools',
     'MitchCoin Games': 'Play and earn verified MitchCoins',
-    'Entertainment': 'Games, canvas, mitch.prox, media, and fun stuff',
+    'Entertainment': 'Games, canvas, media, and fun stuff',
     'Social & Chat': 'Profiles, chat, feedback, and community pages',
     'Account & Market': 'Coins, premium, shop, team, and account options',
     'Utilities': 'Helpful links and site tools'
@@ -756,8 +756,6 @@ function loadGreeting() {
           document.head.appendChild(s);
         }
       }
-      var proxMega = document.getElementById('home-prox-mega');
-      if (proxMega) proxMega.hidden = !d.isPremium;
       
       var hhNudge = document.getElementById('happy-hour-nudge');
       var hhText = document.getElementById('happy-hour-text');
@@ -1744,8 +1742,7 @@ if (document.readyState === 'loading') {
     letter-spacing: 0;
   }
 
-  #home-games-mega,
-  #home-prox-mega {
+  #home-games-mega {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
@@ -1765,12 +1762,7 @@ if (document.readyState === 'loading') {
     isolation: isolate;
   }
 
-  #home-prox-mega[hidden] {
-    display: none !important;
-  }
-
-  #home-games-mega::before,
-  #home-prox-mega::before {
+  #home-games-mega::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -1781,23 +1773,14 @@ if (document.readyState === 'loading') {
     z-index: -1;
   }
 
-  #home-games-mega:hover,
-  #home-prox-mega:hover {
+  #home-games-mega:hover {
     border-color: rgba(250,204,21,.78);
     transform: translateY(-2px);
     box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 18px 44px rgba(0,0,0,.34), 0 0 0 1px rgba(34,211,238,.2);
   }
 
-  #home-games-mega:hover::before,
-  #home-prox-mega:hover::before {
+  #home-games-mega:hover::before {
     transform: translateX(120%);
-  }
-
-  #home-prox-mega {
-    border-color: rgba(124,58,237,.46);
-    background:
-      linear-gradient(135deg, rgba(124,58,237,.24), rgba(14,165,233,.14) 46%, rgba(34,197,94,.11)),
-      rgba(255,255,255,.055);
   }
 
   .mega-game-copy {
@@ -2380,6 +2363,18 @@ if (document.readyState === 'loading') {
     .home-status-row span { flex: 1 1 auto; justify-content: center; }
     .category-title { align-items: flex-start; flex-direction: column; gap: 3px; }
     .category-title small { text-align: left; }
+    a.site-link, a.quick-action {
+      min-height: 48px !important;
+      padding: 0.9rem 0.95rem !important;
+    }
+    a.site-link .icon {
+      width: 30px !important;
+      height: 30px !important;
+      font-size: 1.08rem !important;
+    }
+    a.site-link .lbl {
+      font-size: 0.94rem !important;
+    }
   }
 
   #admin-action-wrap {
@@ -2523,11 +2518,8 @@ if (document.readyState === 'loading') {
   }
   @media (max-width: 980px) {
     #member-side-rail {
-      position: relative; top: auto; right: auto; bottom: auto; transform: none;
-      width: min(480px, calc(100% - 2rem)); margin: 0 auto 1rem;
-      order: -1; pointer-events: auto;
+      display: none !important;
     }
-    #online-members-wrap { margin-top: 0; }
     #mainpage { padding-top: 1rem; }
     #admin-action-wrap { top: auto; bottom: 54px; transform: none; }
     #moderator-action-wrap { top: auto; bottom: 54px; left: 50px; transform: none; }
@@ -2617,7 +2609,7 @@ if (document.readyState === 'loading') {
     align-items: flex-start;
     gap: 8px;
   }
-  #market-shortcut, #student-chat-shortcut, #profile-shortcut, #marketplace-shortcut, #public-chat-shortcut, #proxy-shortcut {
+  #market-shortcut, #student-chat-shortcut, #profile-shortcut, #marketplace-shortcut, #public-chat-shortcut {
     display: inline-flex;
     align-items: center;
     gap: 7px;
@@ -2654,11 +2646,6 @@ if (document.readyState === 'loading') {
     background: rgba(22,10,32,0.82);
     color: #d8b4fe;
   }
-  #proxy-shortcut {
-    border-color: rgba(56,189,248,0.48);
-    background: rgba(10,24,32,0.82);
-    color: #bae6fd;
-  }
   #market-shortcut:hover {
     background: rgba(245,158,11,0.16);
     color: #fbbf24;
@@ -2670,10 +2657,6 @@ if (document.readyState === 'loading') {
   #public-chat-shortcut:hover {
     background: rgba(168,85,247,0.18);
     color: #e9d5ff;
-  }
-  #proxy-shortcut:hover {
-    background: rgba(56,189,248,0.18);
-    color: #e0f2fe;
   }
   #student-chat-shortcut:hover {
     background: rgba(96,165,250,0.18);
@@ -2953,8 +2936,7 @@ if (document.readyState === 'loading') {
   }
 
   /* Play Games Mega Button Glow & Polish */
-  #home-games-mega,
-  #home-prox-mega {
+  #home-games-mega {
     border: 1px solid rgba(124, 58, 237, 0.35) !important;
     background: linear-gradient(135deg, rgba(124, 58, 237, 0.22), rgba(6, 182, 212, 0.16) 45%, rgba(244, 63, 94, 0.1)) !important;
     box-shadow: 
@@ -2964,12 +2946,7 @@ if (document.readyState === 'loading') {
     transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   }
 
-  #home-prox-mega {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.25), rgba(14, 165, 233, 0.16) 45%, rgba(34, 197, 94, 0.1)) !important;
-  }
-
-  #home-games-mega:hover,
-  #home-prox-mega:hover {
+  #home-games-mega:hover {
     border-color: rgba(124, 58, 237, 0.55) !important;
     box-shadow: 
       0 14px 36px rgba(124, 58, 237, 0.32),
@@ -2984,8 +2961,7 @@ if (document.readyState === 'loading') {
     transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   }
 
-  #home-games-mega:hover .mega-game-arrow,
-  #home-prox-mega:hover .mega-game-arrow {
+  #home-games-mega:hover .mega-game-arrow {
     transform: translateX(4px) scale(1.05) !important;
     background: rgba(255, 255, 255, 0.25) !important;
   }
@@ -3694,8 +3670,7 @@ if (document.readyState === 'loading') {
     color: #181824 !important;
   }
 
-  .theme-light #home-games-mega,
-  .theme-light #home-prox-mega {
+  .theme-light #home-games-mega {
     border: 1px solid rgba(79, 70, 229, 0.25) !important;
     background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(6, 182, 212, 0.05) 45%, rgba(244, 63, 94, 0.03)) !important;
     box-shadow: 
@@ -3703,12 +3678,7 @@ if (document.readyState === 'loading') {
       inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
   }
 
-  .theme-light #home-prox-mega {
-    background: linear-gradient(135deg, rgba(79, 70, 229, 0.08), rgba(14, 165, 233, 0.05) 45%, rgba(34, 197, 94, 0.03)) !important;
-  }
-
-  .theme-light #home-games-mega:hover,
-  .theme-light #home-prox-mega:hover {
+  .theme-light #home-games-mega:hover {
     border-color: rgba(79, 70, 229, 0.45) !important;
     box-shadow: 
       0 14px 36px rgba(79, 70, 229, 0.1),
@@ -3720,23 +3690,19 @@ if (document.readyState === 'loading') {
     background: rgba(0, 0, 0, 0.05) !important;
   }
 
-  .theme-light #home-games-mega:hover .mega-game-arrow,
-  .theme-light #home-prox-mega:hover .mega-game-arrow {
+  .theme-light #home-games-mega:hover .mega-game-arrow {
     background: rgba(0, 0, 0, 0.1) !important;
   }
 
   /* Mobile Sizing Optimization: Bigger, tap-friendly buttons */
-  #home-games-mega,
-  #home-prox-mega {
+  #home-games-mega {
     min-height: 84px !important;
     padding: 16px 20px !important;
   }
-  #home-games-mega strong,
-  #home-prox-mega strong {
+  #home-games-mega strong {
     font-size: 1.15rem !important;
   }
-  #home-games-mega small,
-  #home-prox-mega small {
+  #home-games-mega small {
     font-size: 0.85rem !important;
   }
   #preferences-card {
@@ -3898,13 +3864,6 @@ if (document.readyState === 'loading') {
           <span class="mega-game-copy">
             <strong>Play Games</strong>
             <small id="home-games-day">Sunday, May 17</small>
-          </span>
-          <span class="mega-game-arrow">→</span>
-        </a>
-        <a id="home-prox-mega" data-task5-old="https://mitch.dnswish.com/" href="/ultra/" hidden onclick="openHomeHref(event, '/ultra/');">
-          <span class="mega-game-copy">
-            <strong>mitch.prox</strong>
-            <small>Premium browser</small>
           </span>
           <span class="mega-game-arrow">→</span>
         </a>
