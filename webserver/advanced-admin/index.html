@@ -199,7 +199,7 @@
       .status { margin-left: 0; }
     }
   
-    .economy-panel, .moderation-panel, .casino-panel, .prox-panel, .content-panel {
+    .economy-panel, .moderation-panel, .casino-panel, .prox-panel, .content-panel, .logs-panel {
       display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px; margin: 0;
     }
@@ -207,18 +207,24 @@
     .action-card.danger { border-color: rgba(239,68,68,0.5); }
     .action-card.danger h2 { color: #f87171; }
     .live-feed { max-height: 200px; overflow-y: auto; background: #000; padding: 10px; border-radius: 8px; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--t-bd); margin-top: 10px; }
+    .logs-output {
+      max-height: 560px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+      background: #050507; color: #d1d5db; border: 1px solid var(--t-bd);
+      border-radius: 8px; padding: 12px; font: 700 .72rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
     .feed-entry { margin-bottom: 4px; border-bottom: 1px solid #111; padding-bottom: 2px; }
     .feed-ts { color: var(--t-fg2); margin-right: 8px; }
     .feed-msg { color: var(--t-fg); }
     .feed-tag { padding: 1px 4px; border-radius: 4px; background: var(--t-bg3); margin-right: 5px; font-size: 0.65rem; }
     @media (max-width: 1000px) {
-      .economy-panel, .moderation-panel, .casino-panel, .prox-panel, .content-panel {
+      .economy-panel, .moderation-panel, .casino-panel, .prox-panel, .content-panel, .logs-panel {
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
     @media (max-width: 680px) {
-      .economy-panel, .moderation-panel, .casino-panel, .prox-panel, .content-panel {
+      .economy-panel, .moderation-panel, .casino-panel, .prox-panel, .content-panel, .logs-panel {
         grid-template-columns: 1fr;
+      }
     }
 
     body.admin-locked .admin-layout,
@@ -234,9 +240,11 @@
     body.moderator-mode a[href="#economy-tools"],
     body.moderator-mode a[href="#casino-tools"],
     body.moderator-mode a[href="#shop-tools"],
+    body.moderator-mode a[href="#logs-tools"],
     body.moderator-mode #economy-tools,
     body.moderator-mode #casino-tools,
     body.moderator-mode #shop-tools,
+    body.moderator-mode #logs-tools,
     body.moderator-mode #moderator-card,
     body.moderator-mode #people-tools form:nth-of-type(1),
     body.moderator-mode #people-tools form:nth-of-type(2) {
@@ -299,6 +307,7 @@
         <a href="#moderation-tools">Safety</a>
         <a href="#casino-tools">Casino</a>
         <a href="#prox-tools">mitch.prox</a>
+        <a href="#logs-tools">System Logs</a>
         <a href="#content-tools">Content</a>
         <a href="#shop-tools">Shop Catalog</a>
         <a href="#audit-tools">Audit Logs</a>
@@ -532,6 +541,45 @@
         <canvas id="resourceChart" width="480" height="150" style="width:100%; height:150px; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);"></canvas>
       </div>
     </div>
+    </section>
+
+    <section class="tool-group" id="logs-tools">
+      <div class="section-head">
+        <h2>System Logs</h2>
+        <span class="tag">docker, recent output</span>
+      </div>
+      <div class="logs-panel">
+        <div class="action-card" style="grid-column: 1 / -1;">
+          <h2>Docker Logs</h2>
+          <p>Read recent logs for the production compose services. This is read-only and limited to recent lines.</p>
+          <div style="display:grid; grid-template-columns: minmax(160px, 1fr) minmax(120px, .4fr) auto; gap: 10px; align-items:end;">
+            <label>
+              <span class="muted" style="display:block; font-size:.7rem; margin-bottom:4px;">Service</span>
+              <select id="docker-log-service" style="width:100%;">
+                <option value="all">All services</option>
+                <option value="reverse-proxy">reverse-proxy</option>
+                <option value="webserver-blue">webserver-blue</option>
+                <option value="webserver-green">webserver-green</option>
+                <option value="proxy">proxy</option>
+                <option value="ipserver">ipserver</option>
+              </select>
+            </label>
+            <label>
+              <span class="muted" style="display:block; font-size:.7rem; margin-bottom:4px;">Lines</span>
+              <select id="docker-log-tail" style="width:100%;">
+                <option value="100">100</option>
+                <option value="200" selected>200</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="2000">2000</option>
+              </select>
+            </label>
+            <button type="button" onclick="loadDockerLogs()" style="width:auto; margin:0;">Refresh Logs</button>
+          </div>
+          <div id="docker-log-status" class="form-status"></div>
+          <pre id="docker-log-output" class="logs-output">Select a service and refresh logs.</pre>
+        </div>
+      </div>
     </section>
 
     <section class="tool-group" id="content-tools">
@@ -1173,6 +1221,33 @@
       list.innerHTML = (d.sessions || []).map(s => '<div class="feed-entry"><span class="feed-ts">Active</span><span class="feed-msg">' + s.id + ' (Display ' + s.display + ')</span></div>').join('') || '<div class="empty">No active sessions</div>';
     }
 
+    async function loadDockerLogs() {
+      const service = document.getElementById('docker-log-service')?.value || 'all';
+      const tail = document.getElementById('docker-log-tail')?.value || '200';
+      const output = document.getElementById('docker-log-output');
+      setStatus('docker-log-status', 'Loading Docker logs...', '');
+      if (output) output.textContent = 'Loading...';
+      try {
+        const params = new URLSearchParams({ service, tail });
+        const res = await fetch('/api/admin/docker-logs?' + params.toString(), {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: getAdminHeaders(),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || d.error) throw new Error(d.message || d.error || 'Failed to load Docker logs.');
+        const text = d.output || d.stderr || 'No recent log output.';
+        if (output) {
+          output.textContent = text;
+          output.dataset.loaded = '1';
+        }
+        setStatus('docker-log-status', 'Loaded ' + d.service + ' logs.', 'ok');
+      } catch (err) {
+        if (output) output.textContent = err.message;
+        setStatus('docker-log-status', err.message, 'err');
+      }
+    }
+
     async function setFeaturedGame(e) {
       e.preventDefault();
       const href = document.getElementById('featured-href').value;
@@ -1757,6 +1832,9 @@
       await checkPassphraseStatus();
       await loadSoftMaintenanceStatus();
       await loadShopCatalog();
+      if (currentUser.isAdmin && location.hash === '#logs-tools') {
+        loadDockerLogs();
+      }
       startPolling();
     }
 
@@ -2097,6 +2175,12 @@
       });
       if (updateHash && location.hash !== '#' + target) {
         history.replaceState(null, '', '#' + target);
+      }
+      if (target === 'logs-tools') {
+        const output = document.getElementById('docker-log-output');
+        if (currentUser && currentUser.isAdmin && output && !output.dataset.loaded) {
+          loadDockerLogs();
+        }
       }
     }
 

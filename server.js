@@ -70,7 +70,15 @@ const GEMINI_KEY       = (process.env.GEMINI_API_KEY || '').trim();
 const GEMINI_MODELS    = [['gemini-2.0-flash', false], ['gemini-2.0-flash-lite', true]];
 const GROQ_KEY         = (process.env.GROQ_API_KEY || '').trim();
 const GROQ_MODELS      = [['llama-3.3-70b-versatile', true], ['llama-3.1-8b-instant', true]];
-const RECAPTCHA_SECRET = (process.env.RECAPTCHA_SECRET_KEY || process.env.SECRET_KEY || '').trim();
+
+const DOCKER_LOG_SERVICES = new Set([
+  'all',
+  'reverse-proxy',
+  'webserver-blue',
+  'webserver-green',
+  'proxy',
+  'ipserver',
+]);
 
 // Core Data Files
 const TOKENS_FILE           = join(DATA_DIR, 'tokens.json');
@@ -2350,41 +2358,60 @@ async function verifyRecaptcha(token, ip, sid) {
 
   const secretKey = (process.env.SECRET_KEY || '').trim();
   const recaptchaSecretKey = (process.env.RECAPTCHA_SECRET_KEY || '').trim();
+  const recaptchaSecrets = recaptchaSecretKey ? [recaptchaSecretKey] : (secretKey ? [secretKey] : []);
 
-  if (!secretKey && !recaptchaSecretKey) return true;
+  if (!recaptchaSecrets.length) return true;
   if (!token) {
     console.log(`[recaptcha] Blocked: empty token received (from IP: ${ip})`);
     return false;
   }
 
+  const recaptchaVerifyUrls = process.env.RECAPTCHA_VERIFY_URL
+    ? [process.env.RECAPTCHA_VERIFY_URL]
+    : [
+        'https://www.google.com/recaptcha/api/siteverify',
+        'https://www.recaptcha.net/recaptcha/api/siteverify',
+      ];
+
   const callVerify = async (secret, signal) => {
     if (!secret) return false;
-    try {
-      const verifyUrl = process.env.RECAPTCHA_VERIFY_URL || 'https://www.google.com/recaptcha/api/siteverify';
-      const resp = await fetch(verifyUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `secret=${encodeURIComponent(secret)}&response=${encodeURIComponent(token)}`,
-        signal,
-      });
-      const data = await resp.json();
-      if (data.success !== true) {
-        console.log(`[recaptcha] Verification failed (IP: ${ip}). Error codes: ${JSON.stringify(data['error-codes'] || [])}`);
-        return false;
+    for (const verifyUrl of recaptchaVerifyUrls) {
+      try {
+        const params = new URLSearchParams();
+        params.set('secret', secret);
+        params.set('response', token);
+        if (ip && isIP(ip)) params.set('remoteip', ip);
+        const resp = await fetch(verifyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: params.toString(),
+          signal,
+        });
+        const data = await resp.json();
+        const errors = data['error-codes'] || [];
+        const details = `url=${verifyUrl} ip=${ip || ''} hostname=${data.hostname || ''} action=${data.action || ''} score=${data.score ?? ''} errors=${JSON.stringify(errors)}`;
+        if (data.success !== true) {
+          console.log(`[recaptcha] Verification failed: ${details}`);
+          const shouldTryNextVerifyHost = errors.includes('invalid-input-response') || errors.includes('bad-request');
+          if (shouldTryNextVerifyHost) continue;
+          return false;
+        }
+        const minScore = parseFloat(process.env.RECAPTCHA_MIN_SCORE || '0.5');
+        const threshold = Number.isFinite(minScore) ? minScore : 0.5;
+        if (typeof data.score === 'number' && data.score < threshold) {
+          console.log(`[recaptcha] Blocked low score token: threshold=${threshold} ${details}`);
+          return false;
+        }
+        return true;
+      } catch (e) {
+        if (e && e.name === 'AbortError') {
+          throw e;
+        }
+        console.log(`[recaptcha] Warning: Connection/fetch error for ${verifyUrl} (IP: ${ip}), failing open:`, e);
+        return true; // Fail open to prevent lockout if Google is unreachable
       }
-      const minScore = parseFloat(process.env.RECAPTCHA_MIN_SCORE || '0.5');
-      if (typeof data.score === 'number' && data.score < minScore) {
-        console.log(`[recaptcha] Blocked low score token (IP: ${ip}): ${data.score} (threshold: ${minScore})`);
-        return false;
-      }
-      return true;
-    } catch (e) {
-      if (e && e.name === 'AbortError') {
-        throw e;
-      }
-      console.log(`[recaptcha] Warning: Connection/fetch error (IP: ${ip}), failing open:`, e);
-      return true; // Fail open to prevent lockout if Google is unreachable
     }
+    return false;
   };
 
   const controller = new AbortController();
@@ -2392,14 +2419,10 @@ async function verifyRecaptcha(token, ip, sid) {
 
   let verified = false;
   try {
-    if (recaptchaSecretKey) {
-      const ok = await callVerify(recaptchaSecretKey, controller.signal);
+    for (const secret of recaptchaSecrets) {
+      const ok = await callVerify(secret, controller.signal);
       if (ok) verified = true;
-    }
-
-    if (!verified && secretKey) {
-      const ok = await callVerify(secretKey, controller.signal);
-      if (ok) verified = true;
+      if (verified) break;
     }
   } catch (e) {
     if (e && e.name === 'AbortError') {
@@ -6588,6 +6611,56 @@ Mitch.pro Team`;
         memory: mem, 
         uptime: process.uptime(),
         load: os.loadavg() 
+      });
+    }
+
+    // GET /api/admin/docker-logs
+    if (path === '/api/admin/docker-logs' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+
+      const service = String(url.searchParams.get('service') || 'all').trim();
+      const rawTail = Number(url.searchParams.get('tail') || 200);
+      const tail = Math.max(25, Math.min(Number.isFinite(rawTail) ? Math.floor(rawTail) : 200, 2000));
+      if (!DOCKER_LOG_SERVICES.has(service)) {
+        return jsonResp(400, { error: 'invalid_service' });
+      }
+
+      const args = ['compose', 'logs', '--no-color', '--timestamps', '--tail', String(tail)];
+      if (service !== 'all') args.push(service);
+
+      const result = spawnSync('docker', args, {
+        cwd: BASE,
+        encoding: 'utf8',
+        timeout: 8000,
+        maxBuffer: 1024 * 1024 * 3,
+      });
+      if (result.error) {
+        return jsonResp(502, {
+          error: 'docker_unavailable',
+          message: result.error.code === 'ENOENT'
+            ? 'Docker CLI is not available to the webserver process.'
+            : result.error.message,
+          service,
+          tail,
+        });
+      }
+      if (result.status !== 0) {
+        return jsonResp(502, {
+          error: 'docker_logs_failed',
+          message: (result.stderr || result.stdout || 'Docker logs failed.').slice(0, 2000),
+          service,
+          tail,
+        });
+      }
+
+      return jsonResp(200, {
+        ok: true,
+        service,
+        tail,
+        output: result.stdout || '',
+        stderr: result.stderr || '',
       });
     }
 
