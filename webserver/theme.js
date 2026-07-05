@@ -367,6 +367,9 @@
   }
 
   function applyBgImg(url) {
+    if (IS_FIREFOX_FAMILY && /\.gif(?:[?#]|$)/i.test(String(url || ''))) {
+      url = '';
+    }
     var r = document.documentElement.style;
     if (url) {
       r.setProperty('--t-bg-img-layer',
@@ -1111,7 +1114,7 @@
     var links = [
       { h:'/', i:'🏠', t:'Home' },
       { h:'/games/', i:'🎮', t:'Games' },
-      { h:'/profile/', i:'👤', t:'Profile' },
+      { h:'/preferences/#account', i:'👤', t:'Account' },
       { h:'/encrypt.html', i:'💬', t:'Chat' },
       { h:'/canvas/', i:'🎨', t:'Canvas' },
       { h:'/shop/', i:'🛒', t:'Market' },

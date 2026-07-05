@@ -5,15 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Profile — mitch.pro</title>
 <script src="/theme.js"></script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     min-height: 100vh;
     background: var(--t-bg, #0d0d0d);
     color: var(--t-fg, #e8e8e8);
-    font-family: 'DM Mono', monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     display: flex; flex-direction: column; align-items: center;
     padding: 48px 20px 80px;
     background-size: cover; background-position: center; background-attachment: fixed;
@@ -48,7 +46,7 @@
   .avatar {
     width: 80px; height: 80px; border-radius: 50%;
     background: var(--t-ac, #a78bfa); display: flex; align-items: center;
-    justify-content: center; font-family: 'Syne', sans-serif;
+    justify-content: center; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
     font-weight: 800; font-size: 2rem; color: #fff;
     margin-bottom: 16px; flex-shrink: 0;
     overflow: hidden; border: 2px solid rgba(255,255,255,0.1);
@@ -56,7 +54,7 @@
   .avatar img { width: 100%; height: 100%; object-fit: cover; }
   
   .display-name {
-    font-family: 'Syne', sans-serif; font-size: 1.6rem;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 1.6rem;
     font-weight: 800; margin-bottom: 4px;
   }
   .display-name.neon_purple { color: #d946ef !important; text-shadow: 0 0 10px rgba(217,70,239,0.5); }
@@ -88,7 +86,7 @@
   .divider { height: 1px; background: rgba(255,255,255,0.08); margin: 28px 0; }
 
   .edit-section h2 {
-    font-family: 'Syne', sans-serif; font-size: 13px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px;
     font-weight: 700; margin-bottom: 20px; color: var(--t-fg2, #888);
     text-transform: uppercase; letter-spacing: 0.08em;
   }
@@ -98,7 +96,7 @@
   input, textarea, select {
     width: 100%; background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
-    color: var(--t-fg, #e8e8e8); font-family: 'DM Mono', monospace;
+    color: var(--t-fg, #e8e8e8); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
     font-size: 13px; padding: 10px 13px; outline: none;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
@@ -113,7 +111,7 @@
   .save-btn {
     width: 100%; background: var(--t-ac, #a78bfa); color: #fff;
     border: none; border-radius: 8px; padding: 12px;
-    font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 13px; font-weight: 700;
     cursor: pointer; transition: opacity 0.15s, transform 0.15s;
   }
   .save-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
@@ -312,150 +310,17 @@ async function load() {
     html += `
       <div class="divider"></div>
       <div class="edit-section">
-        <h2>Edit Profile</h2>
-        ${!profile.profileBonusClaimed ? `
-        <div class="bonus-banner" id="profile-bonus-banner">
-          <div class="bonus-icon">🎁</div>
-          <div>
-            <strong>One-time Profile Setup Bonus: 500 MitchCoins!</strong>
-            Fill in your Display Name, Bio, Website, and Profile Picture to claim your free 500 MitchCoin bonus. Unclaimed!
-          </div>
-        </div>` : `
-        <div class="bonus-banner claimed">
-          <div class="bonus-icon">✅</div>
-          <div><strong>Profile Bonus Claimed</strong> You already received the 500 MitchCoin setup bonus.</div>
-        </div>`}
-        <div class="field"><label>Display Name</label>
-          <input id="displayName" maxlength="40" placeholder="Your name" value="${esc(profile.displayName || '')}"></div>
-
-        <div class="field"><label>Username</label>
-          <input id="username" maxlength="40" placeholder="lowercase.name" value="${esc(profile.username || '')}"></div>
-
-        <div class="field"><label>Nickname</label>
-          <input id="nickname" maxlength="40" placeholder="Shown around the site" value="${esc(profile.nickname || '')}"></div>
-        
-        <div class="field"><label>Bio <span style="opacity:.5;font-size:9px;text-transform:none;letter-spacing:0">(max 300 chars)</span></label>
-          <textarea id="bio" maxlength="300" placeholder="A little about yourself…">${esc(profile.bio || '')}</textarea></div>
-
-        <div class="field"><label>Graduation Year</label>
-          <select id="gradYear">${gradYearOptions(profile.gradYear || '')}</select></div>
-
-        <div class="field"><label>Gender</label>
-          <select id="gender">
-            ${option('', 'Prefer not to say', profile.gender || '')}
-            ${option('Male', 'Male', profile.gender || '')}
-            ${option('Female', 'Female', profile.gender || '')}
-            ${option('Non-binary', 'Non-binary', profile.gender || '')}
-            ${option('Other', 'Other', profile.gender || '')}
-          </select></div>
-
-        <div class="field"><label>Where did you hear about us?</label>
-          <select id="referralSource">
-            ${option('', 'Prefer not to say', profile.referralSource || '')}
-            ${option('Word of mouth', 'Word of mouth', profile.referralSource || '')}
-            ${option('Search engines', 'Search engines', profile.referralSource || '')}
-            ${option('Social media', 'Social media (TikTok/Insta)', profile.referralSource || '')}
-            ${option('Other', 'Other', profile.referralSource || '')}
-          </select></div>
-        
-        <div class="field"><label>Website</label>
-          <input id="website" maxlength="100" placeholder="https://…" value="${esc(profile.website || '')}"></div>
-
-        <div class="field"><label>Profile Picture URL</label>
-          <input id="pfp" maxlength="200" placeholder="https://…/image.png" value="${esc(profile.pfp || '')}"></div>
-        
-        <div class="field">
-          <label>Background Image URL ${profile.isPremium ? '' : '<span class="premium-label">PREMIUM ONLY</span>'}</label>
-          <input id="background" maxlength="200" placeholder="https://…/bg.jpg" value="${esc(profile.background || '')}" ${profile.isPremium ? '' : 'disabled'}>
-        </div>
-
-        <button class="save-btn" id="save-btn" onclick="save()">Save profile</button>
-        <div id="msg"></div>
-
-        <div class="divider"></div>
-        <div class="edit-section" style="margin-top: 40px; border: 1px solid rgba(248, 113, 113, 0.2); padding: 20px; border-radius: 12px; background: rgba(248, 113, 113, 0.03);">
-          <h2 style="color: #f87171;">Danger Zone</h2>
-          <p style="font-size: 11px; margin-bottom: 16px;">Permanently delete your account and all associated data. This action is irreversible.</p>
-          <button class="save-btn" style="background: #f87171;" id="delete-btn" onclick="deleteAccount()">Delete Account</button>
-        </div>
+        <h2>Manage Profile</h2>
+        <p style="font-size: 12px; line-height: 1.6; color: var(--t-fg2, #888); margin-bottom: 16px;">Profile editing, account details, 2FA, and account deletion now live in Preferences.</p>
+        <a class="save-btn" href="/preferences/#account" style="display:block;text-align:center;text-decoration:none;">Open Preferences</a>
       </div>`;
   }
 
   wrap.innerHTML = html;
 }
 
-async function deleteAccount() {
-  if (!confirm("Are you ABSOLUTELY sure you want to delete your account? All coins, stats, and E2E keys will be permanently lost.")) return;
-  const password = prompt("Please enter your current password to confirm deletion:");
-  if (!password) return;
-
-  const btn = document.getElementById('delete-btn');
-  btn.disabled = true; btn.textContent = 'Deleting...';
-  try {
-    const r = await fetch('/api/delete-account', { 
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password })
-    });
-    if (!r.ok) {
-      const d = await r.json();
-      throw new Error(d.error || 'Failed to delete account');
-    }
-    alert("Account deleted successfully. You have been logged out.");
-    location.href = '/';
-  } catch (e) {
-    alert("Error: " + e.message);
-    btn.disabled = false; btn.textContent = 'Delete Account';
-  }
-}
-
 function showNotFound(wrap) {
   wrap.innerHTML = '<div class="not-found"><h1>404</h1><p>Profile not found.</p><a href="/" style="color:var(--t-ac);font-size:12px;text-decoration:none;">← Home</a></div>';
-}
-
-async function save() {
-  const btn = document.getElementById('save-btn');
-  const msg = document.getElementById('msg');
-  btn.disabled = true; btn.textContent = 'Saving…';
-  msg.className = ''; msg.textContent = '';
-  try {
-    const payload = {
-      username: document.getElementById('username').value,
-      nickname: document.getElementById('nickname').value,
-      displayName: document.getElementById('displayName').value,
-      gradYear: document.getElementById('gradYear').value,
-      gender: document.getElementById('gender').value,
-      referralSource: document.getElementById('referralSource').value,
-      bio: document.getElementById('bio').value,
-      website: document.getElementById('website').value,
-      pfp: document.getElementById('pfp').value,
-    };
-    
-    const bgInput = document.getElementById('background');
-    if (bgInput && !bgInput.disabled) {
-      payload.background = bgInput.value;
-    }
-
-    const r = await fetch('/api/profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || 'Failed');
-    msg.className = 'ok'; msg.textContent = 'Saved!';
-    if (d.bonusGranted) {
-      const toast = document.getElementById('coin-toast');
-      if (toast) {
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 4000);
-      }
-    }
-    setTimeout(() => load(), 1000);
-  } catch (e) {
-    msg.className = 'err'; msg.textContent = e.message;
-  }
-  btn.disabled = false; btn.textContent = 'Save profile';
 }
 
 load();

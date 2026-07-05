@@ -66,7 +66,8 @@
     margin-bottom: .4rem;
   }
   .field input[type="text"],
-  .field input[type="url"] {
+  .field input[type="url"],
+  .field textarea {
     width: 100%;
     background: var(--t-bg3);
     border: 1px solid var(--t-bd);
@@ -79,6 +80,11 @@
     transition: border-color .15s;
   }
   .field input:focus { border-color: var(--t-ac); }
+  .field textarea {
+    min-height: 88px;
+    resize: vertical;
+    line-height: 1.5;
+  }
   .key-row { display: flex; align-items: center; gap: .5rem; }
   .key-badge {
     background: var(--t-bg3);
@@ -604,9 +610,68 @@
   <section class="pref-section" id="account">
     <h2>👤 Account</h2>
     <p class="section-sub">Username, nickname, graduation year, gender, referral source, and public profile details.</p>
-    <div class="mini-actions">
-      <a class="soft-btn primary" href="/profile/">Edit account profile</a>
+    <div class="control-grid">
+      <div class="field">
+        <label>Display Name</label>
+        <input id="profileDisplayName" type="text" maxlength="40" placeholder="Your name">
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input id="profileUsername" type="text" maxlength="40" placeholder="lowercase.name">
+      </div>
+      <div class="field">
+        <label>Nickname</label>
+        <input id="profileNickname" type="text" maxlength="40" placeholder="Shown around the site">
+      </div>
+      <div class="field">
+        <label>Graduation Year</label>
+        <select id="profileGradYear"></select>
+      </div>
+      <div class="field">
+        <label>Gender</label>
+        <select id="profileGender">
+          <option value="">Prefer not to say</option>
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Non-binary">Non-binary</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Where did you hear about us?</label>
+        <select id="profileReferralSource">
+          <option value="">Prefer not to say</option>
+          <option value="Word of mouth">Word of mouth</option>
+          <option value="Search engines">Search engines</option>
+          <option value="Social media">Social media (TikTok/Insta)</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
     </div>
+    <div class="field">
+      <label>Bio</label>
+      <textarea id="profileBio" maxlength="300" placeholder="A little about yourself"></textarea>
+    </div>
+    <div class="control-grid">
+      <div class="field">
+        <label>Website</label>
+        <input id="profileWebsite" type="url" maxlength="100" placeholder="https://example.com">
+      </div>
+      <div class="field">
+        <label>Profile Picture URL</label>
+        <input id="profilePfp" type="url" maxlength="200" placeholder="https://example.com/image.png">
+      </div>
+    </div>
+    <div class="field">
+      <label>Background Image URL</label>
+      <input id="profileBackground" type="url" maxlength="200" placeholder="Premium only">
+      <p class="field-sub" id="profileBackgroundHint">Premium members can set a profile background image.</p>
+    </div>
+    <div class="mini-actions">
+      <button class="soft-btn primary" type="button" id="saveProfileBtn">Save account profile</button>
+      <a class="soft-btn" href="/profile/">View public profile</a>
+    </div>
+    <div class="status-line" id="profileStatus">Loading profile...</div>
   </section>
 
   <section class="pref-section" id="effects">
@@ -756,12 +821,56 @@
         <label>Confirm New Password</label>
         <input id="confirmPass" type="password" placeholder="••••••••" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
       </div>
+      <div class="field">
+        <label id="changePassVerificationLabel">Verification Code</label>
+        <input id="changePassVerificationCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Verification code" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
+        <p class="field-sub" id="changePassVerificationHint">Leave this blank and click Change Password to send a code first.</p>
+      </div>
       </div>
 
 
       <div style="margin-top:1.5rem; text-align:center;">
       <button class="soft-btn primary" id="changePassBtn" style="padding: 10px 24px; font-weight:700;">Change Password</button>
       <div id="securityStatus" style="margin-top:10px; font-size:.85rem; font-weight:600;"></div>
+      </div>
+
+      <hr style="border:0; border-top:1px dashed var(--t-bd); margin:1.5rem 0;">
+
+      <div>
+        <h3 style="font-family: inherit; font-size:1.1rem; margin-bottom:0.25rem; color:var(--t-fg);">Two-Factor Authentication</h3>
+        <p class="section-sub" style="margin-bottom:1rem; font-size:0.85rem;">Require a second code when logging in. Email codes use your account email; authenticator app codes use TOTP.</p>
+        <div class="control-grid">
+          <div class="field">
+            <label>Current Status</label>
+            <div class="key-badge" id="twofaStatus">Loading...</div>
+          </div>
+          <div class="field">
+            <label>Email Verification Code</label>
+            <input id="twofaEmailCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Email code" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
+          </div>
+          <div class="field">
+            <label>Authenticator Code</label>
+            <input id="twofaCode" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" style="width:100%;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:9px;padding:.55rem .85rem;color:var(--t-fg);outline:none;">
+          </div>
+        </div>
+        <div id="twofaTotpSetup" style="display:none;margin:1rem 0;padding:1rem;border:1px solid var(--t-bd);border-radius:10px;background:var(--t-bg3);">
+          <div class="control-grid">
+            <div>
+              <img id="twofaQr" alt="Authenticator QR code" style="width:180px;height:180px;border-radius:8px;background:#fff;padding:6px;">
+            </div>
+            <div>
+              <label>Manual Secret</label>
+              <div class="key-badge" id="twofaSecret" style="white-space:normal;word-break:break-all;"></div>
+              <p class="field-sub" style="margin-top:.6rem;">Scan the QR code or enter the secret in your authenticator app, then type the email code and 6-digit authenticator code above.</p>
+            </div>
+          </div>
+        </div>
+        <div class="mini-actions">
+          <button class="soft-btn" type="button" id="enableEmail2faBtn">Enable email 2FA</button>
+          <button class="soft-btn" type="button" id="setupTotpBtn">Set up authenticator app</button>
+          <button class="soft-btn danger" type="button" id="disable2faBtn">Disable 2FA</button>
+        </div>
+        <div class="status-line" id="twofaMessage"></div>
       </div>
 
       <hr style="border:0; border-top:1px dashed var(--t-bd); margin:1.5rem 0;">
@@ -1011,6 +1120,14 @@
 
   <button class="danger-btn" onclick="clearGameData()">Clear Game Saves</button>
   <div id="clearMsg">Game saves cleared.</div>
+
+  <hr style="border:0; border-top:1px dashed var(--t-bd); margin:1.5rem 0;">
+  <div class="field">
+    <label>Delete Account</label>
+    <p class="field-sub">Permanently delete your account, coins, stats, profile, and E2E keys. This cannot be undone.</p>
+    <button class="soft-btn danger" type="button" id="deleteAccountBtn">Delete account</button>
+    <div class="status-line" id="deleteAccountStatus"></div>
+  </div>
   </section>
 
   <div class="btn-row">
@@ -1221,6 +1338,202 @@ function setStatus(id, text) {
   if (el) el.textContent = text || '';
 }
 
+function setSelectValue(id, value) {
+  var el = document.getElementById(id);
+  if (el) el.value = value == null ? '' : String(value);
+}
+
+function profileYearOptions(current) {
+  var select = document.getElementById('profileGradYear');
+  if (!select) return;
+  var now = new Date();
+  var y = now.getFullYear();
+  var start = now >= new Date(y, 6, 1) ? y + 1 : y;
+  var labels = ['Senior', 'Junior', 'Sophomore', 'Freshman'];
+  select.innerHTML = '<option value="">None / Prefer not to say</option>';
+  for (var i = 0; i < 4; i++) {
+    var year = String(start + i);
+    var opt = document.createElement('option');
+    opt.value = year;
+    opt.textContent = year + ' (' + labels[i] + ')';
+    select.appendChild(opt);
+  }
+  select.value = current || '';
+}
+
+async function loadAccountProfile() {
+  try {
+    profileYearOptions('');
+    var r = await fetch('/api/profile', { credentials: 'include' });
+    if (!r.ok) throw new Error('Profile unavailable.');
+    var p = await r.json();
+    document.getElementById('profileDisplayName').value = p.displayName || '';
+    document.getElementById('profileUsername').value = p.username || '';
+    document.getElementById('profileNickname').value = p.nickname || '';
+    document.getElementById('profileBio').value = p.bio || '';
+    document.getElementById('profileWebsite').value = p.website || '';
+    document.getElementById('profilePfp').value = p.pfp || '';
+    document.getElementById('profileBackground').value = p.background || '';
+    document.getElementById('profileBackground').disabled = !p.isPremium;
+    document.getElementById('profileBackgroundHint').textContent = p.isPremium ? 'This background appears on your public profile.' : 'Premium members can set a profile background image.';
+    profileYearOptions(p.gradYear || '');
+    setSelectValue('profileGender', p.gender || '');
+    setSelectValue('profileReferralSource', p.referralSource || '');
+    setStatus('profileStatus', 'Profile loaded.');
+    setTwofaStatus(p);
+    var enabled = !!(p.twofa_enabled || p.twofaEnabled || p.twoFactorEnabled);
+    var type = p.twofa_type || p.twofaType || '';
+    setPasswordChangeVerificationUi(enabled && type === 'totp' ? 'totp' : 'email');
+  } catch (e) {
+    profileYearOptions('');
+    setStatus('profileStatus', e.message || 'Could not load profile.');
+    setStatus('twofaStatus', 'Unavailable');
+    setPasswordChangeVerificationUi('email');
+  }
+}
+
+async function saveAccountProfile() {
+  var btn = document.getElementById('saveProfileBtn');
+  btn.disabled = true;
+  setStatus('profileStatus', 'Saving profile...');
+  try {
+    var payload = {
+      displayName: document.getElementById('profileDisplayName').value,
+      username: document.getElementById('profileUsername').value,
+      nickname: document.getElementById('profileNickname').value,
+      gradYear: document.getElementById('profileGradYear').value,
+      gender: document.getElementById('profileGender').value,
+      referralSource: document.getElementById('profileReferralSource').value,
+      bio: document.getElementById('profileBio').value,
+      website: document.getElementById('profileWebsite').value,
+      pfp: document.getElementById('profilePfp').value
+    };
+    var bg = document.getElementById('profileBackground');
+    if (bg && !bg.disabled) payload.background = bg.value;
+    var r = await fetch('/api/profile', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    var d = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(d.error || 'Profile save failed.');
+    setStatus('profileStatus', d.bonusGranted ? 'Profile saved. +500 MitchCoins bonus granted.' : 'Profile saved.');
+  } catch (e) {
+    setStatus('profileStatus', e.message || 'Profile save failed.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function setTwofaStatus(profile) {
+  var enabled = !!(profile.twofa_enabled || profile.twofaEnabled || profile.twoFactorEnabled);
+  var type = profile.twofa_type || profile.twofaType || '';
+  document.getElementById('twofaStatus').textContent = enabled ? ('Enabled: ' + (type === 'totp' ? 'authenticator app' : 'email code')) : 'Off';
+}
+
+async function requestSecurityCode(action, statusId) {
+  var r = await fetch('/api/me/security-code', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: action })
+  });
+  var d = await r.json().catch(function() { return {}; });
+  if (!r.ok || !d.ok) throw new Error(d.error || d.message || 'Could not send email verification code.');
+  if (statusId) setStatus(statusId, 'Email verification code sent. Enter it and click again.');
+  return d;
+}
+
+async function setupTotp2fa() {
+  var panel = document.getElementById('twofaTotpSetup');
+  if (panel.style.display !== 'none') {
+    await enable2fa('totp');
+    return;
+  }
+  setStatus('twofaMessage', 'Starting authenticator setup...');
+  try {
+    await requestSecurityCode('enable_totp_2fa');
+    var r = await fetch('/api/me/2fa/setup-totp', { method: 'POST', credentials: 'include' });
+    var d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Could not start authenticator setup.');
+    document.getElementById('twofaQr').src = d.qrUrl;
+    document.getElementById('twofaSecret').textContent = d.secret;
+    panel.style.display = 'block';
+    document.getElementById('setupTotpBtn').textContent = 'Done - enable app 2FA';
+    setStatus('twofaMessage', 'Email verification code sent. Scan the QR code, then enter both codes and click Done.');
+  } catch (e) {
+    setStatus('twofaMessage', e.message || 'Authenticator setup failed.');
+  }
+}
+
+async function enable2fa(type) {
+  setStatus('twofaMessage', 'Updating 2FA...');
+  try {
+    var emailCode = document.getElementById('twofaEmailCode').value.trim();
+    if (!emailCode) {
+      await requestSecurityCode(type === 'totp' ? 'enable_totp_2fa' : 'enable_email_2fa', 'twofaMessage');
+      return;
+    }
+    var body = { type: type, emailCode: emailCode };
+    if (type === 'totp') {
+      body.code = document.getElementById('twofaCode').value.trim();
+      if (!body.code) throw new Error('Authenticator code required.');
+    }
+    var r = await fetch('/api/me/2fa/enable', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Could not enable 2FA.');
+    document.getElementById('twofaStatus').textContent = 'Enabled: ' + (d.type === 'totp' ? 'authenticator app' : 'email code');
+    setPasswordChangeVerificationUi(d.type === 'totp' ? 'totp' : 'email');
+    document.getElementById('twofaEmailCode').value = '';
+    document.getElementById('twofaCode').value = '';
+    document.getElementById('twofaTotpSetup').style.display = 'none';
+    document.getElementById('setupTotpBtn').textContent = 'Set up authenticator app';
+    setStatus('twofaMessage', '2FA enabled.');
+  } catch (e) {
+    setStatus('twofaMessage', e.message || 'Could not enable 2FA.');
+  }
+}
+
+async function disable2fa() {
+  var emailCode = document.getElementById('twofaEmailCode').value.trim();
+  if (!emailCode) {
+    try {
+      await requestSecurityCode('disable_2fa', 'twofaMessage');
+    } catch (e) {
+      setStatus('twofaMessage', e.message || 'Could not send email verification code.');
+    }
+    return;
+  }
+  var password = prompt('Enter your current password to disable 2FA:');
+  if (!password) return;
+  setStatus('twofaMessage', 'Disabling 2FA...');
+  try {
+    var r = await fetch('/api/me/2fa/disable', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: password, emailCode: emailCode })
+    });
+    var d = await r.json();
+    if (!r.ok || !d.ok) throw new Error(d.error || 'Could not disable 2FA.');
+    document.getElementById('twofaStatus').textContent = 'Off';
+    setPasswordChangeVerificationUi('email');
+    document.getElementById('twofaTotpSetup').style.display = 'none';
+    document.getElementById('setupTotpBtn').textContent = 'Set up authenticator app';
+    document.getElementById('twofaEmailCode').value = '';
+    document.getElementById('twofaCode').value = '';
+    setStatus('twofaMessage', '2FA disabled.');
+  } catch (e) {
+    setStatus('twofaMessage', e.message || 'Could not disable 2FA.');
+  }
+}
+
 function updateSummaries() {
   var theme = getCookieValue('theme', 'void');
   var ai = load(AI_CONFIG_KEY, { enabled: true });
@@ -1360,6 +1673,7 @@ function setupAccordions() {
     function toggle() {
       var open = section.classList.toggle('open');
       heading.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open && section.id === 'homepage' && typeof ensurePinnedGamesLoaded === 'function') ensurePinnedGamesLoaded();
     }
     heading.addEventListener('click', toggle);
     heading.addEventListener('keydown', function(e) {
@@ -1369,9 +1683,34 @@ function setupAccordions() {
       }
     });
   });
+  var hash = (location.hash || '').replace(/^#/, '');
+  var target = hash ? document.getElementById(hash) : null;
+  if (target && target.classList.contains('pref-section')) {
+    target.classList.add('open');
+    var h = target.querySelector('h2');
+    if (h) h.setAttribute('aria-expanded', 'true');
+  }
 }
 
 var activePersonality = 'friendly';
+var passwordChangeVerificationType = 'email';
+
+function setPasswordChangeVerificationUi(type) {
+  passwordChangeVerificationType = type === 'totp' ? 'totp' : 'email';
+  var label = document.getElementById('changePassVerificationLabel');
+  var input = document.getElementById('changePassVerificationCode');
+  var hint = document.getElementById('changePassVerificationHint');
+  if (!label || !input || !hint) return;
+  if (passwordChangeVerificationType === 'totp') {
+    label.textContent = 'Authenticator Code';
+    input.placeholder = '123456';
+    hint.textContent = 'Enter the current 6-digit code from your authenticator app.';
+  } else {
+    label.textContent = 'Email Verification Code';
+    input.placeholder = 'Email code';
+    hint.textContent = 'Leave this blank and click Change Password to send a code first.';
+  }
+}
 
 function selectPersonality(btn) {
   activePersonality = btn.getAttribute('data-personality');
@@ -1402,8 +1741,12 @@ function selectCount(btn) {
 
 var pinnedGames = new Set();
 var _allGames = [];
+var _pinnedLoaded = false;
+var _pinnedLoading = false;
 
 async function loadPinnedGames() {
+  if (_pinnedLoaded || _pinnedLoading) return;
+  _pinnedLoading = true;
   var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
   var hash = c.get('studentId') || c.get('password');
   try {
@@ -1421,8 +1764,16 @@ async function loadPinnedGames() {
       if (!label || href === '/report-game.html') return;
       _allGames.push({href, label});
     });
-  } catch(e) {}
+    _pinnedLoaded = true;
+  } catch(e) {
+  } finally {
+    _pinnedLoading = false;
+  }
   renderPinnedChips();
+}
+
+function ensurePinnedGamesLoaded() {
+  if (!_pinnedLoaded && !_pinnedLoading) loadPinnedGames();
 }
 
 function renderPinnedChips() {
@@ -1463,7 +1814,9 @@ function renderPinnedResults(query) {
   });
 }
 
+document.getElementById('pinnedSearch').addEventListener('focus', ensurePinnedGamesLoaded);
 document.getElementById('pinnedSearch').addEventListener('input', function() {
+  ensurePinnedGamesLoaded();
   renderPinnedResults(this.value.trim());
 });
 document.getElementById('pinnedSearch').addEventListener('blur', function() {
@@ -1655,9 +2008,38 @@ function resetPreferencesOnly() {
   setTimeout(function() { location.reload(); }, 600);
 }
 
+async function deleteAccount() {
+  if (!confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) return;
+  var password = prompt('Enter your current password to confirm deletion:');
+  if (!password) return;
+  var btn = document.getElementById('deleteAccountBtn');
+  btn.disabled = true;
+  setStatus('deleteAccountStatus', 'Deleting account...');
+  try {
+    var r = await fetch('/api/delete-account', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: password })
+    });
+    var d = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(d.error || 'Account deletion failed.');
+    setStatus('deleteAccountStatus', 'Account deleted. Logging out...');
+    setTimeout(function() { location.href = '/'; }, 700);
+  } catch (e) {
+    setStatus('deleteAccountStatus', e.message || 'Account deletion failed.');
+    btn.disabled = false;
+  }
+}
+
 (function init() {
   setupAccordions();
   setupAppearanceControls();
+  loadAccountProfile();
+  document.getElementById('saveProfileBtn').onclick = saveAccountProfile;
+  document.getElementById('setupTotpBtn').onclick = setupTotp2fa;
+  document.getElementById('enableEmail2faBtn').onclick = function() { enable2fa('email'); };
+  document.getElementById('disable2faBtn').onclick = disable2fa;
 
   var vk = load(VFX_CONFIG_KEY, { snow: false, stars: false, rain: false, particles: false });
   document.getElementById('vfxSnowToggle').checked      = !!vk.snow;
@@ -1707,7 +2089,8 @@ function resetPreferencesOnly() {
     if (el) wlist.appendChild(el);
   });
   initWidgetOrder();
-  loadPinnedGames();
+  var homepageSection = document.getElementById('homepage');
+  if (homepageSection && homepageSection.classList.contains('open')) ensurePinnedGamesLoaded();
   var acl = document.querySelector('[data-clock="' + activeClock + '"]');
   if (acl) { document.querySelectorAll('[data-clock]').forEach(function(b){b.classList.remove('active');}); acl.classList.add('active'); }
   document.getElementById('greetingName').value = hc.greetingName || '';
@@ -1761,11 +2144,13 @@ function resetPreferencesOnly() {
   document.getElementById('importPrefsBtn').onclick = function() { document.getElementById('importPrefsInput').click(); };
   document.getElementById('importPrefsInput').onchange = function() { importPreferencesFile(this.files && this.files[0]); };
   document.getElementById('resetPrefsBtn').onclick = resetPreferencesOnly;
+  document.getElementById('deleteAccountBtn').onclick = deleteAccount;
 
   async function changePassword() {
     const currentPassword = document.getElementById('currPass').value;
     const newPassword = document.getElementById('newPass').value;
     const confirmPassword = document.getElementById('confirmPass').value;
+    const verificationCode = document.getElementById('changePassVerificationCode').value.trim();
     const status = document.getElementById('securityStatus');
     const btn = document.getElementById('changePassBtn');
     
@@ -1787,6 +2172,29 @@ function resetPreferencesOnly() {
 
     btn.disabled = true;
     status.style.color = 'var(--t-fg2)';
+
+    if (!verificationCode && passwordChangeVerificationType !== 'totp') {
+      try {
+        status.textContent = 'Sending email verification code...';
+        await requestSecurityCode('change_password');
+        status.style.color = 'var(--t-ac)';
+        status.textContent = 'Email verification code sent. Enter it and click Change Password again.';
+      } catch (e) {
+        status.style.color = 'var(--rose)';
+        status.textContent = e.message || 'Could not send email verification code.';
+      } finally {
+        btn.disabled = false;
+      }
+      return;
+    }
+
+    if (!verificationCode) {
+      status.style.color = 'var(--rose)';
+      status.textContent = 'Authenticator code required.';
+      btn.disabled = false;
+      return;
+    }
+
     status.textContent = 'Generating security token...';
 
     let captcha = '';
@@ -1812,7 +2220,7 @@ function resetPreferencesOnly() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ currentPassword, newPassword, confirmPassword, recaptcha_token: captcha })
+        body: JSON.stringify({ currentPassword, newPassword, confirmPassword, verificationCode, recaptcha_token: captcha })
       });
       const data = await res.json();
       if (data.success) {
@@ -1826,6 +2234,7 @@ function resetPreferencesOnly() {
         document.getElementById('currPass').value = '';
         document.getElementById('newPass').value = '';
         document.getElementById('confirmPass').value = '';
+        document.getElementById('changePassVerificationCode').value = '';
         const container = document.getElementById('newPass-password-strength-container');
         if (container) container.style.display = 'none';
       } else {

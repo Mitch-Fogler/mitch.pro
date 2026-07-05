@@ -12,7 +12,6 @@
 </script>
 <title>mitch.pro</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Outfit:wght@400;600;700;800;900&display=swap');
   html { font-size: 100%; }
 
   .name.neon_purple { color: #d946ef !important; text-shadow: 0 0 5px rgba(217,70,239,0.3); }
@@ -169,7 +168,8 @@ function categoryForLabel(label, isAdmin) {
   if (isAdmin) return 'Admin';
   if (l.includes('adrian clicker') || l.includes("kody") || l.includes("lillian") || l.includes("richard") || l.includes("riches") || l.includes("penny") || l.includes("chess vs") || l.includes("battleship") || l.includes("jeopardy")) return 'MitchCoin Games';
   if (l.includes('market') || l.includes('shop') || l.includes('team') || l.includes('premium')) return 'Account & Market';
-  if (l.includes('chat') || l.includes('profile') || l.includes('feedback') || l.includes('newsletter') || l.includes('invite') || l.includes('leaderboard') || l.includes('friends')) return 'Social & Chat';
+  if (l.includes('chat') || l.includes('feedback') || l.includes('newsletter') || l.includes('invite') || l.includes('leaderboard') || l.includes('friends')) return 'Social & Chat';
+  if (l.includes('profile') || l.includes('preferences') || l.includes('account')) return 'Account & Market';
   if (l.includes('casino') || l.includes('games') || l.includes('pixelplace') || l.includes('canvas') || l.includes('mitch.prox') || l.includes('prox') || l.includes('movies') || l.includes('subtitle')) return 'Entertainment';
   return 'Utilities';
 }
@@ -207,7 +207,7 @@ function renderQuickActions(entries) {
     pick('Canvas', 'Draw or create', function(l) { return l.includes('pixelplace') || l.includes('canvas'); }),
     pick('Chat', 'Message people', function(l) { return l.includes('chat') || l.includes('diffie'); }),
     pick('Games', 'Play something', function(l) { return l.includes('games') || l.includes('casino'); }, 'games-action'),
-    pick('Profile', 'Your identity', function(l) { return l.includes('profile'); }),
+    pick('Account', 'Profile and settings', function(l, e) { return l.includes('profile') || l.includes('account') || String(e.href || '').includes('/preferences/'); }),
     pick('Manage Friends', 'Connect with others', function(l) { return l.includes('friends'); })
   ].filter(Boolean);
   list.innerHTML = '';
@@ -269,7 +269,7 @@ function parseSites(text) {
 
   // ── Popular & Frequent links ──
   var popularHrefs = [
-    '/profile/', '/profile',
+    '/preferences/', '/preferences',
     '/games/jeopardy-battle/', '/games/jeopardy-battle',
     '/games/battleship/', '/games/battleship',
     '/casino/', '/casino',

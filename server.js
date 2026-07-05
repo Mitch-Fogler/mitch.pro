@@ -1235,9 +1235,61 @@ function resolveLoginIdentifier(input) {
 
 const pendingTwoFactor = new Map();
 const pendingEmailChanges = new Map();
+const pendingSecurityCodes = new Map();
 
 function createTempToken() {
   return randomBytes(24).toString('hex');
+}
+
+function securityActionKey(normEmail, action) {
+  return `${normalizeEmail(normEmail)}:${String(action || '').trim().toLowerCase()}`;
+}
+
+const SECURITY_ACTION_LABELS = {
+  change_password: 'password change',
+  enable_email_2fa: 'email 2FA setup',
+  enable_totp_2fa: 'authenticator app 2FA setup',
+  disable_2fa: '2FA disable',
+};
+
+function sendSecurityActionCode(normEmail, action) {
+  const normalizedAction = String(action || '').trim().toLowerCase();
+  const label = SECURITY_ACTION_LABELS[normalizedAction];
+  if (!label) return { ok: false, error: 'invalid security action' };
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  pendingSecurityCodes.set(securityActionKey(normEmail, normalizedAction), {
+    code,
+    attempts: 0,
+    expires: Date.now() + 10 * 60 * 1000,
+  });
+  sendEmailBg(normEmail, `Confirm ${label} - mitch.pro`, `Your confirmation code for ${label} is: ${code}\n\nThis code expires in 10 minutes.${emailSig()}`);
+  return { ok: true };
+}
+
+function verifySecurityActionCode(normEmail, action, code) {
+  const key = securityActionKey(normEmail, action);
+  const rec = pendingSecurityCodes.get(key);
+  if (!rec || Date.now() > rec.expires) {
+    pendingSecurityCodes.delete(key);
+    return { ok: false, status: 401, error: 'email verification code expired' };
+  }
+  rec.attempts++;
+  if (rec.attempts > 5) {
+    pendingSecurityCodes.delete(key);
+    return { ok: false, status: 429, error: 'too many email verification attempts' };
+  }
+  if (String(code || '').trim() !== rec.code) return { ok: false, status: 400, error: 'invalid email verification code' };
+  pendingSecurityCodes.delete(key);
+  return { ok: true };
+}
+
+function verifyPasswordChangeSecondFactor(normEmail, code) {
+  const twofa = twoFactorConfig(normEmail);
+  if (twofa.enabled && twofa.type === 'totp') {
+    if (!verifyTotp(twofa.secret, code)) return { ok: false, status: 400, error: 'invalid authenticator code' };
+    return { ok: true };
+  }
+  return verifySecurityActionCode(normEmail, 'change_password', code);
 }
 
 function twoFactorConfig(normEmail) {
@@ -8689,6 +8741,18 @@ function loadAllGamesList() {
       return jsonResp(200, { ok: true });
     }
 
+    if (path === '/api/me/security-code' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      if (!email) return jsonResp(401, { error: 'not logged in' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const action = String(body.action || '').trim().toLowerCase();
+      const result = sendSecurityActionCode(normalizeEmail(email), action);
+      if (!result.ok) return jsonResp(400, { error: result.error || 'invalid security action' });
+      return jsonResp(200, { ok: true });
+    }
+
     if (path === '/api/me/2fa/setup-totp' && method === 'POST') {
       const cookies = getCookies(req);
       const email = emailFromSid(cookies['studentId'] || cookies['id'] || '');
@@ -8711,6 +8775,8 @@ function loadAllGamesList() {
       const norm = normalizeEmail(email);
       const type = String(body.type || '').trim().toLowerCase();
       if (type === 'email') {
+        const verified = verifySecurityActionCode(norm, 'enable_email_2fa', body.emailCode);
+        if (!verified.ok) return jsonResp(verified.status, { error: verified.error });
         saveTwoFactorConfig(norm, { twofa_enabled: true, twofa_type: 'email', twoFactorEnabled: true, twofaEnabled: true });
         return jsonResp(200, { ok: true, type: 'email' });
       }
@@ -8718,6 +8784,8 @@ function loadAllGamesList() {
         const profiles = loadJson(PROFILES_FILE, {});
         const secret = profiles[norm]?.pendingTotpSecret || profiles[norm]?.totp_secret || profiles[norm]?.totpSecret;
         if (!secret || !verifyTotp(secret, body.code)) return jsonResp(400, { error: 'invalid totp code' });
+        const verified = verifySecurityActionCode(norm, 'enable_totp_2fa', body.emailCode);
+        if (!verified.ok) return jsonResp(verified.status, { error: verified.error });
         saveTwoFactorConfig(norm, {
           twofa_enabled: true,
           twofa_type: 'totp',
@@ -8743,6 +8811,8 @@ function loadAllGamesList() {
       let ok = false;
       try { ok = await Bun.password.verify(String(body.password || ''), stored); } catch {}
       if (!ok) return jsonResp(401, { error: 'password incorrect' });
+      const verified = verifySecurityActionCode(norm, 'disable_2fa', body.emailCode);
+      if (!verified.ok) return jsonResp(verified.status, { error: verified.error });
       saveTwoFactorConfig(norm, {
         twofa_enabled: false,
         twofa_type: '',
@@ -9454,6 +9524,9 @@ function loadAllGamesList() {
         const stored = passwords[norm];
         if (!stored || !(await Bun.password.verify(currentPassword, stored)))
           return jsonResp(401, { success: false, message: 'Current password incorrect.' });
+
+        const verified = verifyPasswordChangeSecondFactor(norm, body.verificationCode || body.emailCode);
+        if (!verified.ok) return jsonResp(verified.status, { success: false, message: verified.error });
 
         passwords[norm] = await Bun.password.hash(newPassword);
         savePasswords(passwords);
@@ -10571,8 +10644,12 @@ function loadAllGamesList() {
       };
       const cosm = loadJson(COSMETICS_FILE, {});
       const processed = processMemberFields(email, profile, email);
+      const safeProfile = { ...profile };
+      delete safeProfile.totp_secret;
+      delete safeProfile.totpSecret;
+      delete safeProfile.pendingTotpSecret;
       return jsonResp(200, {
-        ...profile,
+        ...safeProfile,
         displayName: processed.displayName,
         email: processed.email,
         isPremium: isPremiumEmail(email),
@@ -10601,8 +10678,17 @@ function loadAllGamesList() {
       };
       const cosm = loadJson(COSMETICS_FILE, {});
       const processed = processMemberFields(actualEmail, profile, viewerEmail);
+      const safeProfile = { ...profile };
+      delete safeProfile.totp_secret;
+      delete safeProfile.totpSecret;
+      delete safeProfile.pendingTotpSecret;
+      delete safeProfile.twofa_enabled;
+      delete safeProfile.twofa_type;
+      delete safeProfile.twofaEnabled;
+      delete safeProfile.twofaType;
+      delete safeProfile.twoFactorEnabled;
       return jsonResp(200, {
-        ...profile,
+        ...safeProfile,
         displayName: processed.displayName,
         email: processed.email,
         isPremium: isPremiumEmail(actualEmail),
