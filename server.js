@@ -1516,6 +1516,26 @@ function saveAppeals(a)   { saveJson(APPEALS_FILE, a); }
 
 const AUTH_COOKIE = 'mitch_session';
 const AUTH_SESSION_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+const PUBLIC_API_PATHS = new Set([
+  '/api/signup',
+  '/api/bad-passwords',
+  '/api/verify-signup',
+  '/api/claim-token',
+  '/api/login',
+  '/api/verify-2fa',
+  '/api/request-access',
+  '/api/newid',
+  '/api/pass',
+  '/api/games',
+  '/api/log-click',
+  '/api/newsletter/unsubscribe-direct',
+  '/api/newsletter/unsubscribe-secure',
+  '/api/token',
+  '/api/solve',
+  '/api/submit',
+  '/api/stats',
+  '/api/next',
+]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
   const proto = req ? (req.headers.get('X-Forwarded-Proto') || new URL(req.url).protocol.replace(':', '')) : '';
@@ -5550,26 +5570,10 @@ async function handleRequest(req, server) {
                    cleanPath === '/bell' ||
                    cleanPath === '/api/bell/override' ||
                    cleanPath === '/claim' || 
-                   cleanPath === '/api/signup' ||
-                   cleanPath === '/api/bad-passwords' ||
-                   cleanPath === '/api/verify-signup' ||
-                   cleanPath === '/api/claim-token' || 
-                   cleanPath === '/api/login' || 
-                   cleanPath === '/api/request-access' || 
-                   cleanPath === '/api/newid' || 
-                   cleanPath === '/api/pass' ||
-                   cleanPath === '/api/games' ||
-                   cleanPath === '/api/log-click' ||
                    cleanPath === '/unsubscribe' ||
                    path.startsWith('/unsubscribe/') ||
-                   cleanPath === '/api/newsletter/unsubscribe-direct' ||
-                   cleanPath === '/api/newsletter/unsubscribe-secure' ||
-                   cleanPath === '/api/token' ||
+                   PUBLIC_API_PATHS.has(cleanPath) ||
                    path.startsWith('/api/puzzle/') ||
-                   cleanPath === '/api/solve' ||
-                   cleanPath === '/api/submit' ||
-                   cleanPath === '/api/stats' ||
-                   cleanPath === '/api/next' ||
                    path.startsWith('/admin') || 
                    path.startsWith('/moderator') || 
                    path.startsWith('/api/admin') || 
@@ -14593,7 +14597,7 @@ function loadAllGamesList() {
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && path !== '/larp' && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && path !== '/larp' && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);

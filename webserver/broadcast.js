@@ -152,6 +152,7 @@
 
   async function loadNotifications() {
     try {
+      if (!/(?:^|;\s*)(studentId|id)=/.test(document.cookie || '')) return;
       var r = await fetch('/api/me/notifications', { credentials: 'include' });
       if (!r.ok) return;
       var d = await r.json();
