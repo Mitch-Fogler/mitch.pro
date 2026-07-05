@@ -11,6 +11,8 @@ import dns from 'dns';
 import https from 'https';
 import {
   configureDataStore,
+  appendAppLog,
+  queryAppLogs,
   readDocument,
   writeDocument,
   rebuildCoreTablesFromDocuments,
@@ -164,6 +166,48 @@ const lastRecaptchaSuccess = new Map();
 const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
 configureDataStore({ baseDir: BASE, dataDir: DATA_DIR });
+
+const APP_DEBUG_LOGS = process.env.APP_DEBUG_LOGS === '1';
+const originalConsole = {
+  log: console.log.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console),
+};
+
+function appLogArgText(value) {
+  if (value instanceof Error) return value.stack || value.message;
+  if (typeof value === 'string') return value;
+  try { return JSON.stringify(value); }
+  catch { return String(value); }
+}
+
+function inferLogCategory(message) {
+  const m = String(message || '').match(/^\s*\[([^\]]+)\]/);
+  if (!m) return 'general';
+  return m[1].toLowerCase().replace(/[^a-z0-9._-]/g, '-').replace(/-+/g, '-').slice(0, 48) || 'general';
+}
+
+function writeAppLog(level, category, message, details = null) {
+  try {
+    appendAppLog({ level, category, message, details });
+  } catch {}
+}
+
+function installAppLogCapture() {
+  const methodLevel = { log: 'info', warn: 'warn', error: 'error', debug: 'debug' };
+  for (const [method, level] of Object.entries(methodLevel)) {
+    console[method] = (...args) => {
+      const message = args.map(appLogArgText).join(' ');
+      writeAppLog(level, inferLogCategory(message), message);
+      originalConsole[method](...args);
+    };
+  }
+}
+
+installAppLogCapture();
+writeAppLog('info', 'startup', 'Application log capture initialized');
+
 const MAX_JSON_BODY_BYTES = Number(process.env.MAX_JSON_BODY_BYTES || 256 * 1024);
 const MAX_TEXT_BODY_BYTES = Number(process.env.MAX_TEXT_BODY_BYTES || 128 * 1024);
 const MAX_PROXY_HTML_BYTES = Number(process.env.MAX_PROXY_HTML_BYTES || 1024 * 1024);
@@ -5312,6 +5356,13 @@ async function handleRequest(req, server) {
   }
 
   const ip = getRealIp(req);
+  if (APP_DEBUG_LOGS) {
+    writeAppLog('debug', 'request', `${method} ${path}`, {
+      ip,
+      host: req.headers.get('host') || '',
+      userAgent: req.headers.get('user-agent') || '',
+    });
+  }
 
   // Reject request if IP is banned (except for ban appeal paths)
   const ipBan = bannedInfoForIp(ip);
@@ -6614,6 +6665,20 @@ Mitch.pro Team`;
       });
     }
 
+    // GET /api/admin/app-logs
+    if (path === '/api/admin/app-logs' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const result = queryAppLogs({
+        level: url.searchParams.get('level') || 'all',
+        category: url.searchParams.get('category') || 'all',
+        search: url.searchParams.get('search') || '',
+        limit: url.searchParams.get('limit') || 200,
+      });
+      return jsonResp(200, { ok: true, ...result });
+    }
+
     // GET /api/admin/docker-logs
     if (path === '/api/admin/docker-logs' && method === 'GET') {
       const cookies = getCookies(req);
@@ -7654,22 +7719,33 @@ Mitch.pro Team`;
           return jsonResp(400, { success: false, message: 'Email/username and password required.' });
         }
         if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
+          writeAppLog('warn', 'login', 'Login blocked by reCAPTCHA', { identifier: email, ip });
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         }
         if (rateLimited('ip:' + ip, path)) {
+          writeAppLog('warn', 'login', 'Login rate limited', { identifier: email, ip });
           return jsonResp(429, { success: false, message: 'Too many login attempts. Try again shortly.' });
         }
 
         const normEmail = resolveLoginIdentifier(email);
-        if (!normEmail) return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
+        if (!normEmail) {
+          writeAppLog('warn', 'login', 'Login failed: unknown identifier', { identifier: email, ip });
+          return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
+        }
         const passwords = loadPasswords();
         const stored = passwords[normEmail];
-        if (!stored) return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
+        if (!stored) {
+          writeAppLog('warn', 'login', 'Login failed: missing password hash', { email: normEmail, ip });
+          return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
+        }
 
         let ok = false;
         try { ok = await Bun.password.verify(password, stored); }
         catch { ok = password === stored; }
-        if (!ok) return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
+        if (!ok) {
+          writeAppLog('warn', 'login', 'Login failed: bad password', { email: normEmail, ip });
+          return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
+        }
 
         ensureProfileDefaults(normEmail, normEmail);
         const twofa = twoFactorConfig(normEmail);
@@ -7681,8 +7757,10 @@ Mitch.pro Team`;
             sendEmailBg(normEmail, 'Your mitch.pro login code', `Your login verification code is: ${rec.code}\n\nThis code expires in 5 minutes.${emailSig()}`);
           }
           pendingTwoFactor.set(tempToken, rec);
+          writeAppLog('info', 'login', 'Login requires 2FA', { email: normEmail, type: twofa.type, ip });
           return jsonResp(200, { success: false, twofa_required: true, twofa_type: twofa.type, temp_token: tempToken });
         }
+        writeAppLog('info', 'login', 'Login successful', { email: normEmail, ip });
         return authSuccessResponse(req, { success: true }, normEmail, normEmail);
       } catch (e) {
         console.error('[login] failed:', e);
@@ -7747,17 +7825,19 @@ Mitch.pro Team`;
         const password = (body.password || '').trim();
         if (!email || !password)
           return jsonResp(400, { success: false, message: 'Email and password required.' });
+        const normEmail = normalizeEmail(email);
 
         const pwdCheck = await isSecurePassword(password);
         if (!pwdCheck.valid)
           return jsonResp(400, { success: false, message: pwdCheck.error });
 
-        if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
+          writeAppLog('warn', 'signup', 'Signup blocked by reCAPTCHA', { email: normEmail, ip });
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
+        }
         if (rateLimited('ip:' + ip, path))
           return jsonResp(429, { success: false, message: 'Too many requests, slow down.' });
 
-        const normEmail = normalizeEmail(email);
         const bl = loadBlacklist();
         if (normEmail in bl) return jsonResp(400, { success: false, message: 'Access denied.' });
 
@@ -7796,6 +7876,7 @@ Mitch.pro Team`;
         sendEmailBg(email, `Your ${_s.name} Verification Code`,
           `Hi,\n\nYour verification code is: ${code}\n\nThis code expires in 30 minutes. Enter it on the sign-up page to complete your account setup.\n\nIf you didn't request this email, you can safely ignore it.${emailFooter()}${emailSig()}`);
 
+        writeAppLog('info', 'signup', 'Signup verification code sent', { email: normEmail, ip });
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
@@ -7888,6 +7969,7 @@ Mitch.pro Team`;
         } catch (re) { console.error('[invite] referral reward error:', re); }
 
         ntfy(`New user verified: ${entry.email}`, { title: 'Signup Complete' });
+        writeAppLog('info', 'signup', 'Signup verified', { email: normEmail, ip });
         return authSuccessResponse(req, { success: true }, normEmail, entry.email);
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }

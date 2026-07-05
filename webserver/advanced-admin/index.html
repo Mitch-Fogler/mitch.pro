@@ -550,6 +550,45 @@
       </div>
       <div class="logs-panel">
         <div class="action-card" style="grid-column: 1 / -1;">
+          <h2>Application Logs</h2>
+          <p>Read server logs written into the site database. Use debug request logging by starting the server with APP_DEBUG_LOGS=1.</p>
+          <div style="display:grid; grid-template-columns: minmax(130px, .45fr) minmax(150px, .65fr) minmax(120px, .35fr) minmax(180px, 1fr) auto; gap: 10px; align-items:end;">
+            <label>
+              <span class="muted" style="display:block; font-size:.7rem; margin-bottom:4px;">Level</span>
+              <select id="app-log-level" style="width:100%;">
+                <option value="all">All levels</option>
+                <option value="debug">Debug</option>
+                <option value="info">Info</option>
+                <option value="warn">Warn</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
+            <label>
+              <span class="muted" style="display:block; font-size:.7rem; margin-bottom:4px;">Category</span>
+              <select id="app-log-category" style="width:100%;">
+                <option value="all">All categories</option>
+              </select>
+            </label>
+            <label>
+              <span class="muted" style="display:block; font-size:.7rem; margin-bottom:4px;">Lines</span>
+              <select id="app-log-limit" style="width:100%;">
+                <option value="100">100</option>
+                <option value="200" selected>200</option>
+                <option value="500">500</option>
+                <option value="1000">1000</option>
+                <option value="2000">2000</option>
+              </select>
+            </label>
+            <label>
+              <span class="muted" style="display:block; font-size:.7rem; margin-bottom:4px;">Search</span>
+              <input id="app-log-search" type="search" placeholder="recaptcha, login, error..." style="width:100%; margin:0;">
+            </label>
+            <button type="button" onclick="loadAppLogs()" style="width:auto; margin:0;">Refresh App Logs</button>
+          </div>
+          <div id="app-log-status" class="form-status"></div>
+          <pre id="app-log-output" class="logs-output">Open this section to load application logs.</pre>
+        </div>
+        <div class="action-card" style="grid-column: 1 / -1;">
           <h2>Docker Logs</h2>
           <p>Read recent logs for the production compose services. This is read-only and limited to recent lines.</p>
           <div style="display:grid; grid-template-columns: minmax(160px, 1fr) minmax(120px, .4fr) auto; gap: 10px; align-items:end;">
@@ -1221,6 +1260,47 @@
       list.innerHTML = (d.sessions || []).map(s => '<div class="feed-entry"><span class="feed-ts">Active</span><span class="feed-msg">' + s.id + ' (Display ' + s.display + ')</span></div>').join('') || '<div class="empty">No active sessions</div>';
     }
 
+    async function loadAppLogs() {
+      const level = document.getElementById('app-log-level')?.value || 'all';
+      const category = document.getElementById('app-log-category')?.value || 'all';
+      const limit = document.getElementById('app-log-limit')?.value || '200';
+      const search = document.getElementById('app-log-search')?.value || '';
+      const output = document.getElementById('app-log-output');
+      setStatus('app-log-status', 'Loading application logs...', '');
+      if (output) output.textContent = 'Loading...';
+      try {
+        const params = new URLSearchParams({ level, category, limit, search });
+        const res = await fetch('/api/admin/app-logs?' + params.toString(), {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: getAdminHeaders(),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || d.error) throw new Error(d.message || d.error || 'Failed to load application logs.');
+
+        const categorySelect = document.getElementById('app-log-category');
+        if (categorySelect && Array.isArray(d.categories)) {
+          const current = categorySelect.value || 'all';
+          categorySelect.innerHTML = '<option value="all">All categories</option>' +
+            d.categories.map(c => `<option value="${esc(c.category)}">${esc(c.category)} (${Number(c.count || 0)})</option>`).join('');
+          categorySelect.value = [...categorySelect.options].some(o => o.value === current) ? current : 'all';
+        }
+
+        const lines = (d.logs || []).map(row => {
+          const details = row.details ? ' ' + row.details : '';
+          return `[${fmtTime(row.ts)}] ${String(row.level || '').toUpperCase().padEnd(5)} ${String(row.category || 'general').padEnd(14)} ${row.message || ''}${details}`;
+        });
+        if (output) {
+          output.textContent = lines.join('\n') || 'No matching application logs.';
+          output.dataset.loaded = '1';
+        }
+        setStatus('app-log-status', 'Loaded ' + (d.logs || []).length + ' application logs.', 'ok');
+      } catch (err) {
+        if (output) output.textContent = err.message;
+        setStatus('app-log-status', err.message, 'err');
+      }
+    }
+
     async function loadDockerLogs() {
       const service = document.getElementById('docker-log-service')?.value || 'all';
       const tail = document.getElementById('docker-log-tail')?.value || '200';
@@ -1833,7 +1913,7 @@
       await loadSoftMaintenanceStatus();
       await loadShopCatalog();
       if (currentUser.isAdmin && location.hash === '#logs-tools') {
-        loadDockerLogs();
+        loadAppLogs();
       }
       startPolling();
     }
@@ -2177,9 +2257,9 @@
         history.replaceState(null, '', '#' + target);
       }
       if (target === 'logs-tools') {
-        const output = document.getElementById('docker-log-output');
+        const output = document.getElementById('app-log-output');
         if (currentUser && currentUser.isAdmin && output && !output.dataset.loaded) {
-          loadDockerLogs();
+          loadAppLogs();
         }
       }
     }
