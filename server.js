@@ -2440,8 +2440,8 @@ async function verifyRecaptcha(token, ip, sid) {
           if (shouldTryNextVerifyHost) continue;
           return false;
         }
-        const minScore = parseFloat(process.env.RECAPTCHA_MIN_SCORE || '0.5');
-        const threshold = Number.isFinite(minScore) ? minScore : 0.5;
+        const minScore = parseFloat(process.env.RECAPTCHA_MIN_SCORE || '0.3');
+        const threshold = Number.isFinite(minScore) ? minScore : 0.3;
         if (typeof data.score === 'number' && data.score < threshold) {
           console.log(`[recaptcha] Blocked low score token: threshold=${threshold} ${details}`);
           return false;
@@ -6041,7 +6041,13 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
   }
 
   // ── Admin Panel Protection ──────────────────────────────────────────────────
-  if (path === '/advanced-admin.html' || path === '/admin.html' || path === '/advanced-admin' || path.startsWith('/advanced-admin/')) {
+  if (path === '/advanced-admin.html' || path === '/advanced-admin' || path.startsWith('/advanced-admin/') ||
+      path === '/advanced_admin.html' || path === '/advanced_admin' || path.startsWith('/advanced_admin/') ||
+      path === '/admin.html') {
+    return Response.redirect('/admin/' + url.search, 302);
+  }
+
+  if (path === '/admin' || path === '/admin/' || path === '/admin/index.html') {
     const cookies = getCookies(req);
     const sid = cookies['studentId'] || cookies['id'] || '';
     if (!isAnyAdminId(sid)) {
@@ -6531,7 +6537,7 @@ Mitch.pro Team`;
       });
       }
 
-      // ── Advanced Admin Tools ───────────────────────────────────────────
+      // ── Admin Dashboard Tools ──────────────────────────────────────────
 
       // GET /api/admin/economy/audit
       if (path === '/api/admin/economy/audit') {
@@ -10428,7 +10434,7 @@ function loadAllGamesList() {
       if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
       if (!isAnyAdminId(uid)) return jsonResp(403, { error: 'forbidden' });
       const email = emailFromSid(uid) || 'admin';
-      logAdminAction(email, isAdminId(uid) ? 'view_advanced_admin_tools' : 'moderator_view_advanced_admin_tools', {});
+      logAdminAction(email, isAdminId(uid) ? 'view_admin_tools' : 'moderator_view_admin_tools', {});
       return jsonResp(200, buildAdvancedAdminData());
       }
     if (path === '/api/me/coin-gifts') {

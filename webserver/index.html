@@ -906,7 +906,7 @@ function escText(t) {
     if (modWrap && (me.isModerator || me.isAdmin)) {
       modWrap.style.display = 'block';
       document.getElementById('moderator-action-btn').onclick = function() {
-        window.location.href = '/advanced-admin.html';
+        window.location.href = '/admin/';
       };
     }
     if (!me.isAdmin && !me.canGrantPremium) return;
@@ -920,7 +920,7 @@ function escText(t) {
     if (adminName) adminName.textContent = me.email || 'Admin access';
     if (adminCount) adminCount.textContent = me.canGrantPremium ? 'Admin + premium grants' : 'Admin view';
     document.getElementById('admin-action-btn').onclick = function() {
-      window.location.href = '/advanced-admin.html';
+      window.location.href = '/admin/';
     };
   } catch(e) {}
 }
@@ -3783,10 +3783,10 @@ if (document.readyState === 'loading') {
 <body>
 
 <div id="admin-action-wrap">
-  <a id="admin-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/advanced-admin.html" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Admin</a>
+  <a id="admin-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/admin/" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Admin</a>
 </div>
 <div id="moderator-action-wrap">
-  <a id="moderator-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/advanced-admin.html" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Moderator</a>
+  <a id="moderator-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/admin/" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Moderator</a>
 </div>
 
 <div id="member-side-rail">

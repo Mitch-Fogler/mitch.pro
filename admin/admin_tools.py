@@ -743,7 +743,7 @@ def cheat_log_tool(stdscr):
             elif key == curses.KEY_NPAGE: scroll = min(max(0, len(lines) - visible_h), scroll + visible_h)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 7. ECONOMY  (gift, burn, multiplier, audit — from advanced-admin)
+# 7. ECONOMY  (gift, burn, multiplier, audit — from admin dashboard)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def economy_tool(stdscr):
