@@ -574,6 +574,7 @@ const PX = 16, MINZ = 0.05, MAXZ = 24;
 const TB = 42, PB = 44;
 const MOD_EVERY = 15, MOD_IDLE = 5000;
 const CHUNK = 64;
+const MAX_LOADED_CHUNKS = 180;
 
 const PALETTE = [
   '#000000','#1c1c1c','#3a3a3a','#666666','#999999','#cccccc','#ffffff',
@@ -588,8 +589,12 @@ const PREMIUM_PALETTE = [
 
 let pixels = {};
 const loadedChunks = new Set();
+const chunkLastUsed = new Map();
 let chunkLoadTimer = null;
 let chunkLoadPending = false;
+const queuedChunkKeys = new Set();
+let canvasLoadVersion = 0;
+let renderQueued = false;
 let panX = 0, panY = 0, zoom = 1;
 let painting = false, panning = false, spaceDown = false;
 let lastPan = null;
@@ -620,7 +625,53 @@ let zoneMemberSuggestions = [];
 
 function normalizeEmail(e) { return String(e || '').toLowerCase().trim(); }
 
+function updatePixelCount() {
+  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+}
+
+function requestRender() {
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(render);
+}
+
+function chunkKeyForPixel(wx, wy) {
+  return `${Math.floor(wx / CHUNK)},${Math.floor(wy / CHUNK)}`;
+}
+
+function touchChunk(k) {
+  chunkLastUsed.set(k, Date.now());
+}
+
+function removeChunkPixels(k) {
+  const [cx, cy] = k.split(',').map(Number);
+  const startX = cx * CHUNK;
+  const startY = cy * CHUNK;
+  for (let x = 0; x < CHUNK; x++) {
+    for (let y = 0; y < CHUNK; y++) {
+      delete pixels[`${startX + x},${startY + y}`];
+    }
+  }
+}
+
+function evictOldChunks() {
+  if (loadedChunks.size <= MAX_LOADED_CHUNKS) return;
+  const keep = visibleChunkSet(3);
+  const candidates = [...loadedChunks]
+    .filter(k => !keep.has(k))
+    .sort((a, b) => (chunkLastUsed.get(a) || 0) - (chunkLastUsed.get(b) || 0));
+  while (loadedChunks.size > MAX_LOADED_CHUNKS && candidates.length) {
+    const k = candidates.shift();
+    loadedChunks.delete(k);
+    chunkLastUsed.delete(k);
+    delete chunkCanvases[k];
+    removeChunkPixels(k);
+  }
+  updatePixelCount();
+}
+
 const chunkCanvases = {};
+const premiumMarkersByChunk = {};
 
 function getOrCreateChunkCanvas(cx, cy) {
   const key = `${cx},${cy}`;
@@ -634,9 +685,21 @@ function getOrCreateChunkCanvas(cx, cy) {
   return chunkCanvases[key];
 }
 
-function setPixelInChunk(wx, wy, color) {
+function syncPremiumMarker(ck, wx, wy, data) {
+  const list = premiumMarkersByChunk[ck] || [];
+  const idx = list.findIndex(m => m.x === wx && m.y === wy);
+  if (idx !== -1) list.splice(idx, 1);
+  if (data && data.premium) list.push({ x: wx, y: wy });
+  if (list.length) premiumMarkersByChunk[ck] = list;
+  else delete premiumMarkersByChunk[ck];
+}
+
+function setPixelInChunk(wx, wy, color, data) {
   const cx = Math.floor(wx / CHUNK);
   const cy = Math.floor(wy / CHUNK);
+  const ck = `${cx},${cy}`;
+  touchChunk(ck);
+  syncPremiumMarker(ck, wx, wy, color ? (data || pixels[`${wx},${wy}`]) : null);
   const { ctx } = getOrCreateChunkCanvas(cx, cy);
   const px = wx - cx * CHUNK;
   const py = wy - cy * CHUNK;
@@ -649,10 +712,12 @@ function setPixelInChunk(wx, wy, color) {
 }
 
 function renderChunkToCanvas(cx, cy) {
+  const ck = `${cx},${cy}`;
   const { canvas, ctx } = getOrCreateChunkCanvas(cx, cy);
   ctx.clearRect(0, 0, CHUNK, CHUNK);
   const startX = cx * CHUNK;
   const startY = cy * CHUNK;
+  const premiumMarkers = [];
   for (let x = 0; x < CHUNK; x++) {
     for (let y = 0; y < CHUNK; y++) {
       const wx = startX + x;
@@ -661,15 +726,22 @@ function renderChunkToCanvas(cx, cy) {
       if (p && p.color) {
         ctx.fillStyle = p.color;
         ctx.fillRect(x, y, 1, 1);
+        if (p.premium) premiumMarkers.push({ x: wx, y: wy });
       }
     }
   }
+  if (premiumMarkers.length) premiumMarkersByChunk[ck] = premiumMarkers;
+  else delete premiumMarkersByChunk[ck];
 }
 
 function clearAllChunkCanvases() {
   for (const key in chunkCanvases) {
     delete chunkCanvases[key];
   }
+  for (const key in premiumMarkersByChunk) {
+    delete premiumMarkersByChunk[key];
+  }
+  chunkLastUsed.clear();
 }
 
 function rebuildAllChunkCanvases() {
@@ -695,16 +767,21 @@ function resize() {
   cv.height = window.innerHeight - TB - PB;
   cv.style.top = TB + 'px';
   ctx.imageSmoothingEnabled = false;
+  requestRender();
 }
 window.addEventListener('resize', resize);
 resize();
 
 async function loadAllPixelsInternal() {
+  const loadVersion = ++canvasLoadVersion;
   const url = currentZoneId ? '/api/canvas/pixels?zoneId=' + encodeURIComponent(currentZoneId) : '/api/canvas/pixels';
   const r = await fetch(url);
   const data = await r.json();
+  if (loadVersion !== canvasLoadVersion) return data;
   
   loadedChunks.clear();
+  chunkLastUsed.clear();
+  queuedChunkKeys.clear();
   pixels = {};
   clearAllChunkCanvases();
   
@@ -717,7 +794,9 @@ async function loadAllPixelsInternal() {
     const wy = +key.slice(ci + 1);
     const cx = Math.floor(wx / CHUNK);
     const cy = Math.floor(wy / CHUNK);
-    loadedChunks.add(`${cx},${cy}`);
+    const ck = `${cx},${cy}`;
+    loadedChunks.add(ck);
+    touchChunk(ck);
   }
   
   for (const k of loadedChunks) {
@@ -725,7 +804,8 @@ async function loadAllPixelsInternal() {
     renderChunkToCanvas(cx, cy);
   }
   
-  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  updatePixelCount();
+  requestRender();
   return data;
 }
 
@@ -813,6 +893,7 @@ async function toggleTimelapse() {
             setPixelInChunk(item.x, item.y, item.color);
           }
         }
+        requestRender();
         
         timelapseTimer = setTimeout(playNext, 16);
       }
@@ -843,6 +924,7 @@ function stopTimelapse() {
     btn.style.borderColor = '';
   }
   rebuildAllChunkCanvases();
+  requestRender();
 }
 
 function s2w(sx, sy) {
@@ -853,7 +935,7 @@ function w2sx(wx) { return (wx - panX) * PX * zoom + cv.width / 2; }
 function w2sy(wy) { return (wy - panY) * PX * zoom + cv.height / 2; }
 
 function render() {
-  requestAnimationFrame(render);
+  renderQueued = false;
   const W = cv.width, H = cv.height, p = PX * zoom;
 
   const bg = ctx.createLinearGradient(0, 0, W, H);
@@ -927,23 +1009,14 @@ function render() {
 
   if (p >= 12) {
     for (const k of visibleChunks) {
-      const [cx, cy] = k.split(',').map(Number);
-      const startX = cx * CHUNK;
-      const startY = cy * CHUNK;
-      for (let x = 0; x < CHUNK; x++) {
-        for (let y = 0; y < CHUNK; y++) {
-          const wx = startX + x;
-          const wy = startY + y;
-          const d = pixels[`${wx},${wy}`];
-          if (d && d.premium) {
-            const sx = w2sx(wx), sy = w2sy(wy);
-            const r = Math.max(1.5, p * 0.12);
-            ctx.fillStyle = '#f59e0b';
-            ctx.beginPath();
-            ctx.arc(sx + p - r - 1, sy + r + 1, r, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
+      const markers = premiumMarkersByChunk[k] || [];
+      for (const marker of markers) {
+        const sx = w2sx(marker.x), sy = w2sy(marker.y);
+        const r = Math.max(1.5, p * 0.12);
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(sx + p - r - 1, sy + r + 1, r, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
   }
@@ -1009,13 +1082,14 @@ function paintAt(wx, wy, brushSz, isClick) {
           continue;
         }
       }
-      pixels[key] = { color, painter: pid, ts: Date.now() };
-      setPixelInChunk(px, py, color);
+      pixels[key] = { color, painter: pid, ts: Date.now(), ...(IS_PREMIUM ? { premium: true } : {}) };
+      setPixelInChunk(px, py, color, pixels[key]);
       recentPainted.push({ x: px, y: py, color, painter: pid, ts: Date.now() });
     }
   }
   if (recentPainted.length > 260) recentPainted.splice(0, recentPainted.length - 260);
-  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  updatePixelCount();
+  requestRender();
 
   var tools = JSON.parse(localStorage.getItem('_prefTools') || '{}');
   var lock = !!tools.canvasLock;
@@ -1047,7 +1121,8 @@ function eraseAt(wx, wy, brushSz, isClick) {
       setPixelInChunk(px, py, null);
     }
   }
-  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  updatePixelCount();
+  requestRender();
   fetch('/api/canvas/erase', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -1084,6 +1159,7 @@ cv.addEventListener('mousemove', e => {
   hWX = wx; hWY = wy;
   document.getElementById('coords').textContent = wx + ', ' + wy;
   if (adminMode) updateAdminPanel(wx, wy, false);
+  requestRender();
 
   if (painting && !panning && !adminMode) actAt(wx, wy, false);
 
@@ -1093,6 +1169,7 @@ cv.addEventListener('mousemove', e => {
     panY -= (e.clientY - lastPan.y) / p;
     lastPan = { x: e.clientX, y: e.clientY };
     scheduleChunkLoad();
+    requestRender();
   }
 });
 
@@ -1132,11 +1209,13 @@ cv.addEventListener('wheel', e => {
     zoom = newZ;
     document.getElementById('zoom-disp').textContent = Math.round(zoom * 100) + '%';
     scheduleChunkLoad();
+    requestRender();
   } else {
     const p = PX * zoom;
     panX += e.deltaX / p;
     panY += e.deltaY / p;
     scheduleChunkLoad();
+    requestRender();
   }
 }, { passive: false });
 
@@ -1154,6 +1233,7 @@ cv.addEventListener('touchmove', e => {
   panY -= (t.clientY - lastTouch.y) / p;
   lastTouch = { x: t.clientX, y: t.clientY };
   scheduleChunkLoad();
+  requestRender();
   e.preventDefault();
 }, { passive: false });
 cv.addEventListener('touchend', () => { lastTouch = null; });
@@ -1162,6 +1242,8 @@ cv.addEventListener('touchcancel', () => { lastTouch = null; });
 document.getElementById('home-btn').onclick = () => {
   panX = 0; panY = 0; zoom = 1;
   document.getElementById('zoom-disp').textContent = '100%';
+  scheduleChunkLoad();
+  requestRender();
 };
 document.getElementById('ref-btn').onclick = loadPixels;
 document.getElementById('help-btn').onclick = () => {
@@ -1189,6 +1271,7 @@ function pickColor(c) {
   cv.style.cursor = 'crosshair';
   document.querySelectorAll('.sw').forEach(s => s.classList.toggle('on', s.dataset.c === c));
   document.getElementById('cust').value = c;
+  requestRender();
 }
 
 PALETTE.forEach(c => {
@@ -1218,13 +1301,14 @@ if (IS_PREMIUM) {
 document.getElementById('cust').oninput = e => pickColor(e.target.value);
 
 const bsEl = document.getElementById('brush-sz'), bvEl = document.getElementById('brush-val');
-bsEl.oninput = () => { brushSz = +bsEl.value; bvEl.textContent = brushSz; };
+bsEl.oninput = () => { brushSz = +bsEl.value; bvEl.textContent = brushSz; requestRender(); };
 
 document.getElementById('erase-btn').onclick = () => {
   erasing = !erasing;
   document.getElementById('erase-btn').classList.toggle('on', erasing);
   cv.style.cursor = erasing ? 'cell' : 'crosshair';
   if (erasing) document.querySelectorAll('.sw').forEach(s => s.classList.remove('on'));
+  requestRender();
 };
 
 function applyCanvasHash() {
@@ -1235,6 +1319,8 @@ function applyCanvasHash() {
   panY = Number(m[2]);
   if (m[3]) zoom = Math.min(MAXZ, Math.max(MINZ, Number(m[3]) || zoom));
   document.getElementById('zoom-disp').textContent = Math.round(zoom * 100) + '%';
+  scheduleChunkLoad();
+  requestRender();
 }
 
 function showToast(msg, type) {
@@ -1337,9 +1423,14 @@ function visibleChunkSet(buf = 2) {
   return s;
 }
 
-async function loadChunks(chunkKeys) {
+async function loadChunks(chunkKeys, loadVersion = canvasLoadVersion) {
   if (timelapsePlaying) return;
-  if (!chunkKeys.length || chunkLoadPending) return;
+  chunkKeys = [...new Set(chunkKeys)].filter(Boolean);
+  if (!chunkKeys.length) return;
+  if (chunkLoadPending) {
+    chunkKeys.forEach(k => queuedChunkKeys.add(k));
+    return;
+  }
   chunkLoadPending = true;
   try {
     const r = await fetch('/api/canvas/pixels', {
@@ -1348,30 +1439,45 @@ async function loadChunks(chunkKeys) {
       body: JSON.stringify({ chunks: chunkKeys, zoneId: currentZoneId })
     });
     const data = await r.json();
-    if (data.error) {
+    if (loadVersion !== canvasLoadVersion) {
+      // Ignore stale responses from a prior zone/refresh generation.
+    } else if (data.error) {
       showToast(data.reason || data.error, 'err');
     } else {
       Object.assign(pixels, data);
       for (const k of chunkKeys) {
         loadedChunks.add(k);
+        touchChunk(k);
         const [cx, cy] = k.split(',').map(Number);
         renderChunkToCanvas(cx, cy);
       }
-      document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+      evictOldChunks();
+      updatePixelCount();
+      requestRender();
     }
   } catch { showToast('Failed to load', 'err'); }
   chunkLoadPending = false;
+  if (queuedChunkKeys.size) {
+    const queued = [...queuedChunkKeys];
+    queuedChunkKeys.clear();
+    loadChunks(queued);
+  }
 }
 
 async function loadPixels() {
   if (timelapsePlaying) return;
+  const loadVersion = ++canvasLoadVersion;
   const btn = document.getElementById('ref-btn');
   btn.textContent = '…';
   loadedChunks.clear();
+  chunkLastUsed.clear();
+  queuedChunkKeys.clear();
   pixels = {};
   clearAllChunkCanvases();
+  updatePixelCount();
+  requestRender();
   const visible = [...visibleChunkSet(3)];
-  await loadChunks(visible);
+  await loadChunks(visible, loadVersion);
   btn.textContent = '↻';
 }
 
@@ -1379,9 +1485,89 @@ function scheduleChunkLoad() {
   clearTimeout(chunkLoadTimer);
   chunkLoadTimer = setTimeout(async () => {
     const visible = visibleChunkSet(2);
+    for (const k of visible) touchChunk(k);
     const needed = [...visible].filter(k => !loadedChunks.has(k));
     if (needed.length) await loadChunks(needed);
+    else evictOldChunks();
+    requestRender();
   }, 120);
+}
+
+function forgetChunk(k) {
+  loadedChunks.delete(k);
+  chunkLastUsed.delete(k);
+  delete chunkCanvases[k];
+  delete premiumMarkersByChunk[k];
+  removeChunkPixels(k);
+}
+
+function applyCanvasDelta(msg) {
+  if (!msg || msg.type !== 'canvas_delta') return;
+  const msgZone = msg.zoneId || null;
+  if ((currentZoneId || null) !== msgZone) return;
+
+  if (msg.action === 'clear') {
+    loadPixels();
+    return;
+  }
+
+  if (msg.action === 'invalidate') {
+    const chunks = Array.isArray(msg.chunks) ? msg.chunks : [];
+    let touchedVisible = false;
+    const visible = visibleChunkSet(2);
+    for (const k of chunks) {
+      if (loadedChunks.has(k)) forgetChunk(k);
+      if (visible.has(k)) touchedVisible = true;
+    }
+    if (touchedVisible) scheduleChunkLoad();
+    updatePixelCount();
+    requestRender();
+    return;
+  }
+
+  const items = Array.isArray(msg.pixels) ? msg.pixels : [];
+  let changed = false;
+  let needsLoad = false;
+  const visible = visibleChunkSet(2);
+  for (const item of items) {
+    const x = Number(item?.x);
+    const y = Number(item?.y);
+    if (!Number.isInteger(x) || !Number.isInteger(y)) continue;
+    const ck = chunkKeyForPixel(x, y);
+    if (!loadedChunks.has(ck)) {
+      if (visible.has(ck)) needsLoad = true;
+      continue;
+    }
+    const key = `${x},${y}`;
+    if (msg.action === 'delete') {
+      delete pixels[key];
+      setPixelInChunk(x, y, null);
+    } else if (msg.action === 'set' && item.data && item.data.color) {
+      pixels[key] = item.data;
+      setPixelInChunk(x, y, item.data.color, item.data);
+    } else {
+      continue;
+    }
+    changed = true;
+  }
+  if (needsLoad) scheduleChunkLoad();
+  if (changed) {
+    updatePixelCount();
+    requestRender();
+  }
+}
+
+function connectCanvasLive() {
+  try {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(proto + '//' + location.host + '/ws');
+    ws.onmessage = e => {
+      try { applyCanvasDelta(JSON.parse(e.data)); } catch {}
+    };
+    ws.onclose = () => setTimeout(connectCanvasLive, 5000);
+  } catch {
+    setTimeout(connectCanvasLive, 8000);
+  }
 }
 
 let adminSelected = false;
@@ -1424,7 +1610,8 @@ async function adminErase() {
   }
   delete pixels[key];
   setPixelInChunk(wx, wy, null);
-  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  updatePixelCount();
+  requestRender();
   adminHoverPx = null; adminSelected = false;
   document.getElementById('adm-painter').textContent = '(empty)';
   document.getElementById('adm-time').textContent = '';
@@ -1532,6 +1719,7 @@ function processImageToPixelArt() {
     }
     placingImage = pts;
     cv.style.cursor = 'none';
+    requestRender();
   };
   img.src = currentImageSrc;
 }
@@ -1541,6 +1729,7 @@ function cancelPlacer() {
   document.getElementById('adm-img-input').value = '';
   document.getElementById('adm-img-settings').style.display = 'none';
   cv.style.cursor = 'crosshair';
+  requestRender();
 }
 
 async function placeImageAt(wx, wy) {
@@ -1554,11 +1743,12 @@ async function placeImageAt(wx, wy) {
     const key = `${x},${y}`;
     
     pixels[key] = { color: p.color, painter: pid, ts: now, email: pid, ...(isAdmin ? { admin: true } : {}), ...(IS_PREMIUM ? { premium: true } : {}) };
-    setPixelInChunk(x, y, p.color);
+    setPixelInChunk(x, y, p.color, pixels[key]);
     points.push({ x, y, color: p.color, painter: pid });
   }
   
-  document.getElementById('pcount').textContent = Object.keys(pixels).length + ' px';
+  updatePixelCount();
+  requestRender();
   
   try {
     const r = await fetch('/api/canvas/pixels/bulk', {
@@ -1872,6 +2062,7 @@ function renderZoneSettingsMembers() {
 }
 
 (async () => {
+  connectCanvasLive();
   applyCanvasHash();
   await loadPixels();
   try {
@@ -2271,7 +2462,7 @@ function renderZoneSettingsMembers() {
     document.getElementById('adm-img-cancel').onclick = cancelPlacer;
   }
   document.getElementById('loading').style.display = 'none';
-  render();
+  requestRender();
 })();
 </script>
 <script src="/cookie-consent.js" defer></script>

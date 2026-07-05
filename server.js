@@ -1824,6 +1824,15 @@ function triggerNotificationRefresh() {
   }
 }
 
+function broadcastCanvasDelta(delta) {
+  const payload = JSON.stringify({ type: 'canvas_delta', ...delta });
+  for (const ws of allSockets) {
+    if (ws.data && ws.data.isBroadcast) {
+      try { ws.send(payload); } catch {}
+    }
+  }
+}
+
 function autoFinalizeMarketplace() {
   try {
     const list = loadJson(MARKETPLACE_FILE, []);
@@ -12364,6 +12373,7 @@ function loadAllGamesList() {
     const { x, y } = body;
     if (!canvasPixels[`${x},${y}`]) return jsonResp(404, { error: 'no pixel' });
     deleteCanvasPixel(x, y, 'admin', adminEmail);
+    broadcastCanvasDelta({ action: 'delete', zoneId: null, pixels: [{ x, y }] });
     logAdminAction(adminEmail, 'canvas_erase', { x, y });
     return jsonResp(200, { ok: true });  }
 
@@ -12420,6 +12430,7 @@ function loadAllGamesList() {
     const points = Array.isArray(body.pixels) ? body.pixels.slice(0, 2500) : [];
     if (!points.length) return jsonResp(400, { error: 'pixels required' });
     let count = 0;
+    const changedChunks = new Set();
     for (const p of points) {
       const x = Number(p?.x);
       const y = Number(p?.y);
@@ -12437,6 +12448,7 @@ function loadAllGamesList() {
         ...(email ? { email } : {})
       };
       setCanvasPixel(x, y, pixelData, zoneId);
+      changedChunks.add(`${Math.floor(x / 64)},${Math.floor(y / 64)}`);
       if (!zoneId) canvasHeatmap.set(key, Date.now());
       count++;
     }
@@ -12444,6 +12456,9 @@ function loadAllGamesList() {
       saveZonePixels(zoneId);
     } else {
       if (email && count) addPaintingCoin(email);
+    }
+    if (changedChunks.size) {
+      broadcastCanvasDelta({ action: 'invalidate', zoneId: zoneId || null, chunks: [...changedChunks] });
     }
     return jsonResp(200, { ok: true, count });
   }
@@ -12533,9 +12548,13 @@ function loadAllGamesList() {
       ...(premium ? { premium: true } : {}),
       ...(adminOk ? { admin: true } : {})
     };
+    const changedPixels = [];
+    const changedChunks = new Set();
 
     for (const { px, py, pkey } of pixelsToPaint) {
       setCanvasPixel(px, py, pixelData, zoneId);
+      changedPixels.push({ x: px, y: py, data: pixelData });
+      changedChunks.add(`${Math.floor(px / 64)},${Math.floor(py / 64)}`);
       if (!zoneId) {
         canvasHeatmap.set(pkey, Date.now());
 
@@ -12562,6 +12581,13 @@ function loadAllGamesList() {
       saveZonePixels(zoneId);
     } else {
       if (email) addPaintingCoin(email);
+    }
+    if (changedPixels.length) {
+      if (changedPixels.length > 300) {
+        broadcastCanvasDelta({ action: 'invalidate', zoneId: zoneId || null, chunks: [...changedChunks] });
+      } else {
+        broadcastCanvasDelta({ action: 'set', zoneId: zoneId || null, pixels: changedPixels });
+      }
     }
     return jsonResp(200, { ok: true });  }
 
@@ -12592,6 +12618,8 @@ function loadAllGamesList() {
     const sourcePixels = zoneId ? getZonePixels(zoneId) : canvasPixels;
     const zoneInfo = zoneId ? loadJson(CANVAS_ZONES_FILE, {})[zoneId] : null;
     const isOwner = zoneInfo && normalizeEmail(zoneInfo.owner) === normalizeEmail(email);
+    const erasedPixels = [];
+    const erasedChunks = new Set();
 
     for (let bx = 0; bx < brushSz; bx++) {
       for (let by = 0; by < brushSz; by++) {
@@ -12604,10 +12632,19 @@ function loadAllGamesList() {
           if (!isCreator) continue;
         }
         deleteCanvasPixel(px, py, painter, email, zoneId);
+        erasedPixels.push({ x: px, y: py });
+        erasedChunks.add(`${Math.floor(px / 64)},${Math.floor(py / 64)}`);
       }
     }
     if (zoneId) {
       saveZonePixels(zoneId);
+    }
+    if (erasedPixels.length) {
+      if (erasedPixels.length > 300) {
+        broadcastCanvasDelta({ action: 'invalidate', zoneId: zoneId || null, chunks: [...erasedChunks] });
+      } else {
+        broadcastCanvasDelta({ action: 'delete', zoneId: zoneId || null, pixels: erasedPixels });
+      }
     }
     return jsonResp(200, { ok: true });
   }
@@ -12920,6 +12957,7 @@ function loadAllGamesList() {
       }
     } catch {}
 
+    broadcastCanvasDelta({ action: 'clear', zoneId });
     return jsonResp(200, { ok: true });
   }
 
