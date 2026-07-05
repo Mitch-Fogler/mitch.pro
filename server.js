@@ -11,6 +11,7 @@ import dns from 'dns';
 import https from 'https';
 import {
   configureDataStore,
+  getDataStore,
   appendAppLog,
   queryAppLogs,
   readDocument,
@@ -109,6 +110,7 @@ const APPLICATIONS_FILE      = join(DATA_DIR, 'applications.json');
 const PROFILES_FILE          = join(DATA_DIR, 'profiles.json');
 const COIN_GIFTS_FILE        = join(DATA_DIR, 'coin_gifts.json');
 const DAILY_LOGINS_FILE      = join(DATA_DIR, 'daily_logins.json');
+const TEMP_COIN_RESET_OG_GRANT_FILE = join(DATA_DIR, 'startup_coin_reset_og_grant_2026_07_05.json');
 const DMS_FILE               = join(DATA_DIR, 'dms.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
 const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
@@ -4308,24 +4310,6 @@ function resolveTargetEmail(input) {
   return null;
 }
 
-function hasEmailPrivacyEnabled(email) {
-  try {
-    const uid = getUidForEmail(email);
-    if (!uid) return false;
-    const fpath = userdataPath(uid);
-    if (!fpath || !existsSync(fpath)) return false;
-    const data = JSON.parse(readFileSync(fpath, 'utf8'));
-    const snap = data._snapshot;
-    if (snap && snap._prefPrivacy) {
-      const pref = typeof snap._prefPrivacy === 'string' ? JSON.parse(snap._prefPrivacy) : snap._prefPrivacy;
-      return !!pref.hideEmail;
-    }
-  } catch (e) {
-    console.error('[privacy] failed to check email privacy:', e);
-  }
-  return false;
-}
-
 function emailFromHash(hash) {
   if (!hash) return null;
   if (hash.includes('@')) return hash;
@@ -4333,8 +4317,12 @@ function emailFromHash(hash) {
   const names = loadJson(NAMES_FILE, {});
   if (names[hash]) return names[hash];
 
+  const username = normalizeUsername(hash);
   const profiles = loadJson(PROFILES_FILE, {});
   for (const email of Object.keys(profiles)) {
+    if (username && normalizeUsername(profiles[email]?.username || '') === username) {
+      return email;
+    }
     if (getUidForEmail(email) === hash) {
       return email;
     }
@@ -4368,17 +4356,18 @@ function processMemberFields(memberEmail, profile, viewerEmail) {
   const viewerCanSee = normViewer === normTarget || isAdminEmail(viewerEmail) || isModeratorEmail(viewerEmail);
   const profiles = profile ? null : loadJson(PROFILES_FILE, {});
   const p = profile || profiles[normTarget] || {};
-  const publicName = p.nickname || p.displayName || p.username || 'mitch.pro user';
+  const username = p.username || defaultUsernameForEmail(normTarget);
+  const publicName = p.nickname || username || p.displayName;
 
   if (!viewerCanSee) {
     return {
       displayName: publicName,
-      email: p.username || getUidForEmail(memberEmail)
+      email: username
     };
   }
 
   return {
-    displayName: p.displayName || p.nickname || p.username || null,
+    displayName: p.nickname || p.displayName || username,
     email: maskEmail(memberEmail)
   };
 }
@@ -5028,6 +5017,82 @@ function normalizeCosmetics(entry = {}) {
   }
   return base;
 }
+
+// TEMP 2026-07-05: one-time economy reset + OG badge grant.
+// Delete this function, the call below, and TEMP_COIN_RESET_OG_GRANT_FILE after prod has started once.
+function runTemporaryCoinResetAndOgGrant() {
+  const marker = loadJson(TEMP_COIN_RESET_OG_GRANT_FILE, null);
+  if (marker && marker.done) return;
+
+  const passwords = loadJson(PASSWORDS_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+  const currentCoins = loadCoins();
+  const names = loadJson(NAMES_FILE, {});
+  const tokens = loadJson(TOKENS_FILE, {});
+  const knownEmails = new Set();
+  for (const source of [passwords, profiles, currentCoins]) {
+    for (const email of Object.keys(source || {})) {
+      const norm = normalizeEmail(email);
+      if (norm && norm.includes('@')) knownEmails.add(norm);
+    }
+  }
+  for (const email of Object.values(names || {})) {
+    const norm = normalizeEmail(email);
+    if (norm && norm.includes('@')) knownEmails.add(norm);
+  }
+  for (const token of Object.values(tokens || {})) {
+    const norm = normalizeEmail(token && token.email);
+    if (norm && norm.includes('@')) knownEmails.add(norm);
+  }
+  try {
+    const rows = getDataStore().query('SELECT email FROM users').all();
+    for (const row of rows) {
+      const norm = normalizeEmail(row.email);
+      if (norm && norm.includes('@')) knownEmails.add(norm);
+    }
+  } catch (e) {
+    console.warn('[startup] Could not read users table for temporary reset:', e.message);
+  }
+
+  const resetCoins = {};
+  for (const email of knownEmails) resetCoins[email] = 0;
+  coinsCache = resetCoins;
+  saveJsonSync(COINS_FILE, resetCoins);
+
+  const cosmetics = loadJson(COSMETICS_FILE, {});
+  let newlyGranted = 0;
+  for (const email of knownEmails) {
+    const owned = normalizeCosmetics(cosmetics[email] || {});
+    if (!owned.badges.includes('og_badge')) {
+      owned.badges.push('og_badge');
+      newlyGranted++;
+    }
+    owned.activeBadge = 'og_badge';
+    cosmetics[email] = owned;
+  }
+  saveJsonSync(COSMETICS_FILE, cosmetics);
+
+  const result = {
+    done: true,
+    ranAt: new Date().toISOString(),
+    userCount: knownEmails.size,
+    newlyGrantedOgBadges: newlyGranted,
+    note: 'Temporary one-time startup reset. Safe to delete code after this marker exists in prod.'
+  };
+  saveJsonSync(TEMP_COIN_RESET_OG_GRANT_FILE, result);
+  console.warn(`[startup] Temporary coin reset ran for ${knownEmails.size} users; OG badge newly granted to ${newlyGranted}.`);
+  try {
+    appendAppLog({
+      level: 'warn',
+      category: 'startup',
+      message: 'Temporary coin reset and OG badge grant ran',
+      details: result
+    });
+  } catch (e) {
+    console.warn('[startup] Could not write temporary reset app log:', e.message);
+  }
+}
+runTemporaryCoinResetAndOgGrant();
 
 function shopItemById(itemId) {
   return SHOP_CATALOG.find(item => item.id === String(itemId || ''));
@@ -10824,7 +10889,8 @@ function loadAllGamesList() {
       const profiles = loadJson(PROFILES_FILE, {});
       const norm = normalizeEmail(email);
       const profile = profiles[norm] || {
-        displayName: email.split('@')[0],
+        username: defaultUsernameForEmail(email),
+        displayName: '',
         bio: 'Welcome to my profile!',
         pfp: '',
         background: ''
@@ -10858,7 +10924,8 @@ function loadAllGamesList() {
       const norm = normalizeEmail(actualEmail);
       const profile = profiles[norm] || {
         email: actualEmail,
-        displayName: actualEmail.split('@')[0],
+        username: defaultUsernameForEmail(actualEmail),
+        displayName: '',
         bio: 'Welcome to my profile!',
         pfp: '',
         background: ''
@@ -10921,6 +10988,7 @@ function loadAllGamesList() {
       const text = rawText.slice(0, safeImage ? 500 : 2000);
       if (!groupId && !to) return jsonResp(400, { error: 'missing fields' });
       if (!text && !safeImage) return jsonResp(400, { error: 'missing fields' });
+      const clientId = String(body.clientId || '').replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 120);
       const replyTo = body.replyTo && typeof body.replyTo === 'object' ? {
         id: String(body.replyTo.id || '').slice(0, 100),
         from: String(body.replyTo.from || '').slice(0, 100),
@@ -10938,6 +11006,7 @@ function loadAllGamesList() {
         if (!group.members.some(m => normalizeEmail(m) === normalizeEmail(senderEmail)))
           return jsonResp(403, { error: 'not a member' });
         msg = { kind: 'group', groupId, groupName: group.name, from: senderEmail, text, image: safeImage, replyTo, ts: Date.now(), readBy: [senderEmail] };
+        if (clientId) msg.clientId = clientId;
         if (expiry > 0) {
           msg.expiresAt = Date.now() + expiry;
         }
@@ -10967,6 +11036,7 @@ function loadAllGamesList() {
         }
         } else {
         msg = { kind: 'dm', from: senderEmail, to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
+        if (clientId) msg.clientId = clientId;
         if (expiry > 0) {
           msg.expiresAt = Date.now() + expiry;
         }
@@ -14422,18 +14492,24 @@ function loadAllGamesList() {
 
     if (path === '/api/leaderboard') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const viewerEmail = emailFromSid(cookies['studentId'] || cookies['id'] || '');
+      const viewerNorm = viewerEmail ? normalizeEmail(viewerEmail) : '';
       const coinsMap = loadCoins();
       const statsMap = loadUserStats();
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
+      const emails = new Set([...Object.keys(profiles), ...Object.keys(coinsMap)]);
+      if (viewerNorm) emails.add(viewerNorm);
       
-      const leaderboard = Object.entries(coinsMap).map(([email, coins]) => {
+      const leaderboard = Array.from(emails).map((email) => {
         const norm = normalizeEmail(email);
         const profile = profiles[norm] || {};
         const cosm = cosmetics[norm] || {};
         return {
-          name: profile.displayName || email.split('@')[0],
-          coins,
+          _norm: norm,
+          name: profile.nickname || profile.displayName || profile.username || defaultUsernameForEmail(norm),
+          coins: Number(coinsMap[norm] || 0),
           wins: statsMap[norm]?.chess_wins || 0,
           puzzles: statsMap[norm]?.puzzles_solved || 0,
           pixels: statsMap[norm]?.pixels || 0,
@@ -14443,15 +14519,21 @@ function loadAllGamesList() {
           typing_coins: statsMap[norm]?.typing_coins || 0,
           logic_puzzles: statsMap[norm]?.logic_puzzles || 0,
           logic_coins: statsMap[norm]?.logic_coins || 0,
-          email: maskEmail(email),
+          email: profile.username || getUidForEmail(norm),
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null
         };
 
       });
       
-      leaderboard.sort((a, b) => b.coins - a.coins);
-      return jsonResp(200, { top: leaderboard.slice(0, 50) });
+      leaderboard.sort((a, b) => (b.coins - a.coins) || a.name.localeCompare(b.name));
+      leaderboard.forEach((entry, index) => { entry.rank = index + 1; });
+      const viewerRow = viewerNorm ? leaderboard.find(entry => entry._norm === viewerNorm) : null;
+      if (viewerRow) viewerRow.isMe = true;
+      const top = leaderboard.slice(0, 10);
+      for (const entry of leaderboard) delete entry._norm;
+      const me = viewerRow && viewerRow.rank > 10 ? viewerRow : null;
+      return jsonResp(200, { top, me });
     }
 
     if (path === '/api/canvas/heatmap') {

@@ -1052,24 +1052,18 @@ function renderOnlineMembers(members) {
 
   list.innerHTML = onlineListSubset.map(function(m) {
     var email = m.email || '';
-    var name = m.displayName || (email.includes('@') ? email.split('@')[0] : 'mitch.pro user');
+    var name = m.displayName || email || 'member';
     var badge = badgeLabels[m.badge];
     var badgeHtml = badge ? ' <span class="l-badge ' + badge.cls + '">' + badge.text + '</span>' : '';
     var colorClass = m.color || '';
     
-    var isHideEmailActive = false;
-    try {
-      var priv = JSON.parse(localStorage.getItem('_prefPrivacy') || '{}');
-      if (priv.hideEmail) isHideEmailActive = true;
-    } catch(e) {}
-    var isUserAnon = (email && !email.includes('@')) || (isHideEmailActive && window._currentUserEmail && (email.toLowerCase() === window._currentUserEmail || email.toLowerCase() === window._currentUserEmail.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro')));
     var isMe = false;
     if (email && window._currentUserEmail) {
       var e1 = email.toLowerCase().trim();
       var e2 = window._currentUserEmail.toLowerCase().trim();
       isMe = (e1 === e2 || e1 === e2.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro') || e2 === e1.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro'));
     }
-    var nameContent = (isMe ? name : escText(name)) + (isUserAnon ? ' 🥷' : '');
+    var nameContent = isMe ? name : escText(name);
     if (colorClass === 'rainbow_name') {
       nameContent = '<span class="name-inner">' + nameContent + '</span>';
     }
@@ -3981,25 +3975,19 @@ var origShow = showIframe;
       const colorClass = m.color || '';
       chip.className = 'member-chip name ' + colorClass;
       chip.style.cssText = 'color:' + (colorClass ? '' : opts.color) + ';background:' + opts.bg + ';border:1px solid ' + opts.border + ';';
-      const label = m.displayName || (email && email.includes('@') ? email.split('@')[0] : 'mitch.pro user');
+      const label = m.displayName || email || 'member';
       const role = opts.roleSuffix || (m.role ? String(m.role) : '');
       const pride = opts.prideEmail && email === opts.prideEmail ? ' <span class="member-role" title="Pride">&#127987;&#65039;&#8205;&#127752;</span>' : '';
       const badge = badgeLabels[m.badge];
       const badgeHtml = badge ? ' <span class="l-badge ' + badge.cls + '">' + badge.text + '</span>' : '';
       
-      var isHideEmailActive = false;
-      try {
-        var priv = JSON.parse(localStorage.getItem('_prefPrivacy') || '{}');
-        if (priv.hideEmail) isHideEmailActive = true;
-      } catch(e) {}
-      var isUserAnon = (email && !email.includes('@')) || (isHideEmailActive && window._currentUserEmail && (email.toLowerCase() === window._currentUserEmail || email.toLowerCase() === window._currentUserEmail.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro')));
       var isMe = false;
       if (email && window._currentUserEmail) {
         var e1 = email.toLowerCase().trim();
         var e2 = window._currentUserEmail.toLowerCase().trim();
         isMe = (e1 === e2 || e1 === e2.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro') || e2 === e1.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro'));
       }
-      var nameContent = (isMe ? label : escText(label)) + (isUserAnon ? ' 🥷' : '');
+      var nameContent = isMe ? label : escText(label);
       if (colorClass === 'rainbow_name') {
         nameContent = '<span class="name-inner">' + nameContent + '</span>';
       }

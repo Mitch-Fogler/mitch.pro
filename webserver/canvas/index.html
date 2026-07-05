@@ -2423,7 +2423,7 @@ function renderZoneSettingsMembers() {
     listEl.style.display = 'block';
     listEl.innerHTML = matches.slice(0, 6).map(item => {
       const m = item.member;
-      const nameStr = m.displayName ? htmlEscape(m.displayName) : 'mitch.pro user';
+      const nameStr = htmlEscape(m.displayName || m.email || 'member');
       const emailStr = htmlEscape(m.email);
       return `
         <div class="autocomplete-item" data-email="${htmlEscape(m.email)}">

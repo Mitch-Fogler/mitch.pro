@@ -265,16 +265,6 @@
 
         const colorClass = m.color || '';
 
-        var isOwnAnon = false;
-        if (myEmail && (m.email === myEmail || m.email === myEmail.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro'))) {
-            try {
-                var priv = JSON.parse(localStorage.getItem('_prefPrivacy') || '{}');
-                if (priv.hideEmail) isOwnAnon = true;
-            } catch(e) {}
-        }
-        var isAnon = isOwnAnon || (m.email && !m.email.includes('@'));
-        var cloakHtml = isAnon ? ' 🥷' : '';
-
         let modHtml = '';
         let deleteBtnHtml = '';
         if (isModOrAdmin) {
@@ -283,7 +273,7 @@
         }
 
         div.innerHTML = `
-            <span class="author ${colorClass}">${m.name}${badgeHtml}${cloakHtml}${modHtml}${deleteBtnHtml}</span>
+            <span class="author ${colorClass}">${m.name}${badgeHtml}${modHtml}${deleteBtnHtml}</span>
             <span class="text">${escapeHtml(m.text)}</span>
         `;
         chatBox.appendChild(div);

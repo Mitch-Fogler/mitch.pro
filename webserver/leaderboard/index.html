@@ -37,6 +37,9 @@
   .name a:hover { color: var(--t-ac); text-decoration: underline; }
   .coins { color: #f59e0b; font-weight: 700; }
   .val { opacity: 0.8; }
+  tr.me td { background: rgba(245, 158, 11, 0.08); }
+  .you-pill { display: inline-block; margin-left: 6px; padding: 1px 5px; border: 1px solid rgba(245,158,11,.55); border-radius: 999px; color: #f59e0b; font-size: 8px; font-weight: 800; vertical-align: middle; }
+  .you-gap td { padding: 7px 10px; color: var(--t-fg2); text-align: center; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; border-bottom: 1px solid rgba(255,255,255,0.04); }
   
   .loading { text-align: center; padding: 40px; color: var(--t-fg2); font-style: italic; }
 
@@ -105,29 +108,32 @@
       const tbody = document.getElementById('tbody');
       tbody.innerHTML = '';
       
-      d.top.forEach((u, i) => {
+      const badgeLabels = {
+        verified_badge: { text: '✔', cls: 'badge-verified' },
+        og_badge: { text: '📜', cls: 'badge-og' },
+        artist_badge: { text: '🎨', cls: 'badge-shop' },
+        chess_badge: { text: '♟', cls: 'badge-shop' },
+        builder_badge: { text: '🛠', cls: 'badge-shop' },
+        lucky_badge: { text: '🍀', cls: 'badge-shop' },
+        premium_star_badge: { text: '⭐', cls: 'badge-shop' },
+        owner_fan_badge: { text: '👑', cls: 'badge-shop' },
+      };
+
+      function renderRow(u) {
         const tr = document.createElement('tr');
+        if (u.isMe) tr.classList.add('me');
         const profileUrl = '/profile.html?u=' + encodeURIComponent(u.email || u.name);
         
-        const badgeLabels = {
-    verified_badge: { text: '✔', cls: 'badge-verified' },
-    og_badge: { text: '📜', cls: 'badge-og' },
-    artist_badge: { text: '🎨', cls: 'badge-shop' },
-    chess_badge: { text: '♟', cls: 'badge-shop' },
-    builder_badge: { text: '🛠', cls: 'badge-shop' },
-    lucky_badge: { text: '🍀', cls: 'badge-shop' },
-    premium_star_badge: { text: '⭐', cls: 'badge-shop' },
-    owner_fan_badge: { text: '👑', cls: 'badge-shop' },
-  };
         const badge = badgeLabels[u.badge];
         let badgeHtml = badge ? `<span class="l-badge ${badge.cls}">${badge.text}</span>` : '';
+        if (u.isMe) badgeHtml += '<span class="you-pill">You</span>';
 
         const colorClass = u.color || '';
 
         tr.innerHTML = `
-          <td class="rank">${i + 1}</td>
+          <td class="rank">${u.rank || ''}</td>
           <td class="name ${colorClass}"><a href="${profileUrl}">${esc(u.name)}${badgeHtml}</a></td>
-          <td class="coins">${u.coins.toFixed(2)}</td>
+          <td class="coins">${Number(u.coins || 0).toFixed(2)}</td>
           <td class="val">${u.wins}</td>
           <td class="val">${u.puzzles}</td>
           <td class="val">${u.pixels}</td>
@@ -136,7 +142,16 @@
           <td class="val">${u.logic_puzzles}</td>
         `;
         tbody.appendChild(tr);
-      });
+      }
+
+      (d.top || []).forEach(renderRow);
+      if (d.me) {
+        const gap = document.createElement('tr');
+        gap.className = 'you-gap';
+        gap.innerHTML = '<td colspan="9">Your Rank</td>';
+        tbody.appendChild(gap);
+        renderRow(d.me);
+      }
       
       document.getElementById('loading').style.display = 'none';
       document.getElementById('table').style.display = 'table';

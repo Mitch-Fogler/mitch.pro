@@ -242,15 +242,7 @@ async function load() {
     } catch { showNotFound(wrap); return; }
   }
 
-  var isOwnAnon = false;
-  if (isOwnProfile) {
-    try {
-      var priv = JSON.parse(localStorage.getItem('_prefPrivacy') || '{}');
-      if (priv.hideEmail) isOwnAnon = true;
-    } catch(e) {}
-  }
-  var isAnon = isOwnAnon || (profile.email && !profile.email.includes('@'));
-  var cloakHtml = isAnon ? ' 🥷' : '';
+  const profileName = profile.displayName || profile.nickname || profile.username || profile.email || 'Profile';
 
   if (profile.background) {
     document.body.style.backgroundImage = `url('${profile.background}')`;
@@ -258,8 +250,8 @@ async function load() {
     document.body.style.backgroundImage = '';
   }
 
-  document.title = (profile.displayName || profile.email || 'Profile') + ' — mitch.pro';
-  const initials = (profile.displayName || profile.email || '?').slice(0, 1).toUpperCase();
+  document.title = profileName + ' — mitch.pro';
+  const initials = profileName.slice(0, 1).toUpperCase();
   
   const badgeLabels = {
     verified_badge: { text: '✔', cls: 'badge-verified' },
@@ -283,7 +275,7 @@ async function load() {
         ${profile.isPremium ? '<span class="badge-premium">Premium member</span>' : ''}
         ${profile.isAdmin ? '<span class="badge-admin">Admin</span>' : ''}
       </div>` : ''}
-      <div class="display-name ${profile.activeColor || ''}">${esc(profile.displayName || profile.email || 'mitch.pro user')}${cloakHtml}${badgeHtml}</div>
+      <div class="display-name ${profile.activeColor || ''}">${esc(profileName)}${badgeHtml}</div>
       ${(!window.PUBLIC_PROFILE && profile.email && profile.email.includes('@')) ? `<div class="email-line">${esc(profile.email || '')}</div>` : ''}
       ${profile.bio ? `<div class="bio">${esc(profile.bio)}</div>` : ''}
       ${profile.website ? `<div class="website"><a href="${esc(profile.website)}" target="_blank" rel="noopener">${esc(profile.website)}</a></div>` : ''}

@@ -719,7 +719,7 @@ function esc(s) { const d = document.createElement('div'); d.textContent = s == 
 function fmtTime(ts) { return new Date(ts || Date.now()).toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' }); }
 function fmtDay(ts) { return new Date(ts || Date.now()).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }); }
 function atBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
-function msgId(m) { return String(m.id || [m.from, m.to, m.groupId, m.ts, m.text].join('|')); }
+function msgId(m) { return String(m.clientId || m.id || [m.from, m.to, m.groupId, m.ts, m.text].join('|')); }
 
 function toast(text) {
   const el = document.getElementById('toast');
@@ -1400,11 +1400,12 @@ function renderList() {
       const idx = reportedChats.indexOf(r);
       const timeStr = fmtDay(r.ts) + ' ' + fmtTime(r.ts);
       const statusClass = r.status === 'Needs review' ? 'unread' : 'role-tag';
+      const reporter = r.reportedBy || r.reporter || r.email || 'Unknown reporter';
       return `<button class="user-entry ${activeChat && activeChat.type === 'report' && activeChat.id === idx ? 'active' : ''}" data-report-index="${idx}">
         <span class="dot ${r.status === 'Needs review' ? 'on' : ''}"></span>
         <span class="entry-main">
           <span class="entry-name">${esc(r.reason || 'Chat Report')}</span>
-          <span class="entry-sub">By: [Anonymous] | ${timeStr}</span>
+          <span class="entry-sub">By: ${esc(reporter)} | ${timeStr}</span>
         </span>
         <span class="${statusClass}">${esc(r.status || 'Needs review')}</span>
       </button>`;
@@ -1540,8 +1541,9 @@ async function selectReport(index) {
   const report = reportedChats[index];
   if (!report) return;
   activeChat = { type: 'report', id: index };
+  const reporter = report.reportedBy || report.reporter || report.email || 'Unknown reporter';
   document.getElementById('chat-title').textContent = report.reason || 'Report Details';
-  document.getElementById('chat-subtitle').textContent = `Status: ${report.status || 'Needs review'} | Reporter: [Anonymous]`;
+  document.getElementById('chat-subtitle').textContent = `Status: ${report.status || 'Needs review'} | Reporter: ${reporter}`;
   document.getElementById('leave-group-btn').style.display = 'none';
   
   renderReportContext(report);
@@ -1898,7 +1900,7 @@ async function send() {
     return;
   }
 
-  const pendingMsgId = 'pending-' + Date.now();
+  const pendingMsgId = 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   const imageToSend = pendingImage;
   const textToSendRaw = text;
   
@@ -1914,6 +1916,7 @@ async function send() {
     ts: Date.now(),
     read: false,
     readBy: [myEmail],
+    clientId: pendingMsgId,
     isPending: true
   };
   
@@ -2022,8 +2025,8 @@ async function send() {
   }
 
   const body = activeChat.type === 'group'
-    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, recaptcha_token }
-    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, recaptcha_token };
+    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token }
+    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token };
 
   try {
     const r = await fetch('/api/dm/send', {
@@ -2056,7 +2059,14 @@ async function send() {
       readBy: [myEmail]
     };
     msg.text = text;
+    if (msg.clientId === pendingMsgId) {
+      msg.from = myEmail;
+      if (activeChat.type === 'dm') msg.to = activeChat.id;
+      if (activeChat.type === 'group') msg.groupId = activeChat.id;
+    }
     dmSince = Math.max(dmSince, msg.ts || 0);
+    allMessages = allMessages.filter(x => msgId(x) !== msgId(msg));
+    currentMessages = currentMessages.filter(x => msgId(x) !== msgId(msg));
     allMessages.push(msg);
     if (msg.kind === 'group') {
       const g = groups.find(x => String(x.id) === String(msg.groupId));
@@ -2072,7 +2082,7 @@ async function send() {
         member.lastMessage = msg;
       }
     }
-    if (isActiveMessage(msg)) {
+    if (isActiveMessage(msg) || msg.clientId === pendingMsgId) {
       currentMessages.push(msg);
       currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
     }
@@ -2536,14 +2546,25 @@ window.addEventListener('ws-broadcast-message', async function(e) {
     const m = data.message;
     if (!m) return;
     
-    // Ignore if already have this message (deduplication)
-    if (allMessages.some(existing => msgId(existing) === msgId(m))) return;
+    const existingIndex = allMessages.findIndex(existing => msgId(existing) === msgId(m));
+    const currentIndex = currentMessages.findIndex(existing => msgId(existing) === msgId(m));
+    if (existingIndex >= 0 && !allMessages[existingIndex].isPending) return;
     
-    // Decrypt the message content E2E
-    await decryptMessageContent(m);
+    if (existingIndex >= 0 && allMessages[existingIndex].isPending) {
+      const pending = allMessages[existingIndex];
+      m.rawText = m.text;
+      m.text = pending.text;
+      m.from = pending.from;
+      m.to = pending.to;
+      m.groupId = pending.groupId || m.groupId;
+      m.decrypted = true;
+    } else {
+      await decryptMessageContent(m);
+    }
     
     dmSince = Math.max(dmSince, m.ts || 0);
-    allMessages.push(m);
+    if (existingIndex >= 0) allMessages[existingIndex] = m;
+    else allMessages.push(m);
     
     // Update last message pointers
     if (m.kind === 'group') {
@@ -2562,8 +2583,9 @@ window.addEventListener('ws-broadcast-message', async function(e) {
     }
     
     // If it belongs to active chat, render it!
-    if (isActiveMessage(m)) {
-      currentMessages.push(m);
+    if (currentIndex >= 0 || isActiveMessage(m)) {
+      if (currentIndex >= 0) currentMessages[currentIndex] = m;
+      else currentMessages.push(m);
       currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
       
       const el = document.getElementById('msgs');

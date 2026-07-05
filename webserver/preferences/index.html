@@ -777,16 +777,6 @@
           <span class="toggle-desc">Prevent others from viewing your profile.</span>
         </div>
       </div>
-      <div class="field">
-        <label>Hide Email</label>
-        <div class="toggle-row">
-          <label class="toggle-switch">
-            <input type="checkbox" id="privHideEmailToggle">
-            <span class="toggle-slider"></span>
-          </label>
-          <span class="toggle-desc">Only display name to others; admins and mods can still see it.</span>
-        </div>
-      </div>
       </div>
       </section>
 
@@ -1870,7 +1860,6 @@ function saveAll() {
       noHistory:    document.getElementById('privNoHistoryToggle').checked,
       newsletter:   document.getElementById('privNewsletterToggle').checked,
       blockProfile: document.getElementById('privBlockProfileToggle').checked,
-      hideEmail:    document.getElementById('privHideEmailToggle').checked,
     }));
     localStorage.setItem(AI_CONFIG_KEY, JSON.stringify({
       enabled:     document.getElementById('aiToggle').checked,
@@ -2047,13 +2036,12 @@ async function deleteAccount() {
   document.getElementById('vfxRainToggle').checked      = !!vk.rain;
   document.getElementById('vfxParticlesToggle').checked = !!vk.particles;
 
-  var pk = load(PRIVACY_CONFIG_KEY, { hideOnline: false, stealthDash: false, noHistory: false, newsletter: true, blockProfile: false, hideEmail: false });
+  var pk = load(PRIVACY_CONFIG_KEY, { hideOnline: false, stealthDash: false, noHistory: false, newsletter: true, blockProfile: false });
   document.getElementById('privHideOnlineToggle').checked  = !!pk.hideOnline;
   document.getElementById('privStealthToggle').checked     = !!pk.stealthDash;
   document.getElementById('privNoHistoryToggle').checked    = !!pk.noHistory;
   document.getElementById('privNewsletterToggle').checked   = pk.newsletter !== false;
   document.getElementById('privBlockProfileToggle').checked = !!pk.blockProfile;
-  document.getElementById('privHideEmailToggle').checked    = !!pk.hideEmail;
 
   var ai = load(AI_CONFIG_KEY, { enabled: true, personality: 'friendly', privacy: false, customPrompt: '' });
   document.getElementById('aiToggle').checked = ai.enabled !== false;
@@ -2126,7 +2114,7 @@ async function deleteAccount() {
   }).catch(function(){});
 
   ['vfxSnowToggle','vfxStarsToggle','vfxRainToggle','vfxParticlesToggle',
-   'privHideOnlineToggle','privStealthToggle','privNoHistoryToggle','privNewsletterToggle','privBlockProfileToggle','privHideEmailToggle',
+   'privHideOnlineToggle','privStealthToggle','privNoHistoryToggle','privNewsletterToggle','privBlockProfileToggle',
    'aiToggle','aiPrivacyToggle','syncToggle','homeQuickToggle','homeMembersToggle','homeCompactToggle','homeSearchFocusToggle',
    'prefCanvasLock','prefQuickAccess','prefDailyBonus'].forEach(function(id) {
     document.getElementById(id).addEventListener('change', saveAll);

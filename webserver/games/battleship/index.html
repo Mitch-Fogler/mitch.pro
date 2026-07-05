@@ -898,7 +898,7 @@ function onSearchInput() {
   listEl.style.display = 'block';
   listEl.innerHTML = matches.slice(0, 6).map(item => {
     const m = item.member;
-    const nameStr = m.displayName ? escText(m.displayName) : 'mitch.pro user';
+    const nameStr = escText(m.displayName || m.email || 'member');
     const emailStr = escText(m.email);
     return `
       <div class="autocomplete-item" onclick="selectMember('${escText(m.email)}')">
