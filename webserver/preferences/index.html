@@ -768,6 +768,16 @@
         </div>
       </div>
       <div class="field">
+        <label>Blog Alerts</label>
+        <div class="toggle-row">
+          <label class="toggle-switch">
+            <input type="checkbox" id="blogAlertsToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span class="toggle-desc">Receive email when new blog posts are published.</span>
+        </div>
+      </div>
+      <div class="field">
         <label>Block Profile Lookups</label>
         <div class="toggle-row">
           <label class="toggle-switch">
@@ -1907,6 +1917,34 @@ function debouncedSave() {
   _saveTimer = setTimeout(saveAll, 400);
 }
 
+async function loadBlogAlerts() {
+  try {
+    const res = await fetch('/api/blog/subscription', { credentials: 'include', cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const toggle = document.getElementById('blogAlertsToggle');
+    if (toggle) toggle.checked = data.enabled === true;
+  } catch {}
+}
+
+async function saveBlogAlerts() {
+  const toggle = document.getElementById('blogAlertsToggle');
+  if (!toggle) return;
+  try {
+    const res = await fetch('/api/blog/subscription', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: toggle.checked })
+    });
+    if (!res.ok) throw new Error('save failed');
+    applyAppearanceLive(toggle.checked ? 'Blog alerts enabled.' : 'Blog alerts disabled.');
+  } catch {
+    toggle.checked = !toggle.checked;
+    applyAppearanceLive('Could not update blog alerts.');
+  }
+}
+
 var _clearPending = false;
 function clearGameData() {
   if (!_clearPending) {
@@ -2042,6 +2080,7 @@ async function deleteAccount() {
   document.getElementById('privNoHistoryToggle').checked    = !!pk.noHistory;
   document.getElementById('privNewsletterToggle').checked   = pk.newsletter !== false;
   document.getElementById('privBlockProfileToggle').checked = !!pk.blockProfile;
+  loadBlogAlerts();
 
   var ai = load(AI_CONFIG_KEY, { enabled: true, personality: 'friendly', privacy: false, customPrompt: '' });
   document.getElementById('aiToggle').checked = ai.enabled !== false;
@@ -2119,6 +2158,7 @@ async function deleteAccount() {
    'prefCanvasLock','prefQuickAccess','prefDailyBonus'].forEach(function(id) {
     document.getElementById(id).addEventListener('change', saveAll);
   });
+  document.getElementById('blogAlertsToggle').addEventListener('change', saveBlogAlerts);
   document.getElementById('reduceAnimToggle').addEventListener('change', function() {
     document.getElementById('motionSelect').value = this.checked ? 'off' : 'on';
     setThemePref('motion', document.getElementById('motionSelect').value);

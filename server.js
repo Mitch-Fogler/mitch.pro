@@ -88,6 +88,10 @@ const PASSWORDS_FILE         = join(DATA_DIR, 'passwords.json');
 const SIGNUP_CODES_FILE      = join(DATA_DIR, 'signup_codes.json');
 const AUTH_SESSIONS_FILE     = join(DATA_DIR, 'auth_sessions.json');
 const NEWSLETTER_UNSUB_FILE   = join(DATA_DIR, 'newsletter_unsub.json');
+const BLOG_POSTS_FILE         = join(DATA_DIR, 'blog_posts.json');
+const BLOG_SUBSCRIBERS_FILE   = join(DATA_DIR, 'blog_subscribers.json');
+const BLOG_CONTRIBUTORS_FILE  = join(DATA_DIR, 'blog_contributors.json');
+const BLOG_DELETE_LOG_FILE    = join(DATA_DIR, 'blog_delete_log.json');
 const NAMES_FILE             = join(DATA_DIR, 'names.json');
 const BLACKLIST_FILE         = join(DATA_DIR, 'blacklist.json');
 const USER_STATS_FILE        = join(DATA_DIR, 'user_stats.json');
@@ -1006,6 +1010,11 @@ const RATE_LIMITS = {
   '/api/admin/revoke-premium': [10,  60],
   '/api/admin/send-notification': [20, 60],
   '/api/admin/unsend-notification': [20, 60],
+  '/api/admin/blog-contributors': [20, 60],
+  '/api/admin/blog-deletions': [20, 60],
+  '/api/blog/posts':          [30,  60],
+  '/api/blog/write':          [6,   60],
+  '/api/blog/subscription':   [20,  60],
   '/api/newsletter-signup':    [3,   60],
   '/api/newsletter/unsubscribe-secure': [10, 600],
   '/api/newsletter/unsubscribe-direct': [10, 600],
@@ -4478,6 +4487,235 @@ function isAdminEmail(email) {
   return siteAdminEmails().some(adminEmail => normalizeEmail(adminEmail) === norm);
 }
 
+function blogContributorEmails() {
+  const raw = loadJson(BLOG_CONTRIBUTORS_FILE, []);
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (raw && typeof raw === 'object') {
+    return Object.entries(raw)
+      .filter(([, active]) => active !== false)
+      .map(([email]) => email);
+  }
+  return [];
+}
+
+function isBlogContributorEmail(email) {
+  if (!email) return false;
+  const norm = normalizeEmail(email);
+  return blogContributorEmails().some(contribEmail => normalizeEmail(contribEmail) === norm);
+}
+
+function canWriteBlogEmail(email) {
+  return !!email && (isAdminEmail(email) || isModeratorEmail(email) || isBlogContributorEmail(email));
+}
+
+function blogRoleForEmail(email) {
+  if (isAdminEmail(email)) return 'admin';
+  if (isModeratorEmail(email)) return 'moderator';
+  if (isBlogContributorEmail(email)) return 'contributor';
+  return 'user';
+}
+
+function blogAuthorName(email) {
+  const norm = normalizeEmail(email);
+  const profile = loadJson(PROFILES_FILE, {})[norm] || {};
+  return profile.nickname || profile.displayName || profile.username || defaultUsernameForEmail(norm);
+}
+
+function slugifyBlogTitle(title) {
+  return String(title || 'post')
+    .toLowerCase()
+    .replace(/['"]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 70) || 'post';
+}
+
+function loadBlogPosts() {
+  const raw = loadJson(BLOG_POSTS_FILE, []);
+  return Array.isArray(raw) ? raw.filter(p => p && typeof p === 'object') : [];
+}
+
+async function saveBlogPosts(posts) {
+  await saveJson(BLOG_POSTS_FILE, posts);
+}
+
+function blogSlugExists(posts, slug, exceptId = '') {
+  return posts.some(post => post.id !== exceptId && post.slug === slug);
+}
+
+function uniqueBlogSlug(posts, title, exceptId = '') {
+  const base = slugifyBlogTitle(title);
+  let slug = base;
+  let i = 2;
+  while (blogSlugExists(posts, slug, exceptId)) slug = `${base}-${i++}`;
+  return slug;
+}
+
+function blogExcerpt(body) {
+  const text = String(body || '').replace(/\s+/g, ' ').trim();
+  return text.length > 220 ? text.slice(0, 217) + '...' : text;
+}
+
+function safeBlogUrl(value, image = false) {
+  const raw = String(value || '').trim().slice(0, 800);
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (!image && (/^\//.test(raw) || /^mailto:[^@\s]+@[^@\s]+\.[^@\s]+$/i.test(raw))) return raw;
+  return '';
+}
+
+function blogHtmlToText(html) {
+  return String(html || '')
+    .replace(/<\s*br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|h1|h2|h3|li|blockquote|pre)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function legacyBlogHtmlFromText(text) {
+  return String(text || '').trim().split(/\n{2,}/)
+    .map(part => `<p>${htmlEsc(part).replace(/\n/g, '<br>')}</p>`)
+    .join('') || '<p></p>';
+}
+
+function sanitizeBlogHtml(input, fallbackText = '') {
+  let html = String(input || '').slice(0, 60000);
+  if (!html.trim() && fallbackText) html = legacyBlogHtmlFromText(fallbackText);
+  html = html
+    .replace(/\0/g, '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!doctype[^>]*>/gi, '')
+    .replace(/<\s*(script|style|iframe|object|embed|svg|math|form|input|button|select|textarea|meta|link|base)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+    .replace(/<\s*\/?\s*(script|style|iframe|object|embed|svg|math|form|input|button|select|textarea|meta|link|base)[^>]*>/gi, '');
+
+  const allowed = new Set(['p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'a', 'h2', 'h3', 'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'img', 'hr', 'span', 'div']);
+  const blockAlias = { div: 'p', b: 'strong', i: 'em', span: 'span' };
+  return html.replace(/<\s*(\/?)\s*([a-z0-9-]+)([^>]*)>/gi, (match, close, rawTag, attrs) => {
+    let tag = rawTag.toLowerCase();
+    if (!allowed.has(tag)) return '';
+    tag = blockAlias[tag] || tag;
+    if (close) return tag === 'br' || tag === 'hr' || tag === 'img' ? '' : `</${tag}>`;
+    if (tag === 'br' || tag === 'hr') return `<${tag}>`;
+    if (tag === 'a') {
+      const hrefMatch = String(attrs || '').match(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const href = safeBlogUrl(hrefMatch ? (hrefMatch[1] || hrefMatch[2] || hrefMatch[3]) : '', false);
+      return href ? `<a href="${htmlEsc(href)}" target="_blank" rel="noopener noreferrer">` : '<a>';
+    }
+    if (tag === 'img') {
+      const srcMatch = String(attrs || '').match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const altMatch = String(attrs || '').match(/\balt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const src = safeBlogUrl(srcMatch ? (srcMatch[1] || srcMatch[2] || srcMatch[3]) : '', true);
+      if (!src) return '';
+      const alt = String(altMatch ? (altMatch[1] || altMatch[2] || altMatch[3]) : '').slice(0, 140);
+      return `<img src="${htmlEsc(src)}" alt="${htmlEsc(alt)}">`;
+    }
+    return `<${tag}>`;
+  }).slice(0, 60000);
+}
+
+function sanitizeBlogTags(value) {
+  const raw = Array.isArray(value) ? value : String(value || '').split(',');
+  const tags = [];
+  for (const part of raw) {
+    const tag = String(part || '').replace(/[^\w .#-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 32);
+    if (tag && !tags.some(existing => existing.toLowerCase() === tag.toLowerCase())) tags.push(tag);
+    if (tags.length >= 8) break;
+  }
+  return tags;
+}
+
+function publicBlogPost(post, includeBody = false, viewerEmail = '') {
+  const own = viewerEmail && normalizeEmail(viewerEmail) === normalizeEmail(post.authorEmail || '');
+  const writer = viewerEmail && canWriteBlogEmail(viewerEmail);
+  const admin = viewerEmail && isAdminEmail(viewerEmail);
+  const bodyHtml = sanitizeBlogHtml(post.bodyHtml || '', post.body || '');
+  const bodyText = post.body || blogHtmlToText(bodyHtml);
+  return {
+    id: post.id,
+    slug: post.slug,
+    title: post.title,
+    excerpt: blogExcerpt(bodyText),
+    status: post.status || 'published',
+    authorName: post.authorName || blogAuthorName(post.authorEmail || ''),
+    tags: sanitizeBlogTags(post.tags || []),
+    coverImage: safeBlogUrl(post.coverImage || '', true),
+    createdAt: post.createdAt || 0,
+    updatedAt: post.updatedAt || 0,
+    publishedAt: post.publishedAt || 0,
+    canEdit: !!(admin || (own && writer)),
+    canDelete: !!(admin || (own && writer)),
+    ...(includeBody ? { body: bodyText, bodyHtml } : {})
+  };
+}
+
+function logBlogDeletion(post, actorEmail) {
+  const actor = normalizeEmail(actorEmail || '');
+  const entry = {
+    id: randomBytes(8).toString('hex'),
+    ts: Date.now(),
+    postId: String(post?.id || ''),
+    slug: String(post?.slug || ''),
+    title: String(post?.title || '').slice(0, 180),
+    status: String(post?.status || 'published'),
+    authorEmail: normalizeEmail(post?.authorEmail || ''),
+    authorName: String(post?.authorName || '').slice(0, 80),
+    deletedBy: actor,
+    deletedByRole: blogRoleForEmail(actor),
+  };
+  const logs = loadJson(BLOG_DELETE_LOG_FILE, []);
+  const list = Array.isArray(logs) ? logs : [];
+  list.unshift(entry);
+  saveJson(BLOG_DELETE_LOG_FILE, list.slice(0, 500));
+  logAdminAction(actor || 'blog', 'delete_blog_post', {
+    postId: entry.postId,
+    slug: entry.slug,
+    title: entry.title,
+    authorEmail: entry.authorEmail,
+    deletedByRole: entry.deletedByRole,
+  });
+}
+
+function blogSubscribers() {
+  const raw = loadJson(BLOG_SUBSCRIBERS_FILE, {});
+  if (Array.isArray(raw)) {
+    return Object.fromEntries(raw.map(email => [normalizeEmail(email), true]).filter(([email]) => email));
+  }
+  if (!raw || typeof raw !== 'object') return {};
+  const out = {};
+  for (const [email, enabled] of Object.entries(raw)) {
+    const norm = normalizeEmail(email);
+    if (norm) out[norm] = enabled === true;
+  }
+  return out;
+}
+
+async function saveBlogSubscribers(subscribers) {
+  const clean = {};
+  for (const [email, enabled] of Object.entries(subscribers || {})) {
+    const norm = normalizeEmail(email);
+    if (norm && enabled === true) clean[norm] = true;
+  }
+  await saveJson(BLOG_SUBSCRIBERS_FILE, clean);
+}
+
+function notifyBlogSubscribers(post) {
+  const subscribers = blogSubscribers();
+  const emails = Object.entries(subscribers)
+    .filter(([, enabled]) => enabled === true)
+    .map(([email]) => email);
+  for (const email of emails) {
+    const link = `${siteUrl(email)}/blog/#post/${encodeURIComponent(post.slug)}`;
+    const body = `New blog post on mitch.pro\n\n${post.title}\nBy ${post.authorName || 'mitch.pro'}\n\n${blogExcerpt(post.body)}\n\nRead it here:\n${link}\n\nYou can turn off blog alerts in Preferences:\n${siteUrl(email)}/preferences/#privacy${emailSig()}`;
+    sendEmailBg(email, `New blog post: ${post.title}`, body);
+  }
+}
+
 function publicActiveColor(email, color) {
   const active = String(color || '');
   if (active === 'rainbow_name' && !isAdminEmail(email)) return null;
@@ -5690,6 +5928,223 @@ async function handleRequest(req, server) {
     }
     return Response.redirect('/enroll/', 302);
   }
+
+  function authedEmailForRequest() {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(sid)) return { sid, email: '' };
+    return { sid, email: emailFromSid(sid) || '' };
+  }
+
+  if (path === '/api/blog/me' && method === 'GET') {
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    return jsonResp(200, {
+      canWrite: canWriteBlogEmail(email),
+      isContributor: isBlogContributorEmail(email),
+      isAdmin: isAdminEmail(email),
+      isModerator: isModeratorEmail(email)
+    });
+  }
+
+  if (path === '/api/blog/subscription' && method === 'GET') {
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    const subscribers = blogSubscribers();
+    return jsonResp(200, { enabled: subscribers[normalizeEmail(email)] === true });
+  }
+
+  if (path === '/api/blog/subscription' && method === 'POST') {
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const subscribers = blogSubscribers();
+    const norm = normalizeEmail(email);
+    if (body.enabled === true) subscribers[norm] = true;
+    else delete subscribers[norm];
+    await saveBlogSubscribers(subscribers);
+    return jsonResp(200, { ok: true, enabled: subscribers[norm] === true });
+  }
+
+  if (path === '/api/blog/posts' && method === 'GET') {
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    const norm = normalizeEmail(email);
+    const staff = isAdminEmail(email) || isModeratorEmail(email);
+    const writer = canWriteBlogEmail(email);
+    const posts = loadBlogPosts()
+      .filter(post => (post.status || 'published') === 'published' || (writer && (staff || normalizeEmail(post.authorEmail || '') === norm)))
+      .sort((a, b) => Number(b.publishedAt || b.updatedAt || b.createdAt || 0) - Number(a.publishedAt || a.updatedAt || a.createdAt || 0))
+      .map(post => publicBlogPost(post, false, email));
+    return jsonResp(200, { posts, canWrite: writer });
+  }
+
+  if (path === '/api/blog/posts' && method === 'POST') {
+    const writeLimit = checkRateLimit(req, '/api/blog/write'); if (writeLimit) return writeLimit;
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    if (!canWriteBlogEmail(email)) return jsonResp(403, { error: 'forbidden' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const title = String(body.title || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+    const rawText = String(body.body || '').trim().slice(0, 20000);
+    const cleanHtml = sanitizeBlogHtml(body.bodyHtml || body.html || '', rawText);
+    const text = blogHtmlToText(cleanHtml).slice(0, 20000) || rawText;
+    const tags = sanitizeBlogTags(body.tags);
+    const coverImage = safeBlogUrl(body.coverImage || '', true);
+    const status = body.status === 'draft' ? 'draft' : 'published';
+    if (title.length < 3) return jsonResp(400, { error: 'title must be at least 3 characters' });
+    if (!text && !cleanHtml.includes('<img ')) return jsonResp(400, { error: 'body required' });
+    const posts = loadBlogPosts();
+    const now = Date.now();
+    const post = {
+      id: randomBytes(10).toString('hex'),
+      slug: uniqueBlogSlug(posts, title),
+      title,
+      body: text,
+      bodyHtml: cleanHtml,
+      tags,
+      coverImage,
+      status,
+      authorEmail: normalizeEmail(email),
+      authorName: blogAuthorName(email),
+      createdAt: now,
+      updatedAt: now,
+      publishedAt: status === 'published' ? now : 0
+    };
+    posts.unshift(post);
+    await saveBlogPosts(posts);
+    if (status === 'published') notifyBlogSubscribers(post);
+    return jsonResp(200, { ok: true, post: publicBlogPost(post, true, email) });
+  }
+
+  if (path.startsWith('/api/blog/posts/')) {
+    let key = '';
+    try {
+      key = decodeURIComponent(path.slice('/api/blog/posts/'.length)).trim();
+    } catch {
+      return jsonResp(400, { error: 'bad post id' });
+    }
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    const posts = loadBlogPosts();
+    const idx = posts.findIndex(post => post.id === key || post.slug === key);
+    if (idx < 0) return jsonResp(404, { error: 'post not found' });
+    const post = posts[idx];
+    const norm = normalizeEmail(email);
+    const admin = isAdminEmail(email);
+    const staff = admin || isModeratorEmail(email);
+    const own = normalizeEmail(post.authorEmail || '') === norm;
+
+    if (method === 'GET') {
+      if ((post.status || 'published') !== 'published' && !(canWriteBlogEmail(email) && (staff || own))) {
+        return jsonResp(404, { error: 'post not found' });
+      }
+      return jsonResp(200, { post: publicBlogPost(post, true, email), canWrite: canWriteBlogEmail(email) });
+    }
+
+    if (method === 'PATCH' || method === 'PUT') {
+      const writeLimit = checkRateLimit(req, '/api/blog/write'); if (writeLimit) return writeLimit;
+      if (!canWriteBlogEmail(email) || (!admin && !own)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const previousStatus = post.status || 'published';
+      if (body.title !== undefined) {
+        const title = String(body.title || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+        if (title.length < 3) return jsonResp(400, { error: 'title must be at least 3 characters' });
+        if (title !== post.title) {
+          post.title = title;
+          post.slug = uniqueBlogSlug(posts, title, post.id);
+        }
+      }
+      if (body.body !== undefined) {
+        const rawText = String(body.body || '').trim().slice(0, 20000);
+        const cleanHtml = sanitizeBlogHtml(body.bodyHtml || body.html || '', rawText);
+        const text = blogHtmlToText(cleanHtml).slice(0, 20000) || rawText;
+        if (!text && !cleanHtml.includes('<img ')) return jsonResp(400, { error: 'body required' });
+        post.body = text;
+        post.bodyHtml = cleanHtml;
+      } else if (body.bodyHtml !== undefined || body.html !== undefined) {
+        const cleanHtml = sanitizeBlogHtml(body.bodyHtml || body.html || '', post.body || '');
+        const text = blogHtmlToText(cleanHtml).slice(0, 20000);
+        if (!text && !cleanHtml.includes('<img ')) return jsonResp(400, { error: 'body required' });
+        post.body = text;
+        post.bodyHtml = cleanHtml;
+      }
+      if (body.tags !== undefined) post.tags = sanitizeBlogTags(body.tags);
+      if (body.coverImage !== undefined) post.coverImage = safeBlogUrl(body.coverImage || '', true);
+      if (body.status !== undefined) {
+        post.status = body.status === 'draft' ? 'draft' : 'published';
+      }
+      post.updatedAt = Date.now();
+      if (post.status === 'published' && previousStatus !== 'published') {
+        post.publishedAt = post.updatedAt;
+      }
+      posts[idx] = post;
+      await saveBlogPosts(posts);
+      if (post.status === 'published' && previousStatus !== 'published') notifyBlogSubscribers(post);
+      return jsonResp(200, { ok: true, post: publicBlogPost(post, true, email) });
+    }
+
+    if (method === 'DELETE') {
+      const writeLimit = checkRateLimit(req, '/api/blog/write'); if (writeLimit) return writeLimit;
+      if (!canWriteBlogEmail(email) || (!admin && !own)) return jsonResp(403, { error: 'forbidden' });
+      const deletedPost = { ...post };
+      posts.splice(idx, 1);
+      await saveBlogPosts(posts);
+      logBlogDeletion(deletedPost, email);
+      return jsonResp(200, { ok: true });
+    }
+  }
+
+  if (path === '/api/admin/blog-deletions' && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    const logs = loadJson(BLOG_DELETE_LOG_FILE, []);
+    return jsonResp(200, {
+      logs: (Array.isArray(logs) ? logs : []).slice(0, 100).map(entry => ({
+        id: entry.id || '',
+        ts: entry.ts || 0,
+        postId: entry.postId || '',
+        slug: entry.slug || '',
+        title: entry.title || '',
+        status: entry.status || '',
+        authorEmail: maskEmail(entry.authorEmail || ''),
+        authorName: entry.authorName || '',
+        deletedBy: maskEmail(entry.deletedBy || ''),
+        deletedByRole: entry.deletedByRole || 'user',
+      }))
+    });
+  }
+
+  if (path === '/api/admin/blog-contributors' && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    return jsonResp(200, { contributors: blogContributorEmails() });
+  }
+
+  if (path === '/api/admin/blog-contributors' && method === 'POST') {
+    const writeLimit = checkRateLimit(req, '/api/blog/write'); if (writeLimit) return writeLimit;
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const adminEmail = emailFromSid(sid) || 'admin';
+    const targetRaw = String(body.email || '').trim();
+    const target = normalizeEmail(targetRaw);
+    if (!target || !target.includes('@')) return jsonResp(400, { error: 'valid email required' });
+    const active = body.active !== false;
+    let contributors = blogContributorEmails();
+    if (active) {
+      if (!contributors.some(email => normalizeEmail(email) === target)) contributors.push(target);
+    } else {
+      contributors = contributors.filter(email => normalizeEmail(email) !== target);
+    }
+    await saveJson(BLOG_CONTRIBUTORS_FILE, contributors.sort());
+    logAdminAction(adminEmail, active ? 'add_blog_contributor' : 'remove_blog_contributor', { target });
+    return jsonResp(200, { ok: true, contributors });
+  }
+
   if (path === "/api/shop/items" && method === "GET") { 
     const cookies = getCookies(req);
     const sid = cookies["studentId"] || cookies["id"] || "";
@@ -10359,6 +10814,7 @@ function loadAllGamesList() {
       const isPremium = email ? isPremiumEmail(email) : false;
       const isAdmin = isAdminId(uid);
       const isModerator = isModeratorId(uid);
+      const isBlogContributor = email ? isBlogContributorEmail(email) : false;
       const canGrantPremium = canGrantPremiumId(uid);
       const stats = email ? (loadUserStats()[normalizeEmail(email)] || {}) : {};
       const userCosmForMe = email ? (loadJson(COSMETICS_FILE, {})[normalizeEmail(email)] || {}) : {};
@@ -10388,6 +10844,8 @@ function loadAllGamesList() {
         isPremium,
         isAdmin,
         isModerator,
+        isBlogContributor,
+        canBlogPost: email ? canWriteBlogEmail(email) : false,
         canGrantPremium,
         vipUntil: stats.vip_casino_until || 0,
         activeTheme: userCosmForMe.activeTheme || '',
@@ -10673,6 +11131,7 @@ function loadAllGamesList() {
         if (ownerMemberEmails().some(ownerEmail => normalizeEmail(ownerEmail) === normalizeEmail(email))) role = 'owner/developer';
         else if (adminMemberEmails().some(adminEmail => normalizeEmail(adminEmail) === normalizeEmail(email))) role = 'admin/developer';
         else if (isModeratorEmail(email)) role = 'moderator';
+        else if (isBlogContributorEmail(email)) role = 'contributor';
         else if (isPremiumEmail(email)) role = 'premium';
         
         const e2eLegacy = deriveUserE2EKeys(email);

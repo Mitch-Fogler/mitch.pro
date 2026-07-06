@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventory - mitch.pro</title>
+<script src="/theme.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--t-bg, #0d0d0d);
+    color: var(--t-fg, #e8e8e8);
+    font-family: 'DM Mono', ui-monospace, monospace;
+    padding: 42px 18px 88px;
+  }
+  .wrap { width: 100%; max-width: 1080px; margin: 0 auto; }
+  .topbar { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+  h1 {
+    font-family: 'Syne', system-ui, sans-serif;
+    font-size: clamp(2rem, 4vw, 3.4rem);
+    line-height: 1;
+    font-weight: 900;
+    background: var(--t-gr);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subline { color: var(--t-fg2, #aaa); font-size: .82rem; margin-top: 10px; line-height: 1.55; max-width: 680px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn, button {
+    min-height: 38px;
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    background: var(--t-bg2, #151515);
+    color: var(--t-fg, #fff);
+    font-family: 'Syne', system-ui, sans-serif;
+    font-weight: 800;
+    font-size: .82rem;
+    padding: 9px 13px;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn.primary, button.primary { background: var(--t-gr); border-color: transparent; color: #fff; }
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 18px 0 24px; }
+  .status {
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    background: var(--t-bg2, #151515);
+    padding: 12px;
+  }
+  .status b { display: block; color: var(--t-fg, #fff); font-size: .86rem; margin-bottom: 4px; }
+  .status span { color: var(--t-fg2, #aaa); font-size: .75rem; }
+  .section { margin: 18px 0 22px; border: 1px solid var(--t-bd, #333); border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.015); }
+  .section-head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
+    padding: 12px 14px; border-bottom: 1px solid var(--t-bd, #333);
+  }
+  .section-title { font-family: 'Syne', system-ui, sans-serif; font-size: 1rem; font-weight: 900; }
+  .section-count { color: var(--t-fg2, #aaa); font-size: .72rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 14px; }
+  .card {
+    background: var(--t-bg2, #151515);
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    padding: 14px;
+    min-height: 176px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .card.active { border-color: rgba(139,92,246,.75); box-shadow: 0 0 0 1px rgba(139,92,246,.2); }
+  .name { font-family: 'Syne', system-ui, sans-serif; font-weight: 900; font-size: 1rem; line-height: 1.25; }
+  .desc { color: var(--t-fg2, #aaa); font-size: .75rem; line-height: 1.45; margin-top: 8px; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; min-height: 23px; margin-bottom: 10px; }
+  .pill {
+    display: inline-flex; align-items: center; min-height: 22px; padding: 3px 7px;
+    border-radius: 999px; border: 1px solid var(--t-bd, #333);
+    color: var(--t-fg2, #aaa); font-size: .65rem; font-weight: 800;
+  }
+  .pill.good { color: #34d399; border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.08); }
+  .pill.warn { color: #f59e0b; border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.08); }
+  .pill.active { color: #c4b5fd; border-color: rgba(139,92,246,.45); background: rgba(139,92,246,.12); }
+  .empty { color: var(--t-fg2, #aaa); border: 1px dashed var(--t-bd, #333); border-radius: 8px; padding: 28px; text-align: center; }
+  #toast {
+    position: fixed; right: 18px; bottom: 18px; display: none; max-width: min(420px, calc(100vw - 36px));
+    padding: 12px 16px; border-radius: 8px; font-weight: 800; z-index: 9999; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  }
+  #toast.ok { display: block; background: #16a34a; color: #fff; }
+  #toast.err { display: block; background: #dc2626; color: #fff; }
+  @media (max-width: 700px) {
+    body { padding-top: 28px; }
+    .topbar { align-items: stretch; }
+    .actions, .actions a { width: 100%; }
+    .btn { text-align: center; }
+    .grid { grid-template-columns: 1fr; padding: 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>Inventory</h1>
+      <p class="subline">Equip owned shop items, including items that are no longer listed in the market.</p>
+    </div>
+    <div class="actions">
+      <a class="btn" href="/shop/">Open Market</a>
+      <a class="btn" href="/preferences/">Preferences</a>
+    </div>
+  </div>
+
+  <div id="status" class="status-grid"></div>
+  <div id="inventory"><div class="empty">Loading inventory...</div></div>
+</div>
+<div id="toast"></div>
+
+<script>
+const equipTypes = new Set(['name_color', 'chat_badge', 'chat_effect', 'profile_effect', 'site_theme', 'canvas_tool', 'ai_personality']);
+let inventory = null;
+
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+function toast(text, ok) {
+  const el = document.getElementById('toast');
+  el.textContent = text;
+  el.className = ok ? 'ok' : 'err';
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => { el.className = ''; }, 3200);
+}
+function timeLeft(ts) {
+  ts = Number(ts || 0);
+  if (!ts || ts <= Date.now()) return 'Inactive';
+  const mins = Math.ceil((ts - Date.now()) / 60000);
+  if (mins < 60) return mins + 'm left';
+  return Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm left';
+}
+function renderStatus(status) {
+  const rows = [
+    ['VIP Casino', timeLeft(status.vipUntil)],
+    ['Happy Hour', timeLeft(status.happyHourUntil)],
+    ['Double Down', timeLeft(status.doubleDownUntil)],
+    ['Bad Beat Insurance', timeLeft(status.badBeatInsuranceUntil)],
+    ['Slot Free Spins', String(status.slotsFreeSpins || 0)],
+    ['Streak Freezes', String(status.streakFreezes || 0)]
+  ];
+  document.getElementById('status').innerHTML = rows.map(([label, value]) => (
+    `<div class="status"><b>${esc(label)}</b><span>${esc(value)}</span></div>`
+  )).join('');
+}
+function renderCard(item) {
+  const canEquip = equipTypes.has(item.costType);
+  const tags = [
+    '<span class="pill good">owned</span>',
+    item.active ? '<span class="pill active">active</span>' : '',
+    item.removedFromShop ? '<span class="pill warn">removed from shop</span>' : ''
+  ].filter(Boolean).join('');
+  const button = canEquip
+    ? `<button class="${item.active ? '' : 'primary'}" data-id="${esc(item.id)}" data-type="${esc(item.costType)}">${item.active ? 'Turn Off' : 'Equip'}</button>`
+    : '<span class="pill">pass / consumable</span>';
+  return `<article class="card ${item.active ? 'active' : ''}">
+    <div>
+      <div class="tags">${tags}</div>
+      <div class="name">${esc(item.name || item.id)}</div>
+      <div class="desc">${esc(item.desc || '')}</div>
+    </div>
+    <div style="margin-top:14px">${button}</div>
+  </article>`;
+}
+function render() {
+  const items = Array.isArray(inventory.items) ? inventory.items : [];
+  renderStatus(inventory.status || {});
+  const root = document.getElementById('inventory');
+  if (!items.length) {
+    root.innerHTML = '<div class="empty">No owned shop items yet.</div>';
+    return;
+  }
+  const grouped = {};
+  items.forEach(item => {
+    const section = item.section || 'Other';
+    if (!grouped[section]) grouped[section] = [];
+    grouped[section].push(item);
+  });
+  root.innerHTML = Object.entries(grouped).map(([section, sectionItems]) => `
+    <section class="section">
+      <div class="section-head"><div class="section-title">${esc(section)}</div><div class="section-count">${sectionItems.length} item${sectionItems.length === 1 ? '' : 's'}</div></div>
+      <div class="grid">${sectionItems.map(renderCard).join('')}</div>
+    </section>
+  `).join('');
+  root.querySelectorAll('button[data-id]').forEach(btn => {
+    btn.addEventListener('click', () => equip(btn.dataset.type, btn.textContent === 'Turn Off' ? '' : btn.dataset.id));
+  });
+}
+async function equip(type, itemId) {
+  try {
+    const r = await fetch('/api/me/cosmetics/equip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, itemId })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return toast(data.error || 'Could not update item', false);
+    toast(itemId ? 'Equipped' : 'Turned off', true);
+    await load();
+  } catch {
+    toast('Network error while updating item', false);
+  }
+}
+async function load() {
+  try {
+    const r = await fetch('/api/me/inventory', { credentials: 'include', cache: 'no-store' });
+    if (r.status === 401) { location.href = '/enroll/'; return; }
+    inventory = await r.json();
+    render();
+  } catch {
+    document.getElementById('inventory').innerHTML = '<div class="empty">Failed to load inventory.</div>';
+  }
+}
+load();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

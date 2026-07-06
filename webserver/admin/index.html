@@ -246,6 +246,7 @@
     body.moderator-mode #shop-tools,
     body.moderator-mode #logs-tools,
     body.moderator-mode #moderator-card,
+    body.moderator-mode #blog-contributor-card,
     body.moderator-mode #people-tools form:nth-of-type(1),
     body.moderator-mode #people-tools form:nth-of-type(2) {
       display: none !important;
@@ -376,6 +377,17 @@
         <textarea id="mod-panel-links" placeholder="Optional panel links, one per line: Label | /path"></textarea>
         <button type="button" onclick="saveModeratorPanel()">Save Moderator Panel</button>
         <div id="mod-status" class="form-status"></div>
+      </div>
+
+      <div class="action-card" id="blog-contributor-card" style="display:none">
+        <h2>Blog Contributors</h2>
+        <p>Contributors can create, edit, draft, and publish posts at /blog/ without broader staff permissions.</p>
+        <div id="blog-contributor-list" style="font-size:0.75rem; margin-bottom:10px;"></div>
+        <form onsubmit="addBlogContributor(event)" style="display:flex; gap:5px;">
+          <input id="blog-contributor-email" type="email" placeholder="user@email.com" required style="flex:1">
+          <button type="submit" style="width:auto">Add</button>
+        </form>
+        <div id="blog-contributor-status" class="form-status"></div>
       </div>
     </div>
     </section>
@@ -639,6 +651,13 @@
         <button type="submit">Update Mirror</button>
         <div id="mirror-status" class="form-status"></div>
       </form>
+      <div class="action-card" style="grid-column:1/-1;">
+        <h2>Blog Deletion Log</h2>
+        <p>Shows who deleted blog posts, which post was removed, and the actor role at the time.</p>
+        <button type="button" onclick="loadBlogDeletionLog()" style="width:auto;">Refresh Deletions</button>
+        <div id="blog-delete-status" class="form-status"></div>
+        <div id="blog-delete-log" class="request-list" style="margin-top:10px;"><div class="empty">Open this section to load blog deletions.</div></div>
+      </div>
     </div>
     </section>
 
@@ -1074,6 +1093,50 @@
       } catch (e) {}
     }
 
+    async function addBlogContributor(e) {
+      e.preventDefault();
+      const email = document.getElementById('blog-contributor-email').value.trim();
+      if (!email) return;
+      setStatus('blog-contributor-status', 'Adding...', '');
+      try {
+        const d = await postAdmin('/api/admin/blog-contributors', { email, active: true });
+        document.getElementById('blog-contributor-email').value = '';
+        setStatus('blog-contributor-status', 'Added contributor.', 'ok');
+        renderBlogContributors(d.contributors || []);
+      } catch (err) {
+        setStatus('blog-contributor-status', err.message, 'err');
+      }
+    }
+
+    async function removeBlogContributor(email) {
+      if (!confirm('Remove ' + email + ' from blog contributors?')) return;
+      try {
+        const d = await postAdmin('/api/admin/blog-contributors', { email, active: false });
+        renderBlogContributors(d.contributors || []);
+      } catch (err) {
+        alert(err.message);
+      }
+    }
+
+    function renderBlogContributors(contributors) {
+      const list = document.getElementById('blog-contributor-list');
+      list.innerHTML = (contributors || []).map(email => `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <span>${esc(email)}</span>
+          <button onclick='removeBlogContributor(${JSON.stringify(email)})' style="padding:2px 6px; font-size:10px; width:auto;">X</button>
+        </div>
+      `).join('') || '<div class="muted">No blog contributors added.</div>';
+    }
+
+    async function loadBlogContributors() {
+      try {
+        const r = await fetch('/api/admin/blog-contributors', { credentials: 'include', headers: getAdminHeaders() });
+        if (!r.ok) return;
+        const d = await r.json();
+        renderBlogContributors(d.contributors || []);
+      } catch (e) {}
+    }
+
     async function loadModeratorPanel() {
       try {
         const r = await fetch('/api/admin/moderator-panel', { credentials: 'include', headers: getAdminHeaders() });
@@ -1325,6 +1388,40 @@
       } catch (err) {
         if (output) output.textContent = err.message;
         setStatus('docker-log-status', err.message, 'err');
+      }
+    }
+
+    async function loadBlogDeletionLog() {
+      const list = document.getElementById('blog-delete-log');
+      if (!list) return;
+      setStatus('blog-delete-status', 'Loading blog deletion log...', '');
+      list.innerHTML = '<div class="empty">Loading deletions...</div>';
+      try {
+        const res = await fetch('/api/admin/blog-deletions', {
+          credentials: 'include',
+          cache: 'no-store',
+          headers: getAdminHeaders(),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || d.error) throw new Error(d.error || 'Failed to load blog deletion log.');
+        const rows = d.logs || [];
+        list.innerHTML = rows.length ? rows.map(row => `
+          <div class="request-card">
+            <div class="request-top">
+              <div>
+                <div class="request-title">${esc(row.title || row.slug || row.postId || 'Deleted post')}</div>
+                <div class="request-meta">Deleted by ${esc(row.deletedBy || 'unknown')} (${esc(row.deletedByRole || 'user')}) · ${esc(fmtTime(row.ts))}</div>
+              </div>
+              <span class="pill warn">${esc(row.status || 'post')}</span>
+            </div>
+            <div class="request-payload">Author: ${esc(row.authorName || row.authorEmail || 'unknown')}\nSlug: ${esc(row.slug || '')}\nPost ID: ${esc(row.postId || '')}</div>
+          </div>
+        `).join('') : '<div class="empty">No blog posts have been deleted yet.</div>';
+        setStatus('blog-delete-status', 'Loaded ' + rows.length + ' deletion record(s).', 'ok');
+        list.dataset.loaded = '1';
+      } catch (err) {
+        list.innerHTML = '<div class="empty">Could not load blog deletion log.</div>';
+        setStatus('blog-delete-status', err.message, 'err');
       }
     }
 
@@ -1898,6 +1995,10 @@
         loadModerators();
         loadModeratorPanel();
       }
+      if (currentUser.isAdmin) {
+        document.getElementById('blog-contributor-card').style.display = 'block';
+        loadBlogContributors();
+      }
 
       const rLogs = await fetch('/api/admin/search-logs', { credentials: 'include', headers: getAdminHeaders() });
       const dLogs = await rLogs.json();
@@ -2260,6 +2361,12 @@
         const output = document.getElementById('app-log-output');
         if (currentUser && currentUser.isAdmin && output && !output.dataset.loaded) {
           loadAppLogs();
+        }
+      }
+      if (target === 'content-tools') {
+        const list = document.getElementById('blog-delete-log');
+        if (currentUser && (currentUser.isAdmin || currentUser.isModerator) && list && !list.dataset.loaded) {
+          loadBlogDeletionLog();
         }
       }
     }
