@@ -274,6 +274,7 @@ function parseSites(text) {
     '/blog/', '/blog',
     '/members/', '/members',
     '/feedback/', '/feedback',
+    '/friends/', '/friends',
     '/leaderboard/', '/leaderboard',
     '/games/jeopardy-battle/', '/games/jeopardy-battle',
     '/games/battleship/', '/games/battleship',
@@ -308,7 +309,7 @@ function parseSites(text) {
     return getPopularityScore(b) - getPopularityScore(a);
   });
 
-  var topPopular = candidateEntries.slice(0, 8);
+  var topPopular = candidateEntries;
   if (topPopular.length > 0) {
     categories['Popular & Frequent'] = topPopular.map(function(e) {
       return makeSiteLink(e.type, e.href, e.label, 'popular-site-link');
