@@ -92,12 +92,14 @@ const BLOG_POSTS_FILE         = join(DATA_DIR, 'blog_posts.json');
 const BLOG_SUBSCRIBERS_FILE   = join(DATA_DIR, 'blog_subscribers.json');
 const BLOG_CONTRIBUTORS_FILE  = join(DATA_DIR, 'blog_contributors.json');
 const BLOG_DELETE_LOG_FILE    = join(DATA_DIR, 'blog_delete_log.json');
+const BLOG_COMMENTS_FILE      = join(DATA_DIR, 'blog_comments.json');
+const BLOG_UPLOAD_DIR         = join(WEBROOT, 'blog', 'uploads');
 const NAMES_FILE             = join(DATA_DIR, 'names.json');
 const BLACKLIST_FILE         = join(DATA_DIR, 'blacklist.json');
 const USER_STATS_FILE        = join(DATA_DIR, 'user_stats.json');
+const PROFILE_REPORTS_FILE   = join(DATA_DIR, 'profile_reports.json');
 const ACHIEVEMENTS_FILE      = join(DATA_DIR, 'achievements.json');
 const SESSION_LOG_FILE       = join(DATA_DIR, 'sessions.json');
-const PROXY_LOG_FILE         = join(DATA_DIR, 'proxy_logs.json');
 const COINS_FILE             = join(DATA_DIR, 'coins.json');
 const UNLIMITED_IDS_FILE     = join(DATA_DIR, 'unlimited_ids.json');
 const ID_SECRET_FILE         = join(DATA_DIR, 'id_secret.key');
@@ -881,7 +883,6 @@ try { knownCleanIps = new Set(JSON.parse(readFileSync(KNOWN_CLEAN_FILE, 'utf8'))
 let globalCoinMultiplier = 1.0;
 let happyHourActive = false;
 let computedHappyHour = 12; // Default to 12 PM (lunch hour)
-const trafficHistory = []; // [timestamp, timestamp, ...]
 let casinoEnabled = true;
 let casinoIntake = 0;
 let casinoPayout = 0;
@@ -893,7 +894,6 @@ try {
 
 function saveCasinoStats() { saveJson(join(BASE, 'data', 'casino_stats.json'), { intake: casinoIntake, payout: casinoPayout }); }
 
-const trafficFeed = []; // { user, page, ts }
 const bettingFeed = []; // { user, game, amount, outcome, ts }
 let shadowBans = new Set();
 try { shadowBans = new Set(loadJson(join(BASE, 'data', 'shadow_bans.json'), [])); } catch {}
@@ -952,11 +952,6 @@ function loadGlobalGameStats() {
 const allSockets = new Set();
 function saveShadowBans() { saveJson(join(BASE, 'data', 'shadow_bans.json'), Array.from(shadowBans)); }
 
-function logTraffic(user, page) {
-  trafficFeed.unshift({ user, page, ts: Date.now() });
-  if (trafficFeed.length > 50) trafficFeed.pop();
-}
-
 function logBet(user, game, amount, outcome) {
   bettingFeed.unshift({ user, game, amount, outcome, ts: Date.now() });
   if (bettingFeed.length > 50) bettingFeed.pop();
@@ -969,22 +964,6 @@ function maskEmail(email) {
   const domain = parts[1];
   if (local.length <= 2) return `${local[0]}*@${domain}`;
   return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
-}
-
-function logProxyVisit(email, path) {
-  try {
-    const logs = loadJson(PROXY_LOG_FILE, []);
-    const list = Array.isArray(logs) ? logs : [];
-    list.push({
-      email: maskEmail(email),
-      path: String(path || '/').slice(0, 300),
-      ts: Date.now(),
-      at: new Date().toISOString()
-    });
-    saveJsonSync(PROXY_LOG_FILE, list.slice(-5000));
-  } catch (e) {
-    console.warn('[proxy] failed to log visit:', e?.message || e);
-  }
 }
 
 // Rate limiting
@@ -1014,6 +993,8 @@ const RATE_LIMITS = {
   '/api/admin/blog-deletions': [20, 60],
   '/api/blog/posts':          [30,  60],
   '/api/blog/write':          [6,   60],
+  '/api/blog/comment':        [10,  60],
+  '/api/blog/upload':         [10,  60],
   '/api/blog/subscription':   [20,  60],
   '/api/newsletter-signup':    [3,   60],
   '/api/newsletter/unsubscribe-secure': [10, 600],
@@ -1035,6 +1016,8 @@ const RATE_LIMITS = {
   '/api/friends/requests/pending': [30,  60],
   '/api/friends/request/respond':  [15,  60],
   '/api/friends/remove':           [10,  60],
+  '/api/profile/report':           [5,   300],
+  '/api/admin/profile-reports/resolve': [20, 60],
   '/api/presence/heartbeat':       [60,  60],
   '/api/premium-chat/history': [60,  60],
   '/api/premium-chat/send':    [3,   10],
@@ -1149,6 +1132,52 @@ function siteUrl(email) {
 function notificationUrl(path = '/') {
   const clean = String(path || '/');
   return NOTIFICATION_ORIGIN + (clean.startsWith('/') ? clean : '/' + clean);
+}
+
+const PROFILE_IMAGE_MIME_RE = /^image\/(?:png|jpe?g|webp|gif)$/i;
+
+function sanitizeProfileImageUrl(value, opts = {}) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const maxUrlLength = Number(opts.maxUrlLength || 1000);
+  const maxDataBytes = Number(opts.maxDataBytes || 120000);
+  const allowData = opts.allowData !== false;
+  if (/[\u0000-\u001f\u007f<>"`]/.test(raw)) return '';
+
+  if (/^data:/i.test(raw)) {
+    if (!allowData) return '';
+    const match = raw.match(/^data:([^;,]+);base64,([a-z0-9+/=\s]+)$/i);
+    if (!match) return '';
+    const mime = match[1].toLowerCase();
+    if (!PROFILE_IMAGE_MIME_RE.test(mime)) return '';
+    const payload = match[2].replace(/\s+/g, '');
+    if (!payload || payload.length % 4 !== 0) return '';
+    const bytes = Buffer.from(payload, 'base64');
+    if (!bytes.length || bytes.length > maxDataBytes) return '';
+    return `data:${mime};base64,${payload}`;
+  }
+
+  if (raw.length > maxUrlLength) return '';
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    return u.href;
+  } catch {
+    return '';
+  }
+}
+
+function sanitizeProfileWebsiteUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.length > 300 || /[\u0000-\u001f\u007f<>"`]/.test(raw)) return '';
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    return u.href.slice(0, 300);
+  } catch {
+    return '';
+  }
 }
 
 function stripPlus(email) {
@@ -2040,17 +2069,26 @@ function logAdminAction(actor, action, details = {}) {
   saveJson(ADMIN_ACTION_LOG_FILE, logs.slice(0, 1000));
 }
 
-function buildAdvancedAdminData() {
-  const sessions = loadJson(SESSION_LOG_FILE, [])
-    .slice(-500)
+function publicProfileReports(limit = 250) {
+  return loadJson(PROFILE_REPORTS_FILE, [])
+    .slice(-limit)
     .reverse()
-    .map(entry => ({
-      session: publicSessionId(entry.id),
-      ip: String(entry.ip || '').slice(0, 80),
-      page: String(entry.page || '').slice(0, 220),
-      timestamp: entry.timestamp || null,
+    .map(report => ({
+      id: String(report.id || ''),
+      ts: report.ts || 0,
+      status: report.status || 'Needs review',
+      reporter: maskEmail(report.reporterEmail || ''),
+      target: maskEmail(report.targetEmail || ''),
+      targetHandle: String(report.targetHandle || ''),
+      reason: String(report.reason || '').slice(0, 140),
+      details: String(report.details || '').slice(0, 800),
+      resolvedBy: report.resolvedBy ? maskEmail(report.resolvedBy) : '',
+      resolvedAt: report.resolvedAt || 0,
+      resolution: String(report.resolution || '').slice(0, 300),
     }));
+}
 
+function buildAdvancedAdminData() {
   const adminActions = loadJson(ADMIN_ACTION_LOG_FILE, [])
     .slice(0, 250)
     .map(entry => ({
@@ -2074,46 +2112,7 @@ function buildAdvancedAdminData() {
       context: report.context || [],
       status: report.status || 'Needs review',
     }));
-
-  const encryptedDmMetadata = loadJson(DMS_FILE, [])
-    .slice(-300)
-    .reverse()
-    .map(msg => {
-      const image = msg.image && typeof msg.image === 'object' ? msg.image : null;
-      const imageData = image ? String(image.data || '') : '';
-      return {
-        channel: 'encrypted_dm',
-        sender: msg.from || '',
-        recipient: msg.to || '',
-        ts: msg.ts || 0,
-        read: !!msg.read,
-        contentVisible: true,
-        text: String(msg.text || '').slice(0, 2000),
-        textLength: String(msg.text || '').length,
-        hasImage: !!imageData,
-        imageName: image ? String(image.name || 'image').slice(0, 120) : '',
-        imageMime: image ? String(image.mime || '') : '',
-        imageBytes: imageData ? Buffer.byteLength(imageData, 'utf8') : 0,
-      };
-    });
-
-  const premiumChatMetadata = loadJson(PREMIUM_CHAT_FILE, [])
-    .slice(-150)
-    .reverse()
-    .map(msg => ({
-      channel: 'premium_chat',
-      sender: msg.email || msg.name || '',
-      recipient: 'premium_room',
-      ts: msg.ts || 0,
-      read: true,
-      contentVisible: true,
-      text: String(msg.text || '').slice(0, 2000),
-      textLength: String(msg.text || '').length,
-      hasImage: false,
-      imageName: '',
-      imageMime: '',
-      imageBytes: 0,
-    }));
+  const profileReports = publicProfileReports(250);
 
   const gifts = loadJson(COIN_GIFTS_FILE, {});
   const sentNotifications = [];
@@ -2140,20 +2139,6 @@ function buildAdvancedAdminData() {
   sentNotifications.sort((a, b) => (b.ts || 0) - (a.ts || 0));
 
   const now = Date.now();
-  const recentPages = sessions.filter(s => {
-    const t = Date.parse(s.timestamp || '');
-    return t && now - t < 60 * 60 * 1000;
-  }).length;
-  const uniqueSessions = new Set(sessions.map(s => s.session)).size;
-  const pageCounts = {};
-  for (const s of sessions.slice(-1000)) {
-    const page = String(s.page || 'unknown');
-    pageCounts[page] = (pageCounts[page] || 0) + 1;
-  }
-  const topPages = Object.entries(pageCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 12)
-    .map(([page, count]) => ({ page, count }));
   const activeUsers = Object.entries(loadUserStats())
     .filter(([, info]) => info && info.last_active_at && now - info.last_active_at < 2 * 60 * 1000)
     .map(([email, info]) => ({ email, lastActiveAt: info.last_active_at }))
@@ -2171,37 +2156,29 @@ function buildAdvancedAdminData() {
   return {
     generatedAt: now,
     policy: {
-      visitorAnalytics: 'Page, timestamp, raw IP address, and pseudonymous session IDs are shown for security monitoring, abuse prevention, and site health.',
       adminActions: 'Admin actions are logged so privileged changes can be reviewed later.',
-      chatMetadata: 'Chat sender, recipient, time, read status, message text, and attachment metadata are shown for security monitoring.',
+      chatReports: 'Staff should use explicit user reports for moderation context.',
       consent: 'This monitoring should match the site terms and be limited to authorized admins with a security or moderation need.',
     },
     stats: {
-      sessions: sessions.length,
-      uniqueSessions,
-      recentPages,
       adminActions: adminActions.length,
       reports: chatReports.length,
-      chatMetadata: encryptedDmMetadata.length + premiumChatMetadata.length,
+      profileReports: profileReports.length,
       sentNotifications: sentNotifications.length,
       bannedAccounts: bannedAccounts.length,
       activeUsers: activeUsers.length,
       cheatLogs: loadJson(CHEAT_LOGS_FILE, []).length,
     },
-    topPages,
     activeUsers,
     bannedAccounts,
-    sessions,
     adminActions,
     reports: chatReports
       .sort((a, b) => (b.ts || 0) - (a.ts || 0))
       .slice(0, 250),
     canvasReports: [],
     chatReports: chatReports.slice(0, 250),
+    profileReports,
     sentNotifications: sentNotifications.slice(0, 250),
-    chatMetadata: encryptedDmMetadata.concat(premiumChatMetadata)
-      .sort((a, b) => (b.ts || 0) - (a.ts || 0))
-      .slice(0, 350),
     heatmap: loadJson(HEATMAP_FILE, {}),
     cheatLogs: loadJson(CHEAT_LOGS_FILE, []).slice(0, 250),
   };
@@ -4298,6 +4275,9 @@ function resolveTargetEmail(input) {
   // 3. Try match by displayName in profiles.json (exact case-insensitive match)
   const profiles = loadJson(PROFILES_FILE, {});
   for (const [normEmail, profile] of Object.entries(profiles)) {
+    if (profile.username && normalizeUsername(profile.username) === target) {
+      if (passwords[normEmail]) return normEmail;
+    }
     if (profile.displayName && profile.displayName.toLowerCase().trim() === target) {
       if (passwords[normEmail]) return normEmail;
     }
@@ -4311,6 +4291,9 @@ function resolveTargetEmail(input) {
 
   // 5. Try match by display name substring (e.g. "mitch" matching "Mitch Fogler")
   for (const [normEmail, profile] of Object.entries(profiles)) {
+    if (profile.username && normalizeUsername(profile.username).includes(target)) {
+      if (passwords[normEmail]) return normEmail;
+    }
     if (profile.displayName && profile.displayName.toLowerCase().includes(target)) {
       if (passwords[normEmail]) return normEmail;
     }
@@ -4539,6 +4522,29 @@ async function saveBlogPosts(posts) {
   await saveJson(BLOG_POSTS_FILE, posts);
 }
 
+function blogPublished(post) {
+  const status = post?.status || 'published';
+  return status === 'published' || (status === 'scheduled' && Number(post.publishAt || 0) <= Date.now());
+}
+
+async function publishDueBlogPosts(posts = loadBlogPosts()) {
+  let changed = false;
+  for (const post of posts) {
+    if ((post.status || '') === 'scheduled' && Number(post.publishAt || 0) <= Date.now()) {
+      post.status = 'published';
+      post.publishedAt = post.publishedAt || Date.now();
+      post.updatedAt = Date.now();
+      changed = true;
+      if (!post.notifiedAt) {
+        notifyBlogSubscribers(post);
+        post.notifiedAt = Date.now();
+      }
+    }
+  }
+  if (changed) await saveBlogPosts(posts);
+  return posts;
+}
+
 function blogSlugExists(posts, slug, exceptId = '') {
   return posts.some(post => post.id !== exceptId && post.slug === slug);
 }
@@ -4630,10 +4636,51 @@ function sanitizeBlogTags(value) {
   return tags;
 }
 
+function sanitizeBlogCategory(value) {
+  return String(value || '')
+    .replace(/[^\w .#-]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40);
+}
+
+function blogCanManagePost(email, post) {
+  if (!email || !post) return false;
+  if (isAdminEmail(email)) return true;
+  if (!canWriteBlogEmail(email)) return false;
+  return normalizeEmail(email) === normalizeEmail(post.authorEmail || '');
+}
+
+function blogRevisionSnapshot(post, actorEmail, reason = 'edit') {
+  return {
+    id: randomBytes(8).toString('hex'),
+    ts: Date.now(),
+    actorEmail: normalizeEmail(actorEmail || ''),
+    reason,
+    title: post.title || '',
+    body: post.body || '',
+    bodyHtml: sanitizeBlogHtml(post.bodyHtml || '', post.body || ''),
+    tags: sanitizeBlogTags(post.tags || []),
+    category: sanitizeBlogCategory(post.category || ''),
+    coverImage: safeBlogUrl(post.coverImage || '', true),
+    featured: !!post.featured,
+    status: post.status || 'published',
+    publishAt: Number(post.publishAt || 0),
+    publishedAt: Number(post.publishedAt || 0),
+  };
+}
+
+function pushBlogRevision(post, actorEmail, reason = 'edit') {
+  const revisions = Array.isArray(post.revisions) ? post.revisions : [];
+  revisions.unshift(blogRevisionSnapshot(post, actorEmail, reason));
+  post.revisions = revisions.slice(0, 25);
+}
+
 function publicBlogPost(post, includeBody = false, viewerEmail = '') {
   const own = viewerEmail && normalizeEmail(viewerEmail) === normalizeEmail(post.authorEmail || '');
   const writer = viewerEmail && canWriteBlogEmail(viewerEmail);
   const admin = viewerEmail && isAdminEmail(viewerEmail);
+  const canManage = blogCanManagePost(viewerEmail, post);
   const bodyHtml = sanitizeBlogHtml(post.bodyHtml || '', post.body || '');
   const bodyText = post.body || blogHtmlToText(bodyHtml);
   return {
@@ -4644,14 +4691,50 @@ function publicBlogPost(post, includeBody = false, viewerEmail = '') {
     status: post.status || 'published',
     authorName: post.authorName || blogAuthorName(post.authorEmail || ''),
     tags: sanitizeBlogTags(post.tags || []),
+    category: sanitizeBlogCategory(post.category || ''),
     coverImage: safeBlogUrl(post.coverImage || '', true),
+    featured: !!post.featured,
+    publishAt: Number(post.publishAt || 0),
     createdAt: post.createdAt || 0,
     updatedAt: post.updatedAt || 0,
     publishedAt: post.publishedAt || 0,
-    canEdit: !!(admin || (own && writer)),
-    canDelete: !!(admin || (own && writer)),
+    canEdit: !!canManage,
+    canDelete: !!canManage,
+    canModerateComments: !!(admin || (own && writer) || isModeratorEmail(viewerEmail)),
+    revisionsCount: Array.isArray(post.revisions) ? post.revisions.length : 0,
     ...(includeBody ? { body: bodyText, bodyHtml } : {})
   };
+}
+
+function loadBlogComments() {
+  const raw = loadJson(BLOG_COMMENTS_FILE, {});
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+async function saveBlogComments(comments) {
+  await saveJson(BLOG_COMMENTS_FILE, comments && typeof comments === 'object' ? comments : {});
+}
+
+function publicBlogComment(comment, viewerEmail = '', canModerate = false) {
+  return {
+    id: comment.id || '',
+    postId: comment.postId || '',
+    authorName: comment.authorName || blogAuthorName(comment.authorEmail || ''),
+    authorEmail: canModerate ? maskEmail(comment.authorEmail || '') : '',
+    body: String(comment.body || '').slice(0, 1200),
+    status: comment.status || 'pending',
+    ts: comment.ts || 0,
+    canDelete: canModerate || normalizeEmail(viewerEmail) === normalizeEmail(comment.authorEmail || ''),
+  };
+}
+
+function blogCommentsForPost(postId, viewerEmail = '', canModerate = false) {
+  const comments = loadBlogComments();
+  const rows = Array.isArray(comments[postId]) ? comments[postId] : [];
+  return rows
+    .filter(comment => canModerate || comment.status === 'approved' || normalizeEmail(viewerEmail) === normalizeEmail(comment.authorEmail || ''))
+    .slice(-200)
+    .map(comment => publicBlogComment(comment, viewerEmail, canModerate));
 }
 
 function logBlogDeletion(post, actorEmail) {
@@ -5966,17 +6049,52 @@ async function handleRequest(req, server) {
     return jsonResp(200, { ok: true, enabled: subscribers[norm] === true });
   }
 
+  if (path === '/api/blog/upload' && method === 'POST') {
+    const writeLimit = checkRateLimit(req, '/api/blog/upload'); if (writeLimit) return writeLimit;
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    if (!canWriteBlogEmail(email)) return jsonResp(403, { error: 'forbidden' });
+    let uploadBody = {};
+    try {
+      const raw = await readRequestTextLimited(req, 1_500_000);
+      uploadBody = raw ? JSON.parse(raw) : {};
+    } catch {
+      return jsonResp(400, { error: 'bad json' });
+    }
+    const mime = String(uploadBody.mime || '').toLowerCase();
+    const data = String(uploadBody.data || '');
+    const extByMime = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+    const ext = extByMime[mime] || '';
+    if (!ext) return jsonResp(400, { error: 'unsupported image type' });
+    const prefix = `data:${mime};base64,`;
+    if (!data.startsWith(prefix)) return jsonResp(400, { error: 'invalid image data' });
+    const payload = data.slice(prefix.length);
+    if (!/^[a-z0-9+/=\s]+$/i.test(payload)) return jsonResp(400, { error: 'invalid image data' });
+    const bytes = Buffer.from(payload.replace(/\s+/g, ''), 'base64');
+    if (!bytes.length || bytes.length > 900_000) return jsonResp(413, { error: 'image too large' });
+    try { mkdirSync(BLOG_UPLOAD_DIR, { recursive: true }); } catch {}
+    const id = randomBytes(12).toString('hex');
+    const filename = `${id}.${ext}`;
+    const fullPath = join(BLOG_UPLOAD_DIR, filename);
+    writeFileSync(fullPath, bytes);
+    logAdminAction(email, 'upload_blog_image', { filename, mime, bytes: bytes.length });
+    return jsonResp(200, { ok: true, url: `/blog/uploads/${filename}` });
+  }
+
   if (path === '/api/blog/posts' && method === 'GET') {
     const { email } = authedEmailForRequest();
     if (!email) return jsonResp(401, { error: 'not logged in' });
     const norm = normalizeEmail(email);
     const staff = isAdminEmail(email) || isModeratorEmail(email);
     const writer = canWriteBlogEmail(email);
-    const posts = loadBlogPosts()
-      .filter(post => (post.status || 'published') === 'published' || (writer && (staff || normalizeEmail(post.authorEmail || '') === norm)))
+    const posts = await publishDueBlogPosts(loadBlogPosts());
+    const filtered = posts
+      .filter(post => blogPublished(post) || (writer && (staff || normalizeEmail(post.authorEmail || '') === norm)))
       .sort((a, b) => Number(b.publishedAt || b.updatedAt || b.createdAt || 0) - Number(a.publishedAt || a.updatedAt || a.createdAt || 0))
       .map(post => publicBlogPost(post, false, email));
-    return jsonResp(200, { posts, canWrite: writer });
+    const categories = [...new Set(posts.map(post => sanitizeBlogCategory(post.category || '')).filter(Boolean))].sort();
+    const tags = [...new Set(posts.flatMap(post => sanitizeBlogTags(post.tags || [])).filter(Boolean))].sort();
+    return jsonResp(200, { posts: filtered, canWrite: writer, categories, tags });
   }
 
   if (path === '/api/blog/posts' && method === 'POST') {
@@ -5990,12 +6108,18 @@ async function handleRequest(req, server) {
     const cleanHtml = sanitizeBlogHtml(body.bodyHtml || body.html || '', rawText);
     const text = blogHtmlToText(cleanHtml).slice(0, 20000) || rawText;
     const tags = sanitizeBlogTags(body.tags);
+    const category = sanitizeBlogCategory(body.category || '');
     const coverImage = safeBlogUrl(body.coverImage || '', true);
-    const status = body.status === 'draft' ? 'draft' : 'published';
+    const requestedStatus = String(body.status || 'published').toLowerCase();
+    const publishAt = Number(body.publishAt || 0);
+    const status = requestedStatus === 'draft'
+      ? 'draft'
+      : (requestedStatus === 'scheduled' && publishAt > Date.now() + 30_000 ? 'scheduled' : 'published');
     if (title.length < 3) return jsonResp(400, { error: 'title must be at least 3 characters' });
     if (!text && !cleanHtml.includes('<img ')) return jsonResp(400, { error: 'body required' });
     const posts = loadBlogPosts();
     const now = Date.now();
+    const staffWriter = isAdminEmail(email) || isModeratorEmail(email);
     const post = {
       id: randomBytes(10).toString('hex'),
       slug: uniqueBlogSlug(posts, title),
@@ -6003,30 +6127,41 @@ async function handleRequest(req, server) {
       body: text,
       bodyHtml: cleanHtml,
       tags,
+      category,
       coverImage,
+      featured: staffWriter && body.featured === true,
       status,
       authorEmail: normalizeEmail(email),
       authorName: blogAuthorName(email),
       createdAt: now,
       updatedAt: now,
-      publishedAt: status === 'published' ? now : 0
+      publishAt: status === 'scheduled' ? publishAt : 0,
+      publishedAt: status === 'published' ? now : 0,
+      revisions: []
     };
     posts.unshift(post);
     await saveBlogPosts(posts);
-    if (status === 'published') notifyBlogSubscribers(post);
+    if (status === 'published') {
+      notifyBlogSubscribers(post);
+      post.notifiedAt = Date.now();
+      await saveBlogPosts(posts);
+    }
     return jsonResp(200, { ok: true, post: publicBlogPost(post, true, email) });
   }
 
   if (path.startsWith('/api/blog/posts/')) {
-    let key = '';
+    let parts = [];
     try {
-      key = decodeURIComponent(path.slice('/api/blog/posts/'.length)).trim();
+      parts = path.slice('/api/blog/posts/'.length).split('/').map(part => decodeURIComponent(part));
     } catch {
       return jsonResp(400, { error: 'bad post id' });
     }
+    const key = String(parts[0] || '').trim();
+    const action = String(parts[1] || '').trim();
+    const subId = String(parts[2] || '').trim();
     const { email } = authedEmailForRequest();
     if (!email) return jsonResp(401, { error: 'not logged in' });
-    const posts = loadBlogPosts();
+    const posts = await publishDueBlogPosts(loadBlogPosts());
     const idx = posts.findIndex(post => post.id === key || post.slug === key);
     if (idx < 0) return jsonResp(404, { error: 'post not found' });
     const post = posts[idx];
@@ -6035,8 +6170,103 @@ async function handleRequest(req, server) {
     const staff = admin || isModeratorEmail(email);
     const own = normalizeEmail(post.authorEmail || '') === norm;
 
+    if (action === 'comments') {
+      const canModerate = staff || (own && canWriteBlogEmail(email));
+      const comments = loadBlogComments();
+      const rows = Array.isArray(comments[post.id]) ? comments[post.id] : [];
+      if (method === 'GET' && !subId) {
+        return jsonResp(200, { comments: blogCommentsForPost(post.id, email, canModerate), canModerate });
+      }
+      if (method === 'POST' && !subId) {
+        const commentLimit = checkRateLimit(req, '/api/blog/comment'); if (commentLimit) return commentLimit;
+        if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+        const commentBody = String(body.body || '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+        if (commentBody.length < 2) return jsonResp(400, { error: 'comment required' });
+        const comment = {
+          id: randomBytes(8).toString('hex'),
+          postId: post.id,
+          authorEmail: normalizeEmail(email),
+          authorName: blogAuthorName(email),
+          body: commentBody,
+          status: canModerate ? 'approved' : 'pending',
+          ts: Date.now(),
+        };
+        rows.push(comment);
+        comments[post.id] = rows.slice(-250);
+        await saveBlogComments(comments);
+        return jsonResp(200, { ok: true, comment: publicBlogComment(comment, email, canModerate), pending: comment.status !== 'approved' });
+      }
+      const comment = rows.find(row => row.id === subId);
+      if (!comment) return jsonResp(404, { error: 'comment not found' });
+      const commentOwn = normalizeEmail(comment.authorEmail || '') === norm;
+      if (method === 'PATCH') {
+        if (!canModerate) return jsonResp(403, { error: 'forbidden' });
+        if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+        const status = String(body.status || '').toLowerCase();
+        if (!['approved', 'pending', 'rejected'].includes(status)) return jsonResp(400, { error: 'invalid status' });
+        comment.status = status;
+        comment.reviewedBy = normalizeEmail(email);
+        comment.reviewedAt = Date.now();
+        await saveBlogComments(comments);
+        logAdminAction(email, 'moderate_blog_comment', { postId: post.id, slug: post.slug, commentId: comment.id, status });
+        return jsonResp(200, { ok: true, comment: publicBlogComment(comment, email, canModerate) });
+      }
+      if (method === 'DELETE') {
+        if (!canModerate && !commentOwn) return jsonResp(403, { error: 'forbidden' });
+        comments[post.id] = rows.filter(row => row.id !== subId);
+        await saveBlogComments(comments);
+        logAdminAction(email, 'delete_blog_comment', { postId: post.id, slug: post.slug, commentId: comment.id });
+        return jsonResp(200, { ok: true });
+      }
+    }
+
+    if (action === 'revisions') {
+      if (method !== 'GET') return jsonResp(405, { error: 'method not allowed' });
+      if (!blogCanManagePost(email, post)) return jsonResp(403, { error: 'forbidden' });
+      const revisions = (Array.isArray(post.revisions) ? post.revisions : []).slice(0, 25).map(rev => ({
+        id: rev.id || '',
+        ts: rev.ts || 0,
+        actorEmail: maskEmail(rev.actorEmail || ''),
+        reason: rev.reason || 'edit',
+        title: rev.title || '',
+        status: rev.status || '',
+        category: rev.category || '',
+        tags: sanitizeBlogTags(rev.tags || []),
+      }));
+      return jsonResp(200, { revisions });
+    }
+
+    if (action === 'restore') {
+      const writeLimit = checkRateLimit(req, '/api/blog/write'); if (writeLimit) return writeLimit;
+      if (method !== 'POST') return jsonResp(405, { error: 'method not allowed' });
+      if (!blogCanManagePost(email, post)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const revision = (Array.isArray(post.revisions) ? post.revisions : []).find(rev => rev.id === String(body.revisionId || ''));
+      if (!revision) return jsonResp(404, { error: 'revision not found' });
+      pushBlogRevision(post, email, 'restore_current');
+      Object.assign(post, {
+        title: String(revision.title || post.title || '').slice(0, 140),
+        body: String(revision.body || '').slice(0, 20000),
+        bodyHtml: sanitizeBlogHtml(revision.bodyHtml || '', revision.body || ''),
+        tags: sanitizeBlogTags(revision.tags || []),
+        category: sanitizeBlogCategory(revision.category || ''),
+        coverImage: safeBlogUrl(revision.coverImage || '', true),
+        featured: !!revision.featured,
+        status: revision.status === 'draft' || revision.status === 'scheduled' ? revision.status : 'published',
+        publishAt: Number(revision.publishAt || 0),
+        publishedAt: Number(revision.publishedAt || 0),
+        updatedAt: Date.now(),
+      });
+      posts[idx] = post;
+      await saveBlogPosts(posts);
+      logAdminAction(email, 'restore_blog_revision', { postId: post.id, slug: post.slug, revisionId: revision.id });
+      return jsonResp(200, { ok: true, post: publicBlogPost(post, true, email) });
+    }
+
+    if (action) return jsonResp(404, { error: 'not found' });
+
     if (method === 'GET') {
-      if ((post.status || 'published') !== 'published' && !(canWriteBlogEmail(email) && (staff || own))) {
+      if (!blogPublished(post) && !(canWriteBlogEmail(email) && (staff || own))) {
         return jsonResp(404, { error: 'post not found' });
       }
       return jsonResp(200, { post: publicBlogPost(post, true, email), canWrite: canWriteBlogEmail(email) });
@@ -6047,6 +6277,7 @@ async function handleRequest(req, server) {
       if (!canWriteBlogEmail(email) || (!admin && !own)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const previousStatus = post.status || 'published';
+      pushBlogRevision(post, email, 'edit');
       if (body.title !== undefined) {
         const title = String(body.title || '').replace(/\s+/g, ' ').trim().slice(0, 140);
         if (title.length < 3) return jsonResp(400, { error: 'title must be at least 3 characters' });
@@ -6070,9 +6301,19 @@ async function handleRequest(req, server) {
         post.bodyHtml = cleanHtml;
       }
       if (body.tags !== undefined) post.tags = sanitizeBlogTags(body.tags);
+      if (body.category !== undefined) post.category = sanitizeBlogCategory(body.category || '');
       if (body.coverImage !== undefined) post.coverImage = safeBlogUrl(body.coverImage || '', true);
+      if (body.featured !== undefined && staff) post.featured = body.featured === true;
       if (body.status !== undefined) {
-        post.status = body.status === 'draft' ? 'draft' : 'published';
+        const requestedStatus = String(body.status || 'published').toLowerCase();
+        const publishAt = Number(body.publishAt || post.publishAt || 0);
+        post.status = requestedStatus === 'draft'
+          ? 'draft'
+          : (requestedStatus === 'scheduled' && publishAt > Date.now() + 30_000 ? 'scheduled' : 'published');
+        post.publishAt = post.status === 'scheduled' ? publishAt : 0;
+      } else if (body.publishAt !== undefined && (post.status || '') === 'scheduled') {
+        const publishAt = Number(body.publishAt || 0);
+        post.publishAt = publishAt > Date.now() + 30_000 ? publishAt : Date.now();
       }
       post.updatedAt = Date.now();
       if (post.status === 'published' && previousStatus !== 'published') {
@@ -6080,7 +6321,11 @@ async function handleRequest(req, server) {
       }
       posts[idx] = post;
       await saveBlogPosts(posts);
-      if (post.status === 'published' && previousStatus !== 'published') notifyBlogSubscribers(post);
+      if (post.status === 'published' && previousStatus !== 'published' && !post.notifiedAt) {
+        notifyBlogSubscribers(post);
+        post.notifiedAt = Date.now();
+        await saveBlogPosts(posts);
+      }
       return jsonResp(200, { ok: true, post: publicBlogPost(post, true, email) });
     }
 
@@ -6143,6 +6388,30 @@ async function handleRequest(req, server) {
     await saveJson(BLOG_CONTRIBUTORS_FILE, contributors.sort());
     logAdminAction(adminEmail, active ? 'add_blog_contributor' : 'remove_blog_contributor', { target });
     return jsonResp(200, { ok: true, contributors });
+  }
+
+  if (path === '/api/admin/profile-reports/resolve' && method === 'POST') {
+    const writeLimit = checkRateLimit(req, path); if (writeLimit) return writeLimit;
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+    const adminEmail = emailFromSid(sid) || 'admin';
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const id = String(body.id || '').trim();
+    const status = String(body.status || 'reviewed').trim().toLowerCase();
+    const allowed = new Set(['needs review', 'reviewed', 'dismissed', 'action taken']);
+    if (!id) return jsonResp(400, { error: 'report id required' });
+    if (!allowed.has(status)) return jsonResp(400, { error: 'invalid status' });
+    const reports = loadJson(PROFILE_REPORTS_FILE, []);
+    const report = reports.find(row => String(row.id || '') === id);
+    if (!report) return jsonResp(404, { error: 'report not found' });
+    report.status = status === 'needs review' ? 'Needs review' : status.replace(/\b\w/g, ch => ch.toUpperCase());
+    report.resolvedBy = normalizeEmail(adminEmail);
+    report.resolvedAt = Date.now();
+    report.resolution = String(body.resolution || '').trim().slice(0, 300);
+    saveJson(PROFILE_REPORTS_FILE, reports);
+    logAdminAction(adminEmail, 'resolve_profile_report', { id, target: report.targetEmail, status: report.status });
+    return jsonResp(200, { ok: true, reports: publicProfileReports(250) });
   }
 
   if (path === "/api/shop/items" && method === "GET") { 
@@ -6555,9 +6824,6 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
     const email = emailFromSid(sid); 
     if (!email || !isPremiumEmail(email)) return jsonResp(403, { error: "Premium required to use mitch.prox" }); 
     
-    // Log the visit
-    logProxyVisit(email, path);
-
     // Handle WebSocket Upgrades
     if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
       let wsPath = path;
@@ -7232,7 +7498,7 @@ Mitch.pro Team`;
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
-      return jsonResp(200, { traffic: trafficFeed, bets: bettingFeed });
+      return jsonResp(200, { traffic: [], bets: bettingFeed });
     }
     // POST /api/admin/economy/multiplier
     if (path === '/api/admin/economy/multiplier') {
@@ -9102,9 +9368,6 @@ function loadAllGamesList() {
 
         try {
           const now = Date.now();
-          trafficHistory.push(now);
-          if (trafficHistory.length > 500) trafficHistory.shift();
-
           const logKey = `${id}:${page}`;
           const lastTs = lastLoggedPing.get(logKey) || 0;
           if (now - lastTs > 600000) {
@@ -9142,8 +9405,6 @@ function loadAllGamesList() {
             userPlaytime.set(id, state);
           }
 
-          const email = emailFromSid(id);
-          logTraffic(email || id.slice(0, 8), page);
         } catch {}
         if (id && validId(id)) {
           const email = emailFromSid(id);
@@ -9358,6 +9619,12 @@ function loadAllGamesList() {
       let username = requestedUsername || defaultUsernameForEmail(norm, usedUsernames);
       if (!isValidUsername(username)) return jsonResp(400, { error: 'Username must be 2-40 lowercase letters, numbers, ".", "_", or "-".' });
       if (usedUsernames.has(username)) return jsonResp(400, { error: 'Username is already taken.' });
+      const safePfp = sanitizeProfileImageUrl(pfp, { allowData: true, maxDataBytes: 120000 });
+      const safeBackground = sanitizeProfileImageUrl(background, { allowData: false, maxUrlLength: 1000 });
+      const safeWebsite = sanitizeProfileWebsiteUrl(website);
+      if (String(pfp || '').trim() && !safePfp) return jsonResp(400, { error: 'Profile picture must be http(s) or a small PNG/JPEG/WebP/GIF image.' });
+      if (isPremium && String(background || '').trim() && !safeBackground) return jsonResp(400, { error: 'Background image must be an http(s) image URL.' });
+      if (String(website || '').trim() && !safeWebsite) return jsonResp(400, { error: 'Website must be an http(s) URL.' });
 
       // Preserve profileBonusClaimed across saves
       const alreadyClaimed = profiles[norm]?.profileBonusClaimed || false;
@@ -9369,9 +9636,9 @@ function loadAllGamesList() {
         nickname: String(body.nickname ?? existing.nickname ?? '').trim().slice(0, 40),
         displayName: (displayName || '').trim().slice(0, 40),
         bio: (bio || '').trim().slice(0, 300),
-        website: (website || '').trim().slice(0, 100),
-        pfp: (pfp || '').trim().slice(0, 200),
-        background: isPremium ? (background || '').trim().slice(0, 200) : (profiles[norm]?.background || ''),
+        website: safeWebsite,
+        pfp: safePfp,
+        background: isPremium ? safeBackground : sanitizeProfileImageUrl(profiles[norm]?.background || '', { allowData: false, maxUrlLength: 1000 }),
         gradYear: String(body.gradYear ?? existing.gradYear ?? '').trim().slice(0, 20),
         gender: String(body.gender ?? existing.gender ?? '').trim().slice(0, 40),
         referralSource: String(body.referralSource ?? existing.referralSource ?? '').trim().slice(0, 80),
@@ -9730,6 +9997,50 @@ function loadAllGamesList() {
       if (changed) {
         saveJson(FRIENDS_FILE, friends);
       }
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/profile/report' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const reporterEmail = emailFromSid(sid);
+      if (!reporterEmail) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const resolved = resolveTargetEmail(body.member || body.email || body.handle || body.target || '');
+      if (!resolved) return jsonResp(400, { error: 'user not found' });
+      const reporterNorm = normalizeEmail(reporterEmail);
+      const targetNorm = normalizeEmail(resolved);
+      if (reporterNorm === targetNorm) return jsonResp(400, { error: 'cannot report yourself' });
+      const reason = String(body.reason || '').trim().slice(0, 140);
+      const details = String(body.details || '').trim().slice(0, 800);
+      if (!reason) return jsonResp(400, { error: 'reason required' });
+
+      const profiles = loadJson(PROFILES_FILE, {});
+      const targetProfile = profiles[targetNorm] || {};
+      const reports = loadJson(PROFILE_REPORTS_FILE, []);
+      const recentDuplicate = reports.slice(-80).some(report =>
+        normalizeEmail(report.reporterEmail || '') === reporterNorm &&
+        normalizeEmail(report.targetEmail || '') === targetNorm &&
+        String(report.reason || '').toLowerCase() === reason.toLowerCase() &&
+        Date.now() - Number(report.ts || 0) < 24 * 60 * 60 * 1000
+      );
+      if (recentDuplicate) return jsonResp(400, { error: 'you already sent this report recently' });
+
+      const entry = {
+        id: randomBytes(10).toString('hex'),
+        ts: Date.now(),
+        status: 'Needs review',
+        reporterEmail: reporterNorm,
+        targetEmail: targetNorm,
+        targetHandle: normalizeUsername(targetProfile.username || defaultUsernameForEmail(targetNorm)),
+        reason,
+        details,
+      };
+      reports.push(entry);
+      saveJson(PROFILE_REPORTS_FILE, reports.slice(-1000));
+      logAdminAction(reporterNorm, 'submit_profile_report', { target: targetNorm, reason });
       return jsonResp(200, { ok: true });
     }
 
@@ -11116,6 +11427,10 @@ function loadAllGamesList() {
       const cleared = loadJson(DM_CLEARED_FILE, {});
       const myCleared = cleared[normalizeEmail(viewerEmail)] || {};
       const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
+      const viewerNorm = normalizeEmail(viewerEmail);
+      const friends = loadJson(FRIENDS_FILE, {});
+      const myFriends = friends[viewerNorm] || [];
+      const friendRequests = loadJson(FRIEND_REQUESTS_FILE, []);
       
       const seen = new Set();
       const members = [];
@@ -11127,6 +11442,7 @@ function loadAllGamesList() {
         const norm = normalizeEmail(email);
         const profile = profiles[norm] || {};
         const cosm = cosmetics[norm] || {};
+        const username = normalizeUsername(profile.username || defaultUsernameForEmail(norm));
         let role = 'member';
         if (ownerMemberEmails().some(ownerEmail => normalizeEmail(ownerEmail) === normalizeEmail(email))) role = 'owner/developer';
         else if (adminMemberEmails().some(adminEmail => normalizeEmail(adminEmail) === normalizeEmail(email))) role = 'admin/developer';
@@ -11142,11 +11458,13 @@ function loadAllGamesList() {
         const processed = processMemberFields(email, profile, viewerEmail);
         
         // Find last message and unread count
-        const clearedAt = myCleared['dm:' + norm] || 0;
+        const clearedAt = myCleared['dm:' + norm] || myCleared['dm:' + username] || 0;
         const memberDMs = dms.filter(m => {
           if (m.kind === 'group') return false;
-          return ((normalizeEmail(m.from) === normalizeEmail(viewerEmail) && normalizeEmail(m.to) === norm) ||
-                  (normalizeEmail(m.from) === norm && normalizeEmail(m.to) === normalizeEmail(viewerEmail))) &&
+          return ((normalizeEmail(m.from) === viewerNorm && normalizeEmail(m.to) === norm) ||
+                  (normalizeEmail(m.from) === norm && normalizeEmail(m.to) === viewerNorm) ||
+                  (normalizeEmail(m.from) === viewerNorm && normalizeUsername(m.to) === username) ||
+                  (normalizeUsername(m.from) === username && normalizeEmail(m.to) === viewerNorm)) &&
                  (m.ts || 0) > clearedAt;
         });
         
@@ -11171,15 +11489,24 @@ function loadAllGamesList() {
         }
         
         const unread = memberDMs.filter(m => normalizeEmail(m.to) === normalizeEmail(viewerEmail) && !m.read).length;
+        const isSelf = viewerNorm === norm;
+        const isFriend = myFriends.some(friend => normalizeEmail(friend) === norm);
+        const incomingRequest = friendRequests.some(req => normalizeEmail(req.from) === norm && normalizeEmail(req.to) === viewerNorm);
+        const outgoingRequest = friendRequests.some(req => normalizeEmail(req.from) === viewerNorm && normalizeEmail(req.to) === norm);
+        const friendStatus = isSelf ? 'self' : (isFriend ? 'friends' : (incomingRequest ? 'incoming' : (outgoingRequest ? 'outgoing' : 'none')));
 
         members.push({ 
           email: processed.email, 
-          pfp: profile.pfp || '',
+          handle: username,
+          profileUrl: `/profile/#${encodeURIComponent(username)}`,
+          pfp: sanitizeProfileImageUrl(profile.pfp || '', { allowData: true, maxDataBytes: 120000 }),
           online: onlineEmails.has(normalizeEmail(email)), 
           role,
           displayName: processed.displayName,
+          bio: String(profile.bio || '').slice(0, 160),
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null,
+          friendStatus,
           pubKey,
           legacyPubKey,
           lastMessage,
@@ -11341,6 +11668,9 @@ function loadAllGamesList() {
       delete safeProfile.totp_secret;
       delete safeProfile.totpSecret;
       delete safeProfile.pendingTotpSecret;
+      safeProfile.pfp = sanitizeProfileImageUrl(safeProfile.pfp || '', { allowData: true, maxDataBytes: 120000 });
+      safeProfile.background = sanitizeProfileImageUrl(safeProfile.background || '', { allowData: false, maxUrlLength: 1000 });
+      safeProfile.website = sanitizeProfileWebsiteUrl(safeProfile.website || '');
       return jsonResp(200, {
         ...safeProfile,
         displayName: processed.displayName,
@@ -11382,6 +11712,9 @@ function loadAllGamesList() {
       delete safeProfile.twofaEnabled;
       delete safeProfile.twofaType;
       delete safeProfile.twoFactorEnabled;
+      safeProfile.pfp = sanitizeProfileImageUrl(safeProfile.pfp || '', { allowData: true, maxDataBytes: 120000 });
+      safeProfile.background = sanitizeProfileImageUrl(safeProfile.background || '', { allowData: false, maxUrlLength: 1000 });
+      safeProfile.website = sanitizeProfileWebsiteUrl(safeProfile.website || '');
       return jsonResp(200, {
         ...safeProfile,
         displayName: processed.displayName,
@@ -15095,9 +15428,9 @@ function loadAllGamesList() {
         const dataInject = `<script>window.PUBLIC_PROFILE = ${JSON.stringify({ 
           displayName: p.displayName, 
           bio: p.bio, 
-          website: p.website, 
-          pfp: p.pfp, 
-          background: p.background, 
+          website: sanitizeProfileWebsiteUrl(p.website || ''),
+          pfp: sanitizeProfileImageUrl(p.pfp || '', { allowData: true, maxDataBytes: 120000 }),
+          background: sanitizeProfileImageUrl(p.background || '', { allowData: false, maxUrlLength: 1000 }),
           stats, 
           achievements: achs, 
           isPremium: isPremiumEmail(norm), 
@@ -15168,15 +15501,6 @@ function loadAllGamesList() {
 	      else filePath = safeWebrootPath(path);
 
 	      if (filePath && existsSync(filePath) && !statSync(filePath).isDirectory()) {
-	        try {
-	          const cookies = getCookies(req);
-	          const sid = cookies['studentId'] || cookies['id'] || '';
-	          const email = sid ? emailFromSid(sid) : '';
-	          const logUser = email || (sid ? sid.slice(0, 8) : 'anonymous');
-	          logTraffic(logUser, path);
-	        } catch (e) {
-	          console.error('[traffic] Failed to log page traffic:', e);
-	        }
 	        try {
 	          let raw    = readFileSync(filePath);
 

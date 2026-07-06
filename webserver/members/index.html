@@ -1,0 +1,577 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Members - mitch.pro</title>
+  <script src="/theme.js"></script>
+  <script src="/sync.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--t-bg);
+      color: var(--t-fg);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background: var(--t-bgr);
+      z-index: 0;
+    }
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(1180px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 24px 0 42px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .back {
+      color: var(--t-ac);
+      text-decoration: none;
+      border: 1px solid var(--t-bd);
+      background: var(--t-bg3);
+      border-radius: 8px;
+      padding: 8px 11px;
+      font-size: .82rem;
+      font-weight: 800;
+    }
+    h1 { margin: 0; font-size: 1.55rem; letter-spacing: 0; }
+    .sub { margin: 5px 0 0; color: var(--t-fg2); font-size: .86rem; opacity: .78; }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) 150px 150px;
+      gap: 10px;
+      background: rgba(10,10,14,.74);
+      border: 1px solid var(--t-bd);
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 14px;
+    }
+    input, select, textarea, button {
+      font: inherit;
+      border-radius: 7px;
+      border: 1px solid var(--t-bd);
+      background: var(--t-bg3);
+      color: var(--t-fg);
+    }
+    input, select, textarea { padding: 9px 10px; outline: none; }
+    input:focus, select:focus, textarea:focus { border-color: var(--t-bda); }
+    button {
+      cursor: pointer;
+      color: var(--t-ac);
+      font-weight: 850;
+      padding: 8px 10px;
+    }
+    button:hover, .back:hover { border-color: var(--t-bda); }
+    button:disabled { opacity: .52; cursor: not-allowed; }
+    .stats {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0 0 14px;
+      color: var(--t-fg2);
+      font-size: .78rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      border: 1px solid var(--t-bd);
+      background: rgba(255,255,255,.04);
+      border-radius: 999px;
+      padding: 4px 9px;
+      white-space: nowrap;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+    .member {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 230px;
+      background: rgba(10,10,14,.82);
+      border: 1px solid var(--t-bd);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 14px 36px rgba(0,0,0,.25);
+    }
+    .cover {
+      height: 58px;
+      background:
+        linear-gradient(135deg, rgba(20,184,166,.28), rgba(245,158,11,.18)),
+        var(--t-bg3);
+      border-bottom: 1px solid var(--t-bd);
+      position: relative;
+    }
+    .avatar {
+      position: absolute;
+      left: 14px;
+      bottom: -31px;
+      width: 62px;
+      height: 62px;
+      border-radius: 8px;
+      border: 2px solid var(--t-bg2);
+      background: var(--t-bg3);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      color: var(--t-ac);
+      font-weight: 900;
+      font-size: 1.25rem;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .online-dot {
+      position: absolute;
+      left: 64px;
+      bottom: -28px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid var(--t-bg2);
+      background: #64748b;
+    }
+    .online-dot.on { background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,.8); }
+    .body { padding: 38px 14px 12px; min-width: 0; }
+    .name-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      min-width: 0;
+    }
+    .name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 900;
+      font-size: .98rem;
+      color: var(--t-fg);
+    }
+    .handle {
+      color: var(--t-fg2);
+      opacity: .78;
+      font-size: .78rem;
+      margin-top: 2px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .role {
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      font-size: .62rem;
+      font-weight: 900;
+      border-color: rgba(255,255,255,.14);
+    }
+    .role.owner { color: #facc15; border-color: rgba(250,204,21,.38); }
+    .role.admin { color: #f87171; border-color: rgba(248,113,113,.38); }
+    .role.moderator { color: #34d399; border-color: rgba(52,211,153,.38); }
+    .role.premium { color: #f59e0b; border-color: rgba(245,158,11,.38); }
+    .role.basic { color: var(--t-fg2); border-color: rgba(255,255,255,.18); }
+    .bio {
+      margin-top: 10px;
+      color: var(--t-fg2);
+      opacity: .82;
+      font-size: .78rem;
+      line-height: 1.45;
+      min-height: 2.9em;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      padding: 0 14px 14px;
+    }
+    .actions button, .actions a {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      text-decoration: none;
+      border-radius: 7px;
+      border: 1px solid var(--t-bd);
+      background: var(--t-bg3);
+      color: var(--t-ac);
+      font-size: .78rem;
+      font-weight: 850;
+      padding: 7px 8px;
+    }
+    .actions .wide { grid-column: 1 / -1; }
+    .report-btn { color: #f87171 !important; }
+    .empty {
+      grid-column: 1 / -1;
+      border: 1px dashed var(--t-bd);
+      background: rgba(10,10,14,.58);
+      border-radius: 8px;
+      padding: 28px;
+      text-align: center;
+      color: var(--t-fg2);
+      font-size: .88rem;
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,.62);
+      padding: 16px;
+    }
+    .modal.show { display: flex; }
+    .dialog {
+      width: min(460px, 100%);
+      background: var(--t-bg2);
+      border: 1px solid var(--t-bd);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 24px 70px rgba(0,0,0,.52);
+    }
+    .dialog h2 { margin: 0 0 6px; font-size: 1rem; }
+    .dialog p { margin: 0 0 12px; color: var(--t-fg2); font-size: .82rem; line-height: 1.45; }
+    .dialog textarea { width: 100%; min-height: 110px; resize: vertical; margin-top: 8px; }
+    .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+    .status { min-height: 1.2em; color: var(--t-fg2); font-size: .8rem; margin-top: 10px; }
+    .status.ok { color: #4ade80; }
+    .status.err { color: #f87171; }
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 18px, 1180px); padding-top: 12px; }
+      .topbar { align-items: flex-start; }
+      .toolbar { grid-template-columns: 1fr; }
+      .grid { grid-template-columns: 1fr; }
+      .member { min-height: 214px; }
+      .actions { grid-template-columns: 1fr; }
+      .actions .wide { grid-column: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div>
+        <h1>Members</h1>
+        <p class="sub">Search people, start chats, and manage friend requests.</p>
+      </div>
+      <a class="back" href="/">Back</a>
+    </div>
+
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search members by name, handle, or role" autocomplete="off">
+      <select id="roleFilter">
+        <option value="all">All roles</option>
+        <option value="online">Online now</option>
+        <option value="friends">Friends</option>
+        <option value="premium">Premium</option>
+        <option value="staff">Staff</option>
+      </select>
+      <select id="sortMode">
+        <option value="relevance">Best match</option>
+        <option value="online">Online first</option>
+        <option value="name">Name A-Z</option>
+      </select>
+    </div>
+
+    <div class="stats" id="stats"></div>
+    <div class="grid" id="membersGrid"><div class="empty">Loading members...</div></div>
+  </main>
+
+  <div class="modal" id="reportModal" aria-hidden="true">
+    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+      <h2 id="reportTitle">Report Profile</h2>
+      <p id="reportTarget">Send a profile report to the admin team.</p>
+      <select id="reportReason" style="width:100%;">
+        <option value="Inappropriate profile">Inappropriate profile</option>
+        <option value="Impersonation">Impersonation</option>
+        <option value="Harassment or bullying">Harassment or bullying</option>
+        <option value="Spam or scam">Spam or scam</option>
+        <option value="Other">Other</option>
+      </select>
+      <textarea id="reportDetails" maxlength="800" placeholder="Add context for admins..."></textarea>
+      <div class="dialog-actions">
+        <button type="button" id="cancelReport">Cancel</button>
+        <button type="button" id="submitReport">Send Report</button>
+      </div>
+      <div class="status" id="reportStatus"></div>
+    </div>
+  </div>
+
+  <script>
+    let members = [];
+    let activeReportKey = '';
+
+    function esc(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function keyFor(member) {
+      return member.handle || member.email || '';
+    }
+
+    function displayName(member) {
+      return member.displayName || member.handle || member.email || 'member';
+    }
+
+    function initials(member) {
+      return displayName(member).replace(/^@/, '').slice(0, 2).toUpperCase() || 'M';
+    }
+
+    function safeImageSrc(value) {
+      const raw = String(value || '').trim();
+      if (!raw || /[\u0000-\u001f\u007f<>"`]/.test(raw)) return '';
+      if (/^https?:\/\//i.test(raw)) return raw;
+      if (/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 140000) return raw;
+      return '';
+    }
+
+    function roleClass(role) {
+      const value = String(role || '').toLowerCase();
+      if (value.includes('owner')) return 'owner';
+      if (value.includes('admin')) return 'admin';
+      if (value.includes('moderator')) return 'moderator';
+      if (value.includes('premium')) return 'premium';
+      return 'basic';
+    }
+
+    function friendButton(member) {
+      const key = esc(keyFor(member));
+      if (member.friendStatus === 'self') return '<button type="button" disabled>That is you</button>';
+      if (member.friendStatus === 'friends') return '<button type="button" disabled>Friends</button>';
+      if (member.friendStatus === 'outgoing') return '<button type="button" data-action="cancel" data-key="' + key + '">Cancel Request</button>';
+      if (member.friendStatus === 'incoming') return '<button type="button" data-action="accept" data-key="' + key + '">Accept Request</button>';
+      return '<button type="button" data-action="friend" data-key="' + key + '">Add Friend</button>';
+    }
+
+    function dmHref(member) {
+      return '/encrypt/?to=' + encodeURIComponent(keyFor(member));
+    }
+
+    function renderStats(list) {
+      const online = members.filter(m => m.online).length;
+      const friends = members.filter(m => m.friendStatus === 'friends').length;
+      document.getElementById('stats').innerHTML = [
+        '<span class="pill">' + list.length + ' shown</span>',
+        '<span class="pill">' + members.length + ' total</span>',
+        '<span class="pill">' + online + ' online</span>',
+        '<span class="pill">' + friends + ' friends</span>'
+      ].join('');
+    }
+
+    function score(member, q) {
+      if (!q) return 0;
+      const name = displayName(member).toLowerCase();
+      const handle = String(member.handle || member.email || '').toLowerCase();
+      const role = String(member.role || '').toLowerCase();
+      if (name === q || handle === q) return 1000;
+      if (name.startsWith(q) || handle.startsWith(q)) return 500;
+      if (name.includes(q) || handle.includes(q)) return 250;
+      if (role.includes(q)) return 80;
+      return 0;
+    }
+
+    function filteredMembers() {
+      const q = document.getElementById('search').value.trim().toLowerCase();
+      const role = document.getElementById('roleFilter').value;
+      const sort = document.getElementById('sortMode').value;
+      let list = members.filter(member => {
+        if (q && score(member, q) <= 0) return false;
+        const roleText = String(member.role || '').toLowerCase();
+        if (role === 'online') return member.online;
+        if (role === 'friends') return member.friendStatus === 'friends';
+        if (role === 'premium') return roleText.includes('premium') || roleText.includes('owner') || roleText.includes('admin');
+        if (role === 'staff') return roleText.includes('owner') || roleText.includes('admin') || roleText.includes('moderator');
+        return true;
+      });
+      list.sort((a, b) => {
+        if (sort === 'name') return displayName(a).localeCompare(displayName(b));
+        if (sort === 'online') return Number(b.online) - Number(a.online) || displayName(a).localeCompare(displayName(b));
+        return score(b, q) - score(a, q) ||
+          Number(b.online) - Number(a.online) ||
+          (b.friendStatus === 'friends') - (a.friendStatus === 'friends') ||
+          displayName(a).localeCompare(displayName(b));
+      });
+      return list;
+    }
+
+    function render() {
+      const list = filteredMembers();
+      renderStats(list);
+      const grid = document.getElementById('membersGrid');
+      if (!list.length) {
+        grid.innerHTML = '<div class="empty">No members match that search.</div>';
+        return;
+      }
+      grid.innerHTML = list.map(member => {
+        const key = esc(keyFor(member));
+        const role = roleClass(member.role);
+        const handle = member.handle ? '@' + member.handle : member.email;
+        const pfpSrc = safeImageSrc(member.pfp);
+        const pfp = pfpSrc ? '<img src="' + esc(pfpSrc) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : esc(initials(member));
+        return '<article class="member">' +
+          '<div class="cover"><div class="avatar">' + pfp + '</div><span class="online-dot ' + (member.online ? 'on' : '') + '"></span></div>' +
+          '<div class="body">' +
+            '<div class="name-row"><div class="name">' + esc(displayName(member)) + '</div><span class="pill role ' + role + '">' + esc(member.role || 'member') + '</span></div>' +
+            '<div class="handle">' + esc(handle) + '</div>' +
+            '<div class="bio">' + esc(member.bio || 'No profile bio yet.') + '</div>' +
+          '</div>' +
+          '<div class="actions">' +
+            friendButton(member) +
+            '<a href="' + esc(dmHref(member)) + '">DM</a>' +
+            '<button type="button" class="report-btn wide" data-action="report" data-key="' + key + '">Report Profile</button>' +
+          '</div>' +
+        '</article>';
+      }).join('');
+    }
+
+    async function getCaptcha(action) {
+      for (let i = 0; i < 50; i++) {
+        if (window.getCaptchaToken && window.grecaptcha) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return window.getCaptchaToken ? (await window.getCaptchaToken(action) || '') : '';
+    }
+
+    async function postJson(url, body) {
+      const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || 'Request failed');
+      return data;
+    }
+
+    async function reload() {
+      const res = await fetch('/api/members?t=' + Date.now(), { credentials: 'include', cache: 'no-store' });
+      if (!res.ok) {
+        document.getElementById('membersGrid').innerHTML = '<div class="empty">Please sign in to search members.</div>';
+        return;
+      }
+      const data = await res.json();
+      members = data.members || [];
+      render();
+    }
+
+    async function sendFriendRequest(key, button) {
+      button.disabled = true;
+      button.textContent = 'Sending...';
+      try {
+        const recaptcha_token = await getCaptcha('friend_request');
+        await postJson('/api/friends/request', { email: key, recaptcha_token });
+        await reload();
+      } catch (err) {
+        alert(err.message);
+        button.disabled = false;
+        button.textContent = 'Add Friend';
+      }
+    }
+
+    async function acceptRequest(key, button) {
+      button.disabled = true;
+      try {
+        await postJson('/api/friends/request/respond', { email: key, action: 'accept' });
+        await reload();
+      } catch (err) {
+        alert(err.message);
+        button.disabled = false;
+      }
+    }
+
+    async function cancelRequest(key, button) {
+      button.disabled = true;
+      try {
+        await postJson('/api/friends/request/cancel', { email: key });
+        await reload();
+      } catch (err) {
+        alert(err.message);
+        button.disabled = false;
+      }
+    }
+
+    function openReport(key) {
+      const member = members.find(m => keyFor(m) === key);
+      activeReportKey = key;
+      document.getElementById('reportTarget').textContent = 'Report ' + displayName(member || { handle: key }) + ' to the admin team.';
+      document.getElementById('reportDetails').value = '';
+      document.getElementById('reportStatus').textContent = '';
+      document.getElementById('reportStatus').className = 'status';
+      document.getElementById('reportModal').classList.add('show');
+    }
+
+    function closeReport() {
+      document.getElementById('reportModal').classList.remove('show');
+      activeReportKey = '';
+    }
+
+    async function submitReport() {
+      const status = document.getElementById('reportStatus');
+      const button = document.getElementById('submitReport');
+      const reason = document.getElementById('reportReason').value;
+      const details = document.getElementById('reportDetails').value.trim();
+      button.disabled = true;
+      status.className = 'status';
+      status.textContent = 'Sending report...';
+      try {
+        await postJson('/api/profile/report', { member: activeReportKey, reason, details });
+        status.className = 'status ok';
+        status.textContent = 'Report sent.';
+        setTimeout(closeReport, 700);
+      } catch (err) {
+        status.className = 'status err';
+        status.textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    document.getElementById('membersGrid').addEventListener('click', event => {
+      const control = event.target.closest('[data-action]');
+      if (!control) return;
+      const key = control.dataset.key;
+      if (control.dataset.action === 'friend') sendFriendRequest(key, control);
+      if (control.dataset.action === 'accept') acceptRequest(key, control);
+      if (control.dataset.action === 'cancel') cancelRequest(key, control);
+      if (control.dataset.action === 'report') openReport(key);
+    });
+
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('roleFilter').addEventListener('change', render);
+    document.getElementById('sortMode').addEventListener('change', render);
+    document.getElementById('cancelReport').addEventListener('click', closeReport);
+    document.getElementById('submitReport').addEventListener('click', submitReport);
+    document.getElementById('reportModal').addEventListener('click', event => {
+      if (event.target.id === 'reportModal') closeReport();
+    });
+
+    reload();
+  </script>
+  <script src="/cookie-consent.js" defer></script>
+</body>
+</html>

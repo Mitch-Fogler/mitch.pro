@@ -168,7 +168,7 @@ function categoryForLabel(label, isAdmin) {
   if (isAdmin) return 'Admin';
   if (l.includes('adrian clicker') || l.includes("kody") || l.includes("lillian") || l.includes("richard") || l.includes("riches") || l.includes("penny") || l.includes("chess vs") || l.includes("battleship") || l.includes("jeopardy")) return 'MitchCoin Games';
   if (l.includes('market') || l.includes('shop') || l.includes('team') || l.includes('premium')) return 'Account & Market';
-  if (l.includes('chat') || l.includes('feedback') || l.includes('newsletter') || l.includes('invite') || l.includes('leaderboard') || l.includes('friends')) return 'Social & Chat';
+  if (l.includes('chat') || l.includes('feedback') || l.includes('newsletter') || l.includes('invite') || l.includes('leaderboard') || l.includes('friends') || l.includes('members')) return 'Social & Chat';
   if (l.includes('profile') || l.includes('preferences') || l.includes('account')) return 'Account & Market';
   if (l.includes('casino') || l.includes('games') || l.includes('pixelplace') || l.includes('canvas') || l.includes('movies') || l.includes('subtitle')) return 'Entertainment';
   return 'Utilities';
@@ -272,6 +272,7 @@ function parseSites(text) {
     '/preferences/', '/preferences',
     '/inventory/', '/inventory',
     '/blog/', '/blog',
+    '/members/', '/members',
     '/feedback/', '/feedback',
     '/leaderboard/', '/leaderboard',
     '/games/jeopardy-battle/', '/games/jeopardy-battle',
@@ -388,6 +389,7 @@ function getIconFor(label) {
   if (l.includes('prox')) return '&#9889;';
   if (l.includes('team')) return '&#129309;';
   if (l.includes('profile')) return '&#128100;';
+  if (l.includes('members')) return '&#128101;';
   if (l.includes('leaderboard')) return '&#127942;';
   if (l.includes('sanctum')) return '&#128142;';
   if (l.includes('games')) return '&#127918;';

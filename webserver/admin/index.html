@@ -265,7 +265,7 @@
     </div>
 
     <div class="notice" id="policy-note">
-      Security monitoring dashboard: visitor analytics include page history, timestamps, session IDs, and IP addresses. Chat history and message contents are shown for moderation, abuse prevention, and troubleshooting by authorized staff.
+      Security monitoring dashboard: admin actions, reports, moderation signals, and operational status are shown for authorized staff. Private chat history and proxy visit history are not exposed here.
     </div>
     <div class="role-note" id="role-note">Checking your permission level...</div>
 
@@ -757,18 +757,15 @@
       <span class="tag">search, export, review</span>
     </div>
     <div class="toolbar">
-      <input id="search" type="search" placeholder="Search pages, users, actions, and chat history">
+      <input id="search" type="search" placeholder="Search users, actions, reports, and moderation signals">
       <select id="view">
         <option value="all">All tables</option>
-        <option value="sessions">User engagement</option>
-        <option value="proxyHistory">mitch.prox Site Audit</option>
         <option value="adminActions">Admin activity</option>
         <option value="sentNotifications">Sent notifications</option>
         <option value="bannedAccounts">Banned accounts</option>
         <option value="activeUsers">Active users</option>
-        <option value="topPages">Top pages</option>
-        <option value="chatMetadata">Chat history</option>
         <option value="searchIntent">mitch.prox Search Logs</option>
+        <option value="profileReports">Profile Reports</option>
         <option value="chatReports">Chat Safety Reports</option>
         <option value="cheatLogs">Anti-Cheat Monitor</option>
       </select>
@@ -778,22 +775,6 @@
     </div>
 
     <div class="grid">
-      <section id="sessions-section">
-        <div class="section-head">
-          <h2>User Engagement</h2>
-          <span class="tag">user, page, visit count</span>
-        </div>
-        <div class="table-wrap"><table id="sessions-table"></table></div>
-      </section>
-
-      <section id="proxyHistory-section">
-        <div class="section-head">
-          <h2>mitch.prox Site Audit</h2>
-          <span class="tag">email, decoded url, time</span>
-        </div>
-        <div class="table-wrap"><table id="proxyHistory-table"></table></div>
-      </section>
-
       <section id="adminActions-section">
         <div class="section-head">
           <h2>Admin Activity Log</h2>
@@ -826,15 +807,6 @@
         <div class="table-wrap"><table id="activeUsers-table"></table></div>
       </section>
 
-      <section id="topPages-section">
-        <div class="section-head">
-          <h2>Top Pages</h2>
-          <span class="tag">recent visit counts</span>
-        </div>
-        <div class="table-wrap"><table id="topPages-table"></table></div>
-      </section>
-
-
       <section id="searchIntent-section">
         <div class="section-head">
           <h2>mitch.prox Search Intent</h2>
@@ -849,19 +821,19 @@
         </div>
         <div class="table-wrap"><table id="chatReports-table"></table></div>
       </section>
+      <section id="profileReports-section">
+        <div class="section-head">
+          <h2>Profile Reports</h2>
+          <span class="tag">member profile review</span>
+        </div>
+        <div class="table-wrap"><table id="profileReports-table"></table></div>
+      </section>
       <section id="cheatLogs-section">
         <div class="section-head">
           <h2>Anti-Cheat Monitor</h2>
           <span class="tag">cheating telemetry and flagged users</span>
         </div>
         <div class="table-wrap"><table id="cheatLogs-table"></table></div>
-      </section>
-      <section id="chatMetadata-section">
-        <div class="section-head">
-          <h2>Chat History</h2>
-          <span class="tag">stored messages and attachments</span>
-        </div>
-        <div class="table-wrap"><table id="chatMetadata-table"></table></div>
       </section>
 
       <section class="full">
@@ -870,11 +842,9 @@
           <span class="tag">transparent policy</span>
         </div>
         <div style="padding:13px;color:var(--t-fg2);font-size:.84rem;line-height:1.55;">
-          <p><b style="color:var(--t-fg);">User engagement:</b> Total page visit counts per user for site health and trend analysis. Exact timestamps and IP addresses are not logged.</p>
-          <p><b style="color:var(--t-fg);">mitch.prox Site Audit:</b> Logs of external sites visited through the proxy for security oversight and abuse prevention.</p>
           <p><b style="color:var(--t-fg);">Admin actions:</b> Detailed logs of who used an admin feature, what changed, and when it happened.</p>
           <p><b style="color:var(--t-fg);">Moderation:</b> Reported chat safety signals, timestamps, and involved users where available.</p>
-          <p><b style="color:var(--t-fg);">Chat history:</b> Metadata for encrypted DMs and full history for the Premium Sanctum are available for safety monitoring.</p>
+          <p><b style="color:var(--t-fg);">Private chat:</b> DM and premium chat history is not exposed in this panel. Use explicit user reports for moderation context.</p>
         </div>
       </section>
     </div>
@@ -1566,7 +1536,7 @@
       const q = document.getElementById('search').value.trim().toLowerCase();
       const view = document.getElementById('view').value;
       filtered = {};
-      ['sessions','proxyHistory','adminActions','sentNotifications','bannedAccounts','activeUsers','topPages','chatMetadata','searchIntent','chatReports','cheatLogs'].forEach(key => {
+      ['adminActions','sentNotifications','bannedAccounts','activeUsers','searchIntent','profileReports','chatReports','cheatLogs'].forEach(key => {
         filtered[key] = (rawData[key] || []).filter(row => !q || textOf(row).toLowerCase().includes(q));
         const el = document.getElementById(key + '-section');
         if (el) el.style.display = (view === 'all' || view === key) ? '' : 'none';
@@ -1577,14 +1547,12 @@
     function renderCards() {
       const s = rawData.stats || {};
       const cards = [
-        ['Engagement Pairs', s.sessions || 0],
         ['Admin Actions', s.adminActions || 0],
         ['Sent Notices', s.sentNotifications || 0],
         ['Chat Reports', s.reports || 0],
-        ['Chat History', s.chatMetadata || 0],
+        ['Profile Reports', s.profileReports || 0],
         ['Active Users', s.activeUsers || 0],
         ['Banned Accounts', s.bannedAccounts || 0],
-        ['Proxy Visits', s.proxyVisits || 0],
         ['Cheat Logs', s.cheatLogs || 0],
       ];
       document.getElementById('cards').innerHTML = cards.map(c =>
@@ -1603,12 +1571,6 @@
     }
 
     function renderTables() {
-      table('sessions-table', ['User', 'Page', 'Visits'], filtered.sessions, r =>
-        '<tr><td>' + esc(r.user) + '</td><td>' + esc(r.page) + '</td><td><span class="pill">' + esc(r.count) + '</span></td></tr>'
-      );
-      table('proxyHistory-table', ['Email', 'Destination URL', 'Time'], filtered.proxyHistory || [], r =>
-        '<tr><td>' + esc(r.email) + '</td><td><div class="chat-text">' + esc(r.url) + '</div><div class="muted">' + esc(r.rawPath) + '</div></td><td>' + esc(fmtTime(r.ts)) + '</td></tr>'
-      );
       table('adminActions-table', ['Time', 'Actor', 'Role', 'Action', 'Parameters', 'IP / Metadata'], filtered.adminActions, r => {
         const d = r.details || {};
         const role = d.role || (r.actor.includes('admin') || r.actor === 'owner' ? 'admin' : 'moderator');
@@ -1644,16 +1606,13 @@
       table('activeUsers-table', ['Last Active', 'Email'], filtered.activeUsers, r =>
         '<tr><td>' + esc(fmtTime(r.lastActiveAt)) + '</td><td><span class="pill ok">' + esc(r.email) + '</span></td></tr>'
       );
-      table('topPages-table', ['Page', 'Visits'], filtered.topPages, r =>
-        '<tr><td>' + esc(r.page) + '</td><td><span class="pill">' + esc(r.count) + '</span></td></tr>'
-      );
 
       table('searchIntent-table', ['Query', 'User', 'Time'], filtered.searchIntent || [], r =>
         '<tr><td><b>' + esc(r.query) + '</b></td><td>' + esc(r.user) + '</td><td>' + esc(fmtTime(r.ts)) + '</td></tr>'
       );
 
-      table('chatMetadata-table', ['Time', 'Channel', 'Sender', 'Recipient', 'Status', 'Message', 'Attachment'], filtered.chatMetadata, r =>
-        '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td>' + esc(r.channel) + '</td><td>' + esc(r.sender) + '</td><td>' + esc(r.recipient) + '</td><td><span class="pill">' + (r.contentVisible ? 'content visible' : 'metadata only') + (r.read ? ', read' : ', unread') + ' · ' + esc(r.textLength || 0) + ' chars</span></td><td><div class="chat-text">' + esc(r.text || '') + '</div></td><td>' + (r.hasImage ? '<span class="pill warn">' + esc(r.imageName || 'image') + '</span><div class="muted">' + esc(r.imageMime || '') + ' · ' + esc(r.imageBytes || 0) + ' bytes</div>' : '<span class="muted">none</span>') + '</td></tr>'
+      table('profileReports-table', ['Time', 'Target', 'Reporter', 'Reason', 'Status', 'Action'], filtered.profileReports || [], r =>
+        '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td><b>' + esc(r.targetHandle ? '@' + r.targetHandle : r.target) + '</b><div class="muted">' + esc(r.target) + '</div></td><td>' + esc(r.reporter) + '</td><td><div class="chat-text"><b>' + esc(r.reason) + '</b>' + (r.details ? '<br>' + esc(r.details) : '') + '</div></td><td>' + statusPill(r.status) + (r.resolvedBy ? '<div class="muted">By ' + esc(r.resolvedBy) + '</div>' : '') + '</td><td><div class="row-actions"><button type="button" class="mini ok" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"reviewed")\'>Reviewed</button><button type="button" class="mini warn" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"action taken")\'>Action taken</button><button type="button" class="mini" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"dismissed")\'>Dismiss</button></div></td></tr>'
       );
 
       table('chatReports-table', ['Time', 'Reporter', 'Reason', 'Reported Chat Context'], filtered.chatReports || [], r => {
@@ -1703,14 +1662,11 @@
     function downloadCsv() {
       if (!filtered) return;
       const lines = ['table,time,field1,field2,field3,field4'];
-      filtered.sessions.forEach(r => lines.push(['sessions', '', r.user, r.page, r.count, ''].map(csvEscape).join(',')));
-      (filtered.proxyHistory || []).forEach(r => lines.push(['proxyHistory', fmtTime(r.ts), r.email, r.url, r.rawPath, ''].map(csvEscape).join(',')));
       filtered.adminActions.forEach(r => lines.push(['adminActions', fmtTime(r.ts), r.actor, r.action, JSON.stringify(r.details || {}), ''].map(csvEscape).join(',')));
       filtered.sentNotifications.forEach(r => lines.push(['sentNotifications', fmtTime(r.ts), r.targetEmail, r.title, r.source, r.read ? 'read' : 'unread'].map(csvEscape).join(',')));
       filtered.bannedAccounts.forEach(r => lines.push(['bannedAccounts', fmtTime(r.bannedAt), r.email, r.by, r.reason, ''].map(csvEscape).join(',')));
       filtered.activeUsers.forEach(r => lines.push(['activeUsers', fmtTime(r.lastActiveAt), r.email, '', '', ''].map(csvEscape).join(',')));
-      filtered.topPages.forEach(r => lines.push(['topPages', '', r.page, r.count, '', ''].map(csvEscape).join(',')));
-      filtered.chatMetadata.forEach(r => lines.push(['chatMetadata', fmtTime(r.ts), r.channel, r.sender + ' -> ' + r.recipient, r.text || '', 'length=' + (r.textLength || 0) + '; image=' + (r.hasImage ? ((r.imageName || 'image') + ' ' + (r.imageMime || '') + ' ' + (r.imageBytes || 0) + ' bytes') : 'none')].map(csvEscape).join(',')));
+      (filtered.profileReports || []).forEach(r => lines.push(['profileReports', fmtTime(r.ts), r.target, r.reporter, r.reason, r.status].map(csvEscape).join(',')));
       (filtered.chatReports || []).forEach(r => lines.push(['chatReports', fmtTime(r.ts), r.reportedBy, r.reason, JSON.stringify(r.context), ''].map(csvEscape).join(',')));
       (filtered.cheatLogs || []).forEach(r => lines.push(['cheatLogs', fmtTime(r.ts), r.email, r.game, r.details, r.ip].map(csvEscape).join(',')));
       download('admin-logs.csv', 'text/csv', lines.join('\n'));
@@ -1784,6 +1740,28 @@
       } catch (err) {
         alert(err.message);
         loadModeratorRequests();
+      }
+    }
+
+    async function resolveProfileReport(id, status) {
+      const resolution = status === 'dismissed' ? (prompt('Optional dismissal note:') || '') : '';
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        const pass = sessionStorage.getItem('admin_passphrase');
+        if (pass) headers['X-Admin-Passphrase'] = pass;
+        const r = await fetch('/api/admin/profile-reports/resolve', {
+          method: 'POST',
+          credentials: 'include',
+          headers,
+          body: JSON.stringify({ id, status, resolution }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'Failed to resolve report');
+        if (rawData) rawData.profileReports = d.reports || rawData.profileReports || [];
+        renderCards();
+        applyFilter();
+      } catch (err) {
+        alert(err.message);
       }
     }
 

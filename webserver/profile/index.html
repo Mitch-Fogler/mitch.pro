@@ -186,6 +186,18 @@ const targetEmail = params.get('u') || null;
 const isOwnProfile = !targetEmail && !window.PUBLIC_PROFILE;
 
 function esc(t) { return (t||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function safeImageSrc(value, allowData) {
+  const raw = String(value || '').trim();
+  if (!raw || /[\u0000-\u001f\u007f<>"`]/.test(raw)) return '';
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (allowData && /^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 140000) return raw;
+  return '';
+}
+function safeLinkHref(value) {
+  const raw = String(value || '').trim();
+  if (!raw || /[\u0000-\u001f\u007f<>"`]/.test(raw)) return '';
+  return /^https?:\/\//i.test(raw) ? raw : '';
+}
 function option(value, label, current) {
   return `<option value="${esc(value)}" ${String(current || '') === String(value) ? 'selected' : ''}>${esc(label)}</option>`;
 }
@@ -252,8 +264,11 @@ async function load() {
   const profileEffect = String(profile.activeProfileEffect || '').replace(/[^a-z0-9_-]/gi, '');
   if (profileEffect) wrap.classList.add(profileEffect);
 
-  if (profile.background) {
-    document.body.style.backgroundImage = `url('${profile.background}')`;
+  const safeBackground = safeImageSrc(profile.background, false);
+  const safePfp = safeImageSrc(profile.pfp, true);
+  const safeWebsite = safeLinkHref(profile.website);
+  if (safeBackground) {
+    document.body.style.backgroundImage = `url("${safeBackground.replace(/"/g, '%22')}")`;
   } else {
     document.body.style.backgroundImage = '';
   }
@@ -277,7 +292,7 @@ async function load() {
   let html = `
     <div style="display:flex;flex-direction:column;align-items:flex-start;margin-bottom:32px">
       <div class="avatar">
-        ${profile.pfp ? `<img src="${esc(profile.pfp)}" onerror="this.style.display='none';this.parentElement.textContent='${initials}'">` : initials}
+        ${safePfp ? `<img src="${esc(safePfp)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="">` : initials}
       </div>
       ${(profile.isPremium || profile.isAdmin) ? `<div class="badge-row">
         ${profile.isPremium ? '<span class="badge-premium">Premium member</span>' : ''}
@@ -286,7 +301,7 @@ async function load() {
       <div class="display-name ${profile.activeColor || ''}">${esc(profileName)}${badgeHtml}</div>
       ${(!window.PUBLIC_PROFILE && profile.email && profile.email.includes('@')) ? `<div class="email-line">${esc(profile.email || '')}</div>` : ''}
       ${profile.bio ? `<div class="bio">${esc(profile.bio)}</div>` : ''}
-      ${profile.website ? `<div class="website"><a href="${esc(profile.website)}" target="_blank" rel="noopener">${esc(profile.website)}</a></div>` : ''}
+      ${safeWebsite ? `<div class="website"><a href="${esc(safeWebsite)}" target="_blank" rel="noopener noreferrer">${esc(safeWebsite)}</a></div>` : ''}
       
       <div class="stats-grid" style="width:100%">
         <div class="stat-card"><div class="stat-val">${stats.pixels || 0}</div><div class="stat-lbl">Pixels</div></div>

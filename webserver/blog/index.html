@@ -118,6 +118,7 @@
     padding: 13px;
   }
   .post-item:hover, .post-item.active { background: rgba(255,255,255,.055); }
+  .post-item.featured { box-shadow: inset 3px 0 0 #fbbf24; }
   .post-item b {
     display: block;
     font-size: .95rem;
@@ -150,6 +151,17 @@
     color: #fbbf24;
     border-color: rgba(251,191,36,.4);
     background: rgba(251,191,36,.08);
+  }
+  .badge.scheduled {
+    color: #38bdf8;
+    border-color: rgba(56,189,248,.4);
+    background: rgba(56,189,248,.08);
+  }
+  .filterbar {
+    display: grid;
+    grid-template-columns: 1fr 160px 160px;
+    gap: 8px;
+    margin: 0 0 14px;
   }
   .tag-row {
     display: flex;
@@ -317,6 +329,33 @@
     height: 18px;
     accent-color: #22c55e;
   }
+  .inline-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--t-fg2, #aaa);
+    font-size: .82rem;
+    font-weight: 800;
+  }
+  .inline-check input { width: 16px; min-width: 16px; height: 16px; }
+  .side-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .mini-list { display: grid; gap: 8px; padding: 12px; }
+  .mini-card {
+    border: 1px solid var(--t-bd, #333);
+    border-radius: 8px;
+    background: rgba(255,255,255,.035);
+    padding: 10px;
+  }
+  .mini-card.pending { border-color: rgba(251,191,36,.4); }
+  .mini-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .comment-form { display: grid; gap: 8px; padding: 12px; border-top: 1px solid var(--t-bd, #333); }
+  .comment-form textarea { min-height: 78px; }
+  #imageFile { display: none; }
   #toast {
     position: fixed;
     right: 16px;
@@ -340,6 +379,7 @@
     .reader { min-height: 360px; }
     .article { padding: 17px; }
     .editor-row { grid-template-columns: 1fr; }
+    .filterbar, .side-panels { grid-template-columns: 1fr; }
     .toolbar { gap: 5px; }
     .toolbar button { flex: 1 1 42px; }
   }
@@ -360,6 +400,12 @@
     </div>
   </div>
 
+  <div class="filterbar">
+    <input id="blogSearch" type="search" placeholder="Search posts, tags, categories...">
+    <select id="categoryFilter"><option value="">All categories</option></select>
+    <select id="tagFilter"><option value="">All tags</option></select>
+  </div>
+
   <div class="layout">
     <aside class="panel">
       <div class="panel-head">
@@ -378,6 +424,28 @@
         <article id="article" class="article"><div class="empty">Select a post to read.</div></article>
       </div>
 
+      <div class="side-panels">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Comments</div>
+            <span id="commentCount" class="badge">0</span>
+          </div>
+          <div id="commentList" class="mini-list"><div class="empty">Select a post to view comments.</div></div>
+          <form id="commentForm" class="comment-form">
+            <textarea id="commentBody" maxlength="1200" placeholder="Add a comment..."></textarea>
+            <button type="submit">Post Comment</button>
+            <div id="commentStatus" class="meta"></div>
+          </form>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Revisions</div>
+            <button type="button" onclick="loadRevisions()">Refresh</button>
+          </div>
+          <div id="revisionList" class="mini-list"><div class="empty">Writers can view revisions here.</div></div>
+        </div>
+      </div>
+
       <div id="editor" class="panel editor">
         <div class="panel-head">
           <div class="panel-title" id="editorTitle">New Post</div>
@@ -387,7 +455,16 @@
           <input id="postTitle" maxlength="140" placeholder="Post title" required>
           <div class="editor-row">
             <input id="postTags" maxlength="260" placeholder="Tags, separated by commas">
+            <input id="postCategory" maxlength="40" placeholder="Category">
+          </div>
+          <div class="editor-row">
             <input id="postCover" maxlength="800" placeholder="Cover image URL">
+            <input id="postSchedule" type="datetime-local" aria-label="Scheduled publish time">
+          </div>
+          <div class="actions">
+            <button type="button" id="uploadBtn">Upload Image</button>
+            <input id="imageFile" type="file" accept="image/png,image/jpeg,image/gif,image/webp">
+            <label class="inline-check"><input id="postFeatured" type="checkbox"> Featured</label>
           </div>
           <div class="toolbar" aria-label="Editor toolbar">
             <select id="blockFormat" title="Text style">
@@ -412,6 +489,7 @@
           <div class="editor-row">
             <select id="postStatus">
               <option value="published">Publish</option>
+              <option value="scheduled">Schedule</option>
               <option value="draft">Save as draft</option>
             </select>
             <button class="primary" type="submit">Save Post</button>
@@ -430,6 +508,8 @@ let selected = null;
 let currentPost = null;
 let canWrite = false;
 let editingSlug = '';
+let allCategories = [];
+let allTags = [];
 
 function esc(value) {
   return String(value ?? '').replace(/[&<>"']/g, ch => ({
@@ -490,6 +570,16 @@ function fmtDate(ts) {
   if (!ts) return 'Draft';
   return new Date(ts).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
 }
+function toDatetimeLocal(ts) {
+  ts = Number(ts || 0);
+  if (!ts) return '';
+  const d = new Date(ts);
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 16);
+}
+function fromDatetimeLocal(value) {
+  return value ? new Date(value).getTime() : 0;
+}
 function toast(text, ok = true) {
   const el = document.getElementById('toast');
   el.textContent = text;
@@ -500,19 +590,42 @@ function toast(text, ok = true) {
 function setEditorStatus(text) {
   document.getElementById('editorStatus').textContent = text || '';
 }
+function matchesFilters(post) {
+  const q = document.getElementById('blogSearch').value.trim().toLowerCase();
+  const cat = document.getElementById('categoryFilter').value;
+  const tag = document.getElementById('tagFilter').value;
+  if (cat && post.category !== cat) return false;
+  if (tag && !(post.tags || []).includes(tag)) return false;
+  if (!q) return true;
+  const haystack = [post.title, post.excerpt, post.category, ...(post.tags || [])].join(' ').toLowerCase();
+  return haystack.includes(q);
+}
+function renderFilters() {
+  const cat = document.getElementById('categoryFilter');
+  const tag = document.getElementById('tagFilter');
+  const oldCat = cat.value;
+  const oldTag = tag.value;
+  cat.innerHTML = '<option value="">All categories</option>' + allCategories.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');
+  tag.innerHTML = '<option value="">All tags</option>' + allTags.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join('');
+  cat.value = allCategories.includes(oldCat) ? oldCat : '';
+  tag.value = allTags.includes(oldTag) ? oldTag : '';
+}
 function renderList() {
-  document.getElementById('postCount').textContent = String(posts.length);
+  const visible = posts.filter(matchesFilters);
+  document.getElementById('postCount').textContent = String(visible.length);
   const root = document.getElementById('postList');
-  if (!posts.length) {
-    root.innerHTML = '<div class="empty">No blog posts yet.</div>';
+  if (!visible.length) {
+    root.innerHTML = '<div class="empty">No matching blog posts.</div>';
     return;
   }
-  root.innerHTML = posts.map(post => `
-    <button class="post-item ${post.slug === selected ? 'active' : ''}" type="button" data-slug="${esc(post.slug)}">
-      <b>${esc(post.title)}</b>
+  root.innerHTML = visible.map(post => `
+    <button class="post-item ${post.slug === selected ? 'active' : ''} ${post.featured ? 'featured' : ''}" type="button" data-slug="${esc(post.slug)}">
+      <b>${post.featured ? '★ ' : ''}${esc(post.title)}</b>
       <span class="meta">${esc(post.authorName || 'mitch.pro')} · ${esc(fmtDate(post.publishedAt || post.updatedAt || post.createdAt))}</span>
       ${post.status === 'draft' ? '<span class="badge draft">Draft</span>' : ''}
+      ${post.status === 'scheduled' ? '<span class="badge scheduled">Scheduled</span>' : ''}
       <div class="excerpt">${esc(post.excerpt || '')}</div>
+      ${post.category ? '<div class="meta">' + esc(post.category) + '</div>' : ''}
       ${(post.tags || []).length ? '<div class="tag-row">' + post.tags.map(tag => '<span class="tag-pill">' + esc(tag) + '</span>').join('') + '</div>' : ''}
     </button>
   `).join('');
@@ -531,7 +644,8 @@ function renderArticle(post) {
   document.getElementById('article').innerHTML = `
     ${post.coverImage ? '<img class="cover-image" src="' + esc(post.coverImage) + '" alt="">' : ''}
     <h2>${esc(post.title)}</h2>
-    <div class="meta">By ${esc(post.authorName || 'mitch.pro')} · ${esc(fmtDate(post.publishedAt || post.updatedAt || post.createdAt))}</div>
+    <div class="meta">By ${esc(post.authorName || 'mitch.pro')} · ${esc(fmtDate(post.publishedAt || post.publishAt || post.updatedAt || post.createdAt))}${post.category ? ' · ' + esc(post.category) : ''}</div>
+    ${post.status === 'scheduled' ? '<div class="badge scheduled">Scheduled for ' + esc(fmtDate(post.publishAt)) + '</div>' : ''}
     ${(post.tags || []).length ? '<div class="tag-row">' + post.tags.map(tag => '<span class="tag-pill">' + esc(tag) + '</span>').join('') + '</div>' : ''}
     <div class="article-body">${sanitizeClientHtml(post.bodyHtml || legacyTextToHtml(post.body || ''))}</div>
   `;
@@ -546,8 +660,11 @@ async function loadPosts() {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Could not load posts');
   posts = data.posts || [];
+  allCategories = data.categories || [];
+  allTags = data.tags || [];
   canWrite = !!data.canWrite;
   document.getElementById('newPostBtn').style.display = canWrite ? '' : 'none';
+  renderFilters();
   renderList();
   const hashSlug = location.hash.startsWith('#post/') ? decodeURIComponent(location.hash.slice(6)) : '';
   if (hashSlug) await loadPost(hashSlug);
@@ -567,6 +684,8 @@ async function loadPost(slug) {
   selected = data.post.slug;
   renderList();
   renderArticle(data.post);
+  await loadComments(data.post);
+  await loadRevisions(data.post);
 }
 function openEditor(post) {
   if (!canWrite && !post) return;
@@ -574,9 +693,12 @@ function openEditor(post) {
   document.getElementById('editorTitle').textContent = post ? 'Edit Post' : 'New Post';
   document.getElementById('postTitle').value = post ? post.title || '' : '';
   document.getElementById('postTags').value = post && post.tags ? post.tags.join(', ') : '';
+  document.getElementById('postCategory').value = post ? post.category || '' : '';
   document.getElementById('postCover').value = post ? post.coverImage || '' : '';
+  document.getElementById('postSchedule').value = post ? toDatetimeLocal(post.publishAt || 0) : '';
+  document.getElementById('postFeatured').checked = !!(post && post.featured);
   document.getElementById('postBody').innerHTML = post ? sanitizeClientHtml(post.bodyHtml || legacyTextToHtml(post.body || '')) : '';
-  document.getElementById('postStatus').value = post && post.status === 'draft' ? 'draft' : 'published';
+  document.getElementById('postStatus').value = post && post.status === 'draft' ? 'draft' : (post && post.status === 'scheduled' ? 'scheduled' : 'published');
   setEditorStatus('');
   document.getElementById('editor').classList.add('open');
   document.getElementById('postTitle').focus();
@@ -602,6 +724,117 @@ async function deleteCurrentPost() {
   closeEditor();
   await loadPosts();
 }
+async function loadComments(post = currentPost) {
+  const list = document.getElementById('commentList');
+  if (!post) {
+    list.innerHTML = '<div class="empty">Select a post to view comments.</div>';
+    document.getElementById('commentCount').textContent = '0';
+    return;
+  }
+  try {
+    const res = await fetch('/api/blog/posts/' + encodeURIComponent(post.slug) + '/comments', { credentials: 'include', cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Could not load comments');
+    const comments = data.comments || [];
+    document.getElementById('commentCount').textContent = String(comments.length);
+    list.innerHTML = comments.length ? comments.map(comment => `
+      <div class="mini-card ${comment.status === 'pending' ? 'pending' : ''}">
+        <div class="meta">${esc(comment.authorName || 'User')} · ${esc(fmtDate(comment.ts))} · ${esc(comment.status || '')}</div>
+        <div style="margin-top:6px;line-height:1.45;">${esc(comment.body || '')}</div>
+        <div class="mini-actions">
+          ${data.canModerate && comment.status !== 'approved' ? '<button type="button" data-comment-id="' + esc(comment.id) + '" data-comment-action="approved">Approve</button>' : ''}
+          ${data.canModerate && comment.status !== 'rejected' ? '<button type="button" data-comment-id="' + esc(comment.id) + '" data-comment-action="rejected">Reject</button>' : ''}
+          ${comment.canDelete ? '<button type="button" data-comment-id="' + esc(comment.id) + '" data-comment-action="delete">Delete</button>' : ''}
+        </div>
+      </div>
+    `).join('') : '<div class="empty">No comments yet.</div>';
+    list.querySelectorAll('[data-comment-action]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (btn.dataset.commentAction === 'delete') deleteComment(btn.dataset.commentId);
+        else moderateComment(btn.dataset.commentId, btn.dataset.commentAction);
+      });
+    });
+  } catch (err) {
+    list.innerHTML = '<div class="empty">' + esc(err.message || 'Could not load comments') + '</div>';
+  }
+}
+async function submitComment(event) {
+  event.preventDefault();
+  if (!currentPost) return;
+  const body = document.getElementById('commentBody').value.trim();
+  if (!body) return;
+  document.getElementById('commentStatus').textContent = 'Posting...';
+  const res = await fetch('/api/blog/posts/' + encodeURIComponent(currentPost.slug) + '/comments', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    document.getElementById('commentStatus').textContent = data.error || 'Could not post comment';
+    return;
+  }
+  document.getElementById('commentBody').value = '';
+  document.getElementById('commentStatus').textContent = data.pending ? 'Comment submitted for review.' : 'Comment posted.';
+  await loadComments();
+}
+async function moderateComment(id, status) {
+  if (!currentPost) return;
+  const res = await fetch('/api/blog/posts/' + encodeURIComponent(currentPost.slug) + '/comments/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status })
+  });
+  if (!res.ok) toast('Could not update comment', false);
+  await loadComments();
+}
+async function deleteComment(id) {
+  if (!currentPost || !confirm('Delete this comment?')) return;
+  const res = await fetch('/api/blog/posts/' + encodeURIComponent(currentPost.slug) + '/comments/' + encodeURIComponent(id), {
+    method: 'DELETE',
+    credentials: 'include'
+  });
+  if (!res.ok) toast('Could not delete comment', false);
+  await loadComments();
+}
+async function loadRevisions(post = currentPost) {
+  const list = document.getElementById('revisionList');
+  if (!post || !post.canEdit) {
+    list.innerHTML = '<div class="empty">Writers can view revisions here.</div>';
+    return;
+  }
+  try {
+    const res = await fetch('/api/blog/posts/' + encodeURIComponent(post.slug) + '/revisions', { credentials: 'include', cache: 'no-store' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Could not load revisions');
+    const revisions = data.revisions || [];
+    list.innerHTML = revisions.length ? revisions.map(rev => `
+      <div class="mini-card">
+        <div class="meta">${esc(fmtDate(rev.ts))} · ${esc(rev.reason || 'edit')} · ${esc(rev.actorEmail || '')}</div>
+        <strong>${esc(rev.title || 'Untitled')}</strong>
+        <div class="mini-actions"><button type="button" onclick="restoreRevision('${esc(rev.id)}')">Restore</button></div>
+      </div>
+    `).join('') : '<div class="empty">No revisions yet.</div>';
+  } catch (err) {
+    list.innerHTML = '<div class="empty">' + esc(err.message || 'Could not load revisions') + '</div>';
+  }
+}
+async function restoreRevision(id) {
+  if (!currentPost || !confirm('Restore this revision? Current content will be saved as a new revision.')) return;
+  const res = await fetch('/api/blog/posts/' + encodeURIComponent(currentPost.slug) + '/restore', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ revisionId: id })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return toast(data.error || 'Could not restore revision', false);
+  toast('Revision restored');
+  await loadPosts();
+  await loadPost(data.post.slug);
+}
 async function savePost(event) {
   event.preventDefault();
   setEditorStatus('Saving...');
@@ -611,7 +844,10 @@ async function savePost(event) {
   const payload = {
     title: document.getElementById('postTitle').value,
     tags: document.getElementById('postTags').value,
+    category: document.getElementById('postCategory').value,
     coverImage: document.getElementById('postCover').value,
+    featured: document.getElementById('postFeatured').checked,
+    publishAt: fromDatetimeLocal(document.getElementById('postSchedule').value),
     body: editor.textContent.trim(),
     bodyHtml: cleanHtml,
     status: document.getElementById('postStatus').value
@@ -634,6 +870,29 @@ async function savePost(event) {
   closeEditor();
   await loadPosts();
   await loadPost(data.post.slug);
+}
+async function uploadImageFile(file) {
+  if (!file) return;
+  if (!/^image\/(png|jpe?g|gif|webp)$/i.test(file.type)) return toast('Unsupported image type', false);
+  if (file.size > 900000) return toast('Image is too large', false);
+  const data = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const res = await fetch('/api/blog/upload', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mime: file.type, name: file.name, data })
+  });
+  const result = await res.json().catch(() => ({}));
+  if (!res.ok) return toast(result.error || 'Could not upload image', false);
+  document.getElementById('postBody').focus();
+  document.execCommand('insertImage', false, result.url);
+  document.getElementById('postCover').value ||= result.url;
+  toast('Image uploaded');
 }
 function runCommand(cmd, value) {
   const editor = document.getElementById('postBody');
@@ -693,7 +952,16 @@ async function saveSubscription() {
 }
 document.getElementById('newPostBtn').addEventListener('click', () => openEditor(null));
 document.getElementById('postForm').addEventListener('submit', savePost);
+document.getElementById('commentForm').addEventListener('submit', submitComment);
 document.getElementById('alertToggle').addEventListener('change', saveSubscription);
+document.getElementById('blogSearch').addEventListener('input', renderList);
+document.getElementById('categoryFilter').addEventListener('change', renderList);
+document.getElementById('tagFilter').addEventListener('change', renderList);
+document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('imageFile').click());
+document.getElementById('imageFile').addEventListener('change', event => {
+  uploadImageFile(event.target.files && event.target.files[0]);
+  event.target.value = '';
+});
 window.addEventListener('hashchange', () => {
   if (location.hash.startsWith('#post/')) loadPost(decodeURIComponent(location.hash.slice(6)));
 });

@@ -661,6 +661,7 @@ let pushSub = null;
 let pendingImage = null;
 let replyTo = null;
 let selectedGroupMembers = new Set();
+let pendingDmTarget = '';
 let livePollTimer = null;
 let livePollBusy = false;
 let hasMoreMessages = true;
@@ -898,6 +899,9 @@ async function decryptMessageContent(m) {
 }
 
 async function init() {
+  try {
+    pendingDmTarget = new URLSearchParams(location.search).get('to') || '';
+  } catch {}
   let fetchedData = null;
   try {
     const r = await fetch('/api/me', { credentials:'include', cache:'no-store' });
@@ -1338,6 +1342,7 @@ async function loadMembers() {
     });
     
     renderList();
+    maybeOpenPendingDm();
   } catch {}
 }
 
@@ -1378,6 +1383,19 @@ function setView(view) {
 
 function lastDirectMessage(email) {
   return allMessages.filter(m => isDirectBetween(m, email)).sort((a, b) => (b.ts || 0) - (a.ts || 0))[0] || null;
+}
+
+function maybeOpenPendingDm() {
+  if (!pendingDmTarget || activeChat) return;
+  const target = pendingDmTarget.toLowerCase();
+  const member = members.find(m =>
+    sameEmail(m.email, target) ||
+    String(m.handle || '').toLowerCase() === target ||
+    String(m.email || '').toLowerCase() === target
+  );
+  if (!member) return;
+  pendingDmTarget = '';
+  selectDm(member.email);
 }
 
 function renderList() {
