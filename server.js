@@ -11,7 +11,6 @@ import dns from 'dns';
 import https from 'https';
 import {
   configureDataStore,
-  getDataStore,
   appendAppLog,
   queryAppLogs,
   readDocument,
@@ -110,7 +109,6 @@ const APPLICATIONS_FILE      = join(DATA_DIR, 'applications.json');
 const PROFILES_FILE          = join(DATA_DIR, 'profiles.json');
 const COIN_GIFTS_FILE        = join(DATA_DIR, 'coin_gifts.json');
 const DAILY_LOGINS_FILE      = join(DATA_DIR, 'daily_logins.json');
-const TEMP_COIN_RESET_OG_GRANT_FILE = join(DATA_DIR, 'startup_coin_reset_og_grant_2026_07_05.json');
 const DMS_FILE               = join(DATA_DIR, 'dms.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
 const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
@@ -4225,10 +4223,12 @@ function checkRateLimit(req, endpoint) {
 
 function filterSites(raw, isAdmin, realAdmin = false, isPremium = false) {
   return raw.split('\n').map(ln => {
-    if (ln.startsWith('admin iframe simulate/')) return realAdmin ? ln.slice('admin '.length) : null;
-    if (ln.startsWith('admin ')) return isAdmin ? ln.slice('admin '.length) : null;
-    if (!isPremium && (ln.startsWith('url /ultra/') || ln.startsWith('url /trad/'))) return null;
-    return ln;
+    const line = String(ln || '').trim();
+    if (!line || line.startsWith('//')) return null;
+    if (line.startsWith('admin iframe simulate/')) return realAdmin ? line.slice('admin '.length) : null;
+    if (line.startsWith('admin ')) return isAdmin ? line.slice('admin '.length) : null;
+    if (!isPremium && (line.startsWith('url /ultra/') || line.startsWith('url /trad/'))) return null;
+    return line;
   }).filter(l => l !== null).join('\n');
 }
 
@@ -4924,7 +4924,7 @@ function canGrantPremiumId(sid) {
 }
 
 const SHOP_PRICE_MULTIPLIER = 1.85;
-let SHOP_CATALOG = [
+const DEFAULT_SHOP_CATALOG = [
   { id: 'premium', name: 'Premium', section: 'Premium', type: 'premium', cost: 5000, desc: 'Unlock mitch.prox, Premium Chat, 2X typing/logic coin rewards, 2X Clicker/Riches offline gains, larger canvas brushes, exclusive profile frames/badges, and the epic chance to have an arcade game named after you!' },
   { id: 'neon_purple', name: 'Neon Purple Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A bright purple username for chat, profiles, and leaderboards.' },
   { id: 'electric_blue', name: 'Electric Blue Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A sharp electric-blue username style.' },
@@ -4962,6 +4962,7 @@ let SHOP_CATALOG = [
   { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
   { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
   { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
+  { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
   { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' },
   { id: 'streak_freeze', name: 'Streak Freeze', section: 'Utility', type: 'utility', costType: 'streak_freeze', cost: 150, desc: 'Automatically saves your Daily Login streak if you miss a day!' },
   { id: 'happy_hour_ticket', name: 'Personal Happy Hour (30m)', section: 'Utility', type: 'utility', costType: 'happy_hour_ticket', cost: 350, desc: 'Trigger a personal 30-minute Happy Hour for 2X coins on all games and canvas!' },
@@ -4970,6 +4971,7 @@ let SHOP_CATALOG = [
   { id: 'happy_hour_extension', name: 'Happy Hour Extension (15m)', section: 'Utility', type: 'utility', costType: 'happy_hour_extension', cost: 250, desc: 'Extends your active Personal Happy Hour by an additional 15 minutes. Requires active Happy Hour to purchase.' },
   { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' }
 ];
+let SHOP_CATALOG = [...DEFAULT_SHOP_CATALOG];
 try {
   const catalogPath = join(DATA_DIR, 'shop_catalog.json');
   if (existsSync(catalogPath)) {
@@ -5018,84 +5020,14 @@ function normalizeCosmetics(entry = {}) {
   return base;
 }
 
-// TEMP 2026-07-05: one-time economy reset + OG badge grant.
-// Delete this function, the call below, and TEMP_COIN_RESET_OG_GRANT_FILE after prod has started once.
-function runTemporaryCoinResetAndOgGrant() {
-  const marker = loadJson(TEMP_COIN_RESET_OG_GRANT_FILE, null);
-  if (marker && marker.done) return;
-
-  const passwords = loadJson(PASSWORDS_FILE, {});
-  const profiles = loadJson(PROFILES_FILE, {});
-  const currentCoins = loadCoins();
-  const names = loadJson(NAMES_FILE, {});
-  const tokens = loadJson(TOKENS_FILE, {});
-  const knownEmails = new Set();
-  for (const source of [passwords, profiles, currentCoins]) {
-    for (const email of Object.keys(source || {})) {
-      const norm = normalizeEmail(email);
-      if (norm && norm.includes('@')) knownEmails.add(norm);
-    }
-  }
-  for (const email of Object.values(names || {})) {
-    const norm = normalizeEmail(email);
-    if (norm && norm.includes('@')) knownEmails.add(norm);
-  }
-  for (const token of Object.values(tokens || {})) {
-    const norm = normalizeEmail(token && token.email);
-    if (norm && norm.includes('@')) knownEmails.add(norm);
-  }
-  try {
-    const rows = getDataStore().query('SELECT email FROM users').all();
-    for (const row of rows) {
-      const norm = normalizeEmail(row.email);
-      if (norm && norm.includes('@')) knownEmails.add(norm);
-    }
-  } catch (e) {
-    console.warn('[startup] Could not read users table for temporary reset:', e.message);
-  }
-
-  const resetCoins = {};
-  for (const email of knownEmails) resetCoins[email] = 0;
-  coinsCache = resetCoins;
-  saveJsonSync(COINS_FILE, resetCoins);
-
-  const cosmetics = loadJson(COSMETICS_FILE, {});
-  let newlyGranted = 0;
-  for (const email of knownEmails) {
-    const owned = normalizeCosmetics(cosmetics[email] || {});
-    if (!owned.badges.includes('og_badge')) {
-      owned.badges.push('og_badge');
-      newlyGranted++;
-    }
-    owned.activeBadge = 'og_badge';
-    cosmetics[email] = owned;
-  }
-  saveJsonSync(COSMETICS_FILE, cosmetics);
-
-  const result = {
-    done: true,
-    ranAt: new Date().toISOString(),
-    userCount: knownEmails.size,
-    newlyGrantedOgBadges: newlyGranted,
-    note: 'Temporary one-time startup reset. Safe to delete code after this marker exists in prod.'
-  };
-  saveJsonSync(TEMP_COIN_RESET_OG_GRANT_FILE, result);
-  console.warn(`[startup] Temporary coin reset ran for ${knownEmails.size} users; OG badge newly granted to ${newlyGranted}.`);
-  try {
-    appendAppLog({
-      level: 'warn',
-      category: 'startup',
-      message: 'Temporary coin reset and OG badge grant ran',
-      details: result
-    });
-  } catch (e) {
-    console.warn('[startup] Could not write temporary reset app log:', e.message);
-  }
-}
-runTemporaryCoinResetAndOgGrant();
-
 function shopItemById(itemId) {
-  return SHOP_CATALOG.find(item => item.id === String(itemId || ''));
+  const id = String(itemId || '');
+  return SHOP_CATALOG.find(item => item.id === id) || DEFAULT_SHOP_CATALOG.find(item => item.id === id) || null;
+}
+
+function activeShopItemById(itemId) {
+  const id = String(itemId || '');
+  return SHOP_CATALOG.find(item => item.id === id) || null;
 }
 
 function shopTierFor(item) {
@@ -5235,9 +5167,41 @@ function buildInventory(email) {
   const norm = normalizeEmail(email);
   const cosm = loadJson(COSMETICS_FILE, {});
   const unlockedAi = loadJson(UNLOCKED_AI_FILE, {});
+  const stats = loadUserStats()[norm] || {};
+  const daily = dailyLogins[norm] || {};
   const userCosm = sanitizeCosmeticsForEmail(email, cosm[norm] || {});
   const ai = Array.isArray(unlockedAi[norm]) ? [...new Set(unlockedAi[norm].filter(Boolean))] : [];
-  return { cosmetics: userCosm, ai };
+  const itemIds = new Set([
+    ...(userCosm.colors || []),
+    ...(userCosm.badges || []),
+    ...(userCosm.chatEffects || []),
+    ...(userCosm.profileEffects || []),
+    ...(userCosm.themes || []),
+    ...(userCosm.tools || []),
+    ...ai
+  ]);
+  const itemDetails = Array.from(itemIds).map(id => {
+    const item = shopItemById(id) || { id, name: id.replace(/[_-]/g, ' '), section: 'Removed Items', type: 'cosmetic', costType: 'unknown', desc: 'This item is no longer listed in the shop.' };
+    const activeKey = item.costType === 'ai_personality' ? 'activeAi' : SHOP_TYPE_CONFIG[item.costType]?.active;
+    return {
+      ...item,
+      removedFromShop: !SHOP_CATALOG.some(active => active.id === id),
+      active: activeKey ? userCosm[activeKey] === id : false
+    };
+  });
+  return {
+    cosmetics: userCosm,
+    ai,
+    items: itemDetails,
+    status: {
+      vipUntil: stats.vip_casino_until || 0,
+      happyHourUntil: stats.personal_happy_hour_until || 0,
+      doubleDownUntil: stats.double_down_until || 0,
+      badBeatInsuranceUntil: stats.bad_beat_insurance_until || 0,
+      slotsFreeSpins: stats.slots_free_spins || 0,
+      streakFreezes: daily.streakFreezes || 0
+    }
+  };
 }
 
 function ownsShopItem(email, item, inventory = buildInventory(email)) {
@@ -6378,7 +6342,7 @@ Mitch.pro Team`;
       const norm = normalizeEmail(email);
 
       const { itemId } = body;
-      const item = shopItemById(itemId);
+      const item = activeShopItemById(itemId);
       if (!item || item.type === 'premium') return jsonResp(400, { error: 'invalid shop item' });
       if (item.disabled && !isAdminEmail(email)) {
         return jsonResp(400, { error: 'This item is disabled / limited-edition and can only be bought player-to-player in the Marketplace!' });
@@ -9446,7 +9410,8 @@ function loadAllGamesList() {
         text, 
         ts: Date.now(),
         color: publicActiveColor(email, userCosm.activeColor),
-        badge: userCosm.activeBadge || null
+        badge: userCosm.activeBadge || null,
+        chatEffect: userCosm.activeChatEffect || null
       };
       if (shadowBans.has(normEmail)) {
         return jsonResp(200, { ok: true }); // shadow success
@@ -9515,7 +9480,8 @@ function loadAllGamesList() {
         text, 
         ts: Date.now(),
         color: publicActiveColor(email, userCosm.activeColor),
-        badge: userCosm.activeBadge || null
+        badge: userCosm.activeBadge || null,
+        chatEffect: userCosm.activeChatEffect || null
       };
       if (shadowBans.has(normEmail)) {
         return jsonResp(200, { ok: true }); // shadow success
@@ -9956,7 +9922,17 @@ function loadAllGamesList() {
         const aiType       = body.type || 'assistant';
         const pageUrl      = String(body.page || '').trim().slice(0, 200);
         const pageHtml     = String(body.pageHtml || '').slice(0, 20000);
-        const personality  = String(body.personality || 'friendly');
+        const userEmail = loadJson(NAMES_FILE, {})[uid] || '';
+        const userCosm = userEmail ? (loadJson(COSMETICS_FILE, {})[normalizeEmail(userEmail)] || {}) : {};
+        const equippedPersonality = {
+          sarcastic_mentor: 'fun',
+          hacker_persona: 'concise',
+          study_coach: 'detailed',
+          debug_helper: 'detailed',
+          story_mode: 'fun',
+          speedrun_ai: 'concise'
+        }[userCosm.activeAi || ''];
+        const personality  = String(equippedPersonality || body.personality || 'friendly');
         const aiPrivacy    = !!body.privacy;
         let hist       = Array.isArray(body.history) ? body.history.slice(-8) : [];
         if (!prompt) return jsonResp(400, { error: 'Empty prompt.' });
@@ -9967,7 +9943,6 @@ function loadAllGamesList() {
             : `AI quota reached (${AI_USER_MAX}/hr). Try again later.`;
           return jsonResp(429, { error: msg });
         }
-        const userEmail = loadJson(NAMES_FILE, {})[uid] || '';
         const isPremium = userEmail ? isPremiumEmail(userEmail) : false;
 
         let sysP;
@@ -10028,12 +10003,13 @@ function loadAllGamesList() {
             + `Current page: ${pageUrl}\n`
             + (aiPrivacy ? '' : `User email: ${userEmail || 'unknown'}\n`)
             + (pageHtml && !aiPrivacy ? `\n## Current Page HTML\n${pageHtml}\n` : '')
-            + '\n' + {
+            + '\n' + ({
                 friendly: 'Be warm, friendly, and concise. This is a small chat widget.',
                 concise:  'Be extremely brief and direct. No filler words. This is a small chat widget.',
                 detailed: 'Be thorough and detailed. Explain your reasoning fully. This is a small chat widget.',
                 fun:      'Be playful, use light humor, and keep it fun. This is a small chat widget.',
-              }[personality] || 'Be friendly, helpful, and concise. This is a small chat widget.'
+              }[personality] || 'Be friendly, helpful, and concise. This is a small chat widget.')
+            + (userCosm.activeAi ? `\nEquipped AI personality: ${userCosm.activeAi}. Let that style guide your tone.` : '')
           );
         }
 
@@ -10122,7 +10098,9 @@ function loadAllGamesList() {
       saveDailyLogins();
 
       const reward = getDailyReward(data.streak);
-      addCoins(email, reward.coins, `daily-login: streak Day ${data.streak}`);
+      const hasDailyBonusPlus = ownsShopItem(email, shopItemById('daily_bonus_plus'));
+      const rewardCoins = reward.coins + (hasDailyBonusPlus ? 50 : 0);
+      addCoins(email, rewardCoins, `daily-login: streak Day ${data.streak}${hasDailyBonusPlus ? ' + daily_bonus_plus' : ''}`);
 
       if (reward.grantPremium) {
         grantPremiumStatus(email, 'Earned via 60-day daily login streak', 'system');
@@ -10130,17 +10108,17 @@ function loadAllGamesList() {
 
       let message = '';
       if (reward.grantPremium) {
-        message = `Congratulations! You've logged in for 60 consecutive days and earned Premium Status + ${reward.coins} MitchCoins!`;
+        message = `Congratulations! You've logged in for 60 consecutive days and earned Premium Status + ${rewardCoins} MitchCoins!`;
       } else if (freezeConsumed) {
-        message = `❄️ Streak Freeze consumed! Your ${data.streak}-day streak was protected! Claimed Day ${data.streak} bonus: +${reward.coins} MitchCoins!`;
+        message = `❄️ Streak Freeze consumed! Your ${data.streak}-day streak was protected! Claimed Day ${data.streak} bonus: +${rewardCoins} MitchCoins!`;
       } else {
-        message = `Claimed Day ${data.streak} bonus: +${reward.coins} MitchCoins!`;
+        message = `Claimed Day ${data.streak} bonus: +${rewardCoins} MitchCoins!`;
       }
 
       return jsonResp(200, {
         success: true,
         streak: data.streak,
-        rewardCoins: reward.coins,
+        rewardCoins,
         grantedPremium: reward.grantedPremium,
         freezeConsumed,
         streakFreezes: data.streakFreezes || 0,
@@ -10383,6 +10361,7 @@ function loadAllGamesList() {
       const isModerator = isModeratorId(uid);
       const canGrantPremium = canGrantPremiumId(uid);
       const stats = email ? (loadUserStats()[normalizeEmail(email)] || {}) : {};
+      const userCosmForMe = email ? (loadJson(COSMETICS_FILE, {})[normalizeEmail(email)] || {}) : {};
       
       let pubKeyHex = null;
       let legacyJwk = null;
@@ -10411,6 +10390,8 @@ function loadAllGamesList() {
         isModerator,
         canGrantPremium,
         vipUntil: stats.vip_casino_until || 0,
+        activeTheme: userCosmForMe.activeTheme || '',
+        activeAi: userCosmForMe.activeAi || '',
         jwk: legacyJwk,
         legacyJwk,
         pubKeyHex,
@@ -10912,6 +10893,7 @@ function loadAllGamesList() {
         totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
         activeColor: publicActiveColor(email, cosm[norm]?.activeColor),
         activeBadge: cosm[norm]?.activeBadge || null,
+        activeProfileEffect: cosm[norm]?.activeProfileEffect || null,
         profileBonusClaimed: profile.profileBonusClaimed || false,
       });
       }
@@ -10952,7 +10934,8 @@ function loadAllGamesList() {
         achievements: getAchievements(actualEmail),
         totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
         activeColor: publicActiveColor(actualEmail, cosm[norm]?.activeColor),
-        activeBadge: cosm[norm]?.activeBadge || null
+        activeBadge: cosm[norm]?.activeBadge || null,
+        activeProfileEffect: cosm[norm]?.activeProfileEffect || null
       });
       }  } // end GET
 
@@ -14603,7 +14586,8 @@ function loadAllGamesList() {
         return { 
           ...msg, 
           email: processed.email,
-          color: publicActiveColor(msg.email || msg.name || '', msg.color) 
+          color: publicActiveColor(msg.email || msg.name || '', msg.color),
+          chatEffect: msg.chatEffect || null
         };
       });
       return jsonResp(200, { messages });
@@ -14623,7 +14607,8 @@ function loadAllGamesList() {
         return { 
           ...msg, 
           email: processed.email,
-          color: publicActiveColor(msg.email || msg.name || '', msg.color) 
+          color: publicActiveColor(msg.email || msg.name || '', msg.color),
+          chatEffect: msg.chatEffect || null
         };
       });
       return jsonResp(200, { messages });

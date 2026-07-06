@@ -21,7 +21,13 @@
     background: rgba(13,13,13,0.85); backdrop-filter: blur(12px);
     padding: 32px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.08);
     box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+    position: relative; overflow: hidden;
   }
+  .wrap.profile_grid { background-image: linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 18px 18px; }
+  .wrap.profile_scanlines::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0, rgba(255,255,255,.045) 1px, transparent 1px, transparent 4px); mix-blend-mode: screen; }
+  .wrap.profile_gold_frame { border-color: rgba(245,158,11,.7); box-shadow: 0 20px 50px rgba(0,0,0,.5), 0 0 28px rgba(245,158,11,.22); }
+  .wrap.profile_neon_frame { border-color: rgba(236,72,153,.75); box-shadow: 0 20px 50px rgba(0,0,0,.5), 0 0 32px rgba(236,72,153,.28); }
+  .wrap.profile_stars::before { content: '✦  ·  ✧  ·  ✦'; position: absolute; right: 18px; top: 14px; color: rgba(250,204,21,.55); letter-spacing: 10px; font-size: 12px; pointer-events: none; }
 
   .badge-premium {
     display: inline-flex; align-items: center; gap: 5px;
@@ -243,6 +249,8 @@ async function load() {
   }
 
   const profileName = profile.displayName || profile.nickname || profile.username || profile.email || 'Profile';
+  const profileEffect = String(profile.activeProfileEffect || '').replace(/[^a-z0-9_-]/gi, '');
+  if (profileEffect) wrap.classList.add(profileEffect);
 
   if (profile.background) {
     document.body.style.backgroundImage = `url('${profile.background}')`;

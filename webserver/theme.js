@@ -291,6 +291,21 @@
   function setCookie(name) {
     document.cookie = 'theme=' + encodeURIComponent(name) + ';path=/;max-age=31536000';
   }
+  function applyEquippedShopTheme() {
+    if (!window.fetch) return;
+    fetch('/api/me', { credentials: 'include', cache: 'no-store' })
+      .then(function(r) { return r.ok ? r.json() : null; })
+      .then(function(me) {
+        if (!me || !me.activeTheme) return;
+        var map = { focus_theme: 'github', arcade_theme: 'synthwave', midnight_theme: 'void' };
+        var nextTheme = map[me.activeTheme];
+        if (nextTheme && T[nextTheme] && getCookie() !== nextTheme) {
+          setCookie(nextTheme);
+          applyTheme(nextTheme);
+        }
+      })
+      .catch(function(){});
+  }
   function getBgImgCookie() {
     var m = document.cookie.match(/(?:^|; )bgimg=([^;]*)/);
     return m ? decodeURIComponent(m[1]) : '';
@@ -411,6 +426,7 @@
   }
 
   applyTheme(getCookie());
+  applyEquippedShopTheme();
 
   var baseStyle = document.createElement('style');
   baseStyle.textContent =
@@ -1118,6 +1134,7 @@
       { h:'/encrypt.html', i:'💬', t:'Chat' },
       { h:'/canvas/', i:'🎨', t:'Canvas' },
       { h:'/shop/', i:'🛒', t:'Market' },
+      { h:'/inventory/', i:'🎒', t:'Inventory' },
       { h:'/preferences/', i:'⚙️', t:'Settings' }
     ];
 

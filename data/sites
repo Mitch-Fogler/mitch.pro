@@ -1,4 +1,6 @@
+// Lines starting with // are comments and are not sent to users.
 url /shop/ The Market
+url /inventory/ Inventory
 url /casino/ The Casino
 url /games/adrian-clicker/ Adrian Clicker
 url /apply/ Join the Team
@@ -7,9 +9,9 @@ url /leaderboard/ Leaderboard
 url /premium-chat/ The Sanctum (Premium Chat)
 url /games/ Games
 url https://discord.gg/P5vZgTydXw Join Discord Server
-url /additions/ Add a Page
+// url /additions/ Add a Page
 url /feedback/ Feedback
-url https://docs.google.com/document/d/1w8lZBN6pa4SlR6ZdHg93nlpGr_6YHe7amgtdBvcq6eo/edit?usp=sharing Mitch.pro Mirrors
+// url https://docs.google.com/document/d/1w8lZBN6pa4SlR6ZdHg93nlpGr_6YHe7amgtdBvcq6eo/edit?usp=sharing Mitch.pro Mirrors
 url /encrypt/ Encrypted Chat
 url /export/ Export / Import Data
 url /canvas/ pixelplace
@@ -17,13 +19,13 @@ url /invite/ Invite Friends
 url /friends/ Manage Friends
 url /ab/ About:Blank Launcher
 url / Home
-url /dh/ Diffie-Hellman Key Exchange
-url /html-test/ Live HTML Editor
+// url /dh/ Diffie-Hellman Key Exchange
+// url /html-test/ Live HTML Editor
 iframe https://67movies.net/ Pirate Voyage
-iframe https://www.opensubtitles.org/en/search Subtitle Downloader
-iframe https://google.com/search?igu=1 Google Search
-admin iframe shell/ Shell
-admin iframe simulate/ Simulation
+// iframe https://www.opensubtitles.org/en/search Subtitle Downloader
+// iframe https://google.com/search?igu=1 Google Search
+// admin iframe shell/ Shell
+// admin iframe simulate/ Simulation
 url /tabs/ Tyler's Tabs
 url /games/kodys-keyboard/ Kody's Keyboard
 url /games/lillians-logic/ Lillian's Logic

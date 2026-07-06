@@ -92,6 +92,12 @@
   }
   .msg.own .text { background: var(--gold-dim); border-color: var(--gold-border); border-bottom-right-radius: 2px; }
   .msg:not(.own) .text { border-bottom-left-radius: 2px; }
+  .msg.chat_shadow .text { box-shadow: 0 8px 18px rgba(0,0,0,.42), 0 1px 0 rgba(255,255,255,.08); }
+  .msg.chat_terminal .text { background: rgba(0,20,8,.88); border-color: rgba(0,255,65,.35); color: #93f59d; font-family: "DM Mono", ui-monospace, monospace; }
+  .msg.chat_prism .text { background: linear-gradient(90deg, rgba(255,0,128,.18), rgba(0,220,255,.18), rgba(255,210,0,.18)); border-color: rgba(255,255,255,.22); }
+  .msg.chat_sparkles .text::after { content: ' ✦'; color: #facc15; }
+  .msg.chat_wave .text { animation: chatWave 1.8s ease-in-out infinite; }
+  @keyframes chatWave { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
   .input-wrap { display: flex; gap: 12px; }
   input {
     flex: 1;
@@ -247,6 +253,8 @@
         let badgeHtml = badge ? `<span class="chat-badge ${badge.cls}" title="${badge.title}">${badge.text}</span>` : '';
 
         const colorClass = m.color || '';
+        const effectClass = String(m.chatEffect || '').replace(/[^a-z0-9_-]/gi, '');
+        if (effectClass) div.classList.add(effectClass);
 
         let modHtml = '';
         let deleteBtnHtml = '';
