@@ -88,6 +88,7 @@ const PASSWORDS_FILE         = join(DATA_DIR, 'passwords.json');
 const SIGNUP_CODES_FILE      = join(DATA_DIR, 'signup_codes.json');
 const AUTH_SESSIONS_FILE     = join(DATA_DIR, 'auth_sessions.json');
 const NEWSLETTER_UNSUB_FILE   = join(DATA_DIR, 'newsletter_unsub.json');
+const UNSUBSCRIBE_TOKENS_FILE = join(DATA_DIR, 'unsubscribe_tokens.json');
 const BLOG_POSTS_FILE         = join(DATA_DIR, 'blog_posts.json');
 const BLOG_SUBSCRIBERS_FILE   = join(DATA_DIR, 'blog_subscribers.json');
 const BLOG_CONTRIBUTORS_FILE  = join(DATA_DIR, 'blog_contributors.json');
@@ -997,7 +998,6 @@ const RATE_LIMITS = {
   '/api/blog/upload':         [10,  60],
   '/api/blog/subscription':   [20,  60],
   '/api/newsletter-signup':    [3,   60],
-  '/api/newsletter/unsubscribe-secure': [10, 600],
   '/api/newsletter/unsubscribe-direct': [10, 600],
   '/api/invite/send':          [5,   3600],
   '/api/invite/set-code':      [3,   60],
@@ -1127,6 +1127,23 @@ function emailFooter() {
 function siteUrl(email) {
   const s = site();
   return String(email).toLowerCase().endsWith('@student.rjuhsd.us') ? s.alternate : s.primary;
+}
+
+function unsubscribeEmailKey(email) {
+  return String(email || '').toLowerCase().trim();
+}
+
+function unsubscribeUrl(email) {
+  const key = unsubscribeEmailKey(email);
+  if (!key) return '';
+  const tokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
+  let token = tokens[key];
+  if (!token) {
+    token = randomBytes(24).toString('hex');
+    tokens[key] = token;
+    saveJsonSync(UNSUBSCRIBE_TOKENS_FILE, tokens);
+  }
+  return `${siteUrl(key)}/unsubscribe/?email=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}`;
 }
 
 function notificationUrl(path = '/') {
@@ -1619,7 +1636,6 @@ const PUBLIC_API_PATHS = new Set([
   '/api/games',
   '/api/log-click',
   '/api/newsletter/unsubscribe-direct',
-  '/api/newsletter/unsubscribe-secure',
   '/api/token',
   '/api/solve',
   '/api/submit',
@@ -8790,7 +8806,7 @@ Mitch.pro Team`;
         saveJson(EXTRA_FILE, [...new Set(extra)].sort());
         const _s = site();
         sendEmailBg(email, `You're Signed Up for the ${_s.name} Newsletter`,
-          `Hi,\n\nYou're now subscribed to the ${_s.name} newsletter. You'll receive updates when new games or features are added.\n\nTo unsubscribe at any time, visit:\n${siteUrl(email)}/unsubscribe.html?email=${encodeURIComponent(email)}${emailSig()}`);
+          `Hi,\n\nYou're now subscribed to the ${_s.name} newsletter. You'll receive updates when new games or features are added.\n\nTo unsubscribe at any time, visit:\n${unsubscribeUrl(email)}${emailSig()}`);
         ntfy(email, { title: 'Newsletter Signup' });
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
@@ -8903,42 +8919,6 @@ Mitch.pro Team`;
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
-    // /api/newsletter/unsubscribe-secure
-    if (path === '/api/newsletter/unsubscribe-secure' && method === 'POST') {
-      const rl = checkRateLimit(req, path); if (rl) return rl;
-      try {
-        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        // Bypassing Google reCAPTCHA as the unsubscribe flow now uses the interactive worldshardestcaptcha.com iframe.
-        // We maintain cryptographic security by strictly verifying the user's password below.
-        
-        const cookies = getCookies(req);
-        const sid = cookies['studentId'] || cookies['id'] || '';
-        if (!checkPasswordCookie(req)) return jsonResp(401, { success: false, message: 'Auth required. Please log in again.' });
-
-        const email = emailFromSid(sid);
-        const norm = normalizeEmail(email);
-        const password = body.password;
-
-        if (!password) return jsonResp(400, { success: false, message: 'Password required.' });
-
-        const passwords = loadPasswords();
-        const stored = passwords[norm];
-        if (!stored || !(await Bun.password.verify(password, stored)))
-          return jsonResp(401, { success: false, message: 'Incorrect password.' });
-
-        // Perform unsubscription
-        const unsub = loadJson(NEWSLETTER_UNSUB_FILE, []);
-        const lowEmail = email.toLowerCase().trim();
-        if (!unsub.includes(lowEmail)) {
-          unsub.push(lowEmail);
-          saveJson(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
-        }
-
-        ntfy(`${email} unsubscribed (verified)`, { title: 'Newsletter' });
-        return jsonResp(200, { success: true });
-      } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
-    }
-
     // /api/newsletter/unsubscribe-direct
     if (path === '/api/newsletter/unsubscribe-direct' && method === 'POST') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
@@ -8946,19 +8926,30 @@ Mitch.pro Team`;
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         const email = body.email;
         const token = body.token;
-        if (!email) return jsonResp(400, { success: false, message: 'Email required.' });
-        if (!token) return jsonResp(400, { success: false, message: 'Unsubscribe token required.' });
+        let normEmail = '';
+        let mode = 'account';
+        let unsubTokens = null;
 
-        const normEmail = email.toLowerCase().trim();
+        if (email || token) {
+          if (!email) return jsonResp(400, { success: false, message: 'Email required.' });
+          if (!token) return jsonResp(400, { success: false, message: 'Unsubscribe token required.' });
 
-        // Load and verify the unsubscribe token
-        const tokensPath = join(BASE, 'data', 'unsubscribe_tokens.json');
-        let unsubTokens = {};
-        try { unsubTokens = loadJson(tokensPath, {}); } catch(e) {}
-
-        const expectedToken = unsubTokens[normEmail];
-        if (!expectedToken || expectedToken !== token) {
-          return jsonResp(403, { success: false, message: 'Invalid or expired unsubscribe token.' });
+          normEmail = unsubscribeEmailKey(email);
+          mode = 'direct link';
+          unsubTokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
+          const expectedToken = unsubTokens[normEmail];
+          if (!expectedToken || expectedToken !== token) {
+            return jsonResp(403, { success: false, message: 'Invalid or expired unsubscribe token.' });
+          }
+        } else {
+          if (!checkPasswordCookie(req)) {
+            return jsonResp(401, { success: false, message: 'Log in, or use the unsubscribe link from your email.' });
+          }
+          const cookies = getCookies(req);
+          const sid = cookies['studentId'] || cookies['id'] || cookies['adminId'] || '';
+          const accountEmail = emailFromSid(sid);
+          normEmail = unsubscribeEmailKey(accountEmail);
+          if (!normEmail) return jsonResp(400, { success: false, message: 'Could not detect your account email.' });
         }
 
         const unsub = loadJson(NEWSLETTER_UNSUB_FILE, []);
@@ -8967,12 +8958,13 @@ Mitch.pro Team`;
           saveJson(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
         }
 
-        // Invalidate token after successful unsubscribe
-        delete unsubTokens[normEmail];
-        saveJson(tokensPath, unsubTokens);
+        if (unsubTokens) {
+          delete unsubTokens[normEmail];
+          saveJson(UNSUBSCRIBE_TOKENS_FILE, unsubTokens);
+        }
 
-        ntfy(`${email} unsubscribed (direct link)`, { title: 'Newsletter' });
-        return jsonResp(200, { success: true });
+        ntfy(`${normEmail} unsubscribed (${mode})`, { title: 'Newsletter' });
+        return jsonResp(200, { success: true, email: normEmail });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
@@ -15514,14 +15506,16 @@ function loadAllGamesList() {
           const isPrimaryHost = !reqHost || reqHost === primaryHost || reqHost === 'localhost' || reqHost === '127.0.0.1';
           const recaptchaHost = (process.env.RECAPTCHA_SCRIPT_HOST || (isPrimaryHost ? 'www.google.com' : 'www.recaptcha.net')).trim();
           const loadAnalytics = !!gaId && (isPrimaryHost || process.env.GOOGLE_ANALYTICS_ON_MIRRORS === '1');
+          const isUnsubscribePage = path === '/unsubscribe' || path === '/unsubscribe/' || path === '/unsubscribe/index.html';
+          const loadRecaptcha = !!rcKey && !hasV2Script && !isUnsubscribePage;
 
           const ua = req.headers.get('user-agent') || '';
           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
           const isEnrollPage = path === '/enroll' || path === '/enroll/' || path === '/enroll/index.html';
 
-          if (loadAnalytics || (rcKey && !hasV2Script)) {
+          if (loadAnalytics || loadRecaptcha) {
             injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
-            if (rcKey && !hasV2Script) {
+            if (loadRecaptcha) {
               injectStr += `<script src="https://${recaptchaHost}/recaptcha/api.js?render=${rcKey}" async defer></script>\n`;
               injectStr += `<script>\n` +
                            `  window.getCaptchaToken = function(action) {\n` +
@@ -15559,7 +15553,7 @@ function loadAllGamesList() {
                            `  gtag('config', '${gaId}');\n` +
                            `</script>\n`;
             }
-            if (rcKey && !hasV2Script) {
+            if (loadRecaptcha) {
               injectStr += `<style>.grecaptcha-badge { visibility: hidden !important; }</style>\n`;
             }
           }
