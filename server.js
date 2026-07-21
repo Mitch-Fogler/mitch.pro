@@ -3106,7 +3106,7 @@ async function nudgeWorker() {
 
     for (const email of toSend) {
       try {
-        const r = spawnSync('bun', [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
+        const r = spawnSync('/usr/bin/bun', [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
                             { timeout: 30_000, encoding: 'utf8' });
         if (r.status === 0) {
           nudged[email.toLowerCase()] = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
