@@ -975,7 +975,7 @@ const NEWSLETTER_BAN_THRESH   = 10;
 const NEWSLETTER_BAN_DURATION = 7 * 24 * 3600;
 
 const RATE_LIMITS = {
-  '/api/request-access':       [3,   600],
+  '/api/request-access':       [10,   600],
   '/api/claim-token':          [10,  3600],
   '/api/pass':                 [60,  60],
   '/api/e2e/verify-password':  [5,   60],
@@ -10984,7 +10984,7 @@ function loadAllGamesList() {
     const mailBody = `Hi Support,\n\nWe received a new premium email request from a user:\n\nAccount Email: ${email}\nFull Name: ${fullName}\nRequested Email: ${targetEmail}\nReasons why they like mitch.pro:\n${reasons}\n\nTo approve this, go to the admin panel or run admin tools.\n\nBest,\nmitch.pro Robot`;
 
     try {
-      spawn('/usr/bin/node', [NOREPLY_SCRIPT, 'support@mitch.pro', mailSubject, mailBody]);
+      spawn('/usr/bin/bun', [NOREPLY_SCRIPT, 'support@mitch.pro', mailSubject, mailBody]);
     } catch (e) {
       console.error(`[premium-email] failed to send email to support: ${e.message}`);
     }
