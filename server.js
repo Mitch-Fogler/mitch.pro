@@ -8937,9 +8937,7 @@ Mitch.pro Team`;
           normEmail = unsubscribeEmailKey(email);
           mode = 'direct link';
           unsubTokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
-          console.log(token);
           const expectedToken = unsubTokens[normEmail];
-          console.log(expectedToken);
           if (!expectedToken || expectedToken !== token) {
             return jsonResp(403, { success: false, message: 'Invalid or expired unsubscribe token.' });
           }
@@ -8957,12 +8955,12 @@ Mitch.pro Team`;
         const unsub = loadJson(NEWSLETTER_UNSUB_FILE, []);
         if (!unsub.includes(normEmail)) {
           unsub.push(normEmail);
-          saveJson(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
+          saveJsonSync(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
         }
 
         if (unsubTokens) {
           delete unsubTokens[normEmail];
-          saveJson(UNSUBSCRIBE_TOKENS_FILE, unsubTokens);
+          saveJsonSync(UNSUBSCRIBE_TOKENS_FILE, unsubTokens);
         }
 
         ntfy(`${normEmail} unsubscribed (${mode})`, { title: 'Newsletter' });

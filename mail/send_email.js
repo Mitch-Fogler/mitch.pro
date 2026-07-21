@@ -1,6 +1,15 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Usage: node send_email.js <to> <subject> <body>
 //   or: echo "body" | node send_email.js <to> <subject>
+import {
+  configureDataStore,
+  appendAppLog,
+  queryAppLogs,
+  readDocument,
+  writeDocument,
+  rebuildCoreTablesFromDocuments,
+} from '../lib/data_store.js';
+
 
 const nodemailer = require('nodemailer');
 const fs = require('fs');
@@ -64,17 +73,17 @@ async function getBody() {
   const tokenPath = path.join(__dirname, '..', 'data', 'unsubscribe_tokens.json');
   let unsubTokens = {};
   try {
-    unsubTokens = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+    unsubTokens = readDocument(tokenPath, ["fc85644d2548aa31cd489302505ae0ba", "fc85644d2548aa31cd489302505ae0ba"]);
   } catch(e) {}
   unsubTokens[to.toLowerCase().trim()] = token;
   try {
-    fs.writeFileSync(tokenPath, JSON.stringify(unsubTokens, null, 2));
+    writeDocument(tokenPath, JSON.stringify(unsubTokens, null, 2));
   } catch(e) {
     console.error("Failed to write unsubscribe token:", e.message);
   }
 
   const body = (useAlt || useRaw) ? rawBody : rawBody + `\n\n---\nVisit ${PRIMARY}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token} to unsubscribe.\nAlso available at ${ALT}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token}\nFor support: email SUPPORT to support@mitch.pro or mitchell.fogler@student.rjuhsd.us\n2014 Capitol Ave #100, Sacramento, CA 95811`;
-
+  console.log(body);
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: GMAIL_USER, pass: GMAIL_PASS },
