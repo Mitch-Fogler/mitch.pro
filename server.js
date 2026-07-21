@@ -2373,7 +2373,7 @@ function sendEmailBg(to, subject, body) {
     ntfy(`Email to ${to} dropped — "${matched}" in name`, { title: 'Profanity drop', priority: 'high' });
     return;
   }
-  const proc = spawn('/usr/bin/node', [emailScript(to), to, subject, body], { stdio: 'ignore' });
+  const proc = spawn('/usr/bin/bun', [emailScript(to), to, subject, body], { stdio: 'ignore' });
   proc.unref();
   proc.on('error', () => {});
 }
@@ -3106,7 +3106,7 @@ async function nudgeWorker() {
 
     for (const email of toSend) {
       try {
-        const r = spawnSync('node', [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
+        const r = spawnSync('bun', [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
                             { timeout: 30_000, encoding: 'utf8' });
         if (r.status === 0) {
           nudged[email.toLowerCase()] = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -13268,7 +13268,7 @@ function loadAllGamesList() {
     if (!to || !subject || !replyBody) return jsonResp(400, { error: 'missing fields' });
     const sendScript = join(BASE, 'mail', 'send_email.js');
     const args = ['--raw', ...(messageId ? ['--in-reply-to', `<${messageId}>`] : []), to, subject, replyBody];
-    const r = spawnSync('node', [sendScript, ...args],
+    const r = spawnSync('bun', [sendScript, ...args],
       { encoding: 'utf8', timeout: 40_000, cwd: BASE });
     if (r.status !== 0) return jsonResp(500, { error: r.stderr?.trim() || 'send failed' });
     const key = threadKey || messageId || (to + '|' + subject);

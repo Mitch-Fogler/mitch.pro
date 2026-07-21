@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Sends email FROM support@mitch.pro (alias) via mitch@mitch.pro Hostinger SMTP.
 // Usage: node support_send.js [--in-reply-to <msgid>] <to> <subject> [body]
 //   or:  echo "body" | node support_send.js <to> <subject>
