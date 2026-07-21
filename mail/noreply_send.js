@@ -2,6 +2,14 @@
 // Sends email FROM support@mitch.pro (alias) via mitch@mitch.pro Hostinger SMTP.
 // Usage: node support_send.js [--in-reply-to <msgid>] <to> <subject> [body]
 //   or:  echo "body" | node support_send.js <to> <subject>
+import {
+  configureDataStore,
+  appendAppLog,
+  queryAppLogs,
+  readDocument,
+  writeDocument,
+  rebuildCoreTablesFromDocuments,
+} from '../lib/data_store.js';
 
 const nodemailer = require('nodemailer');
 const fs = require('fs');
@@ -56,11 +64,11 @@ async function getBody() {
   const tokenPath = path.join(__dirname, '..', 'data', 'unsubscribe_tokens.json');
   let unsubTokens = {};
   try {
-    unsubTokens = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
+    unsubTokens = readDocument(tokenPath, ["33e219637cee2070a5d6c0f365ebe254", "33e219637cee2070a5d6c0f365ebe254"]));
   } catch(e) {}
   unsubTokens[to.toLowerCase().trim()] = token;
   try {
-    fs.writeFileSync(tokenPath, JSON.stringify(unsubTokens, null, 2));
+    writeDocument(tokenPath, JSON.stringify(unsubTokens, null, 2));
   } catch(e) {
     console.error("Failed to write unsubscribe token:", e.message);
   }
