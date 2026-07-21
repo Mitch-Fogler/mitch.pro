@@ -64,7 +64,7 @@ async function getBody() {
   const tokenPath = path.join(__dirname, '..', 'data', 'unsubscribe_tokens.json');
   let unsubTokens = {};
   try {
-    unsubTokens = readDocument(tokenPath, ["33e219637cee2070a5d6c0f365ebe254", "33e219637cee2070a5d6c0f365ebe254"]));
+    unsubTokens = readDocument(tokenPath, ["33e219637cee2070a5d6c0f365ebe254", "33e219637cee2070a5d6c0f365ebe254"]);
   } catch(e) {}
   unsubTokens[to.toLowerCase().trim()] = token;
   try {
