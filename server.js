@@ -8937,7 +8937,9 @@ Mitch.pro Team`;
           normEmail = unsubscribeEmailKey(email);
           mode = 'direct link';
           unsubTokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
+          console.log(token);
           const expectedToken = unsubTokens[normEmail];
+          console.log(expectedToken);
           if (!expectedToken || expectedToken !== token) {
             return jsonResp(403, { success: false, message: 'Invalid or expired unsubscribe token.' });
           }
