@@ -2373,7 +2373,7 @@ function sendEmailBg(to, subject, body) {
     ntfy(`Email to ${to} dropped — "${matched}" in name`, { title: 'Profanity drop', priority: 'high' });
     return;
   }
-  const proc = spawn('/usr/bin/bun', [emailScript(to), to, subject, body], { stdio: 'ignore' });
+  const proc = spawn('/home/mitch/.bun/bin/bun', [emailScript(to), to, subject, body], { stdio: 'ignore' });
   proc.unref();
   proc.on('error', () => {});
 }
@@ -3106,7 +3106,7 @@ async function nudgeWorker() {
 
     for (const email of toSend) {
       try {
-        const r = spawnSync('/usr/bin/bun', [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
+        const r = spawnSync('/home/mitch/.bun/bin/bun', [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
                             { timeout: 30_000, encoding: 'utf8' });
         if (r.status === 0) {
           nudged[email.toLowerCase()] = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -10984,7 +10984,7 @@ function loadAllGamesList() {
     const mailBody = `Hi Support,\n\nWe received a new premium email request from a user:\n\nAccount Email: ${email}\nFull Name: ${fullName}\nRequested Email: ${targetEmail}\nReasons why they like mitch.pro:\n${reasons}\n\nTo approve this, go to the admin panel or run admin tools.\n\nBest,\nmitch.pro Robot`;
 
     try {
-      spawn('/usr/bin/bun', [NOREPLY_SCRIPT, 'support@mitch.pro', mailSubject, mailBody]);
+      spawn('/home/mitch/.bun/bin/bun', [NOREPLY_SCRIPT, 'support@mitch.pro', mailSubject, mailBody]);
     } catch (e) {
       console.error(`[premium-email] failed to send email to support: ${e.message}`);
     }
