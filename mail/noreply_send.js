@@ -61,14 +61,16 @@ async function getBody() {
   // Generate and store a secure unsubscribe token
   const crypto = require('crypto');
   const token = crypto.randomBytes(16).toString('hex');
-  const tokenPath = path.join(__dirname, '..', 'data', 'unsubscribe_tokens.json');
   let unsubTokens = {};
   try {
-    unsubTokens = readDocument(tokenPath, ["33e219637cee2070a5d6c0f365ebe254", "33e219637cee2070a5d6c0f365ebe254"]);
+    unsubTokens = readDocument(tokenPath, {});
   } catch(e) {}
+  if (!unsubTokens || typeof unsubTokens !== 'object' || Array.isArray(unsubTokens)) {
+    unsubTokens = {};
+  }
   unsubTokens[to.toLowerCase().trim()] = token;
   try {
-    writeDocument(tokenPath, JSON.stringify(unsubTokens, null, 2));
+    writeDocument(tokenPath, unsubTokens);
   } catch(e) {
     console.error("Failed to write unsubscribe token:", e.message);
   }

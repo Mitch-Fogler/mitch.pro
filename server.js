@@ -2373,7 +2373,7 @@ function sendEmailBg(to, subject, body) {
     ntfy(`Email to ${to} dropped — "${matched}" in name`, { title: 'Profanity drop', priority: 'high' });
     return;
   }
-  const proc = spawn('/home/mitch/.bun/bin/bun', [emailScript(to), to, subject, body], { stdio: 'ignore' });
+  const proc = spawn(process.execPath, [emailScript(to), to, subject, body], { stdio: 'ignore' });
   proc.unref();
   proc.on('error', () => {});
 }
@@ -2994,7 +2994,7 @@ async function premiumMaintenanceWorker() {
              console.log(`[premium] warning ${email} about inactivity (5d)`);
              const subject = "Urgent: Your mitch.pro Premium is about to expire";
              const body = `Hi,\n\nOur records show you haven't logged in to mitch.pro for 5 days.\n\nIf you do not log on in the next 2 days, your Premium status will be automatically revoked.\n\nSimply visit mitch.pro and log in to keep your perks!`;
-             spawn('/usr/bin/node', [join(BASE, 'mail', 'support_send.js'), email, subject, body]);
+             spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), email, subject, body]);
              if (!stats[norm]) stats[norm] = {};
              stats[norm].last_premium_warn = now;
              statsChanged = true;
@@ -3050,7 +3050,7 @@ function sendPremiumEmailOffer(targetEmail) {
   const body = `Hi,\n\nCongratulations on getting Premium!\n\nAs a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address!\n\nTo claim your custom email address, please submit your application at ${base}/premium-email.\n\nBest,\nsupport@mitch.pro`;
   
   try {
-    spawn('/usr/bin/node', [join(BASE, 'mail', 'support_send.js'), toEmail, subject, body]);
+    spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), toEmail, subject, body]);
     console.log(`[premium] Sent premium email offer to ${toEmail} (original target: ${targetEmail})`);
   } catch (e) {
     console.error(`[premium] Failed to send email offer to ${toEmail}: ${e.message}`);
@@ -3106,7 +3106,7 @@ async function nudgeWorker() {
 
     for (const email of toSend) {
       try {
-        const r = spawnSync('/home/mitch/.bun/bin/bun', [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
+        const r = spawnSync(process.execPath, [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
                             { timeout: 30_000, encoding: 'utf8' });
         if (r.status === 0) {
           nudged[email.toLowerCase()] = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -3127,7 +3127,7 @@ async function nudgeWorker() {
 // ── IMAP watcher ──────────────────────────────────────────────────────────────
 if (SUPPORT_USER && SUPPORT_PASS) {
   (function startImapWatcher() {
-    const watcher = spawn('/usr/bin/node', [join(BASE, 'mail', 'imap_watcher.js')], {
+    const watcher = spawn(process.execPath, [join(BASE, 'mail', 'imap_watcher.js')], {
       detached: false,
     });
     watcher.on('exit', (code) => {
@@ -4095,6 +4095,11 @@ function getCookies(req) {
     }
   } catch (e) {
     console.error('[auth] session cookie failed:', e);
+  }
+
+  if (!cookies['studentId'] && (rawStudentId || rawId)) {
+    cookies['studentId'] = rawStudentId || rawId;
+    cookies['id'] = rawId || rawStudentId;
   }
 
   // X-Admin-Key bypass: if X-Admin-Key header is present and valid, inject a mock admin studentId
@@ -10984,7 +10989,7 @@ function loadAllGamesList() {
     const mailBody = `Hi Support,\n\nWe received a new premium email request from a user:\n\nAccount Email: ${email}\nFull Name: ${fullName}\nRequested Email: ${targetEmail}\nReasons why they like mitch.pro:\n${reasons}\n\nTo approve this, go to the admin panel or run admin tools.\n\nBest,\nmitch.pro Robot`;
 
     try {
-      spawn('/home/mitch/.bun/bin/bun', [NOREPLY_SCRIPT, 'support@mitch.pro', mailSubject, mailBody]);
+      spawn(process.execPath, [NOREPLY_SCRIPT, 'support@mitch.pro', mailSubject, mailBody]);
     } catch (e) {
       console.error(`[premium-email] failed to send email to support: ${e.message}`);
     }
