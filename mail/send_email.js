@@ -10,6 +10,7 @@ import {
   rebuildCoreTablesFromDocuments,
 } from '../lib/data_store.js';
 
+configureDataStore({ baseDir: path.join(__dirname, '..') });
 
 const nodemailer = require('nodemailer');
 const fs = require('fs');
@@ -67,9 +68,9 @@ async function getBody() {
 (async () => {
   const rawBody = await getBody();
   
-  // Generate and store a secure unsubscribe token
+  // Load or generate a persistent secure unsubscribe token
   const crypto = require('crypto');
-  const token = crypto.randomBytes(16).toString('hex');
+  const tokenPath = path.join(__dirname, '..', 'data', 'unsubscribe_tokens.json');
   let unsubTokens = {};
   try {
     unsubTokens = readDocument(tokenPath, {});
@@ -77,14 +78,19 @@ async function getBody() {
   if (!unsubTokens || typeof unsubTokens !== 'object' || Array.isArray(unsubTokens)) {
     unsubTokens = {};
   }
-  unsubTokens[to.toLowerCase().trim()] = token;
-  try {
-    writeDocument(tokenPath, unsubTokens);
-  } catch(e) {
-    console.error("Failed to write unsubscribe token:", e.message);
+  const recipient = to.toLowerCase().trim();
+  let token = unsubTokens[recipient];
+  if (!token) {
+    token = crypto.randomBytes(16).toString('hex');
+    unsubTokens[recipient] = token;
+    try {
+      writeDocument(tokenPath, unsubTokens);
+    } catch(e) {
+      console.error("Failed to write unsubscribe token:", e.message);
+    }
   }
 
-  const body = (useAlt || useRaw) ? rawBody : rawBody + `\n\n---\nVisit ${PRIMARY}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token} to unsubscribe.\nAlso available at ${ALT}/unsubscribe/?email=${encodeURIComponent(to)}&token=${token}\nFor support: email SUPPORT to support@mitch.pro or mitchell.fogler@student.rjuhsd.us\n2014 Capitol Ave #100, Sacramento, CA 95811`;
+  const body = (useAlt || useRaw) ? rawBody : rawBody + `\n\n---\nVisit ${PRIMARY}/unsubscribe/${token} to unsubscribe.\nAlso available at ${ALT}/unsubscribe/${token}\nFor support: email SUPPORT to support@mitch.pro or mitchell.fogler@student.rjuhsd.us\n2014 Capitol Ave #100, Sacramento, CA 95811`;
   console.log(body);
   const transporter = nodemailer.createTransport({
     service: 'gmail',
@@ -99,7 +105,7 @@ async function getBody() {
     priority: 'high',
     headers: {
       'X-Priority': '1', 'Importance': 'high',
-      'List-Unsubscribe': `<https://mitch.pro/unsubscribe.html?email=${encodeURIComponent(to)}&token=${token}>, <mailto:support@mitch.pro?subject=unsubscribe>`,
+      'List-Unsubscribe': `<https://mitch.pro/unsubscribe/${token}>, <mailto:support@mitch.pro?subject=unsubscribe>`,
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
       ...(!useAlt && inReplyTo ? { 'In-Reply-To': inReplyTo, 'References': inReplyTo } : {}),
     },

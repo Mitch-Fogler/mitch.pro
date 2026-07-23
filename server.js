@@ -1136,14 +1136,15 @@ function unsubscribeEmailKey(email) {
 function unsubscribeUrl(email) {
   const key = unsubscribeEmailKey(email);
   if (!key) return '';
-  const tokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
+  let tokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
+  if (!tokens || typeof tokens !== 'object' || Array.isArray(tokens)) tokens = {};
   let token = tokens[key];
   if (!token) {
     token = randomBytes(24).toString('hex');
     tokens[key] = token;
     saveJsonSync(UNSUBSCRIBE_TOKENS_FILE, tokens);
   }
-  return `${siteUrl(key)}/unsubscribe/?email=${encodeURIComponent(key)}&token=${encodeURIComponent(token)}`;
+  return `${siteUrl(key)}/unsubscribe/${token}`;
 }
 
 function notificationUrl(path = '/') {
@@ -5744,6 +5745,195 @@ async function handleRequest(req, server) {
     });
   }
 
+  // Handle direct unsubscribe links by token
+  if (method === 'GET' && path.startsWith('/unsubscribe/')) {
+    const token = path.slice('/unsubscribe/'.length).trim();
+    if (token && token !== 'index.html' && /^[a-fA-F0-9]{32,64}$/.test(token)) {
+      let tokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
+      if (!tokens || typeof tokens !== 'object' || Array.isArray(tokens)) tokens = {};
+      const email = Object.keys(tokens).find(key => tokens[key] === token);
+      if (email) {
+        const normEmail = unsubscribeEmailKey(email);
+        const unsub = loadJson(NEWSLETTER_UNSUB_FILE, []);
+        if (!unsub.includes(normEmail)) {
+          unsub.push(normEmail);
+          saveJsonSync(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
+        }
+        
+        ntfy(`${normEmail} unsubscribed (instant link)`, { title: 'Newsletter' });
+
+        return new Response(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unsubscribed successfully — mitch.pro</title>
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <style>
+    body {
+      background: var(--bg);
+      color: var(--t-fg);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .glass-card {
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 40px 30px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      text-align: center;
+    }
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      margin: 0 0 10px 0;
+      color: var(--t-fg);
+    }
+    p {
+      color: var(--t-fg2);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin: 0 0 24px 0;
+    }
+    .email-display {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--line);
+      padding: 12px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.95rem;
+      color: var(--t-ac);
+      font-weight: bold;
+      margin-bottom: 24px;
+      word-break: break-all;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      background: var(--t-ac);
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover {
+      opacity: 0.9;
+    }
+    .icon {
+      font-size: 3.5rem;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="glass-card">
+    <div class="icon">👋</div>
+    <h1>Unsubscribed</h1>
+    <p>You have been successfully removed from our newsletter updates.</p>
+    <div class="email-display">${email}</div>
+    <a class="btn" href="/">Return Home</a>
+  </div>
+</body>
+</html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      } else {
+        return new Response(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invalid Unsubscribe Link — mitch.pro</title>
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <style>
+    body {
+      background: var(--bg);
+      color: var(--t-fg);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .glass-card {
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 40px 30px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      text-align: center;
+    }
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      margin: 0 0 10px 0;
+      color: var(--rose);
+    }
+    p {
+      color: var(--t-fg2);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin: 0 0 24px 0;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      background: var(--t-ac);
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover {
+      opacity: 0.9;
+    }
+    .icon {
+      font-size: 3.5rem;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="glass-card">
+    <div class="icon">⚠️</div>
+    <h1>Invalid Link</h1>
+    <p>This unsubscribe link is invalid or has expired.</p>
+    <a class="btn" href="/">Return Home</a>
+  </div>
+</body>
+</html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      }
+    }
+  }
+
   // Dynamically track the user's last known IP address
   try {
     const cookies = getCookies(req);
@@ -8942,6 +9132,7 @@ Mitch.pro Team`;
           normEmail = unsubscribeEmailKey(email);
           mode = 'direct link';
           unsubTokens = loadJson(UNSUBSCRIBE_TOKENS_FILE, {});
+          if (!unsubTokens || typeof unsubTokens !== 'object' || Array.isArray(unsubTokens)) unsubTokens = {};
           const expectedToken = unsubTokens[normEmail];
           if (!expectedToken || expectedToken !== token) {
             return jsonResp(403, { success: false, message: 'Invalid or expired unsubscribe token.' });
@@ -8961,11 +9152,6 @@ Mitch.pro Team`;
         if (!unsub.includes(normEmail)) {
           unsub.push(normEmail);
           saveJsonSync(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
-        }
-
-        if (unsubTokens) {
-          delete unsubTokens[normEmail];
-          saveJsonSync(UNSUBSCRIBE_TOKENS_FILE, unsubTokens);
         }
 
         ntfy(`${normEmail} unsubscribed (${mode})`, { title: 'Newsletter' });
