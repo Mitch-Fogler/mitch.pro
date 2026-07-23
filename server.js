@@ -5759,8 +5759,6 @@ async function handleRequest(req, server) {
           unsub.push(normEmail);
           saveJsonSync(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
         }
-        
-        ntfy(`${normEmail} unsubscribed (instant link)`, { title: 'Newsletter' });
 
         return new Response(`<!DOCTYPE html>
 <html lang="en">
@@ -9153,8 +9151,6 @@ Mitch.pro Team`;
           unsub.push(normEmail);
           saveJsonSync(NEWSLETTER_UNSUB_FILE, [...new Set(unsub)].sort());
         }
-
-        ntfy(`${normEmail} unsubscribed (${mode})`, { title: 'Newsletter' });
         return jsonResp(200, { success: true, email: normEmail });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
