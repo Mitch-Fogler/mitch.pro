@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Usage: node send_email.js <to> <subject> <body>
 //   or: echo "body" | node send_email.js <to> <subject>
+import path from 'path';
 import {
   configureDataStore,
   appendAppLog,
@@ -14,7 +15,6 @@ configureDataStore({ baseDir: path.join(__dirname, '..') });
 
 const nodemailer = require('nodemailer');
 const fs = require('fs');
-const path = require('path');
 
 try {
   const envPath = path.join(__dirname, '..', '.env');

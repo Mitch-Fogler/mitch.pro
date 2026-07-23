@@ -3,6 +3,7 @@
 // Usage: node support_send.js [--in-reply-to <msgid>] <to> <subject> [body]
 //   or:  echo "body" | node support_send.js <to> <subject>
 
+import path from 'path';
 import {
   configureDataStore,
   readDocument,
@@ -13,7 +14,6 @@ configureDataStore({ baseDir: path.join(__dirname, '..') });
 
 const nodemailer = require('nodemailer');
 const fs = require('fs');
-const path = require('path');
 
 try {
   fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').split('\n').forEach(line => {
