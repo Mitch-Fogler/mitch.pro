@@ -4,10 +4,12 @@
 set -euo pipefail
 
 CADDYFILE_PATH="/home/mitch/server/bun/caddy/Caddyfile"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Ensure we are in the project root directory so git, docker-compose, and Doppler scope resolve correctly
-cd "$SCRIPT_DIR/.."
+PROJECT_DIR="/home/mitch/server/bun"
+if [ -d "$PROJECT_DIR" ]; then
+    cd "$PROJECT_DIR"
+else
+    cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
+fi
 
 # 1. Fetch only NTFY_TOPIC for the deploy script's notifications
 NTFY_TOPIC=""
@@ -17,7 +19,7 @@ if command -v doppler &> /dev/null && doppler secrets download --format json &> 
     DOPPLER_AVAILABLE=true
     NTFY_TOPIC=$(doppler secrets get NTFY_TOPIC --plain 2>/dev/null || echo "")
 else
-    ENV_PATH="$SCRIPT_DIR/../.env"
+    ENV_PATH="$PROJECT_DIR/.env"
     if [ -f "$ENV_PATH" ]; then
         NTFY_TOPIC=$(grep -E "^NTFY_TOPIC=" "$ENV_PATH" | cut -d= -f2- | tr -d '"' | tr -d "'")
     fi
