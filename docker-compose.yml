@@ -5,7 +5,7 @@ services:
     container_name: mitch-caddy-proxy
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6800:6800"
+      - "0.0.0.0:6800:6800"
     volumes:
       - ./caddy:/etc/caddy
     depends_on:

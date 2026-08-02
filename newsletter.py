@@ -65,12 +65,53 @@ def has_profanity(email):
     except Exception:
         return False
 
+def load_doppler_env():
+    os.environ['DOPPLER_ENABLE_DNS_RESOLVER'] = 'true'
+    if 'NOREPLY_USER' in os.environ or 'SUPPORT_USER' in os.environ:
+        return
+    try:
+        res = subprocess.run(['doppler', 'secrets', 'download', '--format', 'json'], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0 and res.stdout:
+            secrets = json.loads(res.stdout)
+            for k, v in secrets.items():
+                if k not in os.environ:
+                    os.environ[k] = str(v)
+            return
+    except Exception:
+        pass
+    try:
+        res = subprocess.run(['sudo', '-n', 'doppler', 'secrets', 'download', '--format', 'json'], capture_output=True, text=True, timeout=5)
+        if res.returncode == 0 and res.stdout:
+            secrets = json.loads(res.stdout)
+            for k, v in secrets.items():
+                if k not in os.environ:
+                    os.environ[k] = str(v)
+            return
+    except Exception:
+        pass
+    env_file = os.path.join(BASE, '.env')
+    if os.path.isfile(env_file):
+        try:
+            with open(env_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        k, v = line.split('=', 1)
+                        k = k.replace('export ', '').strip()
+                        v = v.strip(' "\'')
+                        if k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
+
 def send(to, subject, body):
     if has_profanity(to):
         return True, 'silently dropped (profanity)'
+    load_doppler_env()
+    runner = 'bun' if os.path.exists('/usr/bin/bun') or subprocess.run(['which', 'bun'], capture_output=True).returncode == 0 else 'node'
     result = subprocess.run(
-        ['node', _email_script(to), to, subject, body + UNSUB_FOOTER],
-        capture_output=True, text=True, timeout=20
+        [runner, _email_script(to), to, subject, body + UNSUB_FOOTER],
+        capture_output=True, text=True, timeout=20, env=os.environ
     )
     return result.returncode == 0, result.stderr.strip() or result.stdout.strip()
 

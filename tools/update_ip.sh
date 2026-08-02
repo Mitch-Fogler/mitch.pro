@@ -7,6 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 IP_CACHE_FILE="$BASE_DIR/.current_public_ip"
+TEMP_IP_FILE="$BASE_DIR/.temp_public_ip_override"
 
 export DOPPLER_ENABLE_DNS_RESOLVER=true
 
@@ -38,13 +39,56 @@ get_secret() {
 }
 
 FORCE_UPDATE=false
-if [ "${1:-}" = "--force" ]; then
-    FORCE_UPDATE=true
+TEMP_MODE=false
+TEMP_ARG=""
+
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --force)
+            FORCE_UPDATE=true
+            shift
+            ;;
+        --temp)
+            TEMP_MODE=true
+            TEMP_ARG="${2:-}"
+            shift 2 || shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Handle --temp stop / clear or setting new temp IP
+if [ "$TEMP_MODE" = true ]; then
+    CLEAN_TEMP=$(echo "$TEMP_ARG" | tr '[:upper:]' '[:lower:]')
+    if [ "$CLEAN_TEMP" = "stop" ] || [ "$CLEAN_TEMP" = "clear" ] || [ "$CLEAN_TEMP" = "off" ] || [ "$CLEAN_TEMP" = "disable" ]; then
+        if [ -f "$TEMP_IP_FILE" ]; then
+            rm -f "$TEMP_IP_FILE"
+            echo "[$(date -Iseconds)] [ip-watcher] Temporary IP override stopped/cleared."
+        else
+            echo "[$(date -Iseconds)] [ip-watcher] No active temporary IP override found."
+        fi
+        FORCE_UPDATE=true
+    elif [ -n "$TEMP_ARG" ]; then
+        echo "$TEMP_ARG" > "$TEMP_IP_FILE"
+        echo "[$(date -Iseconds)] [ip-watcher] Temporary IP override set to '$TEMP_ARG'."
+        FORCE_UPDATE=true
+    else
+        echo "Usage: $0 --temp <IP_ADDRESS> | $0 --temp stop"
+        exit 1
+    fi
 fi
 
-# 1. Fetch current public IP address
-NEW_IP=$(curl -s --max-time 10 https://ipinfo.io/ip 2>/dev/null || curl -s --max-time 10 https://ifconfig.me 2>/dev/null || echo "")
-NEW_IP=$(echo "$NEW_IP" | tr -d ' \n\r')
+# 1. Fetch current or temporary IP address
+IS_TEMP=false
+if [ -f "$TEMP_IP_FILE" ]; then
+    NEW_IP=$(cat "$TEMP_IP_FILE" | tr -d ' \n\r')
+    IS_TEMP=true
+else
+    NEW_IP=$(curl -s --max-time 10 https://ipinfo.io/ip 2>/dev/null || curl -s --max-time 10 https://ifconfig.me 2>/dev/null || echo "")
+    NEW_IP=$(echo "$NEW_IP" | tr -d ' \n\r')
+fi
 
 if [ -z "$NEW_IP" ]; then
     echo "[$(date -Iseconds)] [ip-watcher] ERROR: Unable to determine public IP."
@@ -61,7 +105,11 @@ if [ "$NEW_IP" = "$OLD_IP" ] && [ "$FORCE_UPDATE" = false ]; then
     exit 0
 fi
 
-echo "[$(date -Iseconds)] [ip-watcher] IP change detected: '${OLD_IP:-none}' -> '$NEW_IP'"
+if [ "$IS_TEMP" = true ]; then
+    echo "[$(date -Iseconds)] [ip-watcher] TEMP OVERRIDE ACTIVE: '${OLD_IP:-none}' -> '$NEW_IP'"
+else
+    echo "[$(date -Iseconds)] [ip-watcher] IP change detected: '${OLD_IP:-none}' -> '$NEW_IP'"
+fi
 
 # 2. Update GitHub Secret (SSH_HOST)
 if command -v gh &>/dev/null; then
@@ -81,9 +129,6 @@ FREEDNS_UPDATE_URLS=$(get_secret "FREEDNS_UPDATE_URLS")
 # 4. Update Cloudflare DNS Records (supports both A records and TXT/SPF records)
 if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_RECORDS" ]; then
     echo "[ip-watcher] Updating Cloudflare records..."
-    # Format options for items in CLOUDFLARE_RECORDS:
-    #   A Record:   ZONE_ID:RECORD_ID:domain.com    OR  ZONE_ID:RECORD_ID:A:domain.com
-    #   TXT Record: ZONE_ID:RECORD_ID:TXT:domain.com
     for item in $CLOUDFLARE_RECORDS; do
         IFS=':' read -r ZONE_ID RECORD_ID FIELD3 FIELD4 <<< "$item"
         
