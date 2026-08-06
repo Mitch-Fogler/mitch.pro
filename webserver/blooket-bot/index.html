@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blooket Bot Live Console — mitch.pro</title>
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <style>
+    .glass-panel {
+      background: var(--bg-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: var(--bd);
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      transition: border-color 0.3s;
+    }
+    .glass-panel:hover {
+      border-color: var(--line-hot);
+    }
+    .disclaimer-banner {
+      background: rgba(250, 204, 21, 0.05);
+      border: 1px solid var(--gold);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      color: var(--gold);
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .disclaimer-icon {
+      font-size: 24px;
+      line-height: 1;
+    }
+    .disclaimer-text h4 {
+      font-family: 'Outfit', sans-serif;
+      margin-bottom: 4px;
+      font-size: 1.1rem;
+      font-weight: 800;
+    }
+    .disclaimer-text p {
+      font-size: 0.9rem;
+      opacity: 0.85;
+      line-height: 1.4;
+    }
+    .console-screen {
+      background: #010103;
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 12px;
+      font-family: 'Fira Code', monospace, Courier;
+      font-size: 13px;
+      color: #38bdf8;
+      padding: 16px;
+      height: 380px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin-bottom: 16px;
+      box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+    }
+    .console-input-row {
+      display: flex;
+      gap: 12px;
+    }
+    .console-input {
+      flex: 1;
+      background: rgba(0,0,0,0.4);
+      border: var(--bd);
+      border-radius: 8px;
+      height: 48px;
+      box-sizing: border-box;
+      padding: 0 16px;
+      color: #fff;
+      font-family: monospace;
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 0 !important;
+    }
+    .console-input:focus {
+      border-color: var(--ac);
+    }
+    .form-group {
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .form-group label {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--fg-dim);
+    }
+    .input-field {
+      background: rgba(0,0,0,0.25);
+      border: var(--bd);
+      border-radius: 8px;
+      height: 48px;
+      box-sizing: border-box;
+      padding: 0 16px;
+      color: #fff;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+      margin-bottom: 0 !important;
+    }
+    .input-field:focus {
+      border-color: var(--ac);
+    }
+    .btn {
+      background: var(--ac);
+      color: #060608;
+      border: none;
+      border-radius: 8px;
+      height: 48px;
+      box-sizing: border-box;
+      padding: 0 24px;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background-color 0.2s, transform 0.1s, opacity 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:hover {
+      background: #67e8f9;
+    }
+    .btn:active {
+      transform: scale(0.98);
+    }
+    #admin-lock-btn {
+      height: 48px;
+      padding: 0 18px !important;
+      font-size: 0.85rem !important;
+      flex-shrink: 0;
+      width: auto !important;
+    }
+    #send-input-btn {
+      height: 48px;
+      padding: 0 20px !important;
+      font-size: 0.9rem !important;
+      flex-shrink: 0;
+      width: auto !important;
+    }
+    .btn-stop {
+      background: var(--rose);
+      color: #fff;
+    }
+    .btn-stop:hover {
+      background: #fda4af;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 20px;
+    }
+    @media (max-width: 768px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      padding: 4px 10px;
+      border-radius: 99px;
+      background: rgba(255,255,255,0.05);
+      text-transform: uppercase;
+    }
+    .status-badge.running {
+      color: var(--green);
+      background: rgba(74, 222, 128, 0.1);
+    }
+    .status-badge.queue {
+      color: var(--gold);
+      background: rgba(250, 204, 21, 0.1);
+    }
+    .status-badge.idle {
+      color: var(--fg-dim);
+    }
+    .header-area {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 16px;
+    }
+    .header-area h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 2rem;
+      background: var(--ac-gr);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+  </style>
+</head>
+<body>
+  <div class="enroll-shell">
+    <div class="header-area">
+      <h1>Blooket Bot Live</h1>
+      <div>
+        <a href="/" style="color: var(--ac); text-decoration: none; font-weight: 600; font-size: 0.95rem;">&larr; Return Home</a>
+      </div>
+    </div>
+
+    <!-- Premium Required Banner -->
+    <div id="premium-wall" class="glass-panel" style="display: none; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.25); margin-bottom: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
+      <div style="display: flex; align-items: center; gap: 16px; padding: 8px;">
+        <span style="font-size: 2.2rem; line-height: 1;">⭐</span>
+        <div>
+          <h3 style="color: var(--gold); font-family: 'Outfit', sans-serif; font-weight: 800; margin-bottom: 4px;">Premium Required</h3>
+          <p style="font-size: 0.95rem; color: var(--fg-dim); line-height: 1.4;">The Blooket Bot tool is reserved for <strong>Premium members</strong>. Stand out and unlock access to premium-only features today!</p>
+          <a href="/shop.html" class="btn" style="background: var(--gold); color: #000; margin-top: 12px; font-size: 0.85rem; padding: 8px 16px; text-decoration: none;">Upgrade to Premium</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Disclaimer banner -->
+    <div class="disclaimer-banner">
+      <div class="disclaimer-icon">⚠️</div>
+      <div class="disclaimer-text">
+        <h4>Developmental Feature Disclaimer</h4>
+        <p>The Blooket Bot is currently in active development. Operation is not guaranteed and it may break due to Blooket game updates. Please use responsibly.</p>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Left side: configuration form -->
+      <div>
+        <div class="glass-panel">
+          <h3 style="font-family: 'Outfit', sans-serif; font-weight: 800; margin-bottom: 18px;">Configuration</h3>
+          
+          <div class="form-group">
+            <label for="pin">Blooket Game PIN</label>
+            <div style="display: flex; gap: 8px; align-items: stretch;">
+              <input type="text" id="pin" class="input-field" placeholder="e.g. 7174055" value="7174055" style="flex: 1;">
+              <button id="admin-lock-btn" class="btn" style="display: none; padding: 0 16px; background: rgba(250, 204, 21, 0.1); border: 1px solid rgba(250, 204, 21, 0.25); color: var(--gold);" title="Lock/Unlock PIN to Admin only">🔒 Lock</button>
+            </div>
+            <div id="admin-lock-status" style="font-size: 0.85rem; margin-top: 6px; font-weight: bold; display: none;"></div>
+          </div>
+
+          <div class="form-group">
+            <label for="name">Bot Nickname</label>
+            <input type="text" id="name" class="input-field" placeholder="e.g. AutomatedBot" value="AutomatedBot">
+          </div>
+
+          <div class="form-group">
+            <label for="auto">Action Mode</label>
+            <select id="auto" class="input-field" style="background: #110f1e; border: 1px solid rgba(255,255,255,0.08);">
+              <option value="none">Manual / Interactive (CLI Control)</option>
+              <option value="win">Auto Win (Instant payout script)</option>
+              <option value="win-incremental">Auto Win - Incremental (Safe payout)</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 10px;">
+            <label for="headless" style="cursor: pointer; margin-bottom: 0;">Run Headless (Recommended)</label>
+            <input type="checkbox" id="headless" checked style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--ac);">
+          </div>
+
+          <div style="margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
+            <button id="start-btn" class="btn" style="flex: 1; min-width: 110px;">Launch Bot</button>
+            <button id="stop-btn" class="btn btn-stop" style="flex: 1; min-width: 110px;" disabled>Stop Bot</button>
+            <button id="report-fail-btn" class="btn" style="flex: 1; min-width: 110px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--rose);" title="Report bot/cheat failure to admin">⚠️ Report Failure</button>
+          </div>
+        </div>
+
+        <div class="glass-panel">
+          <h3 style="font-family: 'Outfit', sans-serif; font-weight: 800; margin-bottom: 12px;">Live Status</h3>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div>
+              <span>Status: </span>
+              <span id="status-badge" class="status-badge idle">Idle</span>
+            </div>
+            <div id="queue-pos-wrap" style="display: none;">
+              <span>Queue Position: </span>
+              <span id="queue-pos" style="font-weight: bold; color: var(--gold);">N/A</span>
+            </div>
+            <div id="stats-wrap" style="font-size: 0.9rem; color: var(--fg-dim); display: flex; flex-direction: column; gap: 4px; margin-top: 6px;">
+              <span>Active bots globally: <strong id="global-active" style="color:#fff;">0</strong> / 5</span>
+              <span>Total in queue: <strong id="global-queue" style="color:#fff;">0</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right side: log console -->
+      <div style="display: flex; flex-direction: column;">
+        <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column;">
+          <h3 style="font-family: 'Outfit', sans-serif; font-weight: 800; margin-bottom: 12px;">Live Console Output</h3>
+          <div id="console" class="console-screen">Welcome to Blooket Bot Live Console.<br>Configure parameters on the left and click "Launch Bot" to start.</div>
+          
+          <div class="console-input-row">
+            <input type="text" id="console-input" class="console-input" placeholder="Type a CLI option (e.g. 1) and press Enter..." disabled>
+            <button id="send-input-btn" class="btn" disabled>Send</button>
+          </div>
+        </div>
+    </div>
+    <!-- Admin / Mod Debug Panel -->
+    <div id="admin-debug-panel" class="glass-panel" style="display: none; margin-top: 30px; border-color: rgba(239, 68, 68, 0.25);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <h3 style="font-family: 'Outfit', sans-serif; font-weight: 800; margin: 0; color: var(--rose);">🔧 Admin & Mod Failure Reports</h3>
+        <button id="refresh-reports-btn" class="btn" style="height: 32px; padding: 0 12px; font-size: 0.8rem;">Refresh</button>
+      </div>
+      <div id="reports-list" style="display: flex; flex-direction: column; gap: 14px; max-height: 500px; overflow-y: auto; padding-right: 8px;">
+        <div style="color: var(--fg-dim); font-style: italic;">Loading reports...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+
+    const pinEl = document.getElementById('pin');
+    const nameEl = document.getElementById('name');
+    const autoEl = document.getElementById('auto');
+    const headlessEl = document.getElementById('headless');
+    const startBtn = document.getElementById('start-btn');
+    const stopBtn = document.getElementById('stop-btn');
+    const consoleEl = document.getElementById('console');
+    const consoleInput = document.getElementById('console-input');
+    const sendInputBtn = document.getElementById('send-input-btn');
+    const statusBadge = document.getElementById('status-badge');
+    const queuePosWrap = document.getElementById('queue-pos-wrap');
+    const queuePos = document.getElementById('queue-pos');
+    const globalActive = document.getElementById('global-active');
+    const globalQueue = document.getElementById('global-queue');
+
+    function appendLog(text, isErr = false) {
+      const p = document.createElement('div');
+      p.style.color = isErr ? 'var(--rose)' : '#38bdf8';
+      p.textContent = text;
+      consoleEl.appendChild(p);
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    function updateStatus(status, details = {}) {
+      statusBadge.className = 'status-badge ' + status;
+      statusBadge.textContent = status;
+      
+      if (status === 'running') {
+        queuePosWrap.style.display = 'none';
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        consoleInput.disabled = false;
+        sendInputBtn.disabled = false;
+      } else if (status === 'queue') {
+        queuePosWrap.style.display = 'block';
+        queuePos.textContent = details.position + ' of ' + details.total;
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        consoleInput.disabled = true;
+        sendInputBtn.disabled = true;
+      } else {
+        queuePosWrap.style.display = 'none';
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+        consoleInput.disabled = true;
+        sendInputBtn.disabled = true;
+      }
+    }
+
+    let isPremiumUser = false;
+    let isAdminUser = false;
+    let isModUser = false;
+    let myEmail = '';
+    let currentLocks = {};
+
+    function applyPremiumLock(isPremium) {
+      const wall = document.getElementById('premium-wall');
+      if (isPremium) {
+        wall.style.display = 'none';
+      } else {
+        wall.style.display = 'block';
+        // Disable inputs
+        pinEl.disabled = true;
+        nameEl.disabled = true;
+        autoEl.disabled = true;
+        headlessEl.disabled = true;
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+        consoleInput.disabled = true;
+        sendInputBtn.disabled = true;
+      }
+    }
+
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/blooket-bot/status');
+        const data = await res.json();
+        if (data.success) {
+          isPremiumUser = data.isPremium !== false;
+          isAdminUser = !!data.isAdmin;
+          isModUser = !!data.isMod;
+          myEmail = data.email || '';
+          currentLocks = data.locks || {};
+
+          applyPremiumLock(isPremiumUser);
+
+          if (isPremiumUser) {
+            globalActive.textContent = data.activeCount;
+            globalQueue.textContent = data.queueLength;
+            
+            const pin = pinEl.value.trim();
+            const lockedBy = currentLocks[pin];
+            const lockStatusEl = document.getElementById('admin-lock-status');
+            const lockBtn = document.getElementById('admin-lock-btn');
+            
+            if (isAdminUser) {
+              lockBtn.style.display = 'inline-flex';
+            } else {
+              lockBtn.style.display = 'none';
+            }
+            
+            let isPinLockedBySomeoneElse = false;
+            if (lockedBy) {
+              lockStatusEl.style.display = 'block';
+              if (lockedBy === myEmail) {
+                lockStatusEl.style.color = 'var(--gold)';
+                lockStatusEl.innerHTML = `🔒 Locked exclusively by you (Admin)`;
+              } else {
+                lockStatusEl.style.color = 'var(--rose)';
+                lockStatusEl.innerHTML = `🔒 Locked exclusively by Admin: ${lockedBy}`;
+                isPinLockedBySomeoneElse = true;
+              }
+              
+              if (isAdminUser) {
+                lockBtn.textContent = '🔓 Unlock';
+                lockBtn.style.background = 'rgba(239, 68, 68, 0.15)';
+                lockBtn.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                lockBtn.style.color = 'var(--rose)';
+              }
+            } else {
+              lockStatusEl.style.display = 'none';
+              if (isAdminUser) {
+                lockBtn.textContent = '🔒 Lock';
+                lockBtn.style.background = 'rgba(250, 204, 21, 0.1)';
+                lockBtn.style.borderColor = 'rgba(250, 204, 21, 0.25)';
+                lockBtn.style.color = 'var(--gold)';
+              }
+            }
+
+            if (data.running) {
+              updateStatus('running');
+            } else if (data.inQueue) {
+              updateStatus('queue', { position: data.position, total: data.queueLength });
+            } else {
+              updateStatus('idle');
+              if (isPinLockedBySomeoneElse) {
+                startBtn.disabled = true;
+              }
+            }
+
+            if (isAdminUser || isModUser) {
+              const debugPanel = document.getElementById('admin-debug-panel');
+              if (debugPanel) {
+                debugPanel.style.display = 'block';
+                loadFailureReports();
+              }
+            } else {
+              const debugPanel = document.getElementById('admin-debug-panel');
+              if (debugPanel) {
+                debugPanel.style.display = 'none';
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // Check status on load
+    checkStatus();
+    setInterval(checkStatus, 5000);
+
+    pinEl.addEventListener('input', () => {
+      checkStatus();
+    });
+
+    document.getElementById('admin-lock-btn').addEventListener('click', async () => {
+      const pin = pinEl.value.trim();
+      if (!pin) return;
+      const isLocked = document.getElementById('admin-lock-btn').textContent.includes('Unlock');
+      document.getElementById('admin-lock-btn').disabled = true;
+      try {
+        const res = await fetch('/api/blooket-bot/lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, lock: !isLocked })
+        });
+        const d = await res.json();
+        if (d.success) {
+          await checkStatus();
+        } else {
+          alert(d.error || 'Failed to update lock.');
+        }
+      } catch (e) {
+        alert('Lock action error: ' + e.message);
+      } finally {
+        document.getElementById('admin-lock-btn').disabled = false;
+      }
+    });
+
+    startBtn.addEventListener('click', () => {
+      const pin = pinEl.value.trim();
+      const name = nameEl.value.trim();
+      const auto = autoEl.value;
+      const headless = headlessEl.checked;
+
+      if (!pin) {
+        alert('Please enter a Game PIN.');
+        return;
+      }
+      if (!name) {
+        alert('Please enter a Nickname.');
+        return;
+      }
+
+      consoleEl.innerHTML = '';
+      appendLog('[*] Initiating connection to server...');
+      
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = protocol + '//' + window.location.host + '/api/blooket-bot/ws?pin=' + encodeURIComponent(pin) + '&name=' + encodeURIComponent(name) + '&auto=' + encodeURIComponent(auto) + '&headless=' + headless;
+      
+      if (ws) {
+        ws.close();
+      }
+
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        appendLog('[*] Connected to Blooket Bot server gateway.');
+        updateStatus('queue', { position: 1, total: 1 });
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload.type === 'stdout') {
+            appendLog(payload.data);
+          } else if (payload.type === 'stderr') {
+            appendLog('[stderr] ' + payload.data, true);
+          } else if (payload.type === 'status') {
+            appendLog('[*] ' + payload.text);
+            if (payload.text.includes('launching') || payload.text.includes('started')) {
+              updateStatus('running');
+            }
+          } else if (payload.type === 'queue') {
+            updateStatus('queue', { position: payload.position, total: payload.total });
+            globalActive.textContent = payload.activeCount;
+            globalQueue.textContent = payload.total;
+          } else if (payload.type === 'error') {
+            appendLog('[!] Error: ' + payload.message, true);
+            alert(payload.message);
+          } else if (payload.type === 'exit') {
+            appendLog('[*] Bot execution finished (Exit Code: ' + payload.code + ').');
+            ws.close();
+          }
+        } catch (e) {
+          appendLog(event.data);
+        }
+      };
+
+      ws.onclose = () => {
+        appendLog('[*] Connection closed.');
+        updateStatus('idle');
+        ws = null;
+        checkStatus();
+      };
+
+      ws.onerror = (err) => {
+        appendLog('[!] Connection error.', true);
+        updateStatus('idle');
+      };
+    });
+
+    stopBtn.addEventListener('click', async () => {
+      stopBtn.disabled = true;
+      appendLog('[*] Sending termination request...');
+      try {
+        const res = await fetch('/api/blooket-bot/stop', { method: 'POST' });
+        const data = await res.json();
+        appendLog('[*] ' + (data.message || 'Bot stopped.'));
+        if (ws) {
+          ws.close();
+        }
+      } catch (e) {
+        appendLog('[!] Failed to stop bot: ' + e.message, true);
+      }
+      updateStatus('idle');
+      checkStatus();
+    });
+
+    function sendConsoleInput() {
+      const text = consoleInput.value;
+      if (!text.trim()) return;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'input', text: text }));
+        appendLog('> ' + text);
+        consoleInput.value = '';
+      }
+    }
+
+    consoleInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        sendConsoleInput();
+      }
+    });
+
+    let reportsLoaded = false;
+    async function loadFailureReports() {
+      if (reportsLoaded) return;
+      reportsLoaded = true;
+      try {
+        const res = await fetch('/api/blooket-bot/failure-reports');
+        const d = await res.json();
+        const listEl = document.getElementById('reports-list');
+        if (d.success && listEl) {
+          listEl.innerHTML = '';
+          if (!d.reports || d.reports.length === 0) {
+            listEl.innerHTML = '<div style="color: var(--fg-dim); font-style: italic;">No failure reports submitted yet.</div>';
+            return;
+          }
+          
+          d.reports.slice().reverse().forEach(r => {
+            const card = document.createElement('div');
+            card.style.background = 'rgba(0, 0, 0, 0.3)';
+            card.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+            card.style.borderRadius = '8px';
+            card.style.padding = '12px 16px';
+            card.style.fontSize = '0.9rem';
+            
+            const timeStr = new Date(r.ts * 1000).toLocaleString();
+            card.innerHTML = `
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
+                <strong style="color: var(--ac);">${r.email}</strong>
+                <span style="font-size: 0.8rem; color: var(--fg-dim);">${timeStr}</span>
+              </div>
+              <div style="margin-bottom: 8px;">
+                <span>PIN: <strong style="color: #fff;">${r.pin || 'N/A'}</strong></span> | 
+                <span>Nickname: <strong style="color: #fff;">${r.nickname || 'N/A'}</strong></span>
+              </div>
+              <details>
+                <summary style="cursor: pointer; color: var(--gold); font-weight: 600; outline: none; margin-bottom: 6px;">View Console Logs</summary>
+                <pre style="background: #010103; color: #38bdf8; font-family: monospace; font-size: 0.85rem; padding: 10px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; max-height: 250px; overflow-y: auto; margin-top: 4px;">${r.consoleLog}</pre>
+              </details>
+            `;
+            listEl.appendChild(card);
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load failure reports:', e);
+      }
+    }
+
+    document.getElementById('refresh-reports-btn').addEventListener('click', () => {
+      reportsLoaded = false;
+      loadFailureReports();
+    });
+
+    const reportFailBtn = document.getElementById('report-fail-btn');
+    reportFailBtn.addEventListener('click', async () => {
+      const pin = pinEl.value.trim();
+      const name = nameEl.value.trim();
+      // Get console log content
+      const consoleLog = consoleEl.innerText || consoleEl.textContent || '';
+      
+      if (!consoleLog || consoleLog.includes('Welcome to Blooket Bot Live Console')) {
+        alert('Please run the bot first to gather console logs before reporting a failure.');
+        return;
+      }
+      
+      if (!confirm('Are you sure you want to submit the current console logs and session info to the administrators/moderators for debugging?')) {
+        return;
+      }
+      
+      reportFailBtn.disabled = true;
+      try {
+        const res = await fetch('/api/blooket-bot/report-failure', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin, nickname: name, consoleLog })
+        });
+        const d = await res.json();
+        if (d.success) {
+          alert('Failure report submitted successfully! Thank you.');
+        } else {
+          alert(d.error || 'Failed to submit report.');
+        }
+      } catch (e) {
+        alert('Network error: ' + e.message);
+      } finally {
+        reportFailBtn.disabled = false;
+      }
+    });
+
+    sendInputBtn.addEventListener('click', sendConsoleInput);
+  </script>
+</body>
+</html>

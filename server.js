@@ -99,6 +99,8 @@ const NAMES_FILE             = join(DATA_DIR, 'names.json');
 const BLACKLIST_FILE         = join(DATA_DIR, 'blacklist.json');
 const USER_STATS_FILE        = join(DATA_DIR, 'user_stats.json');
 const PROFILE_REPORTS_FILE   = join(DATA_DIR, 'profile_reports.json');
+const SUGGESTIONS_FILE       = join(DATA_DIR, 'suggestions.json');
+const BLOOKET_BOT_FAILURES_FILE = join(DATA_DIR, 'blooket_bot_failures.json');
 const ACHIEVEMENTS_FILE      = join(DATA_DIR, 'achievements.json');
 const SESSION_LOG_FILE       = join(DATA_DIR, 'sessions.json');
 const COINS_FILE             = join(DATA_DIR, 'coins.json');
@@ -951,6 +953,113 @@ function loadGlobalGameStats() {
 }
 
 const allSockets = new Set();
+
+// Blooket Bot Globals & Functions
+const blooketQueue = []; // Array of { email, ws, params: { pin, name, auto, headless } }
+const blooketActive = new Map(); // email -> { ws, msWs, params }
+const blooketPinLocks = new Map(); // PIN -> adminEmail (exclusive lock)
+const BLOOKET_MAX_ACTIVE = 5;
+
+function processBlooketQueue() {
+  for (const [email, session] of blooketActive.entries()) {
+    if (session.ws.readyState !== 1 || (session.msWs && session.msWs.readyState > 1)) {
+      console.log(`[blooket-queue] Cleaning up inactive active session for ${email}`);
+      if (session.msWs && session.msWs.readyState === 1) {
+        try { session.msWs.close(); } catch {}
+      }
+      blooketActive.delete(email);
+    }
+  }
+
+  for (let i = blooketQueue.length - 1; i >= 0; i--) {
+    if (blooketQueue[i].ws.readyState !== 1) {
+      console.log(`[blooket-queue] Removing disconnected socket for ${blooketQueue[i].email} from queue`);
+      blooketQueue.splice(i, 1);
+    }
+  }
+
+  while (blooketActive.size < BLOOKET_MAX_ACTIVE && blooketQueue.length > 0) {
+    const next = blooketQueue.shift();
+    if (next.ws.readyState !== 1) continue;
+
+    if (blooketActive.has(next.email)) {
+      console.log(`[blooket-queue] User ${next.email} already has an active bot. Skipping.`);
+      next.ws.send(JSON.stringify({ type: 'error', message: 'You already have a bot running.' }));
+      next.ws.close();
+      continue;
+    }
+
+    startBlooketBotSession(next);
+  }
+
+  for (let i = 0; i < blooketQueue.length; i++) {
+    const q = blooketQueue[i];
+    if (q.ws.readyState === 1) {
+      q.ws.send(JSON.stringify({
+        type: 'queue',
+        position: i + 1,
+        total: blooketQueue.length,
+        activeCount: blooketActive.size
+      }));
+    }
+  }
+}
+
+function startBlooketBotSession(session) {
+  const { email, ws, params } = session;
+  const msUrl = process.env.BLOOKET_BOT_URL || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'ws://blooket-bot:8082' : 'ws://127.0.0.1:8082');
+  
+  console.log(`[blooket-bot] Connecting to microservice for ${email} at ${msUrl}`);
+  
+  let msWs;
+  try {
+    msWs = new WebSocket(msUrl);
+  } catch (e) {
+    console.error(`[blooket-bot] Failed to connect to microservice:`, e);
+    ws.send(JSON.stringify({ type: 'error', message: 'Failed to connect to Blooket Bot service. Please try again.' }));
+    ws.close();
+    return;
+  }
+
+  const activeRecord = { ws, msWs, params };
+  blooketActive.set(email, activeRecord);
+  ws.msWs = msWs;
+
+  msWs.onopen = () => {
+    console.log(`[blooket-bot] Connected to microservice for ${email}. Starting bot...`);
+    ws.send(JSON.stringify({ type: 'status', text: 'Bot launching...' }));
+    msWs.send(JSON.stringify({
+      type: 'start',
+      pin: params.pin,
+      name: params.name,
+      auto: params.auto,
+      headless: params.headless
+    }));
+  };
+
+  msWs.onmessage = (event) => {
+    if (ws.readyState === 1) {
+      ws.send(event.data);
+    }
+  };
+
+  msWs.onclose = () => {
+    console.log(`[blooket-bot] Microservice connection closed for ${email}`);
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'status', text: 'Bot terminated.' }));
+      ws.close();
+    }
+    blooketActive.delete(email);
+    processBlooketQueue();
+  };
+
+  msWs.onerror = (err) => {
+    console.error(`[blooket-bot] Microservice error for ${email}:`, err);
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Bot connection encountered an error.' }));
+    }
+  };
+}
 function saveShadowBans() { saveJson(join(BASE, 'data', 'shadow_bans.json'), Array.from(shadowBans)); }
 
 function logBet(user, game, amount, outcome) {
@@ -4216,7 +4325,7 @@ function checkRateLimit(req, endpoint) {
   const ep = endpoint || new URL(req.url).pathname;
 
   // Anti-bot timing regularity check on non-polling action endpoints
-  if (!ep.endsWith('/state') && !ep.includes('/inbox') && !ep.includes('/heartbeat') && !ep.includes('/groups') && !ep.includes('/canvas/')) {
+  if (!ep.endsWith('/state') && !ep.includes('/inbox') && !ep.includes('/heartbeat') && !ep.includes('/groups') && !ep.includes('/canvas/') && !ep.includes('/blooket-bot/status')) {
     const timingKey = ip + ':' + ep;
     if (detectNonHumanTiming(timingKey)) {
       console.warn(`[Anti-Bot] Non-human timing detected from ${ip} on ${ep}`);
@@ -4235,7 +4344,7 @@ function filterSites(raw, isAdmin, realAdmin = false, isPremium = false) {
     if (!line || line.startsWith('//')) return null;
     if (line.startsWith('admin iframe simulate/')) return realAdmin ? line.slice('admin '.length) : null;
     if (line.startsWith('admin ')) return isAdmin ? line.slice('admin '.length) : null;
-    if (!isPremium && (line.startsWith('url /ultra/') || line.startsWith('url /trad/'))) return null;
+    if (!isPremium && (line.startsWith('url /ultra/') || line.startsWith('url /trad/') || line.includes('/blooket-bot/'))) return null;
     return line;
   }).filter(l => l !== null).join('\n');
 }
@@ -7000,6 +7109,211 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
     }
     const success = server.upgrade(req, { data: { isSSH: true, email: myEmail } });
     if (success) return;
+  }
+
+  // Handle Blooket Bot Control WebSocket (Premium Only)
+  if (path === "/api/blooket-bot/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const email = emailFromSid(sid);
+    if (!email) {
+      return jsonResp(401, { success: false, error: 'Authentication required' });
+    }
+    if (!isPremiumEmail(email)) {
+      return jsonResp(403, { success: false, error: 'Premium required to use Blooket Bot' });
+    }
+
+    const pin = url.searchParams.get("pin") || "7174055";
+    const activeLockAdmin = blooketPinLocks.get(pin);
+    if (activeLockAdmin && normalizeEmail(activeLockAdmin) !== normalizeEmail(email)) {
+      return jsonResp(403, { success: false, error: 'This game PIN has been exclusively locked by an admin.' });
+    }
+
+    const name = url.searchParams.get("name") || "AutomatedBot";
+    const auto = url.searchParams.get("auto") || "none";
+    const headless = url.searchParams.get("headless") !== "false";
+
+    console.log(`[blooket-bot-ws] Upgrading client connection for ${email} (PIN: ${pin})`);
+    
+    // Stop any existing session first
+    const existing = blooketActive.get(email);
+    if (existing) {
+      if (existing.msWs && existing.msWs.readyState === 1) {
+        try { existing.msWs.close(); } catch {}
+      }
+      blooketActive.delete(email);
+    }
+    const qIdx = blooketQueue.findIndex(q => q.email === email);
+    if (qIdx !== -1) {
+      blooketQueue.splice(qIdx, 1);
+    }
+
+    const success = server.upgrade(req, {
+      data: {
+        isBlooketBot: true,
+        email,
+        params: { pin, name, auto, headless }
+      }
+    });
+
+    if (success) return;
+  }
+
+  // Handle Blooket Bot HTTP Endpoints (Premium Only)
+  if (path === '/api/blooket-bot/status' && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { success: false, error: 'Auth required' });
+    
+    const isPremium = isPremiumEmail(email);
+    if (!isPremium) {
+      return jsonResp(200, {
+        success: true,
+        isPremium: false,
+        activeCount: blooketActive.size,
+        queueLength: blooketQueue.length
+      });
+    }
+    
+    const running = blooketActive.has(email);
+    const qIdx = blooketQueue.findIndex(q => q.email === email);
+    const position = qIdx !== -1 ? qIdx + 1 : null;
+    
+    return jsonResp(200, {
+      success: true,
+      isPremium: true,
+      running,
+      inQueue: qIdx !== -1,
+      position,
+      queueLength: blooketQueue.length,
+      activeCount: blooketActive.size,
+      isAdmin: isAdminEmail(email),
+      isMod: isModeratorEmail(email),
+      locks: Object.fromEntries(blooketPinLocks)
+    });
+  }
+
+  if (path === '/api/blooket-bot/stop' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { success: false, error: 'Auth required' });
+    
+    let stopped = false;
+    const active = blooketActive.get(email);
+    if (active) {
+      if (active.msWs && active.msWs.readyState === 1) {
+        try { active.msWs.close(); } catch {}
+      }
+      blooketActive.delete(email);
+      stopped = true;
+    }
+    
+    const qIdx = blooketQueue.findIndex(q => q.email === email);
+    if (qIdx !== -1) {
+      blooketQueue.splice(qIdx, 1);
+      stopped = true;
+    }
+    
+    if (stopped) {
+      processBlooketQueue();
+      return jsonResp(200, { success: true, message: 'Bot stopped successfully.' });
+    }
+    return jsonResp(200, { success: true, message: 'No active bot found.' });
+  }
+
+  if (path === '/api/blooket-bot/lock' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { success: false, error: 'Auth required' });
+    if (!isAdminEmail(email)) return jsonResp(403, { success: false, error: 'Admin access required' });
+    
+    const body = await req.json();
+    const pin = String(body.pin || '').trim();
+    const lock = !!body.lock;
+    
+    if (!pin) return jsonResp(400, { success: false, error: 'Invalid PIN' });
+    
+    if (lock) {
+      blooketPinLocks.set(pin, email);
+      console.log(`[blooket-bot] Admin ${email} locked PIN ${pin} exclusively`);
+      
+      // Kick other users' active bots for this PIN
+      for (const [activeEmail, session] of blooketActive.entries()) {
+        if (session.params.pin === pin && normalizeEmail(activeEmail) !== normalizeEmail(email)) {
+          console.log(`[blooket-bot] Admin locked PIN ${pin}, kicking active bot for ${activeEmail}`);
+          session.ws.send(JSON.stringify({ type: 'error', message: 'Kicked: This game PIN has been exclusively locked by an admin.' }));
+          if (session.msWs && session.msWs.readyState === 1) {
+            try { session.msWs.close(); } catch {}
+          }
+          blooketActive.delete(activeEmail);
+        }
+      }
+      
+      // Kick other users' queued bots for this PIN
+      for (let i = blooketQueue.length - 1; i >= 0; i--) {
+        const q = blooketQueue[i];
+        if (q.params.pin === pin && normalizeEmail(q.email) !== normalizeEmail(email)) {
+          console.log(`[blooket-bot] Admin locked PIN ${pin}, removing queued request for ${q.email}`);
+          q.ws.send(JSON.stringify({ type: 'error', message: 'This game PIN has been exclusively locked by an admin.' }));
+          try { q.ws.close(); } catch {}
+          blooketQueue.splice(i, 1);
+        }
+      }
+      
+      processBlooketQueue();
+    } else {
+      blooketPinLocks.delete(pin);
+      console.log(`[blooket-bot] Admin ${email} unlocked PIN ${pin}`);
+    }
+    
+    return jsonResp(200, { success: true, message: lock ? `PIN ${pin} locked successfully.` : `PIN ${pin} unlocked successfully.` });
+  }
+
+  // Submit a Blooket Bot failure report (including console logs and email)
+  if (path === '/api/blooket-bot/report-failure' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { success: false, error: 'Auth required' });
+
+    const body = await req.json();
+    const pin = String(body.pin || '').trim();
+    const nickname = String(body.nickname || '').trim();
+    const consoleLog = String(body.consoleLog || '').trim();
+
+    if (!consoleLog) {
+      return jsonResp(400, { success: false, error: 'Console log is required' });
+    }
+
+    const reports = loadJson(BLOOKET_BOT_FAILURES_FILE, []);
+    reports.push({
+      email,
+      pin,
+      nickname,
+      consoleLog,
+      ts: Date.now() / 1000
+    });
+    // Keep only the last 200 reports to prevent file bloat
+    if (reports.length > 200) {
+      reports.shift();
+    }
+    saveJson(BLOOKET_BOT_FAILURES_FILE, reports);
+    console.log(`[blooket-bot] Failure report submitted by ${email} for PIN ${pin}`);
+    return jsonResp(200, { success: true, message: 'Failure report submitted successfully.' });
+  }
+
+  // Retrieve Blooket Bot failure reports (Admin and Moderator access)
+  if (path === '/api/blooket-bot/failure-reports' && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!isAnyAdminId(sid)) {
+      return jsonResp(403, { success: false, error: 'Forbidden' });
+    }
+    const reports = loadJson(BLOOKET_BOT_FAILURES_FILE, []);
+    return jsonResp(200, { success: true, reports });
   }
 
   // ── Admin Panel Protection ──────────────────────────────────────────────────
@@ -15803,6 +16117,8 @@ function loadAllGamesList() {
       return Response.redirect('/enroll/', 302);
     }
 
+
+
     return serveStatic(path);
   }
 
@@ -15846,6 +16162,15 @@ Bun.serve({
   websocket: {
     async open(ws) {
       allSockets.add(ws);
+      if (ws.data && ws.data.isBlooketBot) {
+        console.log(`[blooket-bot-ws] Client socket opened for ${ws.data.email}`);
+        blooketQueue.push({
+          email: ws.data.email,
+          ws,
+          params: ws.data.params
+        });
+        processBlooketQueue();
+      }
       if (ws.data && ws.data.proxyTo) {
         const emailParam = encodeURIComponent(ws.data.email || 'unknown');
         const upstreamUrl = `ws://127.0.0.1:${ws.data.proxyTo}${ws.data.proxyPath}?email=${emailParam}`;
@@ -15864,6 +16189,18 @@ Bun.serve({
       }
     },
     async message(ws, msg) {
+      if (ws.data && ws.data.isBlooketBot) {
+        try {
+          const payload = JSON.parse(msg);
+          if (payload.type === 'input') {
+            if (ws.msWs && ws.msWs.readyState === 1) {
+              ws.msWs.send(JSON.stringify({ type: 'input', text: payload.text }));
+            }
+          }
+        } catch (e) {
+          console.error('[blooket-bot-ws] failed to route client message:', e);
+        }
+      }
       if (ws.data && ws.data.proxyTo) {
         if (ws.data.upstream && ws.data.upstream.readyState === 1) {
           ws.data.upstream.send(msg);
@@ -15968,6 +16305,18 @@ Bun.serve({
     },
     async close(ws) {
       allSockets.delete(ws);
+      if (ws.data && ws.data.isBlooketBot) {
+        console.log(`[blooket-bot-ws] Client socket closed for ${ws.data.email}`);
+        const qIdx = blooketQueue.findIndex(q => q.email === ws.data.email);
+        if (qIdx !== -1) {
+          blooketQueue.splice(qIdx, 1);
+          processBlooketQueue();
+        }
+        const active = blooketActive.get(ws.data.email);
+        if (active && active.clientWs === ws) {
+          active.clientWs = null;
+        }
+      }
       if (ws.data && ws.data.upstream) {
         ws.data.upstream.close();
       }

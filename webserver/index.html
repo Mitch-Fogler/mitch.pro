@@ -269,6 +269,7 @@ function parseSites(text) {
 
   // ── Popular & Frequent links ──
   var popularHrefs = [
+    '/blooket-bot/', '/blooket-bot',
     '/preferences/', '/preferences',
     '/inventory/', '/inventory',
     '/blog/', '/blog',
@@ -348,6 +349,84 @@ function parseSites(text) {
     container.appendChild(catDiv);
   }
   filterHomeLinks();
+  window.cachedEntries = entries;
+  updateRecommendation(entries);
+}
+
+function updateRecommendation(entries) {
+  var visits = {};
+  try { visits = JSON.parse(localStorage.getItem('_prefVisits') || '{}'); } catch(e) {}
+  
+  var gameEntries = entries.filter(function(e) {
+    var l = e.label.toLowerCase();
+    var h = e.href.toLowerCase();
+    return e.category === 'MitchCoin Games' || e.category === 'Entertainment' || h.includes('/games/') || l.includes('game');
+  });
+
+  if (gameEntries.length === 0) return;
+
+  var mitchcoinPlaytime = (_userStats.playtime && _userStats.playtime['MitchCoin Games']) || 0;
+  var entertainmentPlaytime = (_userStats.playtime && _userStats.playtime['Entertainment']) || 0;
+
+  var gameScores = gameEntries.map(function(e) {
+    var href = e.href;
+    var normHref = href.endsWith('/') ? href : href + '/';
+    var normHref2 = href.endsWith('/') ? href.slice(0, -1) : href;
+    var count = visits[normHref] || visits[normHref2] || visits[href] || 0;
+    
+    var catPlaytime = 0;
+    if (e.category === 'MitchCoin Games') catPlaytime = mitchcoinPlaytime;
+    if (e.category === 'Entertainment') catPlaytime = entertainmentPlaytime;
+
+    var playtimeMinutes = Math.floor(catPlaytime / 60);
+    var score = (count * 50) + playtimeMinutes;
+    return { entry: e, count: count, score: score };
+  });
+
+  gameScores.sort(function(a, b) { return b.score - a.score; });
+
+  var recommended = null;
+  var recommendationReason = '';
+
+  if (gameScores[0].score > 0) {
+    var topGame = gameScores[0].entry;
+    var preferredCategory = topGame.category;
+    var categoryRecommendations = gameScores.filter(function(g) {
+      return g.entry.category === preferredCategory && g.entry.href !== topGame.href && g.count < 3;
+    });
+
+    if (categoryRecommendations.length > 0) {
+      recommended = categoryRecommendations[0].entry;
+      recommendationReason = 'Since you like ' + preferredCategory + ', try:';
+    } else {
+      var otherRecommendations = gameScores.filter(function(g) {
+        return g.entry.href !== topGame.href && g.count < 3;
+      });
+      if (otherRecommendations.length > 0) {
+        recommended = otherRecommendations[0].entry;
+        recommendationReason = 'Suggested new game to try:';
+      } else {
+        recommended = topGame;
+        recommendationReason = 'Keep playing your favorite:';
+      }
+    }
+  } else {
+    var defaultGame = gameEntries.find(function(e) { return e.href.includes('jeopardy'); }) || gameEntries[0];
+    recommended = defaultGame;
+    recommendationReason = 'Get started with a top game:';
+  }
+
+  if (recommended) {
+    var recNameEl = document.getElementById('recommended-game-name');
+    var recLinkEl = document.getElementById('recommended-game-link');
+    var recReasonEl = document.getElementById('recommended-game-reason');
+    if (recNameEl && recLinkEl && recReasonEl) {
+      recReasonEl.textContent = recommendationReason;
+      recNameEl.textContent = recommended.label;
+      recLinkEl.href = recommended.href;
+      recLinkEl.setAttribute('onclick', "openHomeHref(event, '" + recommended.href + "');");
+    }
+  }
 }
 
 function setupHomeSearch() {
@@ -646,6 +725,10 @@ function applyHomepagePrefs() {
       if (!r.ok) return;
       const d = await r.json();
       _userStats = d.stats || {};
+      
+      if (window.cachedEntries) {
+        updateRecommendation(window.cachedEntries);
+      }
       
       const nudge = document.getElementById('achievement-nudge');
       if (nudge) {
@@ -3181,6 +3264,7 @@ if (document.readyState === 'loading') {
       background: rgba(10, 8, 24, 0.9) !important;
       border-color: rgba(255, 255, 255, 0.15) !important;
       cursor: default;
+      overflow-y: auto !important;
     }
     #member-side-rail:hover .side-section {
       opacity: 1;
@@ -3261,7 +3345,8 @@ if (document.readyState === 'loading') {
   }
 
   #member-side-rail .side-list {
-    max-height: clamp(54px, 13vh, 138px) !important;
+    max-height: none !important;
+    overflow: visible !important;
     align-content: flex-start;
   }
 
@@ -3868,6 +3953,14 @@ if (document.readyState === 'loading') {
           </span>
           <span class="mega-game-arrow">→</span>
         </a>
+        
+        <div id="game-recommendation" style="margin-top: 14px; padding: 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <span id="recommended-game-reason" style="color: var(--ac); font-weight: bold; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em;">Recommended for you</span>
+            <span id="recommended-game-name" style="font-weight: 600; color: #fff; font-size: 0.95rem;">Jeopardy Battle</span>
+          </div>
+          <a id="recommended-game-link" href="/games/jeopardy-battle/" class="btn" style="padding: 6px 12px; font-size: 0.8rem; background: var(--ac); color: #060608; text-decoration: none; border-radius: 6px; font-weight: bold;">Play Now</a>
+        </div>
       </div>
     </div>
 

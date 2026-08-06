@@ -31,3 +31,20 @@ services:
       - ./tools:/app/tools
       - ./logs:/app/logs
     command: python3 /app/tools/ipserver.py
+
+  # Blooket Bot Headless Browser Automation Service
+  blooket-bot:
+    build:
+      context: ./blooket-bot
+      dockerfile: Dockerfile
+    container_name: mitch-blooket-bot-dev
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./blooket-bot/join_blooket.py:/app/join_blooket.py
+      - ./blooket-bot/cheats:/app/cheats
+      - ./blooket-bot/bookmarks_7_26_26.html:/app/bookmarks_7_26_26.html
+      - ./blooket-bot/server.js:/app/server.js
+      - ./blooket-bot/cheat-blooket-gui.bookmarklet.js:/app/cheat-blooket-gui.bookmarklet.js
+    environment:
+      - PYTHONUNBUFFERED=1

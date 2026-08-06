@@ -49,6 +49,7 @@ services:
       - SECRET_KEY
       - GOOGLE_ANALYTICS_ID
       - RECAPTCHA_SITE_KEY
+      - BLOOKET_BOT_HOST=blooket-bot
 
   # Production Slot B: Green Webserver
   webserver-green:
@@ -85,6 +86,7 @@ services:
       - SECRET_KEY
       - GOOGLE_ANALYTICS_ID
       - RECAPTCHA_SITE_KEY
+      - BLOOKET_BOT_HOST=blooket-bot
 
   # Node.js + Xvfb Stream Proxy (Port 8081)
   proxy:
@@ -110,3 +112,21 @@ services:
       - /home/mitch/server/fullchain.pem:/root/tailscale/fullchain.pem:ro
       - /home/mitch/server/privkey.pem:/root/tailscale/privkey.pem:ro
     command: python3 /app/tools/ipserver.py
+
+  # Blooket Bot Headless Browser Automation Service
+  blooket-bot:
+    build:
+      context: ./blooket-bot
+      dockerfile: Dockerfile
+    container_name: mitch-blooket-bot
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - ./blooket-bot/join_blooket.py:/app/join_blooket.py
+      - ./blooket-bot/cheats:/app/cheats
+      - ./blooket-bot/bookmarks_7_26_26.html:/app/bookmarks_7_26_26.html
+      - ./blooket-bot/server.js:/app/server.js
+      - ./blooket-bot/cheat-blooket-gui.bookmarklet.js:/app/cheat-blooket-gui.bookmarklet.js
+    environment:
+      - PYTHONUNBUFFERED=1
