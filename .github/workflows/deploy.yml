@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -19,4 +20,4 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 38222
           script: |
-            sudo /home/mitch/server/bun/tools/deploy.sh
+            sudo /usr/local/bin/deploy.sh

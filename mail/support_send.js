@@ -12,8 +12,32 @@ import {
 
 configureDataStore({ baseDir: path.join(__dirname, '..') });
 
+import dns from 'dns';
+try { if (dns && dns.setDefaultResultOrder) dns.setDefaultResultOrder('ipv4first'); } catch(e) {}
+
 const nodemailer = require('nodemailer');
 const fs = require('fs');
+
+function loadDopplerEnv() {
+  process.env.DOPPLER_ENABLE_DNS_RESOLVER = 'true';
+  if (process.env.SUPPORT_USER && process.env.SUPPORT_PASS) return;
+  const { execSync } = require('child_process');
+  try {
+    const raw = execSync('doppler secrets download --format json', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const secrets = JSON.parse(raw);
+    for (const [k, v] of Object.entries(secrets)) {
+      if (!process.env[k]) process.env[k] = String(v);
+    }
+    return;
+  } catch(e) {}
+  try {
+    const raw = execSync('sudo -n doppler secrets download --format json', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const secrets = JSON.parse(raw);
+    for (const [k, v] of Object.entries(secrets)) {
+      if (!process.env[k]) process.env[k] = String(v);
+    }
+  } catch(e) {}
+}
 
 try {
   fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').split('\n').forEach(line => {
@@ -22,9 +46,12 @@ try {
   });
 } catch(e) {}
 
-const USER = process.env.SUPPORT_USER;
-const PASS = process.env.SUPPORT_PASS;
-const SMTP_HOST = process.env.MAIL_SMTP_HOST || 'mail.mitch.pro';
+loadDopplerEnv();
+
+const USER = (process.env.SUPPORT_USER || '').trim().replace(/^["']|["']$/g, '');
+const PASS = (process.env.SUPPORT_PASS || '').trim().replace(/^["']|["']$/g, '');
+const rawHost = (process.env.MAIL_SMTP_HOST || 'mail.mitch.pro').trim().replace(/^["']|["']$/g, '');
+const SMTP_HOST = rawHost || 'mail.mitch.pro';
 
 let _site = {primary:'https://mitch.pro', alternate:'https://mitch.88chan.me'};
 try { _site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'site.json'), 'utf8')); } catch(e) {}
@@ -32,7 +59,7 @@ const PRIMARY = _site.primary.replace(/\/$/, '');
 const ALT     = _site.alternate.replace(/\/$/, '');
 
 if (!USER || !PASS) {
-  console.error('Set SUPPORT_USER and SUPPORT_PASS in environment/dotenv'); process.exit(1);
+  console.error('Set SUPPORT_USER and SUPPORT_PASS in environment/dotenv/doppler'); process.exit(1);
 }
 
 const rawArgs    = process.argv.slice(2);

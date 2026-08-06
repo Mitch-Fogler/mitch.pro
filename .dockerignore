@@ -21,3 +21,4 @@ docker-compose*.yml
 github_deploy_key*
 .github
 *.tar.gz
+games_external
