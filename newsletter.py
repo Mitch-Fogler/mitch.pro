@@ -10,13 +10,11 @@ Usage:
   ./newsletter.py -u <email>        (unsubscribe email)
   ./newsletter.py -l                (list all recipients)
 """
-import json, os, subprocess, sys, time, threading
+import json, os, sqlite3, subprocess, sys, time, threading
 
 BASE          = os.path.dirname(os.path.abspath(__file__))
 LOGS_DIR      = os.path.join(BASE, 'logs', 'newsletter_logs')
-TOKENS_FILE   = os.path.join(BASE, 'data', 'tokens.json')
-EXTRA_FILE    = os.path.join(BASE, 'data', 'newsletter_extra.json')
-UNSUB_FILE    = os.path.join(BASE, 'data', 'newsletter_unsub.json')
+DB_PATH       = os.path.join(BASE, 'data', 'mitchpro.db')
 SEND_SCRIPT    = os.path.join(BASE, 'mail', 'send_email.js')
 NOREPLY_SCRIPT = os.path.join(BASE, 'mail', 'noreply_send.js')
 
@@ -24,36 +22,119 @@ def _email_script(to):
     domain = to.split('@')[-1].lower() if '@' in to else ''
     return SEND_SCRIPT if domain == 'student.rjuhsd.us' else NOREPLY_SCRIPT
 
+def read_json_doc(rel_path, default=None):
+    if os.path.isfile(DB_PATH):
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=5)
+            cursor = conn.cursor()
+            cursor.execute("SELECT content FROM json_documents WHERE path = ?", (rel_path,))
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return json.loads(row[0])
+        except Exception:
+            pass
+    full_path = os.path.join(BASE, rel_path)
+    if os.path.isfile(full_path):
+        try:
+            with open(full_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return default if default is not None else []
+
+def write_json_doc(rel_path, data):
+    content = json.dumps(data, indent=2)
+    now_ms = int(time.time() * 1000)
+    if os.path.isfile(DB_PATH):
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=5)
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT OR REPLACE INTO json_documents (path, content, updated_at) VALUES (?, ?, ?)",
+                (rel_path, content, now_ms)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"Warning: failed to write {rel_path} to DB: {e}", file=sys.stderr)
+    full_path = os.path.join(BASE, rel_path)
+    try:
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with open(full_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+    except Exception:
+        pass
+
+def normalize_email(email):
+    if not email or not isinstance(email, str) or '@' not in email:
+        return (email or '').strip().lower()
+    local, domain = email.strip().lower().split('@', 1)
+    norm_local = local.replace('.', '')
+    return f"{norm_local}@{domain}"
+
 def load_extra():
-    try: return json.load(open(EXTRA_FILE))
-    except: return []
+    res = read_json_doc('data/newsletter_extra.json', [])
+    return res if isinstance(res, list) else []
 
 def save_extra(lst):
-    with open(EXTRA_FILE, 'w') as f: json.dump(sorted(set(lst)), f, indent=2)
+    write_json_doc('data/newsletter_extra.json', sorted(set(lst)))
 
 def load_unsub():
-    try: return {e.lower() for e in json.load(open(UNSUB_FILE))}
-    except: return set()
+    res = read_json_doc('data/newsletter_unsub.json', [])
+    unsub_set = set()
+    if isinstance(res, list):
+        for e in res:
+            if isinstance(e, str) and e.strip():
+                unsub_set.add(normalize_email(e))
+    return unsub_set
 
 def save_unsub(s):
-    with open(UNSUB_FILE, 'w') as f: json.dump(sorted(s), f, indent=2)
+    write_json_doc('data/newsletter_unsub.json', sorted(set(s)))
 
 def get_all_emails():
-    unsub = load_unsub()
-    emails = {e for e in load_extra() if e.lower() not in unsub}
-    try:
-        tokens = json.load(open(TOKENS_FILE))
+    unsub_norm = load_unsub()
+    chosen = {}
+
+    def candidate(email):
+        if not email or not isinstance(email, str):
+            return
+        e = email.strip()
+        if not e or '@' not in e:
+            return
+        norm = normalize_email(e)
+        if norm in unsub_norm:
+            return
+
+        if norm not in chosen:
+            chosen[norm] = e
+        else:
+            curr_local = chosen[norm].split('@')[0]
+            new_local = e.split('@')[0]
+            if '.' not in curr_local and '.' in new_local:
+                chosen[norm] = e
+
+    for e in load_extra():
+        candidate(e)
+
+    tokens = read_json_doc('data/tokens.json', {})
+    if isinstance(tokens, dict):
         for data in tokens.values():
-            email = data.get('email', '').strip()
-            if email and email.lower() not in unsub:
-                emails.add(email)
-    except Exception as e:
-        print(f'Warning: could not read tokens.json: {e}', file=sys.stderr)
-    # Deduplicate case-insensitively, keeping the first seen form
-    seen = {}
-    for e in sorted(emails):
-        seen.setdefault(e.lower(), e)
-    return sorted(seen.values())
+            if isinstance(data, dict):
+                candidate(data.get('email', ''))
+
+    if os.path.isfile(DB_PATH):
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=5)
+            cursor = conn.cursor()
+            cursor.execute("SELECT email FROM users WHERE email IS NOT NULL AND email != ''")
+            for row in cursor.fetchall():
+                candidate(row[0])
+            conn.close()
+        except Exception as e:
+            print(f'Warning: could not read users from DB: {e}', file=sys.stderr)
+
+    return sorted(chosen.values(), key=lambda s: s.lower())
 
 UNSUB_FOOTER = ''  # footer is now appended by the send scripts
 
@@ -67,7 +148,7 @@ def has_profanity(email):
 
 def load_doppler_env():
     os.environ['DOPPLER_ENABLE_DNS_RESOLVER'] = 'true'
-    if 'NOREPLY_USER' in os.environ or 'SUPPORT_USER' in os.environ:
+    if 'GMAIL_USER' in os.environ or 'NOREPLY_USER' in os.environ or 'SUPPORT_USER' in os.environ:
         return
     try:
         res = subprocess.run(['doppler', 'secrets', 'download', '--format', 'json'], capture_output=True, text=True, timeout=5)
@@ -80,7 +161,7 @@ def load_doppler_env():
     except Exception:
         pass
     try:
-        res = subprocess.run(['sudo', '-n', 'doppler', 'secrets', 'download', '--format', 'json'], capture_output=True, text=True, timeout=5)
+        res = subprocess.run(['sudo', 'doppler', 'secrets', 'download', '--format', 'json'], capture_output=True, text=True, timeout=10)
         if res.returncode == 0 and res.stdout:
             secrets = json.loads(res.stdout)
             for k, v in secrets.items():

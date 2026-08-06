@@ -16,6 +16,37 @@ configureDataStore({ baseDir: path.join(__dirname, '..') });
 const nodemailer = require('nodemailer');
 const fs = require('fs');
 
+function loadDopplerEnv() {
+  process.env.DOPPLER_ENABLE_DNS_RESOLVER = 'true';
+  if (process.env.GMAIL_USER && process.env.GMAIL_PASS) return;
+  const { execSync } = require('child_process');
+  try {
+    const raw = execSync('doppler secrets download --format json', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const secrets = JSON.parse(raw);
+    for (const [k, v] of Object.entries(secrets)) {
+      if (!process.env[k]) process.env[k] = String(v);
+    }
+    return;
+  } catch(e) {}
+  try {
+    const raw = execSync('sudo -n doppler secrets download --format json', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    const secrets = JSON.parse(raw);
+    for (const [k, v] of Object.entries(secrets)) {
+      if (!process.env[k]) process.env[k] = String(v);
+    }
+    return;
+  } catch(e) {}
+  if (process.stdout.isTTY) {
+    try {
+      const raw = execSync('sudo doppler secrets download --format json', { encoding: 'utf8', stdio: ['inherit', 'pipe', 'inherit'] });
+      const secrets = JSON.parse(raw);
+      for (const [k, v] of Object.entries(secrets)) {
+        if (!process.env[k]) process.env[k] = String(v);
+      }
+    } catch(e) {}
+  }
+}
+
 try {
   const envPath = path.join(__dirname, '..', '.env');
   fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
@@ -23,6 +54,8 @@ try {
     if (m) process.env[m[1]] = m[2];
   });
 } catch(e) {}
+
+loadDopplerEnv();
 
 let _site = {primary:'https://mitch.pro', alternate:'https://mitchdog.com'};
 try { _site = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'data', 'site.json'), 'utf8')); } catch(e) {}
@@ -45,13 +78,16 @@ if (!to || !subject) {
   process.exit(1);
 }
 
-const GMAIL_USER = useAlt ? process.env.GMAIL_USER_ALT : process.env.GMAIL_USER;
-const GMAIL_PASS = useAlt ? process.env.GMAIL_PASS_ALT : process.env.GMAIL_PASS;
-const GMAIL_NAME = useAlt ? GMAIL_USER : "mitch.pro"
+const rawGmailUser = useAlt ? process.env.GMAIL_USER_ALT : process.env.GMAIL_USER;
+const rawGmailPass = useAlt ? process.env.GMAIL_PASS_ALT : process.env.GMAIL_PASS;
+
+const GMAIL_USER = (rawGmailUser || '').trim().replace(/^["']|["']$/g, '');
+const GMAIL_PASS = (rawGmailPass || '').trim().replace(/^["']|["']$/g, '');
+const GMAIL_NAME = useAlt ? GMAIL_USER : "mitch.pro";
 
 if (!GMAIL_USER || !GMAIL_PASS) {
   const suffix = useAlt ? '_ALT' : '';
-  console.error(`Set GMAIL_USER${suffix} and GMAIL_PASS${suffix} env vars`);
+  console.error(`Set GMAIL_USER${suffix} and GMAIL_PASS${suffix} env vars in Doppler/.env`);
   process.exit(1);
 }
 

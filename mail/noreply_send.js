@@ -38,7 +38,17 @@ function loadDopplerEnv() {
     for (const [k, v] of Object.entries(secrets)) {
       if (!process.env[k]) process.env[k] = String(v);
     }
+    return;
   } catch(e) {}
+  if (process.stdout.isTTY) {
+    try {
+      const raw = execSync('sudo doppler secrets download --format json', { encoding: 'utf8', stdio: ['inherit', 'pipe', 'inherit'] });
+      const secrets = JSON.parse(raw);
+      for (const [k, v] of Object.entries(secrets)) {
+        if (!process.env[k]) process.env[k] = String(v);
+      }
+    } catch(e) {}
+  }
 }
 
 try {
