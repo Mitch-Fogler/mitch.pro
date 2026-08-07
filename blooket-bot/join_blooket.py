@@ -257,21 +257,6 @@ def parse_bookmarks_file(filepath):
                     bookmarklets[category] = {}
                 bookmarklets[category][name] = href
 
-    gui_file = "cheat-blooket-gui.bookmarklet.js"
-    if os.path.exists(gui_file):
-        try:
-            with open(gui_file, "r", encoding="utf-8") as f:
-                gui_js = f.read().strip()
-                if gui_js:
-                    if not gui_js.startswith("javascript:"):
-                        gui_js = "javascript:" + gui_js
-                    if "global" not in bookmarklets:
-                        bookmarklets["global"] = {}
-                    bookmarklets["global"]["00. Blooket Utility GUI (New)"] = gui_js
-                    print("[*] Successfully integrated Blooket Utility GUI (New) bookmarklet from file.")
-        except Exception as e:
-            print(f"[!] Warning: Failed to load GUI bookmarklet file: {e}")
-
     return bookmarklets
 
 def get_flaresolverr_cookies(url, solver_url="http://localhost:8191/v1"):
@@ -869,6 +854,28 @@ async def main():
     try:
         bookmarks_file = find_bookmarks_file()
         bookmarklets = parse_bookmarks_file(bookmarks_file) if bookmarks_file else {}
+
+        # Always try to load the standalone Blooket Utility GUI (New) bookmarklet
+        gui_file = "cheat-blooket-gui.bookmarklet.js"
+        gui_file_path = gui_file
+        if not os.path.exists(gui_file_path):
+            gui_file_path = os.path.join(os.path.dirname(__file__), gui_file)
+        
+        if os.path.exists(gui_file_path):
+            try:
+                with open(gui_file_path, "r", encoding="utf-8") as f:
+                    gui_js = f.read().strip()
+                    if gui_js:
+                        if not gui_js.startswith("javascript:"):
+                            gui_js = "javascript:" + gui_js
+                        if "global" not in bookmarklets:
+                            bookmarklets["global"] = {}
+                        bookmarklets["global"]["00. Blooket Utility GUI (New)"] = gui_js
+                        print(f"[*] Successfully integrated Blooket Utility GUI (New) bookmarklet from {gui_file_path}")
+            except Exception as e:
+                print(f"[!] Warning: Failed to load GUI bookmarklet file: {e}")
+        else:
+            print(f"[!] Warning: GUI bookmarklet file not found at {gui_file_path}")
 
         # Set auto_mode in input_router
         input_router.auto_mode = args.auto

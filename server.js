@@ -1007,7 +1007,8 @@ function processBlooketQueue() {
 
 function startBlooketBotSession(session) {
   const { email, ws, params } = session;
-  const msUrl = process.env.BLOOKET_BOT_URL || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'ws://blooket-bot:8082' : 'ws://127.0.0.1:8082');
+  const botHost = process.env.BLOOKET_BOT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'blooket-bot' : '127.0.0.1');
+  const msUrl = process.env.BLOOKET_BOT_URL || `ws://${botHost}:8082`;
   
   console.log(`[blooket-bot] Connecting to microservice for ${email} at ${msUrl}`);
   

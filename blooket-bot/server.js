@@ -27,6 +27,9 @@ wss.on('connection', (ws) => {
         if (headless) {
           args.push('--headless');
         }
+        if (process.env.FLARESOLVERR_URL) {
+          args.push('--solver-url', process.env.FLARESOLVERR_URL);
+        }
         
         console.log(`[microservice] Spawning: python3 ${args.join(' ')}`);
         child = spawn('python3', args, {

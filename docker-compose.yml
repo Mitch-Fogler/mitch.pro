@@ -130,3 +130,14 @@ services:
       - ./blooket-bot/cheat-blooket-gui.bookmarklet.js:/app/cheat-blooket-gui.bookmarklet.js
     environment:
       - PYTHONUNBUFFERED=1
+      - FLARESOLVERR_URL=http://flaresolverr:8191/v1
+
+  # FlareSolverr Service for Bypassing Cloudflare
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: mitch-flaresolverr
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8191:8191"
+    environment:
+      - LOG_LEVEL=info
