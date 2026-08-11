@@ -13,11 +13,12 @@ import sys
 
 class InputRouter:
     def __init__(self):
-        self.dialog_waiter = None  # Future for dialog input
-        self.menu_waiter = None    # Future for menu input
+        self.menu_waiter = None
+        self.dialog_waiter = None
         self.other_players = []
         self.auto_mode = None
         self.auto_val = "1000"
+        self.page = None
         
     async def start(self):
         loop = asyncio.get_running_loop()
@@ -29,11 +30,155 @@ class InputRouter:
                 continue
             line = line.strip()
             
+            # Check for JSON commands
+            if line.startswith("{"):
+                try:
+                    import json
+                    data = json.loads(line)
+                    if data.get("type") == "gui-cheat":
+                        asyncio.create_task(self.handle_gui_cheat(data))
+                        continue
+                    elif data.get("type") == "eval-js":
+                        asyncio.create_task(self.handle_eval_js(data))
+                        continue
+                except Exception:
+                    pass
+            
             # Route the input prioritizing browser dialogs
             if self.dialog_waiter and not self.dialog_waiter.done():
                 self.dialog_waiter.set_result(line)
             elif self.menu_waiter and not self.menu_waiter.done():
                 self.menu_waiter.set_result(line)
+
+    async def handle_gui_cheat(self, data):
+        page = getattr(self, "page", None)
+        if not page:
+            print("[!] Error: No active browser page registered in InputRouter to run cheat.")
+            return
+            
+        cat = data.get("category")
+        name = data.get("name")
+        val = data.get("value")
+        
+        print(f"\n[*] Web client requested GUI cheat: '{name}' in '{cat}' (value: {val})...")
+        try:
+            import urllib.parse
+            import os
+            
+            # Ensure GUI is injected
+            gui_exists = await page.evaluate("!!document.querySelector('.cheatButton')")
+            if not gui_exists:
+                gui_file = "cheat-blooket-gui.bookmarklet.js"
+                gui_file_path = gui_file
+                if not os.path.exists(gui_file_path):
+                    gui_file_path = os.path.join(os.path.dirname(__file__), gui_file)
+                if os.path.exists(gui_file_path):
+                    with open(gui_file_path, "r", encoding="utf-8") as f:
+                        gui_js = f.read().strip()
+                        if gui_js.startswith("javascript:"):
+                            gui_js = gui_js[11:]
+                        gui_js = urllib.parse.unquote(gui_js)
+                        await page.evaluate(gui_js)
+                        await asyncio.sleep(1)
+            
+            # Trigger
+            res = await page.evaluate("""async ([cat, cheat, val]) => {
+                const catElems = document.querySelectorAll('.cheatButton');
+                const catBtn = Array.from(catElems).find(el => (el.innerText || el.textContent).trim() === cat);
+                if (!catBtn) return { success: false, error: 'Category not found' };
+                catBtn.click();
+                
+                await new Promise(r => setTimeout(r, 200));
+                
+                const cheatElems = document.querySelectorAll('.scriptButton, .bigButton, button, [role="button"]');
+                const btn = Array.from(cheatElems).find(el => {
+                    const txt = (el.innerText || el.textContent).trim();
+                    const cleanName = txt.split('\\n')[0].split('\\r')[0].trim();
+                    return cleanName === cheat;
+                });
+                if (!btn) return { success: false, error: 'Cheat button not found' };
+                
+                if (val !== undefined && val !== null) {
+                    let input = btn.querySelector('input, select');
+                    if (!input && btn.parentElement) {
+                        input = btn.parentElement.querySelector('input, select');
+                    }
+                    if (input) {
+                        input.value = val;
+                        input.dispatchEvent(new Event('input', { bubbles: true }));
+                        input.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+                
+                btn.click();
+                return { success: true };
+            }""", [cat, name, val])
+            
+            if res.get("success"):
+                print(f"[✓] Successfully executed GUI cheat '{name}'.")
+            else:
+                print(f"[!] Failed to execute GUI cheat: {res.get('error')}")
+        except Exception as e:
+            print(f"[!] Error executing GUI cheat: {e}")
+
+    async def handle_eval_js(self, data):
+        page = getattr(self, "page", None)
+        if not page:
+            print("[!] Error: No active browser page registered in InputRouter to run JS.")
+            return
+        code = data.get("code")
+        
+        # Inject global stateNode getter if not present to enable typing `stateNode` directly
+        wrapper = """(() => {
+            if (!window.stateNode) {
+                Object.defineProperty(window, 'stateNode', {
+                    get: function() {
+                        const findReactNode = () => {
+                            const elements = [
+                                document.querySelector("#app"),
+                                document.querySelector("#root"),
+                                document.body,
+                                ...Array.from(document.querySelectorAll("div"))
+                            ];
+                            for (const el of elements) {
+                                if (!el) continue;
+                                const key = Object.keys(el).find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
+                                if (!key) continue;
+                                let node = el[key];
+                                while (node) {
+                                    const props = node.memoizedProps || node.pendingProps;
+                                    if (props?.liveGameController) {
+                                        if (node.stateNode && !(node.stateNode instanceof HTMLElement)) {
+                                            return node.stateNode;
+                                        }
+                                        return {
+                                            props: props,
+                                            state: node.memoizedState || {},
+                                            setState: function(newState) {
+                                                Object.assign(this.state, newState);
+                                            }
+                                        };
+                                    }
+                                    node = node.return;
+                                }
+                            }
+                            return null;
+                        };
+                        return findReactNode();
+                    },
+                    configurable: true
+                });
+            }
+        })();
+        """
+        
+        full_code = wrapper + "\n" + code
+        print(f"\n[*] Admin requested custom JS evaluation...")
+        try:
+            res = await page.evaluate(full_code)
+            print(f"[✓] JS evaluated successfully. Result: {res}")
+        except Exception as e:
+            print(f"[!] JS evaluation error: {e}")
 
     async def get_menu_input(self, prompt_text):
         print(prompt_text, end="", flush=True)
@@ -94,6 +239,10 @@ def preprocess_cheat_js(js_code):
     pattern = r'Object\.values\(\s*function\s+e\s*\(\s*t\s*=\s*document\.querySelector\(\s*["\']body\s*>\s*div["\']\s*\)\s*\)\s*\{\s*return\s+Object\.values\(\s*t\s*\)\[1\]\?\.children\?\.\[0\]\?\._owner\.stateNode\?t:e\(\s*t\.querySelector\(\s*["\']:scope\s*>\s*div["\']\s*\)\s*\)\s*\}\s*\(\s*\)\s*\)\[1\]\.children\[0\]\._owner'
     js_code = re.sub(pattern, f"({{ stateNode: {robust_lookup} }})", js_code)
 
+    # Replace the formatted findReactNode block if present in clean files
+    formatted_pattern = r'\(\(\s*\)\s*=>\s*\{\s*const\s+findReactNode\s*=\s*\(\s*\)\s*=>\s*\{.*?return\s+findReactNode\s*\(\s*\)\s*;?\s*\}\s*\)\(\)'
+    js_code = re.sub(formatted_pattern, robust_lookup, js_code, flags=re.DOTALL)
+
     # 1. Bypass contentWindow.bind overrides
     js_code = re.sub(
         r'[a-zA-Z0-9_]+\.contentWindow\.(prompt|alert|confirm)\.bind\(\s*window\s*\)',
@@ -112,6 +261,7 @@ def preprocess_cheat_js(js_code):
 
 def resolve_cheat_js(category, name, fallback_js_code):
     import os
+    import re
     if category:
         clean_filename = "".join([c for c in name if c.isalpha() or c.isdigit() or c in ' _-']).strip() + ".js"
         clean_file = os.path.join("cheats", category.lower(), clean_filename)
@@ -119,7 +269,14 @@ def resolve_cheat_js(category, name, fallback_js_code):
             try:
                 with open(clean_file, "r", encoding="utf-8") as f:
                     print(f"[*] Loaded clean JS cheat from: {clean_file}")
-                    return f.read()
+                    js_code = f.read()
+                    
+                    # Fix split regular expression syntax error caused by code formatting/wrapping
+                    def fix_split_regex(match):
+                        return re.sub(r'\r?\n\s*', ' ', match.group(0))
+                    js_code = re.sub(r'/LastUpdated:[^/]*ErrorMessage:[^/]*/', fix_split_regex, js_code)
+                    
+                    return preprocess_cheat_js(js_code)
             except Exception as e:
                 print(f"[!] Warning: Failed to read clean JS cheat file: {e}")
     
@@ -260,26 +417,35 @@ def parse_bookmarks_file(filepath):
     return bookmarklets
 
 def get_flaresolverr_cookies(url, solver_url="http://localhost:8191/v1"):
+    import time
     print(f"[*] Requesting Cloudflare bypass from FlareSolverr ({solver_url})...")
     payload = {
         "cmd": "request.get",
         "url": url,
-        "maxTimeout": 60000
+        "maxTimeout": 15000  # Set internal browser load timeout to 15 seconds
     }
-    req = urllib.request.Request(
-        solver_url,
-        data=json.dumps(payload).encode('utf-8'),
-        headers={'Content-Type': 'application/json'},
-        method='POST'
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=70) as response:
-            res_data = json.loads(response.read().decode('utf-8'))
-            if res_data.get("status") == "ok":
-                return res_data["solution"]
-            raise Exception(f"FlareSolverr returned status: {res_data.get('status')}. Msg: {res_data.get('message')}")
-    except Exception as e:
-        raise RuntimeError(f"Failed to get cookies from FlareSolverr: {e}")
+    
+    retries = 3
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(
+                solver_url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={'Content-Type': 'application/json'},
+                method='POST'
+            )
+            # Socket timeout set to 20 seconds to abort and retry if hung
+            with urllib.request.urlopen(req, timeout=20) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                if res_data.get("status") == "ok":
+                    return res_data["solution"]
+                raise Exception(f"FlareSolverr returned status: {res_data.get('status')}. Msg: {res_data.get('message')}")
+        except Exception as e:
+            print(f"[!] FlareSolverr attempt {attempt} failed: {e}")
+            if attempt == retries:
+                raise RuntimeError(f"Failed to get cookies from FlareSolverr after {retries} attempts: {e}")
+            print("[*] Retrying FlareSolverr request in 1 second...")
+            time.sleep(1)
 
 async def detect_gamemode_and_started(page):
     url = page.url
@@ -437,6 +603,136 @@ async def handle_browser_dialog(dialog):
             ans = default_val
         await dialog.accept(ans)
 
+async def run_gui_menu_controller(page, js_run):
+    print("\n[*] Initializing Blooket Utility GUI on page...")
+    try:
+        await page.evaluate(js_run)
+        print("[✓] Blooket Utility GUI injected successfully!")
+    except Exception as e:
+        print(f"[!] Warning during injection: {e}")
+        
+    await asyncio.sleep(1) # Wait for DOM rendering
+    
+    while True:
+        print("\n==================================================")
+        print("          BLOOKET UTILITY GUI CONTROLLER          ")
+        print("==================================================")
+        print("  1. List Categories / Menus")
+        print("  2. Open Category & List Cheats")
+        print("  3. Run / Toggle Cheat directly")
+        print("  0. Back to Main Cheat Menu")
+        print("==================================================")
+        
+        choice = await input_router.get_menu_input("Select option: ")
+        choice = choice.strip()
+        if not choice or choice == "0":
+            break
+            
+        if choice == "1":
+            # Query categories
+            cats = await page.evaluate("""() => {
+                const elems = document.querySelectorAll('.cheatButton, .scriptButton, .bigButton, button, [role="button"]');
+                return Array.from(elems)
+                    .filter(el => el.className.includes('cheatButton'))
+                    .map(el => (el.innerText || el.textContent).trim())
+                    .filter(txt => txt && !['Alerts', 'Settings'].includes(txt));
+            }""")
+            print("\nAvailable GUI Categories:")
+            if cats:
+                for idx, cat in enumerate(cats, 1):
+                    print(f"  {idx}. {cat}")
+            else:
+                print("  (No categories found in DOM. Try opening a game room or wait for UI to load.)")
+                
+        elif choice == "2" or choice == "3":
+            # Query categories
+            cats = await page.evaluate("""() => {
+                const elems = document.querySelectorAll('.cheatButton, .scriptButton, .bigButton, button, [role="button"]');
+                return Array.from(elems)
+                    .filter(el => el.className.includes('cheatButton'))
+                    .map(el => (el.innerText || el.textContent).trim())
+                    .filter(txt => txt);
+            }""")
+            
+            if not cats:
+                print("[!] No GUI categories found in DOM.")
+                continue
+                
+            print("\nSelect Category:")
+            for idx, cat in enumerate(cats, 1):
+                print(f"  {idx}. {cat}")
+                
+            cat_choice = await input_router.get_menu_input("Choose category number: ")
+            try:
+                cat_idx = int(cat_choice.strip()) - 1
+                if not (0 <= cat_idx < len(cats)):
+                    print("[!] Invalid category selection.")
+                    continue
+                selected_cat = cats[cat_idx]
+            except ValueError:
+                print("[!] Invalid input.")
+                continue
+                
+            # Click that category
+            success = await page.evaluate("""(catName) => {
+                const elems = document.querySelectorAll('.cheatButton, .scriptButton, .bigButton, button, [role="button"]');
+                const btn = Array.from(elems).find(el => (el.innerText || el.textContent).trim() === catName);
+                if (btn) {
+                    btn.click();
+                    return true;
+                }
+                return false;
+            }""", selected_cat)
+            
+            if not success:
+                print(f"[!] Failed to click category '{selected_cat}'.")
+                continue
+                
+            await asyncio.sleep(0.5) # Wait for page switch
+            
+            # List cheats in this category
+            cheats = await page.evaluate("""() => {
+                const elems = document.querySelectorAll('.scriptButton, .bigButton, button, [role="button"]');
+                return Array.from(elems)
+                    .filter(el => el.className.includes('scriptButton'))
+                    .map(el => (el.innerText || el.textContent).trim())
+                    .filter(txt => txt);
+            }""")
+            
+            print(f"\nCheats inside '{selected_cat}':")
+            if cheats:
+                for idx, ch in enumerate(cheats, 1):
+                    clean_name = ch.split('\n')[0].split('\r')[0].strip()
+                    print(f"  {idx}. {clean_name}")
+            else:
+                print("  (No cheats found in this category.)")
+                continue
+                
+            if choice == "3":
+                cheat_choice = await input_router.get_menu_input("Choose cheat number to execute: ")
+                try:
+                    ch_idx = int(cheat_choice.strip()) - 1
+                    if not (0 <= ch_idx < len(cheats)):
+                        print("[!] Invalid cheat selection.")
+                        continue
+                    selected_cheat = cheats[ch_idx]
+                except ValueError:
+                    print("[!] Invalid input.")
+                    continue
+                    
+                # Click the cheat!
+                print(f"[*] Executing GUI cheat: '{selected_cheat}'...")
+                await page.evaluate("""(cheatName) => {
+                    const elems = document.querySelectorAll('.scriptButton, .bigButton, button, [role="button"]');
+                    const btn = Array.from(elems).find(el => (el.innerText || el.textContent).trim() === cheatName);
+                    if (btn) {
+                        btn.click();
+                        return true;
+                    }
+                    return false;
+                }""", selected_cheat)
+                print(f"[✓] Executed '{selected_cheat}'.")
+
 async def terminal_console(page, bookmarklets):
     current_page = "game_specific"  # Options: "game_specific", "global_page_1", "global_page_2", "global_intervals"
     
@@ -567,11 +863,14 @@ async def terminal_console(page, bookmarklets):
                     
                 js_run = resolve_cheat_js(cat_name, name, js_code)
                 
-                try:
-                    await page.evaluate(js_run)
-                    print(f"[✓] Executed '{name}'.")
-                except Exception as e:
-                    print(f"[!] Error: {e}")
+                if name == "00. Blooket Utility GUI (New)":
+                    await run_gui_menu_controller(page, js_run)
+                else:
+                    try:
+                        await page.evaluate(js_run)
+                        print(f"[✓] Executed '{name}'.")
+                    except Exception as e:
+                        print(f"[!] Error: {e}")
             else:
                 print("[!] Invalid option number.")
                 
@@ -693,6 +992,62 @@ async def auto_actions_loop(page, bookmarklets, auto_mode):
             
         await asyncio.sleep(3)
 
+async def inject_and_report_gui(page):
+    await asyncio.sleep(2)  # Wait for page navigation to settle
+    try:
+        import urllib.parse
+        import os
+        
+        gui_file = "cheat-blooket-gui.bookmarklet.js"
+        gui_file_path = gui_file
+        if not os.path.exists(gui_file_path):
+            gui_file_path = os.path.join(os.path.dirname(__file__), gui_file)
+        if os.path.exists(gui_file_path):
+            with open(gui_file_path, "r", encoding="utf-8") as f:
+                gui_js = f.read().strip()
+                if gui_js.startswith("javascript:"):
+                    gui_js = gui_js[11:]
+                gui_js = urllib.parse.unquote(gui_js)
+                await page.evaluate(gui_js)
+                
+            # Wait up to 10 seconds for GUI elements to appear in the DOM
+            for _ in range(20):
+                exists = await page.evaluate("!!document.querySelector('.cheatButton')")
+                if exists:
+                    break
+                await asyncio.sleep(0.5)
+                
+            scan_result = await page.evaluate("""async () => {
+                const categories = Array.from(document.querySelectorAll('.cheatButton'))
+                    .map(el => (el.innerText || el.textContent).trim())
+                    .filter(txt => txt && !['Alerts', 'Settings'].includes(txt));
+                    
+                const results = [];
+                for (const cat of categories) {
+                    const catBtn = Array.from(document.querySelectorAll('.cheatButton'))
+                        .find(el => (el.innerText || el.textContent).trim() === cat);
+                    if (catBtn) {
+                        catBtn.click();
+                        await new Promise(r => setTimeout(r, 150));
+                        
+                        const scriptBtns = Array.from(document.querySelectorAll('.scriptButton')).map(el => {
+                            const txt = (el.innerText || el.textContent).trim();
+                            const cleanName = txt.split('\\n')[0].split('\\r')[0].trim();
+                            const hasInput = !!el.querySelector('input, select') || 
+                                             (el.parentElement && !!el.parentElement.querySelector('input, select'));
+                            return { name: cleanName, hasInput };
+                        }).filter(s => s.name);
+                        
+                        results.push({ category: cat, cheats: scriptBtns });
+                    }
+                }
+                return results;
+            }""")
+            import json
+            print(f"[GUI_STRUCTURE] {json.dumps(scan_result)}", flush=True)
+    except Exception as e:
+        print(f"[!] Warning: Failed to initialize/scan Blooket Utility GUI: {e}", flush=True)
+
 async def run_single_bot(p, name, args, bookmarklets, is_main=False, on_join_success=None):
     JOIN_URL = f"https://play.blooket.com/play?id={args.pin}"
     try:
@@ -719,6 +1074,7 @@ async def run_single_bot(p, name, args, bookmarklets, is_main=False, on_join_suc
         # Only register manual dialog handler on the main bot, otherwise auto-accept on flood bots
         if is_main:
             page.on("dialog", lambda dialog: asyncio.create_task(handle_browser_dialog(dialog)))
+            input_router.page = page
         else:
             page.on("dialog", lambda dialog: asyncio.create_task(dialog.accept()))
             
@@ -759,6 +1115,9 @@ async def run_single_bot(p, name, args, bookmarklets, is_main=False, on_join_suc
             return True
             
         if is_main:
+            # Inject Blooket Utility GUI and report cheats mapping back to web client
+            asyncio.create_task(inject_and_report_gui(page))
+            
             # Main bot handles console and monitor
             monitor_task = asyncio.create_task(monitor_lobby_state(page))
             auto_task = None

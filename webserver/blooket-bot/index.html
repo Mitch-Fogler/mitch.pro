@@ -263,10 +263,7 @@
             </select>
           </div>
 
-          <div class="form-group" style="flex-direction: row; align-items: center; justify-content: space-between; margin-top: 10px;">
-            <label for="headless" style="cursor: pointer; margin-bottom: 0;">Run Headless (Recommended)</label>
-            <input type="checkbox" id="headless" checked style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--ac);">
-          </div>
+
 
           <div style="margin-top: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
             <button id="start-btn" class="btn" style="flex: 1; min-width: 110px;">Launch Bot</button>
@@ -297,15 +294,37 @@
       <!-- Right side: log console -->
       <div style="display: flex; flex-direction: column;">
         <div class="glass-panel" style="flex: 1; display: flex; flex-direction: column;">
-          <h3 style="font-family: 'Outfit', sans-serif; font-weight: 800; margin-bottom: 12px;">Live Console Output</h3>
-          <div id="console" class="console-screen">Welcome to Blooket Bot Live Console.<br>Configure parameters on the left and click "Launch Bot" to start.</div>
-          
-          <div class="console-input-row">
-            <input type="text" id="console-input" class="console-input" placeholder="Type a CLI option (e.g. 1) and press Enter..." disabled>
-            <button id="send-input-btn" class="btn" disabled>Send</button>
+          <!-- Tabs container -->
+          <div class="tabs-container" style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 10px;">
+            <button id="tab-console-btn" class="btn" style="height: 36px; padding: 0 16px; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); color: #fff; font-weight: bold; font-family: 'Outfit', sans-serif;">Console</button>
+            <button id="tab-dashboard-btn" class="btn" style="height: 36px; padding: 0 16px; background: transparent; border: 1px solid transparent; color: var(--fg-dim); font-family: 'Outfit', sans-serif;">Cheat Control Panel</button>
+            <button id="tab-admin-btn" class="btn" style="height: 36px; padding: 0 16px; background: transparent; border: 1px solid transparent; color: var(--fg-dim); font-family: 'Outfit', sans-serif; display: none;">JS Console</button>
+          </div>
+
+          <!-- Console Content -->
+          <div id="tab-console-content" style="display: flex; flex-direction: column; flex: 1;">
+            <div id="console" class="console-screen">Welcome to Blooket Bot Live Console.<br>Configure parameters on the left and click "Launch Bot" to start.</div>
+            <div class="console-input-row">
+              <input type="text" id="console-input" class="console-input" placeholder="Type a CLI option (e.g. 1) and press Enter..." disabled>
+              <button id="send-input-btn" class="btn" disabled>Send</button>
+            </div>
+          </div>
+
+          <!-- Dashboard Content -->
+          <div id="tab-dashboard-content" style="display: none; flex-direction: column; flex: 1; overflow-y: auto; max-height: 550px; padding-right: 4px; gap: 14px;">
+            <div style="color: var(--fg-dim); font-style: italic; text-align: center; padding: 40px 0;">Cheat Control Panel loading...</div>
+          </div>
+
+          <!-- Admin JS Content -->
+          <div id="tab-admin-content" style="display: none; flex-direction: column; flex: 1; gap: 14px;">
+            <div style="font-family: 'Outfit', sans-serif; font-size: 0.95rem; color: var(--fg-dim); margin-bottom: 2px;">Execute arbitrary JavaScript in the page context of the main Blooket bot.</div>
+            <textarea id="admin-js-input" class="console-input" style="flex: 1; font-family: monospace; font-size: 0.9rem; padding: 12px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; min-height: 180px; resize: none;" placeholder="e.g. alert(document.title); or console.log(window.location.href);"></textarea>
+            <div style="display: flex; gap: 10px; align-items: center; justify-content: flex-end;">
+              <button id="admin-js-run-btn" class="btn" style="background: var(--ac); color: #000; font-weight: bold; padding: 0 24px; height: 38px;">Run Code</button>
+            </div>
           </div>
         </div>
-    </div>
+      </div>
     <!-- Admin / Mod Debug Panel -->
     <div id="admin-debug-panel" class="glass-panel" style="display: none; margin-top: 30px; border-color: rgba(239, 68, 68, 0.25);">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
@@ -321,16 +340,275 @@
   <script>
     let ws = null;
 
+    let currentGuiData = null;
+
+    function sendCheat(category, name, value) {
+      if (!ws || ws.readyState !== 1) {
+        alert('Please launch the bot first to connect and run cheats.');
+        return;
+      }
+      ws.send(JSON.stringify({
+        type: 'gui-cheat',
+        category: category,
+        name: name,
+        value: value
+      }));
+    }
+
+    function renderDynamicCheatDashboard(guiData) {
+      const container = document.getElementById('tab-dashboard-content');
+      container.innerHTML = '';
+      
+      if (!guiData || guiData.length === 0) {
+        container.innerHTML = '<div style="color: var(--fg-dim); font-style: italic; text-align: center; padding: 40px 0;">Cheat Control Panel loading... Waiting for bot to connect to a game room to extract cheats.</div>';
+        return;
+      }
+      
+      guiData.forEach(cat => {
+        const catWrapper = document.createElement('div');
+        catWrapper.className = 'glass-panel';
+        catWrapper.style.marginBottom = '10px';
+        catWrapper.style.padding = '0';
+        catWrapper.style.overflow = 'hidden';
+        catWrapper.style.border = '1px solid rgba(255,255,255,0.08)';
+        catWrapper.style.background = 'rgba(255,255,255,0.02)';
+        catWrapper.style.boxShadow = 'none';
+        
+        // Accordion Header
+        const header = document.createElement('button');
+        header.style.width = '100%';
+        header.style.padding = '14px 18px';
+        header.style.background = 'transparent';
+        header.style.border = 'none';
+        header.style.color = '#fff';
+        header.style.textAlign = 'left';
+        header.style.fontFamily = "'Outfit', sans-serif";
+        header.style.fontSize = '1rem';
+        header.style.fontWeight = '800';
+        header.style.cursor = 'pointer';
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        header.style.transition = 'background 0.2s';
+        
+        header.addEventListener('mouseover', () => {
+          header.style.background = 'rgba(255,255,255,0.03)';
+        });
+        header.addEventListener('mouseout', () => {
+          header.style.background = 'transparent';
+        });
+        
+        const titleText = document.createElement('span');
+        titleText.textContent = cat.category;
+        header.appendChild(titleText);
+        
+        const caret = document.createElement('span');
+        caret.textContent = '►';
+        caret.style.fontSize = '0.8rem';
+        caret.style.color = 'var(--fg-dim)';
+        caret.style.transition = 'transform 0.2s';
+        header.appendChild(caret);
+        
+        catWrapper.appendChild(header);
+        
+        // Accordion Content (initially hidden)
+        const content = document.createElement('div');
+        content.style.display = 'none';
+        content.style.flexDirection = 'column';
+        content.style.gap = '10px';
+        content.style.padding = '16px';
+        content.style.borderTop = '1px solid rgba(255,255,255,0.05)';
+        content.style.background = 'rgba(0, 0, 0, 0.15)';
+        
+        // Toggle Open/Close
+        let isOpen = false;
+        header.addEventListener('click', () => {
+          isOpen = !isOpen;
+          if (isOpen) {
+            content.style.display = 'flex';
+            caret.textContent = '▼';
+            caret.style.color = 'var(--ac)';
+          } else {
+            content.style.display = 'none';
+            caret.textContent = '►';
+            caret.style.color = 'var(--fg-dim)';
+          }
+        });
+        
+        // Populate cheats inside this category
+        if (!cat.cheats || cat.cheats.length === 0) {
+          const empty = document.createElement('div');
+          empty.textContent = '(No cheats available in this category)';
+          empty.style.color = 'var(--fg-dim)';
+          empty.style.fontSize = '0.9rem';
+          empty.style.fontStyle = 'italic';
+          content.appendChild(empty);
+        } else {
+          cat.cheats.forEach(cheat => {
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.flexDirection = 'column';
+            row.style.gap = '6px';
+            row.style.background = 'rgba(255,255,255,0.01)';
+            row.style.padding = '10px';
+            row.style.borderRadius = '6px';
+            row.style.border = '1px solid rgba(255,255,255,0.03)';
+            
+            const rowHeader = document.createElement('div');
+            rowHeader.style.display = 'flex';
+            rowHeader.style.justifyContent = 'space-between';
+            rowHeader.style.alignItems = 'center';
+            
+            const cheatName = document.createElement('span');
+            cheatName.textContent = cheat.name;
+            cheatName.style.fontWeight = '600';
+            cheatName.style.color = '#fff';
+            rowHeader.appendChild(cheatName);
+            
+            const actionArea = document.createElement('div');
+            actionArea.style.display = 'flex';
+            actionArea.style.gap = '8px';
+            actionArea.style.alignItems = 'center';
+            
+            let inputVal = null;
+            if (cheat.hasInput) {
+              const inp = document.createElement('input');
+              inp.type = 'text';
+              inp.placeholder = 'Value';
+              inp.className = 'input-field';
+              inp.style.height = '32px';
+              inp.style.fontSize = '0.85rem';
+              inp.style.padding = '4px 8px';
+              inp.style.width = '120px';
+              actionArea.appendChild(inp);
+              inputVal = () => inp.value.trim();
+            }
+            
+            const btn = document.createElement('button');
+            btn.className = 'btn';
+            btn.style.height = '32px';
+            btn.style.padding = '0 16px';
+            btn.style.fontSize = '0.85rem';
+            btn.textContent = cheat.hasInput ? 'Set & Run' : 'Run Cheat';
+            
+            // Check if this cheat name suggests a Toggle
+            const isToggleName = cheat.name.toLowerCase().includes('toggle') || 
+                                 cheat.name.toLowerCase().includes('auto answer') ||
+                                 cheat.name.toLowerCase().includes('esp') ||
+                                 cheat.name.toLowerCase().includes('highlight') ||
+                                 cheat.name.toLowerCase().includes('always');
+                                 
+            if (isToggleName && !cheat.hasInput) {
+              btn.textContent = 'Enable';
+              btn.style.background = 'rgba(255,255,255,0.05)';
+              btn.style.border = '1px solid var(--border)';
+              btn.style.color = 'var(--fg-dim)';
+              
+              let active = false;
+              btn.addEventListener('click', () => {
+                active = !active;
+                if (active) {
+                  btn.textContent = 'Enabled';
+                  btn.style.background = 'rgba(16, 185, 129, 0.15)';
+                  btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+                  btn.style.color = '#10b981';
+                } else {
+                  btn.textContent = 'Enable';
+                  btn.style.background = 'rgba(255,255,255,0.05)';
+                  btn.style.borderColor = 'var(--border)';
+                  btn.style.color = 'var(--fg-dim)';
+                }
+                sendCheat(cat.category, cheat.name, active);
+              });
+            } else {
+              btn.addEventListener('click', () => {
+                const val = inputVal ? inputVal() : null;
+                sendCheat(cat.category, cheat.name, val);
+              });
+            }
+            
+            actionArea.appendChild(btn);
+            row.appendChild(rowHeader);
+            row.appendChild(actionArea);
+            content.appendChild(row);
+          });
+        }
+        
+        catWrapper.appendChild(content);
+        container.appendChild(catWrapper);
+      });
+    }
+
     const pinEl = document.getElementById('pin');
     const nameEl = document.getElementById('name');
     const autoEl = document.getElementById('auto');
-    const headlessEl = document.getElementById('headless');
+
     const startBtn = document.getElementById('start-btn');
     const stopBtn = document.getElementById('stop-btn');
     const consoleEl = document.getElementById('console');
     const consoleInput = document.getElementById('console-input');
     const sendInputBtn = document.getElementById('send-input-btn');
     const statusBadge = document.getElementById('status-badge');
+
+    const tabConsoleBtn = document.getElementById('tab-console-btn');
+    const tabDashboardBtn = document.getElementById('tab-dashboard-btn');
+    const tabAdminBtn = document.getElementById('tab-admin-btn');
+    const consoleContent = document.getElementById('tab-console-content');
+    const dashboardContent = document.getElementById('tab-dashboard-content');
+    const adminContent = document.getElementById('tab-admin-content');
+    const adminJsInput = document.getElementById('admin-js-input');
+    const adminJsRunBtn = document.getElementById('admin-js-run-btn');
+
+    function setActiveTab(activeBtn, activeContent) {
+      const tabBtns = [tabConsoleBtn, tabDashboardBtn, tabAdminBtn];
+      const tabContents = [consoleContent, dashboardContent, adminContent];
+      
+      tabBtns.forEach(btn => {
+        if (btn === activeBtn) {
+          btn.style.background = 'rgba(255,255,255,0.07)';
+          btn.style.borderColor = 'rgba(255,255,255,0.12)';
+          btn.style.color = '#fff';
+        } else {
+          btn.style.background = 'transparent';
+          btn.style.borderColor = 'transparent';
+          btn.style.color = 'var(--fg-dim)';
+        }
+      });
+      
+      tabContents.forEach(content => {
+        if (content === activeContent) {
+          content.style.display = 'flex';
+        } else {
+          content.style.display = 'none';
+        }
+      });
+    }
+
+    tabConsoleBtn.addEventListener('click', () => {
+      setActiveTab(tabConsoleBtn, consoleContent);
+    });
+
+    tabDashboardBtn.addEventListener('click', () => {
+      setActiveTab(tabDashboardBtn, dashboardContent);
+      renderDynamicCheatDashboard(currentGuiData);
+    });
+
+    tabAdminBtn.addEventListener('click', () => {
+      setActiveTab(tabAdminBtn, adminContent);
+    });
+
+    adminJsRunBtn.addEventListener('click', () => {
+      const code = adminJsInput.value;
+      if (!code.trim()) return;
+      if (!ws || ws.readyState !== 1) {
+        alert('Please launch the bot first to connect and run JS.');
+        return;
+      }
+      ws.send(JSON.stringify({
+        type: 'eval-js',
+        code: code
+      }));
+    });
     const queuePosWrap = document.getElementById('queue-pos-wrap');
     const queuePos = document.getElementById('queue-pos');
     const globalActive = document.getElementById('global-active');
@@ -386,7 +664,7 @@
         pinEl.disabled = true;
         nameEl.disabled = true;
         autoEl.disabled = true;
-        headlessEl.disabled = true;
+
         startBtn.disabled = true;
         stopBtn.disabled = true;
         consoleInput.disabled = true;
@@ -418,8 +696,10 @@
             
             if (isAdminUser) {
               lockBtn.style.display = 'inline-flex';
+              tabAdminBtn.style.display = 'block';
             } else {
               lockBtn.style.display = 'none';
+              tabAdminBtn.style.display = 'none';
             }
             
             let isPinLockedBySomeoneElse = false;
@@ -516,7 +796,7 @@
       const pin = pinEl.value.trim();
       const name = nameEl.value.trim();
       const auto = autoEl.value;
-      const headless = headlessEl.checked;
+      const headless = true;
 
       if (!pin) {
         alert('Please enter a Game PIN.');
@@ -548,7 +828,25 @@
         try {
           const payload = JSON.parse(event.data);
           if (payload.type === 'stdout') {
-            appendLog(payload.data);
+            const stdoutText = payload.data;
+            if (stdoutText.includes('[GUI_STRUCTURE]')) {
+              const marker = '[GUI_STRUCTURE]';
+              const idx = stdoutText.indexOf(marker);
+              const jsonStr = stdoutText.substring(idx + marker.length).trim();
+              try {
+                const guiData = JSON.parse(jsonStr);
+                currentGuiData = guiData;
+                renderDynamicCheatDashboard(guiData);
+              } catch (err) {
+                console.error('Failed to parse dynamic GUI json:', err);
+              }
+              const cleanedText = stdoutText.substring(0, idx);
+              if (cleanedText.trim()) {
+                appendLog(cleanedText);
+              }
+            } else {
+              appendLog(stdoutText);
+            }
           } else if (payload.type === 'stderr') {
             appendLog('[stderr] ' + payload.data, true);
           } else if (payload.type === 'status') {
@@ -575,6 +873,7 @@
       ws.onclose = () => {
         appendLog('[*] Connection closed.');
         updateStatus('idle');
+        currentGuiData = null;
         ws = null;
         checkStatus();
       };
@@ -588,6 +887,7 @@
     stopBtn.addEventListener('click', async () => {
       stopBtn.disabled = true;
       appendLog('[*] Sending termination request...');
+      currentGuiData = null;
       try {
         const res = await fetch('/api/blooket-bot/stop', { method: 'POST' });
         const data = await res.json();

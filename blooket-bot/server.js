@@ -59,6 +59,10 @@ wss.on('connection', (ws) => {
         if (child && !child.killed) {
           child.stdin.write(data.text + '\n');
         }
+      } else if (data.type === 'gui-cheat' || data.type === 'eval-js') {
+        if (child && !child.killed) {
+          child.stdin.write(JSON.stringify(data) + '\n');
+        }
       }
     } catch (e) {
       console.error('[microservice] Error handling message:', e);

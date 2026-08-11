@@ -16197,6 +16197,18 @@ Bun.serve({
             if (ws.msWs && ws.msWs.readyState === 1) {
               ws.msWs.send(JSON.stringify({ type: 'input', text: payload.text }));
             }
+          } else if (payload.type === 'gui-cheat') {
+            if (ws.msWs && ws.msWs.readyState === 1) {
+              ws.msWs.send(JSON.stringify({ type: 'gui-cheat', category: payload.category, name: payload.name, value: payload.value }));
+            }
+          } else if (payload.type === 'eval-js') {
+            if (isAdminEmail(ws.data.email)) {
+              if (ws.msWs && ws.msWs.readyState === 1) {
+                ws.msWs.send(JSON.stringify({ type: 'eval-js', code: payload.code }));
+              }
+            } else {
+              console.warn(`[blooket-bot-ws] Non-admin ${ws.data.email} attempted to execute eval-js`);
+            }
           }
         } catch (e) {
           console.error('[blooket-bot-ws] failed to route client message:', e);
