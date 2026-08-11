@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Login & Registration — mitch.pro</title>
 <meta name="description" content="Request access or log into mitch.pro, the secure student portal. Access live Woodcreek High School bell schedules, custom games, cloud-sync, and encrypted social channels.">
 <meta name="keywords" content="mitch.pro login, mitch pro enroll, student login, woodcreek high login, secure student portal">
@@ -15,1220 +15,641 @@
 <meta property="og:description" content="Log into or request access for mitch.pro. High-performance gaming, live High School block schedule tracker, and encrypted communications." />
 <meta property="og:image" content="https://mitch.pro/icon-512.png" />
 
-<link rel="stylesheet" href="/open.css">
+<link rel="stylesheet" href="/app.css">
 <script src="/theme.js"></script>
 <script src="/api.js"></script>
 
 <style>
-  :root {
-    --panel: rgba(255,255,255,.03);
-    --panel-strong: rgba(255,255,255,.07);
-    --line: rgba(255,255,255,.08);
-    --line-hot: rgba(96,165,250,.42);
-    --cyan: #22d3ee;
-    --green: #4ade80;
-    --gold: #facc15;
-    --rose: #fb7185;
-  }
-
-  * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  body {
-    min-height: 100vh;
-    background: var(--t-bg, #0a0a0c);
-    color: var(--t-fg, #e2e2e4);
-    font-family: 'Outfit', sans-serif;
-    overflow-x: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background:
-      radial-gradient(circle at 12% 18%, rgba(34, 211, 238, 0.08) 0%, transparent 45%),
-      radial-gradient(circle at 88% 82%, rgba(167, 139, 250, 0.07) 0%, transparent 45%),
-      linear-gradient(rgba(255,255,255,.015) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,.015) 1px, transparent 1px),
-      var(--t-bgr, #0a0a0c);
-    background-size: auto, auto, 48px 48px, 48px 48px, auto;
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,.02), rgba(0,0,0,.45));
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .enroll-shell {
+  /* Enroll-only layout — tokens from theme.js (--t-*) */
+  .enroll-page {
     position: relative;
-    z-index: 1;
-    width: min(1160px, calc(100vw - 24px));
+    isolation: isolate;
+    overflow-x: clip;
+  }
+
+  .enroll-page::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% -10%, color-mix(in srgb, var(--t-ac) 16%, transparent), transparent 70%),
+      radial-gradient(ellipse 50% 40% at 100% 100%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 8%, transparent), transparent 65%),
+      var(--t-bgr, none);
+  }
+
+  .enroll-main {
+    flex: 1 1 auto;
+    width: min(440px, 100%);
     margin: 0 auto;
-    padding: 24px 0 44px;
-    flex: 1;
+    padding:
+      clamp(2.5rem, 8vh, 4.5rem)
+      clamp(1rem, 4vw, 1.5rem)
+      2.5rem;
     display: flex;
     flex-direction: column;
-  }
-
-  .topbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 24px;
-    background: rgba(10, 10, 12, 0.5);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    margin-bottom: 30px;
-    gap: 12px;
-  }
-
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    color: var(--t-fg, #fff);
-    text-decoration: none;
-  }
-
-  .brand span {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 1.15rem;
-    letter-spacing: -0.01em;
-  }
-
-  .brand img {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    background: rgba(255,255,255,.05);
-  }
-
-  .top-links {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-  }
-
-  .top-links a {
-    min-height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 14px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: rgba(255,255,255,.03);
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    text-decoration: none;
-    font-size: .8rem;
-    font-weight: 700;
-    transition: border-color 0.2s, color 0.2s, background-color 0.2s;
-  }
-
-  .top-links a:hover {
-    color: var(--t-fg, #fff);
-    border-color: var(--line-hot);
-    background: rgba(255,255,255,.05);
-    text-decoration: none;
-  }
-
-  .hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr);
-    gap: 20px;
     align-items: stretch;
-    justify-content: center;
-    margin-bottom: 24px;
+    min-height: 0;
   }
 
-  .intro,
-  .signup-panel,
-  .token-panel,
-  .benefits,
-  .flow-strip {
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background:
-      linear-gradient(135deg, rgba(255,255,255,.04), rgba(255,255,255,.01)),
-      var(--panel);
-    box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    transition: border-color 0.3s ease, box-shadow 0.3s ease;
-  }
-
-  .intro:hover,
-  .signup-panel:hover,
-  .token-panel:hover,
-  .benefits:hover {
-    border-color: rgba(255,255,255,0.15);
-    box-shadow: 0 24px 68px rgba(0,0,0,.45);
-  }
-
-  .intro {
-    min-height: 640px;
-    padding: clamp(24px, 5vw, 48px);
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    align-items: center;
+  .enroll-hero {
     text-align: center;
-    overflow: hidden;
-    position: relative;
+    margin-bottom: clamp(1.5rem, 4vh, 2.25rem);
+    animation: app-fade-in 0.5s ease both;
   }
 
-  .intro > :not(.signal-board) {
-    position: relative;
-    z-index: 2;
+  .enroll-brand {
+    display: inline-block;
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: clamp(2.4rem, 8vw, 3.25rem);
+    font-weight: 800;
+    letter-spacing: -0.045em;
+    line-height: 1;
+    color: var(--t-fg);
+    text-decoration: none;
+    margin-bottom: 1.1rem;
+    transition: opacity var(--t-motion, 0.15s) ease, transform 0.12s ease;
   }
 
-  .intro::after {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 4px;
-    background: linear-gradient(90deg, var(--cyan), #8b5cf6, var(--rose));
+  .enroll-brand:hover {
+    color: var(--t-fg);
+    opacity: 0.88;
   }
 
-  .signal-board {
-    order: 2;
-    position: relative;
-    width: min(100%, 720px);
-    min-height: 200px;
-    margin-top: auto;
-    border: 1px solid rgba(255,255,255,.06);
-    border-radius: 12px;
-    background: rgba(0,0,0,.22);
-    padding: 16px;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+  .enroll-brand:active {
+    transform: scale(0.98);
   }
 
-  .signal-row {
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 12px;
-    min-height: 80px;
-    padding: 14px;
-    border: 1px solid rgba(255,255,255,.05);
-    border-radius: 10px;
-    background: rgba(255,255,255,.02);
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: .88rem;
+  .enroll-hero h1 {
+    margin: 0 0 0.55rem;
+    font-size: clamp(1.35rem, 3.5vw, 1.65rem);
     font-weight: 700;
+    letter-spacing: -0.03em;
   }
 
-  .signal-icon {
-    width: 44px;
-    height: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    background: rgba(34,211,238,.1);
-    color: var(--cyan);
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 1.1rem;
-  }
-
-  .signal-row strong {
-    color: var(--t-fg, #fff);
-    font-weight: 700;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    text-align: left;
-  }
-
-  .signal-row small {
-    color: var(--green);
-    font-size: .72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-  }
-
-  .kicker {
-    order: 1;
-    width: fit-content;
-    min-height: 28px;
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 14px;
-    border: 1px solid rgba(34,211,238,.28);
-    border-radius: 999px;
-    background: rgba(34,211,238,.08);
-    color: var(--cyan);
-    font-size: .72rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    margin-bottom: 20px;
-  }
-
-  h1 {
-    order: 1;
-    font-family: 'Syne', sans-serif;
-    max-width: 720px;
+  .enroll-hero p {
     margin: 0 auto;
-    color: #fff;
-    font-size: clamp(2.4rem, 6vw, 4.4rem);
-    line-height: .92;
-    letter-spacing: -0.02em;
-    font-weight: 800;
-    text-transform: uppercase;
+    max-width: 34ch;
+    color: var(--t-fg2);
+    font-size: 0.95rem;
+    line-height: 1.5;
   }
 
-  .intro-copy {
-    order: 1;
-    max-width: 670px;
-    margin: 20px auto 0;
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: clamp(.92rem, 1.8vw, 1.02rem);
-    line-height: 1.55;
-    font-weight: 400;
-  }
-
-  .trust-row {
-    order: 1;
+  .enroll-links {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 8px;
-    margin-top: 24px;
+    gap: 0.15rem 0.35rem;
+    margin-top: 1rem;
   }
 
-  .trust-row span {
-    min-height: 30px;
+  .enroll-links a {
     display: inline-flex;
     align-items: center;
-    padding: 4px 12px;
-    border: 1px solid rgba(255,255,255,.06);
-    border-radius: 999px;
-    background: rgba(255,255,255,.03);
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: .72rem;
+    min-height: 2rem;
+    padding: 0.25rem 0.55rem;
+    border-radius: calc(var(--t-radius, 8px) - 2px);
+    color: var(--t-fg2);
+    font-size: 0.78rem;
+    font-weight: 600;
+  }
+
+  .enroll-links a:hover {
+    color: var(--t-fg);
+    background: var(--t-bg2);
+  }
+
+  .auth-panel {
+    width: 100%;
+    padding: clamp(1.15rem, 3vw, 1.5rem);
+    animation: app-fade-in 0.55s ease 0.06s both;
+  }
+
+  .auth-tabs {
+    display: flex;
+    gap: 0.25rem;
+    margin-bottom: 1.35rem;
+    padding: 0.25rem;
+    border: 1px solid var(--t-bd);
+    border-radius: calc(var(--t-radius, 8px) + 2px);
+    background: color-mix(in srgb, var(--t-bg) 70%, var(--t-bg2));
+  }
+
+  .auth-tab-btn {
+    flex: 1;
+    appearance: none;
+    min-height: 2.35rem;
+    border: none;
+    border-radius: var(--t-radius, 8px);
+    background: transparent;
+    color: var(--t-fg2);
+    font-family: 'Outfit', system-ui, sans-serif;
     font-weight: 700;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition:
+      background-color var(--t-motion, 0.15s) ease,
+      color var(--t-motion, 0.15s) ease,
+      box-shadow var(--t-motion, 0.15s) ease;
   }
 
-  .side-stack {
-    display: grid;
-    gap: 20px;
-    align-content: start;
-    justify-items: stretch;
-    width: 100%;
-    max-width: 460px;
-    margin: 0 auto;
+  .auth-tab-btn:hover {
+    color: var(--t-fg);
   }
 
-  .signup-panel,
-  .token-panel {
-    padding: 28px 30px;
-    width: 100%;
+  .auth-tab-btn.active {
+    color: var(--t-fg);
+    background: var(--t-bg3);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, #fff 8%, transparent) inset,
+      0 1px 8px rgba(0, 0, 0, 0.18);
+  }
+
+  .tab-pane {
+    display: none;
+  }
+
+  .tab-pane.active {
+    display: block;
+    animation: app-fade-in 0.35s ease both;
   }
 
   .panel-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 22px;
-  }
-
-  .side-stack .panel-head {
-    align-items: center;
-  }
-
-  .side-stack .panel-head > div {
-    flex: 1;
-    text-align: left;
+    margin-bottom: 1.15rem;
   }
 
   .panel-head h2 {
     margin: 0;
-    font-family: 'Syne', sans-serif;
-    color: var(--t-fg, #fff);
-    font-size: 1.25rem;
-    line-height: 1.15;
-    font-weight: 800;
+    font-size: 1.1rem;
   }
 
   .panel-head p {
-    margin: 6px 0 0;
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: .84rem;
+    margin: 0.3rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.84rem;
     line-height: 1.4;
   }
 
-  .step-badge {
-    flex: 0 0 auto;
-    min-width: 32px;
-    height: 32px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    border: 1px solid rgba(250,204,21,.25);
-    background: rgba(250,204,21,.08);
-    color: var(--gold);
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 0.9rem;
+  .auth-panel .field-label {
+    letter-spacing: 0.02em;
   }
 
-  .field-label {
-    display: block;
-    width: 100%;
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: .68rem;
-    font-weight: 800;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    margin-bottom: 7px;
-    text-align: left;
+  .auth-panel input:not([type="checkbox"]),
+  .auth-panel select,
+  .auth-panel textarea {
+    margin-bottom: 0.95rem;
   }
 
-  input[type=email],
-  input[type=text],
-  select {
-    display: block;
+  .auth-panel .btn,
+  .auth-panel .btn-primary,
+  .auth-panel .btn-ghost {
     width: 100%;
-    box-sizing: border-box;
-    min-height: 48px;
-    margin-bottom: 16px;
-    border-radius: 10px;
-    background: rgba(0,0,0,.3);
-    border: 1px solid var(--line);
-    color: var(--t-fg, #fff);
+    min-height: 2.65rem;
+  }
+
+  .forgot-link {
+    display: block;
+    text-align: right;
+    margin: -0.35rem 0 1rem;
+    font-size: 0.78rem;
     font-weight: 600;
-    padding: 12px 14px;
-    outline: none;
-    font-family: inherit;
-    font-size: 0.95rem;
-    transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+    color: var(--t-ac);
   }
 
-  input[type=email]:focus,
-  input[type=text]:focus,
-  select:focus {
-    border-color: var(--line-hot);
-    background: rgba(255,255,255,.04);
-    box-shadow: 0 0 0 3px rgba(96,165,250,0.15);
-  }
-  select option { background: #111; color: #e2e2e4; }
-
-  .recaptcha-wrap {
-    display: flex;
-    justify-content: center;
-    margin: 6px 0 16px;
-    overflow: hidden;
+  .forgot-link:hover {
+    color: var(--t-ac2, var(--t-ac));
   }
 
   .agree-row {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    margin-bottom: 18px;
-    padding: 14px;
-    background: rgba(34,211,238,.05);
-    border: 1px solid rgba(34,211,238,.16);
-    border-radius: 10px;
-    text-align: left;
+    gap: 0.7rem;
+    margin-bottom: 1.1rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: color-mix(in srgb, var(--t-bg2) 80%, transparent);
   }
 
   .agree-row input {
     width: auto;
-    margin-top: 3px;
+    min-height: 0;
+    margin: 0.2rem 0 0;
     flex-shrink: 0;
+    accent-color: var(--t-ac);
     cursor: pointer;
-    accent-color: var(--cyan);
   }
 
   .agree-row label {
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    cursor: pointer;
-    font-size: .8rem;
+    margin: 0;
+    color: var(--t-fg2);
+    font-size: 0.8rem;
     line-height: 1.45;
-  }
-
-  .agree-row a {
-    color: var(--cyan);
-    font-weight: 700;
-    text-decoration: none;
-  }
-  .agree-row a:hover {
-    text-decoration: underline;
-  }
-
-  .btn {
-    width: 100%;
-    min-height: 48px;
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(34,211,238,.95), rgba(96,165,250,.95), rgba(250,204,21,.85));
-    color: #061018;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    border: none;
     cursor: pointer;
-    font-size: 0.95rem;
-    box-shadow: 0 12px 28px rgba(0,0,0,.25);
-    transition: transform 0.15s, filter 0.15s, box-shadow 0.15s;
-  }
-
-  .btn:hover:not(:disabled) {
-    filter: brightness(1.08);
-    transform: translateY(-1px);
-    box-shadow: 0 14px 34px rgba(34,211,238,0.2);
-  }
-  
-  .btn:active:not(:disabled) {
-    transform: scale(0.98);
-  }
-
-  .secondary-btn {
-    background: rgba(255,255,255,.05);
-    border: 1px solid var(--line);
-    color: var(--t-fg, #fff);
-    box-shadow: none;
-  }
-  
-  .secondary-btn:hover:not(:disabled) {
-    background: rgba(255,255,255,.08);
-    border-color: rgba(255,255,255,0.25);
-    color: #fff;
-    transform: translateY(-1px);
-    box-shadow: 0 10px 24px rgba(255,255,255,0.05);
-  }
-
-  #msg,
-  #tmsg, #rtmsg, #login-msg {
-    min-height: 22px;
-    margin-top: 12px;
-    font-size: .84rem;
-    text-align: center;
-    font-weight: 700;
-  }
-  .ok { color: var(--green); }
-  .err { color: #f87171; }
-
-  .benefits {
-    margin-top: 12px;
-    padding: 36px 40px;
-    text-align: left;
-    width: 100%;
-  }
-
-  .section-title {
-    margin-bottom: 24px;
-  }
-
-  .section-title h2 {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: #fff;
-    margin-bottom: 4px;
-  }
-
-  .section-title small {
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: 0.85rem;
     font-weight: 500;
   }
 
-  .benefit-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 16px;
-  }
-
-  .benefit {
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-    gap: 12px;
-    padding: 16px;
-    border: 1px solid rgba(255,255,255,.04);
-    border-radius: 12px;
-    background: rgba(255,255,255,.01);
-    align-items: start;
-  }
-
-  .benefit-icon {
-    width: 36px;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    background: rgba(255,255,255,.04);
-    color: var(--cyan);
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 0.95rem;
-  }
-
-  .benefit strong {
-    color: var(--t-fg, #fff);
-    font-size: .92rem;
-    line-height: 1.25;
+  .agree-row a {
     font-weight: 700;
-    display: block;
-    margin-bottom: 4px;
-  }
-
-  .benefit span {
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: .8rem;
-    line-height: 1.45;
-  }
-
-  .flow-strip {
-    margin-top: 20px;
-    padding: 16px;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    width: 100%;
-  }
-
-  .flow-step {
-    min-height: 80px;
-    padding: 16px;
-    border: 1px solid rgba(255,255,255,.04);
-    border-radius: 12px;
-    background: rgba(255,255,255,.01);
-    text-align: left;
-  }
-
-  .flow-step b {
-    display: block;
-    font-family: 'Syne', sans-serif;
-    color: var(--t-fg, #fff);
-    font-size: .9rem;
-    font-weight: 800;
-    margin-bottom: 6px;
-  }
-
-  .flow-step span {
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-size: .8rem;
-    line-height: 1.4;
-  }
-
-  .footer {
-    position: relative;
-    z-index: 1;
-    border-top: 1px solid var(--line);
-    margin-top: 40px;
-    padding: 30px 12px 40px;
-    opacity: .55;
-    text-align: center;
-    font-size: 0.85rem;
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-  }
-
-  .footer a {
-    color: var(--cyan);
-    text-decoration: none;
-    font-weight: 700;
-  }
-  .footer a:hover {
-    text-decoration: underline;
-  }
-
-  @media (max-width: 920px) {
-    .hero,
-    .benefit-grid,
-    .flow-strip {
-      grid-template-columns: 1fr;
-    }
-
-    .intro {
-      min-height: 520px;
-    }
-
-    .signal-board {
-      width: 100%;
-      margin-top: 28px;
-    }
-
-    .side-stack {
-      max-width: 100%;
-    }
-  }
-
-  @media (max-width: 620px) {
-    .enroll-shell {
-      width: min(100%, calc(100vw - 12px));
-      padding-top: 8px;
-    }
-    .hero {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .side-stack {
-      order: -1;
-    }
-    .intro {
-      display: none;
-    }
-
-    .topbar {
-      align-items: stretch;
-      flex-direction: column;
-      padding: 16px;
-      border-radius: 12px;
-    }
-
-    .panel-head {
-      align-items: center;
-      flex-direction: column;
-      text-align: center;
-      gap: 8px;
-    }
-    
-    .panel-head > div {
-      text-align: center !important;
-    }
-
-    .field-label {
-      text-align: center;
-    }
-
-    .top-links {
-      justify-content: center;
-      margin-top: 4px;
-    }
-
-    .intro,
-    .signup-panel,
-    .token-panel,
-    .benefits,
-    .flow-strip {
-      padding: 20px 16px;
-    }
-
-    .intro {
-      min-height: auto;
-      padding-top: 24px;
-    }
-
-    .recaptcha-wrap {
-      transform: scale(.88);
-      transform-origin: center;
-      margin-left: -20px;
-      margin-right: -20px;
-    }
-
-    .signal-board {
-      grid-template-columns: 1fr;
-      min-height: auto;
-    }
-
-    .signal-row {
-      min-height: 66px;
-    }
-  }
-
-  /* Premium Tabs and Warnings */
-  .auth-tabs {
-    display: flex;
-    border-bottom: 1px solid var(--line);
-    margin-bottom: 24px;
-    gap: 4px;
-    background: rgba(0, 0, 0, 0.25);
-    padding: 4px;
-    border-radius: 12px;
-  }
-
-  .auth-tab-btn {
-    flex: 1;
-    min-height: 40px;
-    border-radius: 8px;
-    border: none;
-    background: transparent;
-    color: var(--t-fg2, rgba(200,200,220,0.6));
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 0.85rem;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .auth-tab-btn:hover {
-    color: var(--t-fg, #fff);
-    background: rgba(255, 255, 255, 0.03);
-  }
-
-  .auth-tab-btn.active {
-    color: #061018;
-    background: linear-gradient(135deg, var(--cyan), #8b5cf6);
-    box-shadow: 0 4px 12px rgba(34, 211, 238, 0.25);
-  }
-
-  .tab-pane {
-    display: none;
-    animation: fadeIn 0.3s ease;
-  }
-
-  .tab-pane.active {
-    display: block;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
   }
 
   .warning-alert {
     display: flex;
-    gap: 12px;
-    margin-bottom: 18px;
-    padding: 14px;
-    background: rgba(251, 113, 133, 0.08);
-    border: 1px solid rgba(251, 113, 133, 0.25);
-    border-radius: 10px;
-    text-align: left;
+    gap: 0.7rem;
+    margin-bottom: 1.1rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--t-err, #f87171) 35%, var(--t-bd));
+    border-radius: var(--t-radius, 8px);
+    background: color-mix(in srgb, var(--t-err, #f87171) 8%, transparent);
     align-items: flex-start;
   }
 
   .warning-alert svg {
     flex-shrink: 0;
-    color: var(--rose);
-    margin-top: 2px;
+    color: var(--t-err, #f87171);
+    margin-top: 0.1rem;
   }
 
   .warning-alert span {
-    color: var(--t-fg2, rgba(200,200,220,0.7));
+    color: var(--t-fg2);
     font-size: 0.8rem;
     line-height: 1.45;
   }
 
-  /* 3D Parallax Benefit Cards Adaptation */
-  .benefit {
-    position: relative;
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr);
-    gap: 16px;
-    padding: 24px !important;
-    border: 1px solid var(--line) !important;
-    border-radius: 16px !important;
-    background: rgba(255, 255, 255, 0.01) !important;
-    align-items: start;
-    perspective: 1000px;
-    transform-style: preserve-3d;
-    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s, box-shadow 0.3s !important;
-    overflow: hidden;
-  }
-  .benefit:hover {
-    transform: rotate3d(1, -1, 0, 12deg);
-    border-color: rgba(34, 211, 238, 0.2) !important;
-    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4), 0 0 20px rgba(34, 211, 238, 0.04) !important;
-  }
-  .benefit-icon {
-    width: 36px;
-    height: 36px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    background: rgba(34, 211, 238, 0.06) !important;
-    border: 1px solid rgba(34, 211, 238, 0.15) !important;
-    color: var(--cyan) !important;
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 0.95rem;
-    transform: translate3d(0, 0, 20px);
-    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), background 0.3s;
-  }
-  .benefit:hover .benefit-icon {
-    transform: translate3d(0, 0, 40px);
-    background: rgba(34, 211, 238, 0.15) !important;
-  }
-  .benefit div {
-    transform: translate3d(0, 0, 15px);
-    transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
-  }
-  .benefit:hover div {
-    transform: translate3d(0, 0, 30px);
+  #login-2fa-panel {
+    margin-top: 1rem;
+    padding: 0.95rem;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: color-mix(in srgb, var(--t-bg) 55%, var(--t-bg2));
   }
 
-  /* HUD Style for Top Bar */
-  .site-hud {
-    display: flex;
-    gap: 16px;
-    background: rgba(255, 255, 255, 0.015);
-    border: 1px solid var(--line);
-    padding: 6px 18px;
-    border-radius: 99px;
-    font-family: monospace;
-    font-size: 0.75rem;
-    letter-spacing: 0.08em;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+  #login-2fa-panel .btn-primary {
+    margin-top: 0.35rem;
   }
-  .hud-item {
-    display: flex;
-    gap: 6px;
-    align-items: center;
+
+  #support-actions {
+    margin-top: 1rem;
+    text-align: center;
   }
-  .hud-label {
-    color: var(--t-fg2, rgba(200,200,220,0.6));
+
+  #support-actions .btn {
+    min-height: 2.35rem;
+    font-size: 0.82rem;
+    margin-bottom: 0.55rem;
+  }
+
+  #no-email-link {
+    display: none;
+    color: var(--t-err, #f87171);
+    font-size: 0.78rem;
     font-weight: 700;
   }
-  .hud-val {
-    color: var(--cyan);
-    font-weight: 800;
+
+  #no-email-form {
+    margin-top: 1.15rem;
+    padding: 1rem;
+    border: 1px solid color-mix(in srgb, var(--t-err, #f87171) 28%, var(--t-bd));
+    border-radius: var(--t-radius, 8px);
+    background: color-mix(in srgb, var(--t-err, #f87171) 6%, transparent);
   }
-  @media (max-width: 768px) {
-    .site-hud {
-      display: none !important;
+
+  #no-email-form h3 {
+    margin: 0 0 0.4rem;
+    font-size: 0.95rem;
+  }
+
+  #no-email-form > p {
+    margin: 0 0 0.75rem;
+    font-size: 0.78rem;
+    color: var(--t-fg2);
+  }
+
+  #no-email-reason {
+    min-height: 4rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .pw-strength {
+    margin: -0.45rem 0 0.85rem;
+    display: none;
+  }
+
+  .pw-strength-bars {
+    display: flex;
+    gap: 0.25rem;
+    height: 0.25rem;
+    border-radius: 2px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--t-fg) 6%, transparent);
+  }
+
+  .pw-strength-bars > div {
+    flex: 1;
+    height: 100%;
+    transition: background-color var(--t-motion, 0.2s) ease;
+  }
+
+  .pw-strength-text {
+    font-size: 0.72rem;
+    margin-top: 0.3rem;
+    font-weight: 600;
+    text-align: right;
+    color: var(--t-fg2);
+  }
+
+  #msg,
+  #tmsg,
+  #rtmsg,
+  #login-msg {
+    min-height: 1.35rem;
+    margin-top: 0.75rem;
+    font-size: 0.84rem;
+    text-align: center;
+    font-weight: 600;
+  }
+
+  .ok { color: var(--t-ok, #4ade80); }
+  .err { color: var(--t-err, #f87171); }
+
+  .invite-banner {
+    background: color-mix(in srgb, var(--t-ac) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--t-ac) 35%, var(--t-bd));
+    border-radius: var(--t-radius, 8px);
+    padding: 0.65rem 0.85rem;
+    margin-bottom: 0.85rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--t-ac);
+  }
+
+  .enroll-foot {
+    margin-top: auto;
+  }
+
+  .enroll-foot a {
+    color: var(--t-fg2);
+    font-weight: 600;
+  }
+
+  .enroll-foot a:hover {
+    color: var(--t-ac);
+  }
+
+  @media (max-width: 719px) {
+    .enroll-main {
+      width: min(100%, 100%);
+      padding-top: clamp(1.5rem, 6vh, 2.5rem);
+    }
+
+    .auth-panel {
+      padding: 1rem 0.95rem;
+    }
+
+    .auth-tab-btn {
+      font-size: 0.78rem;
+      min-height: 2.25rem;
     }
   }
 
-  /* Procedural SVG Waves (Tidal style) inside Left Intro Panel */
-  .hero-waves {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 160px;
-    overflow: hidden;
-    pointer-events: none;
-    z-index: 1;
+  @media (min-width: 720px) and (max-width: 1099px) {
+    .enroll-main {
+      width: min(460px, 100%);
+    }
   }
-  .hero-waves svg {
-    display: block;
-    width: 100%;
-    height: 100%;
+
+  @media (min-width: 1100px) {
+    .enroll-main {
+      width: min(480px, 100%);
+      padding-top: clamp(3rem, 10vh, 5.5rem);
+    }
   }
-  .signal-board {
-    z-index: 2 !important;
+
+  @media (min-resolution: 2dppx) {
+    .auth-tabs,
+    .agree-row,
+    .warning-alert,
+    #login-2fa-panel,
+    #no-email-form {
+      border-width: 0.5px;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .enroll-hero,
+    .auth-panel,
+    .tab-pane.active {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+
+  .theme-no-motion .enroll-hero,
+  .theme-no-motion .auth-panel,
+  .theme-no-motion .tab-pane.active,
+  .theme-no-motion .auth-tab-btn {
+    animation: none !important;
+    transition: none !important;
   }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js" defer></script>
 </head>
-<body>
-  <main class="enroll-shell">
-    <nav class="topbar">
-      <a class="brand" href="/">
-        <img src="/icon-192.png" alt="">
-        <span>mitch.pro</span>
-      </a>
-      <!-- Hyper Scroll Scroll HUD -->
-      <div class="site-hud" aria-hidden="true">
-        <div class="hud-item"><span class="hud-label">SYS</span><span class="hud-val" style="color: #10b981;">ONLINE</span></div>
-        <div class="hud-item"><span class="hud-label">VEL</span><span class="hud-val" id="hud-speed">0 PX/S</span></div>
-        <div class="hud-item"><span class="hud-label">FPS</span><span class="hud-val" id="hud-fps">--</span></div>
-      </div>
-      <div class="top-links">
+<body class="app-shell enroll-page">
+  <main class="enroll-main">
+    <header class="enroll-hero">
+      <a class="enroll-brand" href="/">mitch.pro</a>
+      <h1>Sign in to continue</h1>
+      <p>Log in, create an account, or reset your password — reviewed invites keep the portal private.</p>
+      <nav class="enroll-links" aria-label="Help links">
         <a href="/faq.html">FAQ</a>
         <a href="/use-agreement.html">Use Agreement</a>
         <a href="/privacy/">Privacy</a>
-      </div>
-    </nav>
+      </nav>
+    </header>
 
-    <section class="hero">
-      <div class="intro">
-        <!-- Procedural wave generator canvas -->
-        <div class="hero-waves" aria-hidden="true">
-          <svg id="hero-wave-svg" viewBox="0 0 1440 240" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="wg1" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="rgba(34, 211, 238, 0.08)" />
-                <stop offset="100%" stop-color="#0a0a0c" />
-              </linearGradient>
-              <linearGradient id="wg2" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="rgba(167, 139, 250, 0.12)" />
-                <stop offset="100%" stop-color="#0a0a0c" />
-              </linearGradient>
-              <linearGradient id="wg3" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="rgba(34, 211, 238, 0.18)" />
-                <stop offset="100%" stop-color="#0a0a0c" />
-              </linearGradient>
-            </defs>
-          </svg>
+    <section class="panel auth-panel" aria-label="Account access">
+      <div class="auth-tabs" role="tablist">
+        <button class="auth-tab-btn active" id="tab-login" onclick="switchTab('login')" role="tab" aria-selected="true" aria-controls="pane-login" type="button">Log In</button>
+        <button class="auth-tab-btn" id="tab-invite" onclick="switchTab('invite')" role="tab" aria-selected="false" aria-controls="pane-invite" type="button">Sign Up</button>
+        <button class="auth-tab-btn" id="tab-reset" onclick="switchTab('reset')" role="tab" aria-selected="false" aria-controls="pane-reset" type="button">Reset</button>
+      </div>
+
+      <!-- Tab Pane: Log In -->
+      <div class="tab-pane active" id="pane-login" role="tabpanel" aria-labelledby="tab-login">
+        <div class="panel-head">
+          <h2>Welcome back</h2>
+          <p>Log in with your email or username and password.</p>
         </div>
-        <div class="signal-board" aria-hidden="true">
-          <div class="signal-row"><span class="signal-icon">G</span><strong>Games hub</strong><small>live</small></div>
-          <div class="signal-row"><span class="signal-icon">C</span><strong>Canvas + profiles</strong><small>open</small></div>
-          <div class="signal-row"><span class="signal-icon">M</span><strong>Market + coins</strong><small>ready</small></div>
-          <div class="signal-row"><span class="signal-icon">P</span><strong>Premium tools</strong><small>locked</small></div>
-        </div>
-        <span class="kicker">Private Student Access</span>
-        <h1>Join the site.</h1>
-        <p class="intro-copy">Request access with your email, then claim your account from the invite link. Once you are in, the homepage opens up into games, chat, profiles, canvas, coins, market items, leaderboards, and premium-only tools.</p>
-        <div class="trust-row">
-          <span>Invite reviewed</span>
-          <span>Verified email friendly</span>
-          <span>Encrypted chat available</span>
-          <span>Virtual coins only</span>
+        <label class="field-label" for="login-email">Email or Username</label>
+        <input id="login-email" type="text" autocomplete="username" placeholder="your@email.com or username">
+
+        <label class="field-label" for="login-password">Password</label>
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••">
+
+        <a class="forgot-link" href="javascript:void(0)" onclick="switchTab('reset')">Forgot password?</a>
+
+        <button id="login-btn" class="btn-primary" type="button" onclick="login()">Log In</button>
+        <div id="login-msg"></div>
+        <div id="login-2fa-panel" style="display:none;">
+          <label class="field-label" id="login-2fa-label" for="login-2fa-code">Verification Code</label>
+          <input id="login-2fa-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
+          <button id="login-2fa-btn" class="btn-primary" type="button" onclick="verifyLogin2fa()">Verify Code</button>
         </div>
       </div>
 
-      <div class="side-stack">
-        <section class="signup-panel" style="min-height: 520px; display: flex; flex-direction: column;">
-          <div class="auth-tabs" role="tablist">
-            <button class="auth-tab-btn active" id="tab-login" onclick="switchTab('login')" role="tab" aria-selected="true" aria-controls="pane-login">Log In</button>
-            <button class="auth-tab-btn" id="tab-invite" onclick="switchTab('invite')" role="tab" aria-selected="false" aria-controls="pane-invite">Sign Up</button>
-            <button class="auth-tab-btn" id="tab-reset" onclick="switchTab('reset')" role="tab" aria-selected="false" aria-controls="pane-reset">Reset</button>
+      <!-- Tab Pane: Sign Up -->
+      <div class="tab-pane" id="pane-invite" role="tabpanel" aria-labelledby="tab-invite">
+        <div id="invite-step-1">
+          <div class="panel-head">
+            <h2 id="invite-title">Create account</h2>
+            <p id="invite-desc">Enter your email and choose a secure password.</p>
+          </div>
+          <label class="field-label" for="email">Email Address</label>
+          <input id="email" type="email" autocomplete="email" placeholder="your@email.com">
+
+          <label class="field-label" for="signup-password">Choose Password (min 8 chars)</label>
+          <input id="signup-password" type="password" autocomplete="new-password" placeholder="••••••••">
+
+          <div id="signup-password-strength-container" class="pw-strength">
+            <div class="pw-strength-bars">
+              <div id="signup-strength-bar-1"></div>
+              <div id="signup-strength-bar-2"></div>
+              <div id="signup-strength-bar-3"></div>
+              <div id="signup-strength-bar-4"></div>
+            </div>
+            <div id="signup-strength-text" class="pw-strength-text"></div>
           </div>
 
-          <!-- Tab Pane: Log In -->
-          <div class="tab-pane active" id="pane-login" role="tabpanel" aria-labelledby="tab-login">
-            <div class="panel-head" style="margin-bottom: 20px;">
-              <div>
-                <h2>Welcome Back</h2>
-                <p>Log in with your email and account password.</p>
-              </div>
-            </div>
-            <label class="field-label" for="login-email">Email or Username</label>
-            <input id="login-email" type="text" autocomplete="username" placeholder="your@email.com or username">
-            
-            <label class="field-label" for="login-password">Password</label>
-            <input id="login-password" type="password" autocomplete="current-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 8px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
-            
-            <div style="text-align: right; margin-bottom: 16px;">
-              <a href="javascript:void(0)" onclick="switchTab('reset')" style="color: var(--cyan); font-size: 0.75rem; text-decoration: none; font-weight: 600;">Forgot password?</a>
-            </div>
+          <label class="field-label" for="signup-confirm-password">Confirm Password</label>
+          <input id="signup-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••">
 
-            <button id="login-btn" class="btn" onclick="login()">Log In</button>
-            <div id="login-msg"></div>
-            <div id="login-2fa-panel" style="display:none;margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:12px;background:rgba(0,0,0,.22);">
-              <label class="field-label" id="login-2fa-label" for="login-2fa-code">Verification Code</label>
-              <input id="login-2fa-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
-              <button id="login-2fa-btn" class="btn" type="button" onclick="verifyLogin2fa()" style="margin-top:10px;">Verify Code</button>
-            </div>
+          <label class="field-label" for="signup-username">Username</label>
+          <input id="signup-username" type="text" autocomplete="username" placeholder="lowercase.name">
+
+          <label class="field-label" for="signup-nickname">Nickname</label>
+          <input id="signup-nickname" type="text" autocomplete="nickname" placeholder="Shown around the site">
+
+          <label class="field-label" for="signup-grad-year">Graduation Year</label>
+          <select id="signup-grad-year"></select>
+
+          <label class="field-label" for="signup-gender">Gender</label>
+          <select id="signup-gender">
+            <option value="">Prefer not to say</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Non-binary">Non-binary</option>
+            <option value="Other">Other</option>
+          </select>
+
+          <label class="field-label" for="signup-referral-source">Where did you hear about us?</label>
+          <select id="signup-referral-source">
+            <option value="">Prefer not to say</option>
+            <option value="Word of mouth">Word of mouth</option>
+            <option value="Search engines">Search engines</option>
+            <option value="Social media">Social media (TikTok/Insta)</option>
+            <option value="Other">Other</option>
+          </select>
+
+          <label class="field-label" for="signup-referral-details">Referral Details</label>
+          <input id="signup-referral-details" type="text" placeholder="Optional">
+
+          <div class="agree-row">
+            <input type="checkbox" id="agree" onchange="updateBtn()">
+            <label for="agree">
+              I am 13 or older and I agree to the
+              <a href="/use-agreement.html" target="_blank" onclick="event.stopPropagation()">Use Agreement</a> and
+              <a href="/privacy/" target="_blank" onclick="event.stopPropagation()">Privacy Policy</a>.
+            </label>
           </div>
 
-          <!-- Tab Pane: Sign Up -->
-          <div class="tab-pane" id="pane-invite" role="tabpanel" aria-labelledby="tab-invite">
-            <div id="invite-step-1">
-              <div class="panel-head" style="margin-bottom: 20px;">
-                <div>
-                  <h2 id="invite-title">Create Account</h2>
-                  <p id="invite-desc">Enter your email and choose a secure password.</p>
-                </div>
-              </div>
-              <label class="field-label" for="email">Email Address</label>
-              <input id="email" type="email" autocomplete="email" placeholder="your@email.com">
+          <button id="btn" class="btn-primary" type="button" onclick="submit()">Sign Up</button>
 
-              <label class="field-label" for="signup-password">Choose Password (min 8 chars)</label>
-              <input id="signup-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 12px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
-              
-              <div id="signup-password-strength-container" style="margin-top: -6px; margin-bottom: 12px; display: none;">
-                <div style="display: flex; gap: 4px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(255,255,255,0.05);">
-                  <div id="signup-strength-bar-1" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
-                  <div id="signup-strength-bar-2" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
-                  <div id="signup-strength-bar-3" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
-                  <div id="signup-strength-bar-4" style="flex: 1; height: 100%; transition: transition: background-color 0.2s;"></div>
-                </div>
-                <div id="signup-strength-text" style="font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-align: right; color: var(--t-fg2, #aaa);"></div>
-              </div>
-
-              <label class="field-label" for="signup-confirm-password">Confirm Password</label>
-              <input id="signup-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 12px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
-
-              <label class="field-label" for="signup-username">Username</label>
-              <input id="signup-username" type="text" autocomplete="username" placeholder="lowercase.name">
-
-              <label class="field-label" for="signup-nickname">Nickname</label>
-              <input id="signup-nickname" type="text" autocomplete="nickname" placeholder="Shown around the site">
-
-              <label class="field-label" for="signup-grad-year">Graduation Year</label>
-              <select id="signup-grad-year"></select>
-
-              <label class="field-label" for="signup-gender">Gender</label>
-              <select id="signup-gender">
-                <option value="">Prefer not to say</option>
-                <option value="Male">Male</option>
-                <option value="Female">Female</option>
-                <option value="Non-binary">Non-binary</option>
-                <option value="Other">Other</option>
-              </select>
-
-              <label class="field-label" for="signup-referral-source">Where did you hear about us?</label>
-              <select id="signup-referral-source">
-                <option value="">Prefer not to say</option>
-                <option value="Word of mouth">Word of mouth</option>
-                <option value="Search engines">Search engines</option>
-                <option value="Social media">Social media (TikTok/Insta)</option>
-                <option value="Other">Other</option>
-              </select>
-
-              <label class="field-label" for="signup-referral-details">Referral Details</label>
-              <input id="signup-referral-details" type="text" placeholder="Optional">
-
-              <div class="agree-row">
-                <input type="checkbox" id="agree" onchange="updateBtn()">
-                <label for="agree">
-                  I am 13 or older and I agree to the
-                  <a href="/use-agreement.html" target="_blank" onclick="event.stopPropagation()">Use Agreement</a> and
-                  <a href="/privacy/" target="_blank" onclick="event.stopPropagation()">Privacy Policy</a>.
-                </label>
-              </div>
-
-              <button id="btn" class="btn" onclick="submit()">Sign Up</button>
-              
-              <div id="support-actions" style="display:none; margin-top: 16px; text-align: center;">
-                <button id="resend-btn" class="secondary-btn btn" onclick="submit(true)" style="min-height: 38px; font-size: 0.8rem; margin-bottom: 8px;">Didn't get email? (Wait 30s)</button>
-                <br>
-                <a href="javascript:void(0)" id="no-email-link" onclick="showNoEmailForm()" style="display:none; color: var(--rose); font-size: 0.75rem; text-decoration: none; font-weight: 700;">Still not getting it? Apply for a manual account.</a>
-              </div>
-
-              <div id="no-email-form" style="display:none; margin-top: 20px; padding: 16px; background: rgba(251, 113, 133, 0.05); border: 1px solid rgba(251, 113, 133, 0.15); border-radius: 10px;">
-                <h3 style="font-family: 'Syne', sans-serif; font-size: 1rem; margin-bottom: 8px;">Manual Account Request</h3>
-                <p style="font-size: 0.75rem; color: var(--t-fg2); margin-bottom: 12px;">If your school blocks our emails, you can apply for a manual bypass. Briefly state why you need access.</p>
-                <textarea id="no-email-reason" placeholder="Brief reason..." style="width: 100%; height: 60px; border-radius: 8px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: #fff; padding: 8px; font-family: inherit; font-size: 0.85rem; margin-bottom: 12px; outline: none;"></textarea>
-                <button class="btn" onclick="applyNoEmail()" style="min-height: 38px; font-size: 0.85rem; background: var(--rose); color: #fff;">Submit Bypass Request</button>
-              </div>
-            </div>
-
-            <div id="invite-step-2" style="display:none;">
-              <div class="panel-head" style="margin-bottom: 20px;">
-                <div>
-                  <h2>Verify Email</h2>
-                  <p>Enter the 6-digit code sent to your email to complete registration.</p>
-                </div>
-              </div>
-              <div class="warning-alert">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                <span><strong>TIME SENSITIVE:</strong> This code will expire in 30 minutes. If it expires, you will need to sign up again.</span>
-              </div>
-
-              <label class="field-label" for="token">6-Digit Verification Code</label>
-              <input id="token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
-
-              <button id="tbtn" class="btn" onclick="verifySignup()">Complete Sign Up</button>
-              <div id="tmsg"></div>
-            </div>
-
-            <div id="msg"></div>
+          <div id="support-actions" style="display:none;">
+            <button id="resend-btn" class="btn" type="button" onclick="submit(true)">Didn't get email? (Wait 30s)</button>
+            <br>
+            <a href="javascript:void(0)" id="no-email-link" onclick="showNoEmailForm()">Still not getting it? Apply for a manual account.</a>
           </div>
 
-          <!-- Tab Pane: Reset Password -->
-          <div class="tab-pane" id="pane-reset" role="tabpanel" aria-labelledby="tab-reset">
-            <div id="reset-step-1">
-              <div class="panel-head" style="margin-bottom: 20px;">
-                <div>
-                  <h2>Reset Password</h2>
-                  <p>Enter your email to receive a 6-digit reset code.</p>
-                </div>
-              </div>
-              <label class="field-label" for="reset-email">Email Address</label>
-              <input id="reset-email" type="email" autocomplete="email" placeholder="your@email.com">
-              
-              <button id="reset-request-btn" class="btn" onclick="requestReset()">Send Reset Code</button>
-            </div>
-
-            <div id="reset-step-2" style="display:none;">
-              <div class="panel-head" style="margin-bottom: 20px;">
-                <div>
-                  <h2>Enter Reset Code</h2>
-                  <p>Use your 6-digit reset code to set a new password.</p>
-                </div>
-              </div>
-              <div class="warning-alert">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                <span><strong>E2E SECURE CHAT WARNING:</strong> Resetting your password derives new encryption keys. <strong>You will lose access to all previously encrypted secure chats.</strong></span>
-              </div>
-
-              <label class="field-label" for="reset-token">6-Digit Reset Code</label>
-              <input id="reset-token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
-
-              <label class="field-label" for="reset-password">New Password (min 8 chars)</label>
-              <input id="reset-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 16px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
-              
-              <div id="reset-password-strength-container" style="margin-top: -10px; margin-bottom: 16px; display: none;">
-                <div style="display: flex; gap: 4px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(255,255,255,0.05);">
-                  <div id="reset-strength-bar-1" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
-                  <div id="reset-strength-bar-2" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
-                  <div id="reset-strength-bar-3" style="flex: 1; height: 100%; transition: background-color 0.2s;"></div>
-                  <div id="reset-strength-bar-4" style="flex: 1; height: 100%; transition: transition: background-color 0.2s;"></div>
-                </div>
-                <div id="reset-strength-text" style="font-size: 0.72rem; margin-top: 4px; font-weight: 600; text-align: right; color: var(--t-fg2, #aaa);"></div>
-              </div>
-
-              <label class="field-label" for="reset-confirm-password">Confirm New Password</label>
-              <input id="reset-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" style="display: block; width: 100%; box-sizing: border-box; min-height: 48px; margin-bottom: 16px; border-radius: 10px; background: rgba(0,0,0,.3); border: 1px solid var(--line); color: var(--t-fg, #fff); font-weight: 600; padding: 12px 14px; outline: none; font-family: inherit; font-size: 0.95rem; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;">
-
-              <button id="rbtn" class="btn" onclick="claimToken('reset')">Reset Password</button>
-            </div>
-            <div id="rtmsg"></div>
+          <div id="no-email-form" style="display:none;">
+            <h3>Manual Account Request</h3>
+            <p>If your school blocks our emails, you can apply for a manual bypass. Briefly state why you need access.</p>
+            <textarea id="no-email-reason" placeholder="Brief reason..."></textarea>
+            <button class="btn-primary" type="button" onclick="applyNoEmail()">Submit Bypass Request</button>
           </div>
-          
+        </div>
 
-        </section>
+        <div id="invite-step-2" style="display:none;">
+          <div class="panel-head">
+            <h2>Verify email</h2>
+            <p>Enter the 6-digit code sent to your email to complete registration.</p>
+          </div>
+          <div class="warning-alert">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span><strong>Time sensitive:</strong> This code expires in 30 minutes. If it expires, you will need to sign up again.</span>
+          </div>
+
+          <label class="field-label" for="token">6-Digit Verification Code</label>
+          <input id="token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
+
+          <button id="tbtn" class="btn-primary" type="button" onclick="verifySignup()">Complete Sign Up</button>
+          <div id="tmsg"></div>
+        </div>
+
+        <div id="msg"></div>
       </div>
-    </section>
 
-    <section class="benefits">
-      <div class="section-title">
-        <h2>What You Unlock</h2>
-        <small>Built for quick access and repeat use</small>
-      </div>
-      <div class="benefit-grid">
-        <div class="benefit">
-          <span class="benefit-icon">G</span>
-          <div>
-            <strong>Games and arcade pages</strong>
-            <span>Jump into the redesigned game hub, favorites, casino-style virtual coin games, chess, puzzles, and more.</span>
+      <!-- Tab Pane: Reset Password -->
+      <div class="tab-pane" id="pane-reset" role="tabpanel" aria-labelledby="tab-reset">
+        <div id="reset-step-1">
+          <div class="panel-head">
+            <h2>Reset password</h2>
+            <p>Enter your email to receive a 6-digit reset code.</p>
           </div>
-        </div>
-        <div class="benefit">
-          <span class="benefit-icon">C</span>
-          <div>
-            <strong>Canvas and profiles</strong>
-            <span>Draw on pixelplace, track stats, view profiles, roles, premium members, online users, and leaderboards.</span>
-          </div>
-        </div>
-        <div class="benefit">
-          <span class="benefit-icon">M</span>
-          <div>
-            <strong>Coins, market, and perks</strong>
-            <span>Earn and spend virtual coins on cosmetics, backgrounds, badges, shop items, and temporary passes.</span>
-          </div>
-        </div>
-        <div class="benefit">
-          <span class="benefit-icon">S</span>
-          <div>
-            <strong>Safer community tools</strong>
-            <span>Use encrypted chat, notifications, feedback, reports, moderation review, and clear account rules.</span>
-          </div>
-        </div>
-      </div>
-    </section>
+          <label class="field-label" for="reset-email">Email Address</label>
+          <input id="reset-email" type="email" autocomplete="email" placeholder="your@email.com">
 
-    <section class="flow-strip">
-      <div class="flow-step"><b>Sign Up</b><span>Choose your email and a secure account password.</span></div>
-      <div class="flow-step"><b>Verify</b><span>Enter the 6-digit code sent to your email (expires in 30m).</span></div>
-      <div class="flow-step"><b>Unlock</b><span>Verification immediately derives your E2E keys and signs you in.</span></div>
+          <button id="reset-request-btn" class="btn-primary" type="button" onclick="requestReset()">Send Reset Code</button>
+        </div>
+
+        <div id="reset-step-2" style="display:none;">
+          <div class="panel-head">
+            <h2>Enter reset code</h2>
+            <p>Use your 6-digit reset code to set a new password.</p>
+          </div>
+          <div class="warning-alert">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span><strong>E2E secure chat warning:</strong> Resetting your password derives new encryption keys. <strong>You will lose access to all previously encrypted secure chats.</strong></span>
+          </div>
+
+          <label class="field-label" for="reset-token">6-Digit Reset Code</label>
+          <input id="reset-token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
+
+          <label class="field-label" for="reset-password">New Password (min 8 chars)</label>
+          <input id="reset-password" type="password" autocomplete="new-password" placeholder="••••••••">
+
+          <div id="reset-password-strength-container" class="pw-strength">
+            <div class="pw-strength-bars">
+              <div id="reset-strength-bar-1"></div>
+              <div id="reset-strength-bar-2"></div>
+              <div id="reset-strength-bar-3"></div>
+              <div id="reset-strength-bar-4"></div>
+            </div>
+            <div id="reset-strength-text" class="pw-strength-text"></div>
+          </div>
+
+          <label class="field-label" for="reset-confirm-password">Confirm New Password</label>
+          <input id="reset-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••">
+
+          <button id="rbtn" class="btn-primary" type="button" onclick="claimToken('reset')">Reset Password</button>
+        </div>
+        <div id="rtmsg"></div>
+      </div>
     </section>
   </main>
 
-  <footer class="footer">
+  <footer class="app-footer enroll-foot">
     &copy; 2026 mitch.pro &middot; <a href="/faq.html">FAQ</a>
   </footer>
 
@@ -1271,8 +692,8 @@ function resetCaptcha() {}
       window._inviteRef = refCode.toUpperCase();
       // Show a small banner so they know they're using an invite
       var banner = document.createElement('div');
-      banner.style.cssText = 'background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.8rem;font-weight:700;color:#c4b5fd;';
-      banner.textContent = '\ud83d\udd17 You were invited! Code: ' + refCode.toUpperCase();
+      banner.className = 'invite-banner';
+      banner.textContent = 'You were invited! Code: ' + refCode.toUpperCase();
       var emailField = document.getElementById('email');
       if (emailField && emailField.parentNode) emailField.parentNode.insertBefore(banner, emailField);
     }
@@ -1610,7 +1031,7 @@ async function applyNoEmail() {
     });
     const d = await r.json();
     if (d.success) {
-      document.getElementById('no-email-form').innerHTML = '<p style="color:var(--green); font-size:0.8rem; font-weight:700;">Manual request submitted. We will review it soon.</p>';
+      document.getElementById('no-email-form').innerHTML = '<p class="ok" style="font-size:0.8rem;font-weight:700;">Manual request submitted. We will review it soon.</p>';
     } else {
       alert(d.message || "Failed to submit request.");
       resetCaptcha();
@@ -1762,7 +1183,7 @@ async function claimToken(mode) {
       var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
       document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
       tmsg.className = 'ok';
-      tmsg.innerHTML = 'Success! <a href="/" style="color:var(--green)">Go to Homepage</a>';
+      tmsg.innerHTML = 'Success! <a href="/" style="color:var(--t-ok, var(--t-ac))">Go to Homepage</a>';
       setTimeout(() => window.location.href = "/", 2000);
     } else {
       tmsg.className = 'err';
@@ -1795,199 +1216,6 @@ async function claimToken(mode) {
       if (tokenField) tokenField.value = code;
     }
   }
-})();
-
-// Hyper Scroll Scrolling Speed/Velocity and FPS tracker in HUD
-(function() {
-  let lastScrollTop = 0;
-  let lastScrollTime = Date.now();
-  let scrollSpeed = 0;
-  let velocityReadout = document.getElementById('hud-speed');
-  let fpsReadout = document.getElementById('hud-fps');
-  
-  let frameCount = 0;
-  let lastFpsTime = Date.now();
-  
-  function updateFps() {
-    frameCount++;
-    let now = Date.now();
-    if (now - lastFpsTime >= 1000) {
-      if (fpsReadout) fpsReadout.textContent = frameCount;
-      frameCount = 0;
-      lastFpsTime = now;
-    }
-    requestAnimationFrame(updateFps);
-  }
-  requestAnimationFrame(updateFps);
-
-  window.addEventListener('scroll', () => {
-    let now = Date.now();
-    let scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-    let dt = (now - lastScrollTime) / 1000;
-    if (dt > 0.005) {
-      let dy = scrollTop - lastScrollTop;
-      scrollSpeed = Math.abs(dy / dt);
-      if (velocityReadout) {
-        velocityReadout.textContent = Math.round(scrollSpeed) + ' PX/S';
-      }
-      lastScrollTop = scrollTop;
-      lastScrollTime = now;
-    }
-  }, { passive: true });
-})();
-
-// Procedural Hero Waves Builder (Tidal waves code)
-(function buildHeroWaves() {
-  const svg = document.getElementById("hero-wave-svg");
-  if (!svg) return;
-  const NS = "http://www.w3.org/2000/svg";
-  const W = 1440, H = 240;
-  const rand = (a, b) => a + Math.random() * (b - a);
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-  if (!document.getElementById("hero-wave-kf")) {
-    const st = document.createElement("style");
-    st.id = "hero-wave-kf";
-    st.textContent =
-      "@keyframes heroWaveScroll{from{transform:translateX(0)}to{transform:translateX(-" + W + "px)}}" +
-      ".hwave{will-change:transform}";
-    document.head.appendChild(st);
-  }
-
-  function makeWave(baseY, octaves) {
-    const comps = octaves.map((o) => ({
-      k: o.k,
-      amp: o.amp * rand(0.7, 1.25),
-      ph: rand(0, Math.PI * 2)
-    }));
-    return (x) => {
-      let y = baseY;
-      for (const c of comps)
-        y -= c.amp * Math.sin((2 * Math.PI * c.k * x) / W + c.ph);
-      return y;
-    };
-  }
-
-  function topLine(fn) {
-    const step = 6;
-    let d = "M 0 " + fn(0).toFixed(1);
-    for (let x = step; x <= 2 * W; x += step)
-      d += " L " + x + " " + fn(x).toFixed(1);
-    return d;
-  }
-
-  function crests(fn) {
-    const step = 4, pts = [];
-    let prev = fn(-step), cur = fn(0);
-    for (let x = 0; x < W; x += step) {
-      const nxt = fn(x + step);
-      if (cur < prev && cur < nxt) pts.push({ x, y: cur });
-      prev = cur;
-      cur = nxt;
-    }
-    return pts;
-  }
-
-  const layers = [
-    {
-      baseY: 108,
-      oct: [
-        { k: 1, amp: 32 },
-        { k: 2, amp: 15 },
-        { k: 3, amp: 8 }
-      ],
-      fill: "url(#wg1)",
-      dur: 27,
-      rev: false,
-      foam: "rgba(34,211,238,0.06)",
-      fw: 1.5,
-      dots: 0
-    },
-    {
-      baseY: 130,
-      oct: [
-        { k: 1, amp: 28 },
-        { k: 2, amp: 17 },
-        { k: 4, amp: 9 }
-      ],
-      fill: "url(#wg2)",
-      dur: 21,
-      rev: true,
-      foam: "rgba(167,139,250,0.08)",
-      fw: 2,
-      dots: 3
-    },
-    {
-      baseY: 156,
-      oct: [
-        { k: 2, amp: 20 },
-        { k: 3, amp: 13 },
-        { k: 5, amp: 7 }
-      ],
-      fill: "url(#wg3)",
-      dur: 15,
-      rev: false,
-      foam: "rgba(34,211,238,0.12)",
-      fw: 2.4,
-      dots: 4
-    },
-    {
-      baseY: 188,
-      oct: [
-        { k: 2, amp: 14 },
-        { k: 4, amp: 9 },
-        { k: 6, amp: 6 }
-      ],
-      fill: "#0a0a0c",
-      dur: 11,
-      rev: true,
-      foam: "rgba(255,255,255,0.04)",
-      fw: 2,
-      dots: 5
-    }
-  ];
-
-  layers.forEach((L) => {
-    const fn = makeWave(L.baseY, L.oct);
-    const line = topLine(fn);
-    const g = document.createElementNS(NS, "g");
-    g.setAttribute("class", "hwave");
-    if (!reduce)
-      g.style.animation =
-        "heroWaveScroll " + L.dur + "s linear infinite" + (L.rev ? " reverse" : "");
-
-    const body = document.createElementNS(NS, "path");
-    body.setAttribute("d", line + " L " + 2 * W + " " + H + " L 0 " + H + " Z");
-    body.setAttribute("fill", L.fill);
-    g.appendChild(body);
-
-    const crest = document.createElementNS(NS, "path");
-    crest.setAttribute("d", line);
-    crest.setAttribute("fill", "none");
-    crest.setAttribute("stroke", L.foam);
-    crest.setAttribute("stroke-width", L.fw);
-    crest.setAttribute("stroke-linecap", "round");
-    g.appendChild(crest);
-
-    if (L.dots) {
-      const cs = crests(fn);
-      for (let i = cs.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [cs[i], cs[j]] = [cs[j], cs[i]];
-      }
-      cs.slice(0, L.dots).forEach((p) => {
-        [0, W].forEach((off) => {
-          const c = document.createElementNS(NS, "circle");
-          c.setAttribute("cx", (p.x + off).toFixed(1));
-          c.setAttribute("cy", p.y.toFixed(1));
-          c.setAttribute("r", rand(1.5, 3).toFixed(1));
-          c.setAttribute("fill", "rgba(34,211,238," + rand(0.08, 0.2).toFixed(2) + ")");
-          g.appendChild(c);
-        });
-      });
-    }
-    svg.appendChild(g);
-  });
 })();
 </script>
 <script src="/cookie-consent.js" defer></script>

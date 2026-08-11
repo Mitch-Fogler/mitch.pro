@@ -32,4 +32,4 @@ There is **no** open arbitrary web proxy. Game-specific reverse proxies (e.g. `/
 - If this repo was previously private with secrets/PII in git history, scrub history or cut a fresh orphan branch before making it public.
 - School emails (`@student.rjuhsd.us`) and WHS bell branding are intentional product identity.
 
-See `SECURITY.md` for reporting guidance.
+See `SECURITY.md` for reporting guidance and `SECURITY_POSTURE.md` for the current control summary.

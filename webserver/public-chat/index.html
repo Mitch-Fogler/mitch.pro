@@ -9,134 +9,111 @@
 <script src="/api.js"></script>
 <script src="/app-shell.js" defer></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --primary: #81b64c;
-    --primary-dim: rgba(129,182,76,0.15);
-    --primary-border: rgba(129,182,76,0.25);
-    --card-bg: rgba(255,255,255,0.03);
-    --card-border: rgba(255,255,255,0.08);
-    --input-bg: rgba(255,255,255,0.04);
-    --input-border: rgba(255,255,255,0.1);
-    --radius: 10px;
+  .page-head { margin-bottom: 1.35rem; max-width: 40rem; }
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(1.75rem, 4vw, 2.4rem);
+    letter-spacing: -0.03em;
   }
-  body {
-    min-height: 100vh;
-    background: var(--t-bg, #0d0d0d);
-    color: var(--t-fg, #e8e8e8);
-    font-family: 'DM Mono', monospace;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 60px 20px 80px;
-    position: relative;
-    overflow-x: hidden;
+  .page-sub {
+    margin: 0.5rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.9rem;
+    line-height: 1.5;
   }
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: radial-gradient(ellipse 55% 35% at 50% 0%, rgba(129,182,76,0.06) 0%, transparent 60%);
-    pointer-events: none;
-  }
-  .wrap { width: 100%; max-width: 650px; position: relative; z-index: 1; }
-  .header { text-align: center; margin-bottom: 40px; }
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: var(--primary-dim);
-    border: 1px solid var(--primary-border);
-    border-radius: 99px;
-    padding: 4px 14px;
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--primary);
-    margin-bottom: 18px;
-  }
-  h1 { font-family: 'Syne', sans-serif; font-size: clamp(2rem, 6vw, 2.8rem); font-weight: 800; line-height: 1.1; margin-bottom: 12px; }
-  h1 span { color: var(--primary); }
-  .subtitle { font-size: 13px; color: var(--t-fg2, #777); font-style: italic; }
-  .card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 24px;
-    backdrop-filter: blur(12px);
-  }
+  .chat-shell { max-width: 42rem; }
   .chat-box {
-    height: 450px;
+    height: min(28rem, 58vh);
     overflow-y: auto;
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
-    border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 20px;
+    background: color-mix(in srgb, var(--t-bg) 55%, transparent);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    padding: 1rem 1.1rem;
+    margin-bottom: 0.9rem;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 0.85rem;
     scrollbar-width: thin;
-    scrollbar-color: var(--primary-border) transparent;
+    scrollbar-color: color-mix(in srgb, var(--t-ac) 35%, transparent) transparent;
   }
-  .msg { max-width: 85%; align-self: flex-start; }
+  .msg { max-width: 88%; align-self: flex-start; }
   .msg.own { align-self: flex-end; text-align: right; }
-  .msg .author { font-size: 10px; font-weight: 700; color: #bbb; margin-bottom: 4px; display: block; opacity: 0.9; }
+  .msg .author {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--t-fg2);
+    margin-bottom: 0.25rem;
+    display: block;
+  }
   .msg .text {
-    font-size: 13px;
-    background: rgba(255,255,255,0.06);
-    padding: 10px 14px;
-    border-radius: 14px;
-    border: 1px solid var(--card-border);
+    font-size: 0.88rem;
+    background: var(--t-bg3);
+    padding: 0.55rem 0.85rem;
+    border-radius: calc(var(--t-radius, 8px) + 4px);
+    border: 1px solid var(--t-bd);
     display: inline-block;
     word-break: break-word;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   }
-  .msg.own .text { background: var(--primary-dim); border-color: var(--primary-border); border-bottom-right-radius: 2px; }
-  .msg:not(.own) .text { border-bottom-left-radius: 2px; }
-  .msg.chat_shadow .text { box-shadow: 0 8px 18px rgba(0,0,0,.42), 0 1px 0 rgba(255,255,255,.08); }
-  .msg.chat_terminal .text { background: rgba(0,20,8,.88); border-color: rgba(0,255,65,.35); color: #93f59d; font-family: "DM Mono", ui-monospace, monospace; }
-  .msg.chat_prism .text { background: linear-gradient(90deg, rgba(255,0,128,.18), rgba(0,220,255,.18), rgba(255,210,0,.18)); border-color: rgba(255,255,255,.22); }
+  .msg.own .text {
+    background: color-mix(in srgb, var(--t-ac) 14%, var(--t-bg3));
+    border-color: color-mix(in srgb, var(--t-ac) 35%, var(--t-bd));
+    border-bottom-right-radius: 3px;
+  }
+  .msg:not(.own) .text { border-bottom-left-radius: 3px; }
+  .msg.chat_shadow .text { box-shadow: 0 8px 18px rgba(0,0,0,.42), 0 1px 0 color-mix(in srgb, #fff 8%, transparent); }
+  .msg.chat_terminal .text {
+    background: rgba(0,20,8,.88);
+    border-color: rgba(0,255,65,.35);
+    color: #93f59d;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .msg.chat_prism .text {
+    background: linear-gradient(90deg, rgba(255,0,128,.18), rgba(0,220,255,.18), rgba(255,210,0,.18));
+    border-color: color-mix(in srgb, #fff 22%, var(--t-bd));
+  }
   .msg.chat_sparkles .text::after { content: ' ✦'; color: #facc15; }
   .msg.chat_wave .text { animation: chatWave 1.8s ease-in-out infinite; }
   @keyframes chatWave { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
-  .input-wrap { display: flex; gap: 12px; }
-  input {
+  .input-wrap { display: flex; gap: 0.65rem; }
+  .input-wrap input {
     flex: 1;
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
-    border-radius: var(--radius);
-    color: var(--t-fg, #e8e8e8);
+    min-width: 0;
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    color: var(--t-fg);
     font-family: inherit;
-    font-size: 14px;
-    padding: 12px 16px;
+    font-size: 0.92rem;
+    padding: 0.7rem 0.9rem;
     outline: none;
-    transition: all 0.2s;
+    transition: border-color var(--t-motion, .15s), box-shadow var(--t-motion, .15s);
   }
-  input:focus { border-color: var(--primary); background: rgba(129,182,76,0.05); }
+  .input-wrap input:focus {
+    border-color: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls, color-mix(in srgb, var(--t-ac) 22%, transparent));
+  }
   #sendBtn {
-    background: var(--primary) !important;
-    color: #0d0d0d !important;
-    border: none !important;
-    border-radius: var(--radius) !important;
-    padding: 0 24px !important;
-    font-family: 'Syne', sans-serif !important;
-    font-size: 14px !important;
-    font-weight: 800 !important;
-    cursor: pointer !important;
-    transition: all 0.2s !important;
+    background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
+    color: #fff;
+    border: 1px solid var(--t-bda, transparent);
+    border-radius: var(--t-radius, 8px);
+    padding: 0 1.25rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background var(--t-motion, .15s), transform .12s, box-shadow var(--t-motion, .15s);
   }
-  #sendBtn:hover:not(:disabled) { transform: translateY(-1px) !important; box-shadow: 0 4px 15px rgba(129,182,76,0.3) !important; }
-  #sendBtn:active { transform: translateY(0) !important; }
-
-  /* Badge styling */
-  .chat-badge { font-size: 9px; margin-left: 5px; vertical-align: middle; }
+  #sendBtn:hover:not(:disabled) {
+    background: var(--t-ac);
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 3px var(--t-gls, transparent);
+  }
+  #sendBtn:active { transform: translateY(0); }
+  .chat-badge { font-size: 0.7rem; margin-left: 0.3rem; vertical-align: middle; }
   .badge-verified { color: #3b82f6; }
-  .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 0 3px; border-radius: 3px; font-weight: 800; text-transform: uppercase; font-size: 7px; }
-  .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 0 3px; border-radius: 3px; font-weight: 800; text-transform: uppercase; font-size: 7px; }
-
-  /* Glow styles */
+  .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 0 0.2rem; border-radius: 3px; font-weight: 800; text-transform: uppercase; font-size: 0.55rem; }
+  .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 0 0.2rem; border-radius: 3px; font-weight: 800; text-transform: uppercase; font-size: 0.55rem; }
   .author.neon_purple { color: #d946ef !important; text-shadow: 0 0 10px rgba(217,70,239,0.5); }
   .author.electric_blue { color: #3b82f6 !important; text-shadow: 0 0 10px rgba(59,130,246,0.5); }
   .author.mint_flash { color: #34d399 !important; text-shadow: 0 0 10px rgba(52,211,153,0.45); }
@@ -144,44 +121,66 @@
   .author.ember_red { color: #ef4444 !important; text-shadow: 0 0 10px rgba(239,68,68,0.5); }
   .author.void_white { color: #f8fafc !important; text-shadow: 0 0 12px rgba(248,250,252,0.45); }
   .author.gold_glow { color: #f59e0b !important; text-shadow: 0 0 15px rgba(245,158,11,0.8); }
-  .author.rainbow_name { 
+  .author.rainbow_name {
     background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
     background-size: 200% auto; animation: rainbow_move 3s linear infinite;
-    font-weight: 900;
+    font-weight: 800;
     display: inline-block;
   }
   @keyframes rainbow_move { to { background-position: 200% center; } }
-  
-  .back-btn {
-    display: inline-block;
-    margin-bottom: 20px;
-    color: var(--primary);
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-    transition: opacity 0.2s;
+  .mod-modal-card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: calc(var(--t-radius, 8px) + 4px);
+    padding: 1.35rem;
+    width: 90%;
+    max-width: 25rem;
+    color: var(--t-fg);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+    font-family: inherit;
   }
-  .back-btn:hover { opacity: 0.8; }
+  .mod-modal-card h3 {
+    font-family: Outfit, system-ui, sans-serif;
+    font-size: 1rem;
+    color: var(--t-ac);
+    margin: 0;
+  }
+  .mod-modal-card .mod-actions { display: flex; flex-direction: column; gap: 0.55rem; }
+  .mod-modal-card .mod-actions button {
+    background: var(--t-bg3);
+    color: var(--t-fg);
+    border: 1px solid var(--t-bd);
+    padding: 0.65rem 0.75rem;
+    border-radius: var(--t-radius, 8px);
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.84rem;
+    font-family: inherit;
+  }
+  .mod-modal-card .mod-actions button:hover { border-color: var(--t-ac); }
+  @media (max-width: 719px) {
+    .chat-box { height: min(24rem, 52vh); padding: 0.85rem; }
+    .input-wrap { flex-direction: column; }
+    #sendBtn { min-height: 2.55rem; width: 100%; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <a href="/" class="back-btn">← Back to Hub</a>
-  <div class="header">
-    <div class="badge">mitch.pro plaza</div>
-    <h1>Public <span>Plaza.</span></h1>
-    <p class="subtitle">A real-time public square open to all registered users.</p>
-  </div>
+<main class="app-main">
+  <header class="page-head">
+    <h1>Public Plaza</h1>
+    <p class="page-sub">A real-time public square open to all registered users.</p>
+  </header>
 
-  <div class="card">
+  <section class="panel chat-shell">
     <div id="chatBox" class="chat-box"></div>
     <form id="chatForm" class="input-wrap">
         <input type="text" id="chatInput" placeholder="Type a message to the square..." maxlength="1000" autocomplete="off" required>
         <button type="submit" id="sendBtn">Send</button>
     </form>
-  </div>
-</div>
+  </section>
+</main>
 
 <script>
     const chatBox = document.getElementById('chatBox');
@@ -376,24 +375,22 @@
         modal.style.justifyContent = 'center';
         modal.style.backdropFilter = 'blur(8px)';
 
-        const colorTheme = '#81b64c';
-
         modal.innerHTML = `
-            <div style="background:#141414; border:1px solid ${colorTheme}; border-radius:12px; padding:24px; width:90%; max-width:400px; font-family:'DM Mono', monospace; color:#fff; box-shadow:0 10px 30px rgba(0,0,0,0.5);">
-                <div style="display:flex; justify-content:between; align-items:center; margin-bottom:18px;">
-                    <h3 style="font-family:'Syne', sans-serif; font-size:16px; color:${colorTheme}; margin:0;">MODERATOR PANEL</h3>
-                    <span id="close-mod-modal" style="cursor:pointer; opacity:0.6; font-weight:800; font-size:16px; margin-left:auto;">&times;</span>
+            <div class="mod-modal-card">
+                <div style="display:flex; align-items:center; margin-bottom:1rem;">
+                    <h3>Moderator</h3>
+                    <span id="close-mod-modal" style="cursor:pointer; opacity:0.6; font-weight:800; font-size:1.1rem; margin-left:auto;">&times;</span>
                 </div>
-                <div style="font-size:12px; opacity:0.8; margin-bottom:20px; word-break:break-all;">
-                    Target: <strong>${escapeHtml(name)}</strong> (${escapeHtml(email)})<br>
-                    Room: <strong>${room.toUpperCase()}</strong>
+                <div style="font-size:0.78rem; color:var(--t-fg2); margin-bottom:1.1rem; word-break:break-all;">
+                    Target: <strong style="color:var(--t-fg)">${escapeHtml(name)}</strong> (${escapeHtml(email)})<br>
+                    Room: <strong style="color:var(--t-fg)">${room.toUpperCase()}</strong>
                 </div>
-                <div style="display:flex; flex-direction:column; gap:10px;">
-                    <button id="mod-action-del-msg" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Delete Message</button>
-                    <button id="mod-action-del-user" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Delete All Messages from User</button>
-                    <button id="mod-action-timeout" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Timeout User (Mute)</button>
-                    <button id="mod-action-ban" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Ban from Chatroom (toggle)</button>
-                    <button id="mod-action-warn" style="background:rgba(255,255,255,0.05); color:#fff; border:1px solid rgba(255,255,255,0.1); padding:10px; border-radius:6px; cursor:pointer; text-align:left; font-size:13px; font-family:inherit;">Send Warning</button>
+                <div class="mod-actions">
+                    <button id="mod-action-del-msg" type="button">Delete Message</button>
+                    <button id="mod-action-del-user" type="button">Delete All Messages from User</button>
+                    <button id="mod-action-timeout" type="button">Timeout User (Mute)</button>
+                    <button id="mod-action-ban" type="button">Ban from Chatroom (toggle)</button>
+                    <button id="mod-action-warn" type="button">Send Warning</button>
                 </div>
             </div>
         `;

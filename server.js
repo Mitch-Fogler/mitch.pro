@@ -5753,64 +5753,9 @@ async function serveStatic(urlPath) {
   return errResp(404, null, null);
 }
 
-function rewriteHtml(html, targetUrl) {
-  try {
-    const targetUrlObj = new URL(targetUrl);
-    const targetScheme = targetUrlObj.protocol.slice(0, -1); // e.g. "https" or "http"
-    const targetHost = targetUrlObj.host; // e.g. "example.com"
-    
-    // 1. Rewrite absolute URLs starting with http:// or https://
-    let rewritten = html.replace(/(href|src|action|data-src|poster)\s*=\s*(['"])(https?:\/\/.*?)\2/gi, (match, attr, q, urlStr) => {
-      try {
-        const u = new URL(urlStr);
-        const scheme = u.protocol.slice(0, -1);
-        const rest = u.host + u.pathname + u.search + u.hash;
-        return `${attr}=${q}/prox/${scheme}/${rest}${q}`;
-      } catch {
-        return match;
-      }
-    });
-
-    // 2. Rewrite protocol-relative URLs starting with //
-    rewritten = rewritten.replace(/(href|src|action|data-src|poster)\s*=\s*(['"])\/\/(.*?)\2/gi, (match, attr, q, urlStr) => {
-      return `${attr}=${q}/prox/https/${urlStr}${q}`;
-    });
-
-    // 3. Rewrite root-relative URLs starting with / (but not /prox/ or /proxy/)
-    rewritten = rewritten.replace(/(href|src|action|data-src|poster)\s*=\s*(['"])\/((?!prox\/|proxy\/).*?)\2/gi, (match, attr, q, pathStr) => {
-      const rest = targetHost + '/' + pathStr;
-      return `${attr}=${q}/prox/${targetScheme}/${rest}${q}`;
-    });
-
-    // 4. Rewrite CSS url(...) imports in HTML (absolute http/https)
-    rewritten = rewritten.replace(/url\(\s*(['"]?)(https?:\/\/.*?)\1\s*\)/gi, (match, q, urlStr) => {
-      try {
-        const u = new URL(urlStr);
-        const scheme = u.protocol.slice(0, -1);
-        const rest = u.host + u.pathname + u.search + u.hash;
-        return `url(${q}/prox/${scheme}/${rest}${q})`;
-      } catch {
-        return match;
-      }
-    });
-    
-    // 5. Rewrite root-relative CSS url(/...) imports in HTML (but not /prox/ or /proxy/)
-    rewritten = rewritten.replace(/url\(\s*(['"]?)\/((?!prox\/|proxy\/).*?)\1\s*\)/gi, (match, q, pathStr) => {
-      const rest = targetHost + '/' + pathStr;
-      return `url(${q}/prox/${targetScheme}/${rest}${q})`;
-    });
-
-    // 6. Scrub the word "unblocked" case-insensitively from proxied HTML to prevent school administrator filter trips
-    rewritten = rewritten.replace(/unblocked/gi, (match) => {
-      if (match === 'Unblocked') return 'Open';
-      if (match === 'UNBLOCKED') return 'OPEN';
-      return 'open';
-    });
-
-    return rewritten;
-  } catch (e) {
-    return html;
-  }
+function rewriteHtml(html, _targetUrl) {
+  // Open /prox HTML rewriting removed — arbitrary-site proxying is gone.
+  return html;
 }
 
 // ── Main fetch handler ────────────────────────────────────────────────────────
@@ -8024,60 +7969,9 @@ Mitch.pro Team`;
 
 
 
-    // GET /api/admin/prox/sessions
-    if (path === '/api/admin/prox/sessions') {
-      const cookies = getCookies(req);
-      const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
-      try {
-        const targetUrl = `http://127.0.0.1:8081/api/sessions`;
-        const resp = await fetchWithTimeout(targetUrl);
-        return new Response(resp.body, { status: resp.status, headers: resp.headers });
-      } catch (e) {
-        return jsonResp(502, { error: 'Stream server unreachable' });
-      }
-    }
-
-    // POST /api/admin/prox/block
-    if (path === '/api/admin/prox/block') {
-      const cookies = getCookies(req);
-      const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
-      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
-      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const domain = String(body.domain || '').toLowerCase().trim();
-      proxBlocklist.add(domain);
-      saveJson(join(BASE, 'data', 'prox_blocklist.json'), Array.from(proxBlocklist));
-      const actor = emailFromSid(sid) || 'moderator';
-      const role = isAdminId(sid) ? 'admin' : 'moderator';
-      logAdminAction(actor, 'prox_block', {
-        domain,
-        ip: getRealIp(req),
-        userAgent: req.headers.get('user-agent') || 'unknown',
-        role
-      });
-      return jsonResp(200, { ok: true });
-    }
-
-    // POST /api/admin/prox/unblock
-    if (path === '/api/admin/prox/unblock') {
-      const cookies = getCookies(req);
-      const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
-      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
-      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const domain = String(body.domain || '').toLowerCase().trim();
-      proxBlocklist.delete(domain);
-      saveJson(join(BASE, 'data', 'prox_blocklist.json'), Array.from(proxBlocklist));
-      const actor = emailFromSid(sid) || 'moderator';
-      const role = isAdminId(sid) ? 'admin' : 'moderator';
-      logAdminAction(actor, 'prox_unblock', {
-        domain,
-        ip: getRealIp(req),
-        userAgent: req.headers.get('user-agent') || 'unknown',
-        role
-      });
-      return jsonResp(200, { ok: true });
+    // Legacy mitch.prox admin tools removed with arbitrary proxying.
+    if (path === '/api/admin/prox/sessions' || path === '/api/admin/prox/block' || path === '/api/admin/prox/unblock') {
+      return jsonResp(410, { error: 'gone', message: 'Arbitrary proxy management has been removed.' });
     }
 
     // POST /api/admin/chat-reports/resolve
@@ -15918,6 +15812,7 @@ function loadAllGamesList() {
     const PUBLIC_ASSETS = new Set([
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
+      '/api.js', '/app-shell.js', '/app.css',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',

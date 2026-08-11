@@ -121,6 +121,7 @@ cat << EOF > "$CADDYFILE_PATH"
         X-Content-Type-Options nosniff
         Referrer-Policy strict-origin-when-cross-origin
         X-Frame-Options SAMEORIGIN
+        Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://www.google.com https://www.gstatic.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss: ws:; worker-src 'self' blob:; frame-src 'self' https://www.google.com https://www.recaptcha.net https://html5.gamemonetize.co"
         -Server
     }
 }
