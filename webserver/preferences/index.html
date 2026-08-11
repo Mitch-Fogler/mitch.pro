@@ -2,7 +2,11 @@
 <html>
 <head>
 <title>Preferences — mitch.pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
 <script src="/sync.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js" defer></script>
 <style>
@@ -2504,7 +2508,6 @@ async function deleteAccount() {
     document.cookie = "studentId=;path=/;max-age=0" + secureFlag + ";SameSite=Lax";
     document.cookie = "id=;path=/;max-age=0" + secureFlag + ";SameSite=Lax";
     document.cookie = "password=;path=/;max-age=0" + secureFlag + ";SameSite=Lax";
-    document.cookie = "adminId=;path=/;max-age=0" + secureFlag + ";SameSite=Lax";
     window.location.href = '/enroll/';
   }
 

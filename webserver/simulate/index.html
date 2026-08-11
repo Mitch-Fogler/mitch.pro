@@ -1,101 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Admin Simulation — mitch.pro</title>
-<link rel="stylesheet" href="/open.css">
-<style>
-  .card { max-width: 440px; text-align: center; }
-  .sim-box { background: rgba(124,58,237,0.05); border: 1px solid rgba(124,58,237,0.2); border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
-  .stop-box { background: rgba(248,113,113,0.05); border: 1px solid rgba(248,113,113,0.2); border-radius: 12px; padding: 1.5rem; }
-</style>
+<title>Simulation removed — mitch.pro</title>
+<meta http-equiv="refresh" content="0;url=/admin/">
+<script>location.replace('/admin/');</script>
 </head>
 <body>
-  <div class="container centered">
-    <div style="width:100%; max-width:440px;">
-      <div class="badge">Admin</div>
-      <h1>Simulation</h1>
-      <p style="color:var(--fg-dim); margin-bottom: 2rem;">Switch between users to view the site from their perspective.</p>
-
-      <div id="sim-ui" class="sim-box">
-        <input id="email" type="email" placeholder="user@email.com" style="text-align:center;">
-        <button class="btn" onclick="simulate()">Start Simulation</button>
-      </div>
-
-      <div id="stop-ui" class="stop-box" style="display:none;">
-        <p style="margin-bottom:1rem; font-weight:600; color:#f87171;">Currently Simulating</p>
-        <button class="btn" onclick="stopSimulating()" style="background:#f87171;">Stop Simulating</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-  </div>
-
-<script>
-function getCookie(name) {
-  const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-  return m ? decodeURIComponent(m[1]) : '';
-}
-
-const adminId = getCookie('adminId');
-if (adminId) {
-  document.getElementById('sim-ui').style.display = 'none';
-  document.getElementById('stop-ui').style.display = 'block';
-}
-
-async function simulate() {
-  const email = document.getElementById('email').value.trim();
-  const msg = document.getElementById('msg');
-  if (!email) return;
-
-  try {
-    const r = await fetch('/api/admin/simulate', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ email })
-    });
-    const d = await r.json();
-    if (d.token) {
-      const currentSid = getCookie('studentId');
-      document.cookie = "adminId=" + currentSid + ";path=/;max-age=31536000;Secure;SameSite=Lax";
-      document.cookie = "studentId=" + d.token + ";path=/;max-age=31536000;Secure;SameSite=Lax";
-      window.top.location.reload();
-    } else {
-      msg.className = 'err';
-      msg.textContent = d.error || 'User not found.';
-    }
-  } catch (e) {
-    msg.className = 'err';
-    msg.textContent = 'Server error.';
-  }
-}
-
-function stopSimulating() {
-  const adminId = getCookie('adminId');
-  
-  // Clear any persistent "simulate" name in localStorage
-  try {
-    const pref = JSON.parse(localStorage.getItem('_prefHomepage') || '{}');
-    if (pref.greetingName === 'simulate') {
-      delete pref.greetingName;
-      localStorage.setItem('_prefHomepage', JSON.stringify(pref));
-    }
-  } catch(e) {}
-
-  if (!adminId) {
-    // If adminId is lost, just clear everything to be safe
-    document.cookie = "studentId=;path=/;max-age=0;Secure;SameSite=Lax";
-    document.cookie = "adminId=;path=/;max-age=0;Secure;SameSite=Lax";
-    window.top.location.reload();
-    return;
-  }
-  
-  document.cookie = "studentId=" + adminId + ";path=/;max-age=31536000;Secure;SameSite=Lax";
-  document.cookie = "adminId=;path=/;max-age=0;Secure;SameSite=Lax";
-  window.top.location.reload();
-}
-</script>
-<script src="/cookie-consent.js" defer></script>
+  <p>Admin simulation has been removed. <a href="/admin/">Go to admin</a>.</p>
 </body>
 </html>

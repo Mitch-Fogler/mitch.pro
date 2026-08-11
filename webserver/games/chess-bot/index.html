@@ -1296,7 +1296,12 @@ function puzHandleMove(from,to,promo){
     setStatus('idle','✓ Puzzle solved!');
     document.getElementById('btn-puz-next').style.display='';
     const mp=document.getElementById('btn-puz-mob'); if(mp) mp.style.display='block';
-    fetch('/api/chess/puzzle-solved', { method:'POST' }).catch(()=>null);
+    fetch('/api/chess/puzzle-solved', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+      body: JSON.stringify({ moves: puzMoves.join(' ') })
+    }).catch(()=>null);
     return true;
   }
   // Auto-play opponent response
@@ -1315,7 +1320,12 @@ function puzHandleMove(from,to,promo){
       document.getElementById('puz-streak-n').textContent=puzStreak;
       setStatus('idle','✓ Puzzle solved!');
       document.getElementById('btn-puz-next').style.display='';
-      fetch('/api/chess/puzzle-solved', { method:'POST' }).catch(()=>null);
+      fetch('/api/chess/puzzle-solved', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+      body: JSON.stringify({ moves: puzMoves.join(' ') })
+    }).catch(()=>null);
     } else {
 
       setStatus('your_turn');

@@ -1,12 +1,18 @@
 # Local Secrets & Credentials
 .env
 .env.*
+!.env.example
 admin.key
 app-pass
 id_secret.key
 github_deploy_key*
+newsletter_people_password.txt
+.current_public_ip
 .antigravitycli/
 .claude/
+.agents/
+.codex/
+security_best_practices_report.md
 
 # Local State & Databases (mapped via Docker volumes)
 data/*
@@ -22,9 +28,9 @@ data/*
 !data/payloads.json
 !data/bad_words.json
 !data/bell_overrides.json
-!data/unlimited_ids.json
-!data/rainbow_refunds.json
 !data/prox_blocklist.json
+!data/admins.json
+!data/moderators.json
 logs/
 mail/*
 !mail/*.js
@@ -33,6 +39,7 @@ mail/check_email/*
 !mail/check_email/*.py
 backups/
 .docker-data/
+proxy/jail/
 /*.json
 !/package.json
 !/package-lock.json
@@ -41,7 +48,8 @@ backups/
 __pycache__/
 *.pyc
 node_modules/
-proxy/node_modules/
+ssh-gateway/node_modules/
+
 
 # Oversized Media and Data Recovery items (Host only)
 *.mov

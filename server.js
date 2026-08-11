@@ -5,7 +5,6 @@ import { join, basename, resolve, sep } from 'path';
 import { spawnSync, spawn } from 'child_process';
 import os from 'os';
 import webpush from 'web-push';
-import { Client as SSHClient } from 'ssh2';
 import { isIP } from 'net';
 import dns from 'dns';
 import https from 'https';
@@ -104,7 +103,6 @@ const BLOOKET_BOT_FAILURES_FILE = join(DATA_DIR, 'blooket_bot_failures.json');
 const ACHIEVEMENTS_FILE      = join(DATA_DIR, 'achievements.json');
 const SESSION_LOG_FILE       = join(DATA_DIR, 'sessions.json');
 const COINS_FILE             = join(DATA_DIR, 'coins.json');
-const UNLIMITED_IDS_FILE     = join(DATA_DIR, 'unlimited_ids.json');
 const ID_SECRET_FILE         = join(DATA_DIR, 'id_secret.key');
 const GAMES_FILE             = join(BASE, 'games');
 const GAMES_LOCAL_FILE       = join(BASE, 'games_local');
@@ -1733,7 +1731,7 @@ function loadAppeals()    { return loadJson(APPEALS_FILE, []); }
 function saveAppeals(a)   { saveJson(APPEALS_FILE, a); }
 
 const AUTH_COOKIE = 'mitch_session';
-const AUTH_SESSION_TTL_MS = 180 * 24 * 60 * 60 * 1000;
+const AUTH_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PUBLIC_API_PATHS = new Set([
   '/api/signup',
   '/api/bad-passwords',
@@ -1755,8 +1753,10 @@ const PUBLIC_API_PATHS = new Set([
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
-  const proto = req ? (req.headers.get('X-Forwarded-Proto') || new URL(req.url).protocol.replace(':', '')) : '';
-  const secure = proto === 'https' || process.env.NODE_ENV === 'production';
+  // Prefer explicit deploy flag; do not trust client-influenced X-Forwarded-Proto alone.
+  const secureFlag = String(process.env.SESSION_COOKIE_SECURE || '').trim();
+  const secure = secureFlag === '1' || secureFlag.toLowerCase() === 'true'
+    || process.env.NODE_ENV === 'production';
   return [
     'Path=/',
     `Max-Age=${maxAge}`,
@@ -1952,15 +1952,8 @@ function saveInvalidated(inv) {
 }
 function isInvalidated(id) { return id in loadInvalidated(); }
 
-function loadUnlimitedIds() {
-  try { return new Set(JSON.parse(readFileSync(UNLIMITED_IDS_FILE, 'utf8'))); }
-  catch { return new Set(); }
-}
-function addUnlimitedId(sid) {
-  const ids = loadUnlimitedIds();
-  if (!ids.has(sid)) { ids.add(sid); saveJson(UNLIMITED_IDS_FILE, [...ids]); }
-}
-function isUnlimitedId(sid) { return loadUnlimitedIds().has(sid); }
+function addUnlimitedId(_sid) { /* legacy no-op: unlimited IDs removed */ }
+function isUnlimitedId(_sid) { return false; }
 
 function isAutoApprove() {
   try { return readFileSync(AUTO_APPROVE_FILE, 'utf8').trim() === '1'; }
@@ -4098,24 +4091,34 @@ function validIpLiteral(value) {
   return typeof value === 'string' && isIP(value.trim()) !== 0;
 }
 
+function requestHost(req) {
+  try { return new URL(req.url).host; } catch { return ''; }
+}
+
 function sameOriginRequest(req) {
+  const host = requestHost(req);
+  if (!host) return false;
   const origin = req.headers.get('Origin');
   if (origin) {
-    try {
-      return new URL(origin).host === new URL(req.url).host;
-    } catch {
-      return false;
-    }
+    try { return new URL(origin).host === host; }
+    catch { return false; }
   }
-  const secFetchSite = (req.headers.get('Sec-Fetch-Site') || '').toLowerCase();
-  return secFetchSite !== 'cross-site';
+  const referer = req.headers.get('Referer');
+  if (referer) {
+    try { return new URL(referer).host === host; }
+    catch { return false; }
+  }
+  return false;
 }
 
 function csrfFailureIfUnsafe(req, path, method) {
   if (!path.startsWith('/api/')) return null;
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
-  if (sameOriginRequest(req)) return null;
-  return jsonResp(403, { error: 'csrf_blocked' });
+  // Fail closed: require same-origin Origin/Referer plus a custom header simple forms cannot set.
+  const requestedWith = (req.headers.get('X-Mitch-Requested-With') || '').trim();
+  if (requestedWith !== '1') return jsonResp(403, { error: 'csrf_blocked' });
+  if (!sameOriginRequest(req)) return jsonResp(403, { error: 'csrf_blocked' });
+  return null;
 }
 
 function safeWebrootPath(relativePath) {
@@ -4195,25 +4198,23 @@ function getCookies(req) {
 
   const rawStudentId = cookies['studentId'];
   const rawId = cookies['id'];
+  // Display-only legacy cookies — never treat as auth proof.
   delete cookies['studentId'];
   delete cookies['id'];
+  delete cookies['adminId'];
 
   try {
     const session = authSessionFromToken(cookies[AUTH_COOKIE] || '');
     if (session && session.sid && validId(session.sid)) {
       cookies['studentId'] = session.sid;
       cookies['id'] = session.sid;
+      cookies._authSession = session;
     }
   } catch (e) {
     console.error('[auth] session cookie failed:', e);
   }
 
-  if (!cookies['studentId'] && (rawStudentId || rawId)) {
-    cookies['studentId'] = rawStudentId || rawId;
-    cookies['id'] = rawId || rawStudentId;
-  }
-
-  // X-Admin-Key bypass: if X-Admin-Key header is present and valid, inject a mock admin studentId
+  // Optional break-glass admin key (off unless ENABLE_ADMIN_KEY_HEADER=1).
   try {
     const adminKeyHeader = req.headers.get('X-Admin-Key');
     if (process.env.ENABLE_ADMIN_KEY_HEADER === '1' && adminKeyHeader) {
@@ -4259,25 +4260,26 @@ function getIdKey(req) {
 
 function checkPasswordCookie(req, providedSid = null) {
   const cookies = getCookies(req);
-  const adminSid = cookies['adminId'] || '';
-  if (adminSid && validId(adminSid) && isAdminId(adminSid)) return true;
-
-  const sid = providedSid || cookies['studentId'] || cookies['id'] || '';
+  // Session-only auth: providedSid may only match the session-bound SID (never a client-chosen ID).
+  const sid = cookies['studentId'] || cookies['id'] || '';
   if (!sid) return false;
-  
+  if (providedSid && providedSid !== sid) return false;
+
   if (!validId(sid)) return false;
   if (bannedInfoForSid(sid)) return false;
-  
+
   const email = emailFromSid(sid);
   if (!email) return false;
-  
+
   const passwords = loadPasswords();
   const norm = normalizeEmail(email);
   if (!passwords[norm]) {
-    console.log(`[auth-debug] checkPasswordCookie failed for ${email}: no password hash in passwords.json (normalized: ${norm})`);
+    if (APP_DEBUG_LOGS) {
+      console.log(`[auth-debug] checkPasswordCookie failed for ${email}: no password hash in passwords.json (normalized: ${norm})`);
+    }
     return false;
   }
-  
+
   return true;
 }
 
@@ -4343,9 +4345,9 @@ function filterSites(raw, isAdmin, realAdmin = false, isPremium = false) {
   return raw.split('\n').map(ln => {
     const line = String(ln || '').trim();
     if (!line || line.startsWith('//')) return null;
-    if (line.startsWith('admin iframe simulate/')) return realAdmin ? line.slice('admin '.length) : null;
+    if (line.startsWith('admin iframe simulate/')) return null;
     if (line.startsWith('admin ')) return isAdmin ? line.slice('admin '.length) : null;
-    if (!isPremium && (line.startsWith('url /ultra/') || line.startsWith('url /trad/') || line.includes('/blooket-bot/'))) return null;
+    if (!isPremium && (line.includes('/blooket-bot/'))) return null;
     return line;
   }).filter(l => l !== null).join('\n');
 }
@@ -5378,7 +5380,7 @@ function canGrantPremiumId(sid) {
 
 const SHOP_PRICE_MULTIPLIER = 1.85;
 const DEFAULT_SHOP_CATALOG = [
-  { id: 'premium', name: 'Premium', section: 'Premium', type: 'premium', cost: 5000, desc: 'Unlock mitch.prox, Premium Chat, 2X typing/logic coin rewards, 2X Clicker/Riches offline gains, larger canvas brushes, exclusive profile frames/badges, and the epic chance to have an arcade game named after you!' },
+  { id: 'premium', name: 'Premium', section: 'Premium', type: 'premium', cost: 5000, desc: 'Unlock Premium Chat, 2X typing/logic coin rewards, 2X Clicker/Riches offline gains, larger canvas brushes, exclusive profile frames/badges, and the epic chance to have an arcade game named after you!' },
   { id: 'neon_purple', name: 'Neon Purple Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A bright purple username for chat, profiles, and leaderboards.' },
   { id: 'electric_blue', name: 'Electric Blue Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A sharp electric-blue username style.' },
   { id: 'mint_flash', name: 'Mint Flash Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 550, desc: 'A clean mint username with a fresh glow.' },
@@ -5495,7 +5497,7 @@ function shopTierFor(item) {
 function shopPerkFor(item) {
   if (!item) return '';
   const perks = {
-    premium: 'Best value: unlocks premium tools, mitch.prox access, colors, and bigger brushes.',
+    premium: 'Best value: unlocks premium tools, chat, colors, and bigger brushes.',
     rainbow_name: 'Animated rainbow name. Flashiest name style in the market.',
     gold_glow: 'Premium gold glow that stands out on dark pages.',
     chat_prism: 'Premium prism chat accent with the most noticeable chat style.',
@@ -6091,88 +6093,9 @@ async function handleRequest(req, server) {
     }
   }
 
-  // ── mitch.prox Open General Proxy ──
-  if (path === '/prox') {
-    return Response.redirect('/prox/', 302);
-  }
-
-  if (path.startsWith('/prox/')) {
-    if (process.env.ENABLE_GENERAL_PROXY !== '1') {
-      return jsonResp(403, { error: 'General proxy access is disabled.' });
-    }
-
-    if (path === '/prox/' || path === '/prox/index.html') {
-      return new Response('General proxy access is disabled.', { status: 403 });
-    }
-
-    const referer = req.headers.get('referer') || '';
-    if (!referer.toLowerCase().includes('/games/')) {
-      return jsonResp(403, { error: 'General proxy access is disabled. Proxy can only be used by games.' });
-    }
-
-    const cookies = getCookies(req);
-    const sid = cookies['studentId'] || cookies['id'] || '';
-    if (!validId(sid) || !emailFromSid(sid)) {
-      if (req.headers.get('accept')?.includes('text/html')) {
-        return Response.redirect('/enroll/', 302);
-      }
-      return jsonResp(401, { error: 'Authentication required' });
-    }
-
-      const prefix = '/prox/';
-      const sub = path.slice(prefix.length);
-      const slashIdx = sub.indexOf('/');
-      if (slashIdx === -1) {
-        return jsonResp(400, { error: 'Invalid proxy URL format' });
-      }
-      const scheme = sub.slice(0, slashIdx);
-      if (scheme !== 'http' && scheme !== 'https') {
-        return jsonResp(400, { error: 'Unsupported scheme' });
-      }
-      const rest = sub.slice(slashIdx + 1);
-      const targetUrl = `${scheme}://${rest}${url.search}`;
-
-      try {
-        const headers = new Headers();
-        for (const [k, v] of req.headers.entries()) {
-          if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
-            headers.set(k, v);
-          }
-        }
-        headers.set('User-Agent', req.headers.get('user-agent') || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-
-        const upstreamRes = await fetchWithTimeout(targetUrl, {
-          method: req.method,
-          headers: headers,
-          body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null,
-          redirect: 'follow'
-        });
-
-        const resHeaders = new Headers(upstreamRes.headers);
-        resHeaders.set('Access-Control-Allow-Origin', '*');
-        resHeaders.delete('content-security-policy');
-        resHeaders.delete('x-frame-options');
-        resHeaders.delete('content-encoding');
-        resHeaders.delete('content-length');
-
-        const contentType = upstreamRes.headers.get('content-type') || '';
-        if (contentType.includes('text/html')) {
-          let html = await readResponseTextLimited(upstreamRes);
-          html = rewriteHtml(html, targetUrl);
-          return new Response(html, {
-            status: upstreamRes.status,
-            headers: resHeaders
-          });
-        } else {
-          return new Response(upstreamRes.body, {
-            status: upstreamRes.status,
-            headers: resHeaders
-          });
-        }
-      } catch (e) {
-        console.error('[proxy] target fetch failed:', e?.message || e);
-        return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy target URL.' });
-      }
+  // ── Open general proxy removed (arbitrary-site proxying is not allowed) ──
+  if (path === '/prox' || path.startsWith('/prox/')) {
+    return jsonResp(410, { error: 'gone', message: 'Open proxy access has been removed. Game-specific proxies remain available.' });
   }
 
   // ── World's Hardest Captcha API Proxy ──
@@ -6317,10 +6240,9 @@ async function handleRequest(req, server) {
                    path.startsWith('/unsubscribe/') ||
                    PUBLIC_API_PATHS.has(cleanPath) ||
                    path.startsWith('/api/puzzle/') ||
+                   path === '/api/sms-reply' ||
                    path.startsWith('/admin') || 
-                   path.startsWith('/moderator') || 
-                   path.startsWith('/api/admin') || 
-                   path.startsWith('/api/moderator');
+                   path.startsWith('/moderator');
   
   const isAsset = path.includes('.') && !path.endsWith('.html');
 
@@ -7340,80 +7262,11 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
     }
   }
 
-  // ── Ultimate mitch.prox routes (Premium Only) ──────────────────────────── 
-  const PROXY_PATHS = ["/bare/", "/assets/", "/baremux/", "/epoxy/", "/libcurl/", "/baremod/", "/wisp/", "/scram/", "/trad/", "/jsmpeg.min.js", "/scripts"]; 
-  if (path.startsWith("/ultra/") || PROXY_PATHS.some(p => path.startsWith(p))) { 
-    const cookies = getCookies(req); 
-    const sid = cookies["studentId"] || cookies["id"] || ""; 
-    const email = emailFromSid(sid); 
-    if (!email || !isPremiumEmail(email)) return jsonResp(403, { error: "Premium required to use mitch.prox" }); 
-    
-    // Handle WebSocket Upgrades
-    if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-      let wsPath = path;
-      if (path === "/ultra/ws") wsPath = "/ws";
-      console.log(`[proxy] Attempting WebSocket upgrade for ${email} on ${path} -> ${wsPath}`);
-      const success = server.upgrade(req, { 
-        data: { proxyTo: 8081, proxyPath: wsPath, email } 
-      });
-      if (success) {
-        console.log(`[proxy] WebSocket upgrade successful for ${email}`);
-        return;
-      }
-    } 
- 
-    // Handle HTTP mitch.prox forwarding
-    let targetPath = path;
-    if (path.startsWith("/ultra/")) {
-      targetPath = path.slice(6) || "/";
-    }
-
-    try {
-      const port = 8081;
-      const targetUrl = `http://127.0.0.1:${port}${targetPath}${url.search}`;
-      const proxyHeaders = new Headers(req.headers);
-      proxyHeaders.set("host", `127.0.0.1:${port}`);
-      for (const hopHeader of ["connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "x-mitch-client-ip"]) {
-        proxyHeaders.delete(hopHeader);
-      }
-      const resp = await fetchWithTimeout(targetUrl, {
-        method: req.method,
-        headers: proxyHeaders,
-        body: req.body,
-        redirect: "manual"
-      });
-      const headers = new Headers(resp.headers);
-      headers.delete("content-encoding"); 
-      headers.delete("transfer-encoding"); 
-      headers.delete("content-length");
-      const contentType = headers.get("content-type") || "";
-      if (path.startsWith("/ultra/") && method === "GET" && contentType.includes("text/html")) {
-        const notice = `<style id="mitch-prox-responsibility-notice-style">
-          @keyframes mitchProxNoticeIn{from{opacity:0;transform:translateY(14px) scale(.985);filter:blur(8px)}to{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}}
-          @keyframes mitchProxNoticeOut{0%,42%{opacity:1;transform:translateY(0) scale(1);filter:blur(0)}100%{opacity:0;transform:translateY(-18px) scale(.975);filter:blur(10px);visibility:hidden}}
-          #mitch-prox-responsibility-notice{position:fixed;inset:0;z-index:2147483646;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% 35%,rgba(56,189,248,.18),transparent 34%),rgba(2,6,23,.78);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);pointer-events:auto;animation:mitchProxNoticeOut 4.6s cubic-bezier(.22,1,.36,1) forwards}
-          #mitch-prox-responsibility-notice-card{width:min(560px,calc(100vw - 32px));border:1px solid rgba(148,163,184,.28);border-radius:18px;background:linear-gradient(135deg,rgba(15,23,42,.92),rgba(15,23,42,.72));box-shadow:0 26px 90px rgba(0,0,0,.48),inset 0 1px 0 rgba(255,255,255,.08);color:#f8fafc;padding:24px 26px;font:800 clamp(16px,2vw,22px)/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:0;text-align:left;animation:mitchProxNoticeIn .55s cubic-bezier(.22,1,.36,1) both}
-          #mitch-prox-responsibility-notice-card small{display:block;margin-top:10px;color:rgba(226,232,240,.68);font-size:13px;font-weight:750;text-transform:uppercase;letter-spacing:.08em}
-          @media (prefers-reduced-motion:reduce){#mitch-prox-responsibility-notice,#mitch-prox-responsibility-notice-card{animation:none}#mitch-prox-responsibility-notice{opacity:0;visibility:hidden;pointer-events:none}}
-        </style><div id="mitch-prox-responsibility-notice" role="status" aria-live="polite"><div id="mitch-prox-responsibility-notice-card">You are responsible for how you use this. mitch.pro is not responsible for harmful use, misuse, or attempts to bypass restrictions, security systems, or policies.<small>Access opens automatically</small></div></div><script>(function(){var n=document.getElementById("mitch-prox-responsibility-notice");if(!n)return;setTimeout(function(){n.style.pointerEvents="none";},3600);setTimeout(function(){if(n&&n.parentNode)n.parentNode.removeChild(n);},4800);}());<\/script>`;
-        let html = await resp.text();
-        // Scrub the word "unblocked" case-insensitively from mitch.prox Ultra responses
-        html = html.replace(/unblocked/gi, (match) => {
-          if (match === 'Unblocked') return 'Open';
-          if (match === 'UNBLOCKED') return 'OPEN';
-          return 'open';
-        });
-        if (!html.includes("mitch-prox-responsibility-notice")) {
-          html = html.includes("</body>") ? html.replace("</body>", notice + "</body>") : html + notice;
-        }
-        return new Response(html, { status: resp.status, headers });
-      }
-      return new Response(resp.body, { status: resp.status, headers }); 
-    } catch (e) { 
-      return jsonResp(502, { error: "mitch.prox unreachable", details: e.message }); 
-    } 
-  } 
-
+  // ── Arbitrary mitch.prox / ultra stack removed (no browse-anything proxy) ──
+  const LEGACY_ARBITRARY_PROXY_PREFIXES = ["/ultra/", "/bare/", "/assets/", "/baremux/", "/epoxy/", "/libcurl/", "/baremod/", "/wisp/", "/scram/", "/trad/"];
+  if (LEGACY_ARBITRARY_PROXY_PREFIXES.some(p => path.startsWith(p))) {
+    return jsonResp(410, { error: 'gone', message: 'Arbitrary-site proxying has been removed.' });
+  }
 
   if (path === '/api/admin/moderator-requests' && method === 'GET') {
       const cookies = getCookies(req);
@@ -8499,7 +8352,7 @@ Mitch.pro Team`;
           } catch {}
           // Reload hardcoded catalog
           SHOP_CATALOG = [
-            { id: 'premium', name: 'Premium', section: 'Premium', type: 'premium', cost: 5000, desc: 'Unlock mitch.prox, Premium Chat, 2X typing/logic coin rewards, 2X Clicker/Riches offline gains, larger canvas brushes, exclusive profile frames/badges, and the epic chance to have an arcade game named after you!' },
+            { id: 'premium', name: 'Premium', section: 'Premium', type: 'premium', cost: 5000, desc: 'Unlock Premium Chat, 2X typing/logic coin rewards, 2X Clicker/Riches offline gains, larger canvas brushes, exclusive profile frames/badges, and the epic chance to have an arcade game named after you!' },
             { id: 'neon_purple', name: 'Neon Purple Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A bright purple username for chat, profiles, and leaderboards.' },
             { id: 'electric_blue', name: 'Electric Blue Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A sharp electric-blue username style.' },
             { id: 'mint_flash', name: 'Mint Flash Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 550, desc: 'A clean mint username with a fresh glow.' },
@@ -8659,51 +8512,7 @@ Mitch.pro Team`;
       return jsonResp(200, { ok: true });
     }
 
-    // /api/admin/simulate
-    if (path === '/api/admin/simulate') {
-      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const cookies = getCookies(req);
-      const sid = cookies['studentId'] || '';
-      const aid = cookies['adminId'] || '';
-      if (!isAdminId(sid) && !isAdminId(aid)) {
-        console.warn(`[admin] simulation attempt denied from ip=${ip}`);
-        return jsonResp(403, { error: 'forbidden' });
-      }
-      const email = (body.email || '').trim().toLowerCase();
-      if (!email) return jsonResp(400, { error: 'email required' });
-      
-      const tokens = loadTokens();
-      const norm = normalizeEmail(email);
-      let targetTok = null;
-      for (const [tok, d] of Object.entries(tokens)) {
-        if (normalizeEmail(d.email || '') === norm) {
-          targetTok = tok; break;
-        }
-      }
-      
-      const names = loadJson(NAMES_FILE, {});
-      let studentId = null;
-      for (const [id, em] of Object.entries(names)) {
-        if (normalizeEmail(em) === norm) {
-          studentId = id; break;
-        }
-      }
-
-      if (!studentId) {
-        if (!targetTok) {
-          targetTok = randomBytes(24).toString('hex');
-          tokens[targetTok] = { email, created_at: Date.now() / 1000, used: false };
-          saveTokens(tokens);
-        }
-        const gen = tokens[targetTok].infinite ? 0 : (tokens[targetTok].gen || 0);
-        studentId = makeEmailId(norm, gen);
-        names[studentId] = email;
-        saveJson(NAMES_FILE, names);
-      }
-      
-      console.log(`[admin] simulation started: ${email} by ${sid ? 'admin' : 'simulated-admin'}`);
-      return jsonResp(200, { token: studentId });
-    }
+    // Admin simulation removed — no user impersonation via cookie/session swap.
 
     // /api/admin/js
     if (path === '/api/admin/js') {
@@ -9298,8 +9107,8 @@ Mitch.pro Team`;
         if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
           return jsonResp(400, { success: false, message: 'reCAPTCHA failed. Please try again.' });
         const cookies = getCookies(req);
-        const studentId = (body.studentId || cookies['studentId'] || cookies['id'] || '').trim();
-        if (!validId(studentId) || isInvalidated(studentId) || isRevoked(studentId))
+        const studentId = (cookies['studentId'] || cookies['id'] || '').trim();
+        if (!validId(studentId) || !checkPasswordCookie(req) || isInvalidated(studentId) || isRevoked(studentId))
           return jsonResp(403, { success: false, message: 'Not signed in.' });
         const email = (body.email || '').trim().toLowerCase();
         if (!/^[a-z0-9._%+\-]+@student\.rjuhsd\.us$/.test(email) || email.length > 254)
@@ -9676,9 +9485,8 @@ Mitch.pro Team`;
           const email = emailFromSid(hash);
           let contents = '';
           try { contents = readFileSync(join(BASE, 'data', 'sites'), 'utf8'); } catch {}
-          const aid = cookies['adminId'] || '';
           const admin = isAdminId(hash);
-          const realAdmin = admin || isAdminId(aid);
+          const realAdmin = admin;
           const premium = isPremiumEmail(email);
           return jsonResp(200, { success: true, content: filterSites(contents, admin, realAdmin, premium) });
         }
@@ -9923,7 +9731,6 @@ function loadAllGamesList() {
             const names = loadJson(NAMES_FILE, {});
             const cookies = getCookies(req);
             const sid = cookies['studentId'] || '';
-            const aid = cookies['adminId'] || '';
             
             if (!names[id]) {
               // link tracking id to email via studentId cookie if not yet named
@@ -9932,7 +9739,7 @@ function loadAllGamesList() {
                 saveJson(NAMES_FILE, names);
               }
             }
-            const name  = (aid && isAdminId(aid)) ? 'simulate' : (names[id] || id.slice(0, 12));
+            const name  = (names[id] || id.slice(0, 12));
             const pg    = page.replace('https://mitch.pro','').replace('https://mitch.88chan.me','') || '/';
             if (name.includes('@')) nudgeClear(name);
           }
@@ -9999,10 +9806,9 @@ function loadAllGamesList() {
         if (!existsSync(filePath)) return jsonResp(200, { content: errorPage(404, 'Page Not Found',
           `<code>${reqPath}<\/code> does not exist. <a href="/">Go home<\/a>.`) });
 
-        const adminCookie = cookies['adminId'] || '';
-        const isRealAdmin = isAnyAdminId(hash) || isAnyAdminId(adminCookie);
-        if (reqPath.startsWith('simulate/') && !isRealAdmin) {
-          return jsonResp(200, { content: errorPage(403, 'Forbidden', 'This tool is restricted to administrators.') });
+        const isRealAdmin = isAnyAdminId(hash);
+        if (reqPath.startsWith('simulate/') || reqPath === 'simulate' || reqPath === 'simulate/index.html') {
+          return jsonResp(200, { content: errorPage(410, 'Gone', 'Admin simulation has been removed.') });
         }
 
         let contents = readFileSync(filePath, 'utf8');
@@ -11125,22 +10931,38 @@ function loadAllGamesList() {
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
-      
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
       const norm = normalizeEmail(email);
       const active = activePuzzles.get(norm);
       if (!active) return jsonResp(400, { error: 'no active puzzle' });
-      
+
       const elapsed = Date.now() - active.ts;
       if (elapsed < 5000) return jsonResp(400, { error: 'solved too fast' });
-      
+
+      const submitted = String(body.moves || '').trim();
+      if (!submitted || submitted !== String(active.moves || '').trim()) {
+        return jsonResp(400, { error: 'solution mismatch' });
+      }
+
       activePuzzles.delete(norm);
       addCoins(email, 5.0);
       updateStat(email, 'puzzles_solved', 1);
       return jsonResp(200, { ok: true, coins: getCoins(email) });
     }
 
-    // /api/sms-reply
+    // /api/sms-reply — provider webhook (shared secret required)
     if (path === '/api/sms-reply') {
+      const expected = (process.env.SMS_WEBHOOK_SECRET || '').trim();
+      const provided = (req.headers.get('X-SMS-Webhook-Secret') || '').trim();
+      if (!expected || !provided) return jsonResp(401, { error: 'unauthorized' });
+      try {
+        const a = Buffer.from(provided);
+        const b = Buffer.from(expected);
+        if (a.length !== b.length || !timingSafeEqual(a, b)) return jsonResp(401, { error: 'unauthorized' });
+      } catch {
+        return jsonResp(401, { error: 'unauthorized' });
+      }
       try {
         const raw = await readRequestTextLimited(req, MAX_TEXT_BODY_BYTES);
         let smsBody;
@@ -11166,9 +10988,9 @@ function loadAllGamesList() {
       try {
         if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
         const cookies = getCookies(req);
-        const uid = body.studentId || cookies['studentId'] || cookies['id'] || '';
+        const uid = cookies['studentId'] || cookies['id'] || '';
         
-        if (!checkPasswordCookie(req, uid))
+        if (!checkPasswordCookie(req))
           return jsonResp(403, { error: 'Authentication required. Please set a password at /enroll/.' });
 
         const email = emailFromSid(uid);
@@ -11883,7 +11705,7 @@ function loadAllGamesList() {
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (validId(sid)) {
         const email = emailFromSid(sid);
-        if (email) activePuzzles.set(normalizeEmail(email), { fen: p[0], ts: Date.now() });
+        if (email) activePuzzles.set(normalizeEmail(email), { fen: p[0], moves: p[1], ts: Date.now() });
       }
       
       return jsonResp(200, { fen: p[0], moves: p[1], rating: p[2], themes: p[3] });
@@ -14675,20 +14497,15 @@ function loadAllGamesList() {
 
       const DAILY_CAP = 1000;
 
-      // Calculate MitchCoin payouts:
-      // 1. First 200 tiles are normal coins, which are capped by the daily limit
-      // 2. Tiles past 200 are "bypass coins" which completely ignore the daily limit!
-      const normalCoins = Math.min(200, score);
-      const bypassCoins = Math.max(0, score - 200);
-
-      let allowedNormal = normalCoins;
+      // All tiles count toward the daily coin cap (no bypass for high scores).
+      let allowedTiles = Math.max(0, score);
       if (s.dailyCount >= DAILY_CAP) {
-        allowedNormal = 0;
-      } else if (s.dailyCount + allowedNormal > DAILY_CAP) {
-        allowedNormal = DAILY_CAP - s.dailyCount;
+        allowedTiles = 0;
+      } else if (s.dailyCount + allowedTiles > DAILY_CAP) {
+        allowedTiles = DAILY_CAP - s.dailyCount;
       }
 
-      let coinsAwarded = Math.floor((allowedNormal + bypassCoins) * 0.02);
+      let coinsAwarded = Math.floor(allowedTiles * 0.02);
 
       if (coinsAwarded > 0) {
         let finalCoins = coinsAwarded;
@@ -14699,17 +14516,15 @@ function loadAllGamesList() {
         updateStat(email, 'piano_coins', finalCoins);
         updateStat(email, 'piano_games', 1);
 
-        s.dailyCount += allowedNormal; // Only normal coins count toward the daily cap!
+        s.dailyCount += allowedTiles;
         s.lastTs = Date.now();
         pianoSessions.set(norm, s);
         savePianoSessions();
 
-        console.log(`[piano] ${email} earned ${finalCoins} coins for score ${score} (Normal: ${allowedNormal}, Bypassed: ${bypassCoins})`);
+        console.log(`[piano] ${email} earned ${finalCoins} coins for score ${score}`);
         return jsonResp(200, { 
           success: true, 
           coinsEarned: finalCoins, 
-          normalEarned: allowedNormal * (isPremiumEmail(email) ? 2 : 1),
-          bypassEarned: bypassCoins * (isPremiumEmail(email) ? 2 : 1),
           dailyRemaining: DAILY_CAP - s.dailyCount 
         });
       }
@@ -16222,97 +16037,64 @@ Bun.serve({
       if (ws.data && ws.data.isSSH) {
         try {
           const payload = JSON.parse(msg);
-          if (payload.type === 'init') {
-            const hostVal = (payload.host || '').trim();
-            const ipType = isIP(hostVal);
-            if (ipType === 0) {
-              if (ws.readyState === 1) {
-                ws.send(JSON.stringify({ type: 'error', message: 'Restricted access: Host must be a valid IP address' }));
-              }
-              ws.close();
-              return;
-            }
-            if (isPrivateIP(hostVal, ipType)) {
-              if (ws.readyState === 1) {
-                ws.send(JSON.stringify({ type: 'error', message: 'Restricted access: Target IP address is disallowed' }));
-              }
-              ws.close();
-              return;
-            }
+          const gatewayUrl = (process.env.SSH_GATEWAY_URL || 'ws://ssh-gateway:6820').trim();
 
-            const conn = new SSHClient();
-            ws.data.sshConn = conn;
-
-            conn.on('ready', () => {
-              conn.shell({ term: 'xterm-256color', cols: payload.cols || 80, rows: payload.rows || 24 }, (err, stream) => {
-                if (err) {
-                  if (ws.readyState === 1) {
-                    ws.send(JSON.stringify({ type: 'error', message: 'Failed to open shell: ' + err.message }));
-                  }
-                  ws.close();
-                  return;
-                }
-                ws.data.sshStream = stream;
-                if (ws.readyState === 1) {
-                  ws.send(JSON.stringify({ type: 'connected' }));
-                }
-
-                stream.on('data', (data) => {
-                  if (ws.readyState === 1) {
-                    ws.send(JSON.stringify({ type: 'data', data: data.toString('utf-8') }));
-                  }
-                });
-
-                stream.on('close', () => {
-                  ws.close();
-                });
+          const ensureGateway = async () => {
+            if (ws.data.sshGateway && ws.data.sshGateway.readyState === 1) return true;
+            try {
+              const upstream = new WebSocket(gatewayUrl);
+              ws.data.sshGateway = upstream;
+              await new Promise((resolve, reject) => {
+                const t = setTimeout(() => reject(new Error('ssh gateway timeout')), 8000);
+                upstream.addEventListener('open', () => { clearTimeout(t); resolve(); });
+                upstream.addEventListener('error', (e) => { clearTimeout(t); reject(e); });
               });
-            });
-
-            conn.on('error', (err) => {
+              upstream.addEventListener('message', (ev) => {
+                if (ws.readyState === 1) ws.send(typeof ev.data === 'string' ? ev.data : String(ev.data));
+              });
+              upstream.addEventListener('close', () => {
+                try { ws.close(); } catch {}
+              });
+              return true;
+            } catch (e) {
               if (ws.readyState === 1) {
-                ws.send(JSON.stringify({ type: 'error', message: err.message }));
+                ws.send(JSON.stringify({ type: 'error', message: 'SSH gateway unavailable' }));
               }
               ws.close();
-            });
+              return false;
+            }
+          };
 
-            conn.on('close', () => {
-              ws.close();
-            });
-
-            const connectOpts = {
+          if (payload.type === 'init' || payload.type === 'connect') {
+            console.log(`[ssh] ${ws.data.email} -> ${(payload.host || '').trim()}:${payload.port || 22}`);
+            if (!(await ensureGateway())) return;
+            const forward = {
+              type: 'connect',
               host: payload.host,
               port: payload.port || 22,
               username: payload.username,
+              cols: payload.cols || 80,
+              rows: payload.rows || 24,
             };
             if (payload.privateKey) {
-              connectOpts.privateKey = payload.privateKey;
-              if (payload.passphrase) {
-                connectOpts.passphrase = payload.passphrase;
-              }
+              forward.privateKey = payload.privateKey;
+              if (payload.passphrase) forward.passphrase = payload.passphrase;
             } else {
-              connectOpts.password = payload.password;
+              forward.password = payload.password;
             }
-            conn.connect(connectOpts);
-
-            // Immediately overwrite sensitive values in memory for maximum opsec
+            ws.data.sshGateway.send(JSON.stringify(forward));
             payload.password = null;
             payload.privateKey = null;
             payload.passphrase = null;
-            connectOpts.password = null;
-            connectOpts.privateKey = null;
-            connectOpts.passphrase = null;
-          } else if (payload.type === 'data') {
-            if (ws.data.sshStream) {
-              ws.data.sshStream.write(payload.data);
-            }
-          } else if (payload.type === 'resize') {
-            if (ws.data.sshStream) {
-              ws.data.sshStream.setWindow(payload.rows, payload.cols, 0, 0);
-            }
+            forward.password = null;
+            forward.privateKey = null;
+            forward.passphrase = null;
+          } else if (payload.type === 'data' || payload.type === 'resize') {
+            if (!(await ensureGateway())) return;
+            ws.data.sshGateway.send(JSON.stringify(payload));
           }
         } catch (e) {
-          // Silent catch to preserve absolute opsec and prevent logging any sensitive payload elements
+          // Silent catch — avoid logging credential-bearing payloads
         }
       }
     },
@@ -16334,11 +16116,8 @@ Bun.serve({
         ws.data.upstream.close();
       }
       if (ws.data && ws.data.isSSH) {
-        if (ws.data.sshStream) {
-          try { ws.data.sshStream.end(); } catch (e) {}
-        }
-        if (ws.data.sshConn) {
-          try { ws.data.sshConn.end(); } catch (e) {}
+        if (ws.data.sshGateway) {
+          try { ws.data.sshGateway.close(); } catch (e) {}
         }
       }
     }

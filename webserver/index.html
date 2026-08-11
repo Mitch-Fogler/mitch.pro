@@ -11,6 +11,9 @@
   }
 </script>
 <title>mitch.pro</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="/api.js"></script>
+<link rel="stylesheet" href="/app.css">
 <style>
   html { font-size: 100%; }
 
@@ -38,14 +41,12 @@
   body{background-color:var(--t-bg);color:var(--t-fg);font-family:var(--t-font,"Segoe UI",system-ui,-apple-system,sans-serif);background-image:var(--t-bg-img-layer,none)!important;background-size:var(--t-bg-size,cover)!important;background-position:var(--t-bg-pos,center)!important;background-repeat:var(--t-bg-repeat,no-repeat)!important;background-attachment:scroll!important;}input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){background:var(--t-bg2);color:var(--t-ac);border:1px solid var(--t-bda);padding:7px 16px;border-radius:var(--t-radius,8px);cursor:pointer;font-family:inherit;font-size:.88rem;font-weight:500;transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s),transform var(--t-motion,.15s)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}.theme-firefox body{background-attachment:scroll!important}.theme-firefox .glass-card,.theme-firefox .card{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}hr{border:none;border-top:1px solid var(--t-bd)}a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}label{color:var(--t-fg2)}</style>
 <script>
 async function loadSites() {
-  var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
-  var hash = c.get('studentId');
   try {
     const request = await fetch('/api/pass', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hash })
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+      body: JSON.stringify({})
     });
     if (!request.ok) throw new Error('Network error');
     const data = await request.json();

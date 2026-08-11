@@ -49,6 +49,9 @@ services:
       - GOOGLE_ANALYTICS_ID
       - RECAPTCHA_SITE_KEY
       - BLOOKET_BOT_HOST=blooket-bot
+      - SSH_GATEWAY_URL=ws://ssh-gateway:6820
+      - NODE_ENV=production
+      - SESSION_COOKIE_SECURE=1
 
   # Production Slot B: Green Webserver
   webserver-green:
@@ -87,6 +90,19 @@ services:
       - GOOGLE_ANALYTICS_ID
       - RECAPTCHA_SITE_KEY
       - BLOOKET_BOT_HOST=blooket-bot
+      - SSH_GATEWAY_URL=ws://ssh-gateway:6820
+      - NODE_ENV=production
+      - SESSION_COOKIE_SECURE=1
+
+  # SSH Gateway sidecar (internal only — admin SSH via WebSocket)
+  ssh-gateway:
+    build: ./ssh-gateway
+    container_name: mitch-ssh-gateway
+    restart: unless-stopped
+    expose:
+      - "6820"
+    environment:
+      - PORT=6820
 
   # Node.js + Xvfb Stream Proxy (Port 8081)
   proxy:
