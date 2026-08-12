@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lillian's Logic — mitch.pro</title>
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
   <script src="/api.js"></script>
   <style>
-    
     :root {
       --ac: #ec4899;
-      --panel: rgba(255, 255, 255, 0.03);
-      --line: rgba(255, 255, 255, 0.08);
+      --panel: var(--t-bg2, rgba(255, 255, 255, 0.03));
+      --line: var(--t-bd, rgba(255, 255, 255, 0.08));
       --correct: #22c55e;
       --present: #eab308;
       --absent: #3f3f46;
@@ -19,8 +19,10 @@
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--t-bg, #060608);
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background-color: var(--t-bg, #060608);
+      background-image: var(--t-bg-img-layer, var(--t-bgr, none));
+      background-attachment: fixed;
       color: var(--t-fg, #fff);
       min-height: 100vh;
       display: flex; flex-direction: column; align-items: center;
@@ -29,27 +31,41 @@
     }
 
     .container { width: min(600px, 100%); text-align: center; }
-    
-    /* Tabs */
-    .tabs { display: flex; gap: 10px; margin-bottom: 30px; justify-content: center; }
-    .tab-btn {
-      background: var(--panel); border: 1px solid var(--line); color: #fff;
-      padding: 10px 24px; border-radius: 12px; cursor: pointer; font-weight: 700;
-      transition: all 0.2s;
-    }
-    .tab-btn.active { background: var(--ac); border-color: var(--ac); box-shadow: 0 0 20px rgba(236, 72, 153, 0.2); }
 
-    /* Mitch-le UI */
-    .wordle-board { display: grid; gap: 6px; margin: 20px auto; width: fit-content; }
-    .wordle-row { display: grid; grid-template-columns: repeat(5, 54px); gap: 6px; }
-    .tile {
-      width: 54px; height: 54px; border: 2px solid var(--line);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 2rem; font-weight: 800; text-transform: uppercase;
-      border-radius: 6px; transition: transform 0.1s;
-      background: rgba(0,0,0,0.2);
+    .tabs { display: flex; gap: 10px; margin-bottom: 30px; justify-content: center; flex-wrap: wrap; }
+    .tab-btn {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--t-fg);
+      padding: 10px 24px;
+      border-radius: var(--t-radius, 10px);
+      cursor: pointer;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-weight: 700;
+      transition: background var(--t-motion, 0.2s), border-color var(--t-motion, 0.2s), box-shadow var(--t-motion, 0.2s);
     }
-    .tile.filled { border-color: var(--t-fg2); transform: scale(1.05); }
+    .tab-btn.active {
+      background: var(--ac);
+      border-color: var(--ac);
+      box-shadow: 0 0 16px color-mix(in srgb, var(--ac) 28%, transparent);
+    }
+
+    .wordle-board { display: grid; gap: 6px; margin: 20px auto; width: fit-content; }
+    .wordle-row { display: grid; grid-template-columns: repeat(5, min(54px, 14vw)); gap: 6px; }
+    .tile {
+      width: min(54px, 14vw);
+      height: min(54px, 14vw);
+      border: 2px solid var(--line);
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: clamp(1.35rem, 5vw, 2rem);
+      font-weight: 800;
+      text-transform: uppercase;
+      border-radius: 6px;
+      transition: transform var(--t-motion, 0.1s);
+      background: color-mix(in srgb, var(--t-bg) 80%, transparent);
+    }
+    .tile.filled { border-color: var(--t-fg2); transform: scale(1.04); }
     .tile.correct { background: var(--correct) !important; border-color: var(--correct) !important; color: #fff; }
     .tile.present { background: var(--present) !important; border-color: var(--present) !important; color: #fff; }
     .tile.absent { background: var(--absent) !important; border-color: var(--absent) !important; color: #fff; }
@@ -57,9 +73,18 @@
     .keyboard { display: grid; gap: 8px; margin-top: 30px; width: 100%; max-width: 500px; margin-left: auto; margin-right: auto; }
     .key-row { display: flex; justify-content: center; gap: 4px; width: 100%; }
     .key {
-      background: var(--panel); border: 1px solid var(--line); color: #fff;
-      padding: 18px 0; border-radius: 6px; cursor: pointer; font-weight: 700;
-      font-size: 0.9rem; flex: 1; min-width: 20px; transition: all 0.15s;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--t-fg);
+      padding: 16px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-weight: 700;
+      font-size: 0.88rem;
+      flex: 1;
+      min-width: 20px;
+      transition: transform var(--t-motion, 0.15s), background var(--t-motion, 0.15s);
     }
     .key.wide { flex: 1.5; }
     .key:active { transform: scale(0.95); }
@@ -67,38 +92,92 @@
     .key.present { background: var(--present); }
     .key.absent { background: var(--absent); opacity: 0.5; }
 
-    /* Minesweeper UI */
     .mine-container {
-      background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-      padding: 20px; display: inline-block;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--t-radius, 14px);
+      padding: 20px;
+      display: inline-block;
+      max-width: 100%;
+      overflow-x: auto;
     }
-    .mine-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; font-family: 'Syne', sans-serif; font-weight: 800; }
+    .mine-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 15px;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-weight: 800;
+    }
     .mine-board {
-      display: grid; grid-template-columns: repeat(10, 34px); gap: 2px;
-      background: var(--line); border: 2px solid var(--line); border-radius: 4px;
+      display: grid;
+      grid-template-columns: repeat(10, 34px);
+      gap: 2px;
+      background: var(--line);
+      border: 2px solid var(--line);
+      border-radius: 4px;
     }
     .mine-cell {
-      width: 34px; height: 34px; background: var(--t-bg, #060608); border: 1px solid var(--line);
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 900; cursor: pointer; font-size: 1.1rem;
+      width: 34px;
+      height: 34px;
+      background: var(--t-bg, #060608);
+      border: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      cursor: pointer;
+      font-size: 1.1rem;
     }
     .mine-cell.unrevealed { background: var(--panel); }
-    .mine-cell.unrevealed:hover { background: rgba(255,255,255,0.08); }
+    .mine-cell.unrevealed:hover { background: color-mix(in srgb, var(--t-fg) 10%, transparent); }
     .mine-cell.revealed { background: transparent; cursor: default; }
     .mine-cell.mine { background: #ef4444; color: #fff; }
     .mine-cell.mine-hit { background: #dc2626; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); }
     .n1 { color: #60a5fa; } .n2 { color: #4ade80; } .n3 { color: #f87171; } .n4 { color: #a78bfa; }
 
     .btn-action {
-      background: var(--ac); color: #fff; border: none; padding: 12px 28px; border-radius: 12px;
-      font-weight: 900; cursor: pointer; text-transform: uppercase; margin-top: 20px; transition: all 0.2s;
+      background: var(--ac);
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: var(--t-radius, 12px);
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-weight: 800;
+      cursor: pointer;
+      text-transform: uppercase;
+      margin-top: 20px;
+      transition: transform var(--t-motion, 0.2s), filter var(--t-motion, 0.2s);
     }
-    .btn-action:hover { transform: scale(1.05); filter: brightness(1.1); }
-    .btn-action:active { transform: scale(0.95); }
+    .btn-action:hover { transform: scale(1.04); filter: brightness(1.08); }
+    .btn-action:active { transform: scale(0.96); }
 
-    #back-btn { position: fixed; top: 20px; left: 20px; background: var(--panel); border: 1px solid var(--line); color: #fff; padding: 8px 16px; border-radius: 10px; text-decoration: none; font-weight: 700; z-index: 100; }
-    h1 { font-family: 'Syne', sans-serif; letter-spacing: -1px; }
-    
+    #back-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--t-fg);
+      padding: 8px 16px;
+      border-radius: var(--t-radius, 10px);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.88rem;
+      z-index: 100;
+      transition: border-color var(--t-motion, 0.15s), background var(--t-motion, 0.15s);
+    }
+    #back-btn:hover {
+      border-color: var(--t-bda, var(--ac));
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+      color: var(--t-fg);
+    }
+    h1 {
+      font-family: 'Outfit', system-ui, sans-serif;
+      letter-spacing: -0.03em;
+      font-weight: 800;
+    }
+
     .hidden { display: none !important; }
     .shake { animation: shake 0.4s; }
     @keyframes shake {
@@ -106,9 +185,24 @@
       25% { transform: translateX(-5px); }
       75% { transform: translateX(5px); }
     }
+
+    @media (max-width: 640px) {
+      body { padding: 72px 12px 28px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .tile.filled,
+      .btn-action:hover,
+      .key:active { transform: none; }
+    }
   </style>
 </head>
-<body>
+<body data-shell="off">
   <a href="/games/" id="back-btn">← Back</a>
 
   <div class="container">

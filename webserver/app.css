@@ -85,11 +85,7 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 3.25rem;
   padding: 0.55rem clamp(0.85rem, 2.5vw, 1.75rem);
   border-bottom: 1px solid var(--t-bd);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--t-bg) 88%, transparent), color-mix(in srgb, var(--t-bg) 72%, transparent)),
-    var(--t-bg2);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  background: color-mix(in srgb, var(--t-bg) 94%, var(--t-bg2));
   transform: translateY(0);
   transition:
     background-color var(--t-motion, 0.18s) ease,
@@ -491,8 +487,4 @@ h1, h2, h3, h4, h5, h6 {
   transition: none !important;
 }
 
-.theme-firefox .app-topbar {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  background: color-mix(in srgb, var(--t-bg) 94%, var(--t-bg2));
-}
+

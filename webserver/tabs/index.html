@@ -5,136 +5,143 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tyler's Tabs — mitch.pro</title>
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/api.js"></script>
+  <script src="/app-shell.js" defer></script>
   <style>
-    
-    :root {
-      --ac: #a78bfa;
-      --bg: #060608;
-      --panel: rgba(255, 255, 255, 0.03);
-      --line: rgba(255, 255, 255, 0.08);
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--t-bg, var(--bg));
-      color: var(--t-fg, #fff);
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
+    html, body {
+      height: 100%;
       overflow: hidden;
     }
-
-    /* Top Bar */
-    header {
-      height: 60px;
-      background: var(--panel);
-      border-bottom: 1px solid var(--line);
+    body.app-shell {
+      display: flex;
+      flex-direction: column;
+    }
+    .tabs-chrome {
       display: flex;
       align-items: center;
-      padding: 0 20px;
-      gap: 15px;
-      backdrop-filter: blur(10px);
-      z-index: 10;
+      gap: 0.65rem;
+      min-height: 3rem;
+      padding: 0.45rem clamp(0.75rem, 2vw, 1.25rem);
+      border-bottom: 1px solid var(--t-bd);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--t-bg) 88%, transparent), color-mix(in srgb, var(--t-bg2) 78%, transparent));
+      backdrop-filter: blur(14px) saturate(150%);
+      -webkit-backdrop-filter: blur(14px) saturate(150%);
+      flex-shrink: 0;
+      z-index: 50;
     }
-
-    .logo {
-      font-family: 'Syne', sans-serif;
+    .tabs-brand {
+      font-family: 'Outfit', system-ui, sans-serif;
       font-weight: 800;
-      font-size: 1.2rem;
-      color: var(--ac);
+      font-size: 0.95rem;
+      letter-spacing: -0.03em;
+      color: var(--t-fg);
       text-decoration: none;
-      margin-right: 10px;
+      white-space: nowrap;
+      margin-right: 0.25rem;
     }
-
+    .tabs-brand:hover { color: var(--t-fg); opacity: 0.88; }
     .tab-controls {
       display: flex;
-      gap: 8px;
+      gap: 0.4rem;
       flex-grow: 1;
       overflow-x: auto;
-      padding-bottom: 4px;
+      padding-bottom: 2px;
+      -ms-overflow-style: none;
+      scrollbar-width: none;
     }
-
+    .tab-controls::-webkit-scrollbar { display: none; }
     .tab-btn {
-      background: var(--line);
-      border: 1px solid transparent;
-      color: #fff;
-      padding: 6px 14px;
-      border-radius: 8px;
-      font-size: 0.85rem;
+      background: var(--t-bg2);
+      border: 1px solid var(--t-bd);
+      color: var(--t-fg2);
+      padding: 0.35rem 0.7rem;
+      border-radius: calc(var(--t-radius, 8px) - 1px);
+      font-size: 0.82rem;
       font-weight: 600;
+      font-family: inherit;
       cursor: pointer;
       white-space: nowrap;
       display: flex;
       align-items: center;
-      gap: 8px;
-      transition: all 0.2s;
+      gap: 0.45rem;
+      transition:
+        color var(--t-motion, .15s),
+        background var(--t-motion, .15s),
+        border-color var(--t-motion, .15s);
     }
     .tab-btn.active {
-      background: var(--ac);
-      border-color: rgba(255,255,255,0.2);
+      background: color-mix(in srgb, var(--t-ac) 16%, transparent);
+      border-color: color-mix(in srgb, var(--t-ac) 45%, var(--t-bd));
+      color: var(--t-fg);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t-ac) 20%, transparent);
     }
-    .tab-btn:hover:not(.active) { background: rgba(255,255,255,0.15); }
-    
+    .tab-btn:hover:not(.active) {
+      color: var(--t-fg);
+      border-color: color-mix(in srgb, var(--t-bd) 70%, var(--t-ac) 30%);
+      background: var(--t-bg3);
+    }
     .close-tab {
       opacity: 0.5;
-      font-size: 14px;
-      transition: opacity 0.2s;
+      font-size: 0.85rem;
+      transition: opacity var(--t-motion, .15s);
     }
     .close-tab:hover { opacity: 1; }
-
     .add-tab-btn {
-      background: var(--ac);
+      background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
       color: #fff;
-      border: none;
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
+      border: 1px solid var(--t-bda, transparent);
+      width: 2rem;
+      height: 2rem;
+      border-radius: var(--t-radius, 8px);
       font-weight: 800;
+      font-size: 1.05rem;
       cursor: pointer;
       flex-shrink: 0;
+      line-height: 1;
+      transition: background var(--t-motion, .15s), transform .12s;
     }
-
-    .actions {
-      display: flex;
-      gap: 8px;
-    }
-
+    .add-tab-btn:hover { background: var(--t-ac); }
+    .add-tab-btn:active { transform: scale(0.96); }
+    .actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
     .action-btn {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      color: #fff;
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 0.8rem;
+      background: var(--t-bg2);
+      border: 1px solid var(--t-bd);
+      color: var(--t-fg);
+      padding: 0.35rem 0.7rem;
+      border-radius: var(--t-radius, 8px);
+      font-size: 0.78rem;
       font-weight: 700;
+      font-family: inherit;
       cursor: pointer;
+      transition:
+        border-color var(--t-motion, .15s),
+        background var(--t-motion, .15s),
+        color var(--t-motion, .15s);
     }
+    .action-btn:hover { border-color: color-mix(in srgb, var(--t-bd) 60%, var(--t-ac) 40%); }
     .action-btn.split-active {
-      background: #4ade80;
-      color: #000;
-      border-color: #4ade80;
+      background: color-mix(in srgb, #4ade80 18%, transparent);
+      color: #86efac;
+      border-color: rgba(74, 222, 128, 0.45);
     }
-
-    /* Main Area */
     #view-container {
-      flex-grow: 1;
+      flex: 1 1 auto;
       display: flex;
       position: relative;
+      min-height: 0;
+      background: var(--t-bg);
     }
-
     iframe {
       width: 100%;
       height: 100%;
       border: none;
       display: none;
-      background: #fff; /* Some sites expect white bg */
+      background: #fff;
+      max-width: none;
     }
-    iframe.active {
-      display: block;
-    }
-
-    /* Split Screen Layouts */
+    iframe.active { display: block; }
     .view-split {
       display: flex !important;
       width: 100% !important;
@@ -143,88 +150,130 @@
     .view-split iframe {
       display: block;
       flex: 1;
-      border-left: 1px solid var(--line);
+      border-left: 1px solid var(--t-bd);
     }
     .view-split iframe:first-child { border-left: none; }
-
-    /* New Tab Modal */
     #modal-overlay {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.8);
+      position: fixed; inset: 0;
+      background: rgba(0, 0, 0, 0.72);
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 100;
-      backdrop-filter: blur(5px);
+      z-index: 500;
+      backdrop-filter: blur(8px);
     }
     .modal {
-      background: var(--bg);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 30px;
-      width: min(500px, 90%);
-      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      background: var(--t-bg2);
+      border: 1px solid var(--t-bd);
+      border-radius: calc(var(--t-radius, 8px) + 6px);
+      padding: 1.5rem;
+      width: min(500px, 92%);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      animation: app-fade-in 0.35s ease both;
     }
-    .modal h3 { margin-bottom: 20px; font-family: 'Syne', sans-serif; }
+    .modal h3 {
+      margin: 0 0 1rem;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 1.25rem;
+      letter-spacing: -0.02em;
+    }
+    .modal label {
+      font-size: 0.7rem;
+      color: var(--t-fg2);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+      display: block;
+      margin-bottom: 0.45rem;
+    }
     .modal input {
       width: 100%;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      color: #fff;
-      padding: 12px 16px;
-      border-radius: 10px;
-      margin-bottom: 20px;
+      background: var(--t-bg);
+      border: 1px solid var(--t-bd);
+      color: var(--t-fg);
+      padding: 0.7rem 0.9rem;
+      border-radius: var(--t-radius, 8px);
+      margin-bottom: 1rem;
       outline: none;
-      font-family: 'Outfit', sans-serif;
+      font-family: inherit;
+      font-size: 0.92rem;
+      transition: border-color var(--t-motion, .15s), box-shadow var(--t-motion, .15s);
     }
-    .modal input:focus { border-color: var(--ac); }
-    
+    .modal input:focus {
+      border-color: var(--t-ac);
+      box-shadow: 0 0 0 3px var(--t-gls);
+    }
     .presets {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 20px;
+      gap: 0.5rem;
+      margin-bottom: 1.1rem;
     }
     .preset-btn {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      color: #fff;
-      padding: 10px;
-      border-radius: 10px;
+      background: var(--t-bg);
+      border: 1px solid var(--t-bd);
+      color: var(--t-fg);
+      padding: 0.65rem 0.75rem;
+      border-radius: var(--t-radius, 8px);
       cursor: pointer;
       text-align: left;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       font-weight: 600;
+      font-family: inherit;
+      transition: border-color var(--t-motion, .15s), background var(--t-motion, .15s);
     }
-    .preset-btn:hover { border-color: var(--ac); background: rgba(167, 139, 250, 0.05); }
-
+    .preset-btn:hover {
+      border-color: color-mix(in srgb, var(--t-bd) 55%, var(--t-ac) 45%);
+      background: color-mix(in srgb, var(--t-ac) 8%, transparent);
+    }
     .modal-actions {
       display: flex;
       justify-content: flex-end;
-      gap: 10px;
+      gap: 0.5rem;
     }
     .btn {
-      padding: 10px 20px;
-      border-radius: 10px;
+      padding: 0.55rem 1rem;
+      border-radius: var(--t-radius, 8px);
       font-weight: 700;
+      font-family: inherit;
+      font-size: 0.88rem;
       cursor: pointer;
-      border: none;
+      border: 1px solid transparent;
+      transition: background var(--t-motion, .15s), transform .12s;
     }
-    .btn-cancel { background: var(--panel); color: #fff; }
-    .btn-create { background: var(--ac); color: #fff; }
-
-    /* Hide scrollbar */
-    .tab-controls::-webkit-scrollbar { display: none; }
-    .tab-controls { -ms-overflow-style: none; scrollbar-width: none; }
+    .btn:active { transform: scale(0.97); }
+    .btn-cancel {
+      background: var(--t-bg);
+      color: var(--t-fg);
+      border-color: var(--t-bd);
+    }
+    .btn-create {
+      background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
+      color: #fff;
+      border-color: var(--t-bda, transparent);
+    }
+    .btn-create:hover { background: var(--t-ac); }
+    @media (max-width: 719px) {
+      .tabs-chrome { flex-wrap: wrap; gap: 0.45rem; }
+      .actions { width: 100%; justify-content: flex-end; }
+      .presets { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tab-btn, .action-btn, .preset-btn, .modal input, .btn, .add-tab-btn { transition: none !important; }
+      .modal { animation: none !important; }
+    }
+    .theme-firefox .tabs-chrome {
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      background: color-mix(in srgb, var(--t-bg) 94%, var(--t-bg2));
+    }
   </style>
 </head>
 <body>
-  <header>
-    <a href="/" class="logo">Tyler's Tabs</a>
-    <div class="tab-controls" id="tab-list">
-      <!-- Tabs here -->
-    </div>
-    <button class="add-tab-btn" onclick="openModal()">+</button>
+  <header class="tabs-chrome" role="navigation" aria-label="Tab controls">
+    <a href="/" class="tabs-brand">Tyler's Tabs</a>
+    <div class="tab-controls" id="tab-list"></div>
+    <button class="add-tab-btn" onclick="openModal()" aria-label="Add tab">+</button>
     <div class="actions">
       <button class="action-btn" id="split-btn" onclick="toggleSplit()">Split Screen</button>
       <button class="action-btn" onclick="refreshTab()">Refresh</button>
@@ -232,16 +281,15 @@
   </header>
 
   <main id="view-container">
-    <!-- Iframes here -->
   </main>
 
   <div id="modal-overlay">
     <div class="modal">
       <h3>New Tab</h3>
-      <label style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; font-weight: 800; display: block; margin-bottom: 8px;">Custom URL</label>
+      <label for="url-input">Custom URL</label>
       <input type="text" id="url-input" placeholder="https://..." onkeydown="if(event.key==='Enter') createTab()">
-      
-      <label style="font-size: 0.7rem; opacity: 0.6; text-transform: uppercase; font-weight: 800; display: block; margin-bottom: 8px;">Presets</label>
+
+      <label>Presets</label>
       <div class="presets">
         <button class="preset-btn" onclick="setURL(location.origin)">🏠 mitch.pro (Home)</button>
         <button class="preset-btn" onclick="setURL('https://www.google.com/search?igu=1')">🔍 Google Search</button>
@@ -288,7 +336,7 @@
 
       const tab = { id, url, title };
       tabs.push(tab);
-      
+
       const iframe = document.createElement('iframe');
       iframe.id = 'frame-' + id;
       iframe.src = url;
@@ -304,7 +352,7 @@
       document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
       const activeFrame = document.getElementById('frame-' + id);
       if (activeFrame) activeFrame.classList.add('active');
-      
+
       if (isSplit) updateSplitView();
       renderTabs();
     }
@@ -353,7 +401,7 @@
         // In split mode, we show the active tab and the previous one
         const activeIdx = tabs.findIndex(t => t.id === activeTabId);
         const prevIdx = activeIdx > 0 ? activeIdx - 1 : activeIdx + 1;
-        
+
         document.querySelectorAll('iframe').forEach(f => f.style.display = 'none');
         document.getElementById('frame-' + tabs[activeIdx].id).style.display = 'block';
         document.getElementById('frame-' + tabs[prevIdx].id).style.display = 'block';

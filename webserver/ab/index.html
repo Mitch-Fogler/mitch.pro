@@ -1,94 +1,228 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>a:b ifram launcher</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>a:b iframe launcher — mitch.pro</title>
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/api.js"></script>
+  <script src="/app-shell.js" defer></script>
   <style>
-    body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: var(--t-bg);
-      color: var(--t-fg);
-      padding: 24px;
+    .ab-page {
+      position: relative;
+      isolation: isolate;
     }
-    input, textarea {
-      width: 400px;
-      padding: 8px 12px;
-      font-size: 15px;
+
+    .ab-page::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 65% 45% at 50% -8%, color-mix(in srgb, var(--t-ac) 14%, transparent), transparent 70%),
+        radial-gradient(ellipse 40% 35% at 100% 100%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 7%, transparent), transparent 65%);
+    }
+
+    .ab-shell {
+      width: min(40rem, 100%);
+      max-width: 40rem;
+    }
+
+    .page-head {
+      margin-bottom: 1.15rem;
+      animation: app-fade-in 0.45s ease both;
+    }
+
+    .page-head h1 {
+      margin: 0;
+      font-size: clamp(1.85rem, 4vw, 2.4rem);
+      font-weight: 800;
+      letter-spacing: -0.035em;
+    }
+
+    .page-sub {
+      margin: 0.5rem 0 0;
+      color: var(--t-fg2);
+      font-size: 0.9rem;
+      line-height: 1.55;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      animation: app-fade-in 0.55s ease 0.06s both;
+    }
+
+    .section {
+      padding: 1.15rem 1.1rem;
+      background:
+        linear-gradient(160deg, color-mix(in srgb, var(--t-bg2) 92%, transparent), color-mix(in srgb, var(--t-bg3) 80%, transparent));
+      border: 1px solid var(--t-bd);
+      border-radius: calc(var(--t-radius, 8px) + 2px);
+      box-shadow: 0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset;
+    }
+
+    .section h2 {
+      margin: 0 0 0.85rem;
+      font-size: 1rem;
+      font-weight: 750;
+      letter-spacing: -0.02em;
+      color: var(--t-fg);
+    }
+
+    .field-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      max-width: 100%;
+      padding: 0.65rem 0.85rem;
+      font-size: 0.92rem;
       background: var(--t-bg2);
       color: var(--t-fg);
       border: 1px solid var(--t-bd);
-      border-radius: 7px;
+      border-radius: var(--t-radius, 8px);
       font-family: inherit;
-      transition: border-color .15s, box-shadow .15s;
+      transition:
+        border-color var(--t-motion, 0.15s) ease,
+        box-shadow var(--t-motion, 0.15s) ease;
     }
-    input:focus, textarea:focus {
+
+    input:focus,
+    textarea:focus {
       outline: none;
       border-color: var(--t-ac);
-      box-shadow: 0 0 0 3px var(--t-gls);
+      box-shadow: 0 0 0 3px var(--t-gls, transparent);
     }
+
+    textarea {
+      min-height: 6.5rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      resize: vertical;
+    }
+
     button {
-      padding: 8px 16px;
-      font-size: 14px;
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 2.35rem;
+      padding: 0.5rem 0.95rem;
+      font-size: 0.86rem;
       cursor: pointer;
       background: var(--t-bg2);
-      color: var(--t-ac);
-      border: 1px solid var(--t-bda);
-      border-radius: 7px;
-      font-family: inherit;
-      font-weight: 500;
-      transition: all .15s;
-    }
-    button:hover {
-      background: var(--t-bg3);
-      box-shadow: 0 0 8px var(--t-gls);
-    }
-    textarea {
-      height: 100px;
-      font-family: monospace;
-    }
-    .section {
-      margin-bottom: 20px;
-      padding: 18px;
-      background: var(--t-bg2);
+      color: var(--t-fg);
       border: 1px solid var(--t-bd);
-      border-radius: 12px;
+      border-radius: var(--t-radius, 8px);
+      font-family: inherit;
+      font-weight: 650;
+      transition:
+        background var(--t-motion, 0.15s) ease,
+        border-color var(--t-motion, 0.15s) ease,
+        color var(--t-motion, 0.15s) ease,
+        box-shadow var(--t-motion, 0.15s) ease,
+        transform 0.12s ease;
     }
-    h2 {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 12px;
-      background: var(--t-gr);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      display: inline-block;
+
+    button:hover {
+      border-color: color-mix(in srgb, var(--t-bd) 70%, var(--t-ac) 30%);
+      background: var(--t-bg3);
+      color: var(--t-fg);
     }
+
+    button:active { transform: scale(0.97); }
+
+    #urlList {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
     #urlList div {
-      padding: 3px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.65rem;
+      padding: 0.45rem 0.65rem;
+      border: 1px solid var(--t-bd);
+      border-radius: calc(var(--t-radius, 8px) - 2px);
+      background: color-mix(in srgb, var(--t-bg3) 55%, transparent);
       color: var(--t-fg2);
-      font-size: 0.875rem;
+      font-size: 0.84rem;
+      word-break: break-all;
+    }
+
+    #urlList button {
+      min-height: 1.9rem;
+      padding: 0.25rem 0.6rem;
+      font-size: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .page-head, .stack { animation: none !important; }
+      button, input, textarea { transition: none !important; }
+    }
+
+    .theme-no-motion .page-head,
+    .theme-no-motion .stack,
+    .theme-no-motion button {
+      animation: none !important;
+      transition: none !important;
     }
   </style>
 </head>
-<body>
-  <div class="section" id="builder">
-    <h2>URL Builder</h2>
-    <input id="urlInput" type="text" placeholder="Enter URL"><br><br>
-    <button id="addBtn">Add URL</button>
-    <button id="clearBtn">Clear All</button><br><br>
-    <div id="urlList"></div>
-    <br>
-    <textarea id="generatedUrl" readonly placeholder="Generated URL will appear here..."></textarea><br><br>
-    <button id="copyBtn">Copy URL</button>
-    <button id="useBtn">Use This URL</button>
-  </div>
+<body class="ab-page">
+  <main class="app-main ab-shell">
+    <header class="page-head">
+      <h1>a:b iframe launcher</h1>
+      <p class="page-sub">Build a multi-URL launch link, then open targets in blank tabs.</p>
+    </header>
 
-  <div class="section" id="launcher">
-    <h2>Launch</h2>
-    <input id="url" type="text" placeholder="https://example.com or paste generated URL"><br><br>
-    <button id="openBtn">Open</button>
-  </div>
+    <div class="stack">
+      <div class="section" id="builder">
+        <h2>URL Builder</h2>
+        <div class="field-stack">
+          <input id="urlInput" type="text" placeholder="Enter URL">
+          <div class="btn-row">
+            <button id="addBtn" type="button">Add URL</button>
+            <button id="clearBtn" type="button">Clear All</button>
+          </div>
+          <div id="urlList"></div>
+          <textarea id="generatedUrl" readonly placeholder="Generated URL will appear here..."></textarea>
+          <div class="btn-row">
+            <button id="copyBtn" type="button">Copy URL</button>
+            <button id="useBtn" type="button">Use This URL</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section" id="launcher">
+        <h2>Launch</h2>
+        <div class="field-stack">
+          <input id="url" type="text" placeholder="https://example.com or paste generated URL">
+          <div class="btn-row">
+            <button id="openBtn" type="button">Open</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
 
   <script>
     const urls = [];
@@ -187,9 +321,6 @@
     }
   </script>
 <script src="/cookie-consent.js" defer></script>
-</body>
-<head>
-
 
 <!-- AUTH_INJECT_START -->
 <style>
@@ -197,5 +328,5 @@
     padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
 </style>
 <!-- AUTH_INJECT_END -->
-</head>
+</body>
 </html>

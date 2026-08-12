@@ -3,115 +3,181 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Inventory - mitch.pro</title>
+<title>Inventory — mitch.pro</title>
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    min-height: 100vh;
-    background: var(--t-bg, #0d0d0d);
-    color: var(--t-fg, #e8e8e8);
-    font-family: 'DM Mono', ui-monospace, monospace;
-    padding: 42px 18px 88px;
+  .page-head {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 1.25rem;
+    align-items: end;
+    margin-bottom: 1.25rem;
   }
-  .wrap { width: 100%; max-width: 1080px; margin: 0 auto; }
-  .topbar { display: flex; justify-content: space-between; align-items: end; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
-  h1 {
-    font-family: 'Syne', system-ui, sans-serif;
-    font-size: clamp(2rem, 4vw, 3.4rem);
-    line-height: 1;
-    font-weight: 900;
-    background: var(--t-gr);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(1.85rem, 4vw, 2.75rem);
+    letter-spacing: -0.03em;
   }
-  .subline { color: var(--t-fg2, #aaa); font-size: .82rem; margin-top: 10px; line-height: 1.55; max-width: 680px; }
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-  .btn, button {
-    min-height: 38px;
-    border: 1px solid var(--t-bd, #333);
-    border-radius: 8px;
-    background: var(--t-bg2, #151515);
-    color: var(--t-fg, #fff);
-    font-family: 'Syne', system-ui, sans-serif;
-    font-weight: 800;
-    font-size: .82rem;
-    padding: 9px 13px;
-    text-decoration: none;
-    cursor: pointer;
+  .subline {
+    margin: 0.55rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.88rem;
+    max-width: 40rem;
+    line-height: 1.55;
   }
-  .btn.primary, button.primary { background: var(--t-gr); border-color: transparent; color: #fff; }
-  .status-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 18px 0 24px; }
-  .status {
-    border: 1px solid var(--t-bd, #333);
-    border-radius: 8px;
-    background: var(--t-bg2, #151515);
-    padding: 12px;
+  .head-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
   }
-  .status b { display: block; color: var(--t-fg, #fff); font-size: .86rem; margin-bottom: 4px; }
-  .status span { color: var(--t-fg2, #aaa); font-size: .75rem; }
-  .section { margin: 18px 0 22px; border: 1px solid var(--t-bd, #333); border-radius: 8px; overflow: hidden; background: rgba(255,255,255,.015); }
+  .status-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+    gap: 0.55rem;
+    margin: 0 0 1.25rem;
+  }
+  .status b {
+    display: block;
+    font-family: Outfit, system-ui, sans-serif;
+    font-size: 0.86rem;
+    font-weight: 750;
+    color: var(--t-fg);
+    margin-bottom: 0.2rem;
+  }
+  .status span {
+    color: var(--t-fg2);
+    font-size: 0.75rem;
+  }
+  .section {
+    margin: 0 0 1rem;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    overflow: hidden;
+    background: color-mix(in srgb, var(--t-bg2) 70%, transparent);
+  }
   .section-head {
-    display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
-    padding: 12px 14px; border-bottom: 1px solid var(--t-bd, #333);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid var(--t-bd);
   }
-  .section-title { font-family: 'Syne', system-ui, sans-serif; font-size: 1rem; font-weight: 900; }
-  .section-count { color: var(--t-fg2, #aaa); font-size: .72rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 14px; }
+  .section-title {
+    font-family: Outfit, system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 750;
+    color: var(--t-fg);
+  }
+  .section-count { color: var(--t-fg2); font-size: 0.72rem; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr));
+    gap: 0.75rem;
+    padding: 0.9rem;
+  }
   .card {
-    background: var(--t-bg2, #151515);
-    border: 1px solid var(--t-bd, #333);
-    border-radius: 8px;
-    padding: 14px;
-    min-height: 176px;
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    padding: 0.9rem;
+    min-height: 10.5rem;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    transition: border-color var(--t-motion, 0.15s) ease;
   }
-  .card.active { border-color: rgba(139,92,246,.75); box-shadow: 0 0 0 1px rgba(139,92,246,.2); }
-  .name { font-family: 'Syne', system-ui, sans-serif; font-weight: 900; font-size: 1rem; line-height: 1.25; }
-  .desc { color: var(--t-fg2, #aaa); font-size: .75rem; line-height: 1.45; margin-top: 8px; }
-  .tags { display: flex; gap: 6px; flex-wrap: wrap; min-height: 23px; margin-bottom: 10px; }
+  .card.active {
+    border-color: color-mix(in srgb, var(--t-ac) 55%, var(--t-bd));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--t-ac) 22%, transparent);
+  }
+  .name {
+    font-family: Outfit, system-ui, sans-serif;
+    font-weight: 750;
+    font-size: 1rem;
+    line-height: 1.25;
+  }
+  .desc {
+    color: var(--t-fg2);
+    font-size: 0.75rem;
+    line-height: 1.45;
+    margin-top: 0.5rem;
+  }
+  .tags {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    min-height: 1.4rem;
+    margin-bottom: 0.55rem;
+  }
   .pill {
-    display: inline-flex; align-items: center; min-height: 22px; padding: 3px 7px;
-    border-radius: 999px; border: 1px solid var(--t-bd, #333);
-    color: var(--t-fg2, #aaa); font-size: .65rem; font-weight: 800;
+    display: inline-flex;
+    align-items: center;
+    min-height: 1.4rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    border: 1px solid var(--t-bd);
+    background: var(--t-bg3);
+    color: var(--t-fg2);
+    font-size: 0.65rem;
+    font-weight: 700;
   }
   .pill.good { color: #34d399; border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.08); }
   .pill.warn { color: #f59e0b; border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.08); }
-  .pill.active { color: #c4b5fd; border-color: rgba(139,92,246,.45); background: rgba(139,92,246,.12); }
-  .empty { color: var(--t-fg2, #aaa); border: 1px dashed var(--t-bd, #333); border-radius: 8px; padding: 28px; text-align: center; }
+  .pill.active { color: var(--t-ac); border-color: color-mix(in srgb, var(--t-ac) 45%, transparent); background: color-mix(in srgb, var(--t-ac) 12%, transparent); }
+  .empty {
+    color: var(--t-fg2);
+    border: 1px dashed var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    padding: 1.75rem;
+    text-align: center;
+  }
+  .card .btn, .card .btn-primary { width: 100%; }
   #toast {
-    position: fixed; right: 18px; bottom: 18px; display: none; max-width: min(420px, calc(100vw - 36px));
-    padding: 12px 16px; border-radius: 8px; font-weight: 800; z-index: 9999; box-shadow: 0 12px 40px rgba(0,0,0,.35);
+    position: fixed;
+    right: 1.1rem;
+    bottom: 1.1rem;
+    display: none;
+    max-width: min(26rem, calc(100vw - 2rem));
+    padding: 0.75rem 1rem;
+    border-radius: var(--t-radius, 8px);
+    font-weight: 700;
+    font-size: 0.88rem;
+    z-index: 9999;
+    box-shadow: 0 12px 40px rgba(0,0,0,.35);
   }
   #toast.ok { display: block; background: #16a34a; color: #fff; }
   #toast.err { display: block; background: #dc2626; color: #fff; }
-  @media (max-width: 700px) {
-    body { padding-top: 28px; }
-    .topbar { align-items: stretch; }
-    .actions, .actions a { width: 100%; }
-    .btn { text-align: center; }
-    .grid { grid-template-columns: 1fr; padding: 10px; }
+  @media (max-width: 719px) {
+    .page-head { grid-template-columns: 1fr; align-items: stretch; }
+    .head-actions .btn { flex: 1 1 auto; }
+    .grid { grid-template-columns: 1fr; padding: 0.65rem; }
   }
+  @media (prefers-reduced-motion: reduce) {
+    .card { transition: none; }
+  }
+  .theme-no-motion .card { transition: none; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="topbar">
+<main class="app-main">
+  <header class="page-head">
     <div>
       <h1>Inventory</h1>
       <p class="subline">Equip owned shop items, including items that are no longer listed in the market.</p>
     </div>
-    <div class="actions">
+    <div class="head-actions panel-actions">
       <a class="btn" href="/shop/">Open Market</a>
       <a class="btn" href="/preferences/">Preferences</a>
     </div>
-  </div>
+  </header>
 
   <div id="status" class="status-grid"></div>
   <div id="inventory"><div class="empty">Loading inventory...</div></div>
-</div>
+</main>
 <div id="toast"></div>
 
 <script>
@@ -147,7 +213,7 @@ function renderStatus(status) {
     ['Streak Freezes', String(status.streakFreezes || 0)]
   ];
   document.getElementById('status').innerHTML = rows.map(([label, value]) => (
-    `<div class="status"><b>${esc(label)}</b><span>${esc(value)}</span></div>`
+    `<div class="panel status"><b>${esc(label)}</b><span>${esc(value)}</span></div>`
   )).join('');
 }
 function renderCard(item) {
@@ -158,7 +224,7 @@ function renderCard(item) {
     item.removedFromShop ? '<span class="pill warn">removed from shop</span>' : ''
   ].filter(Boolean).join('');
   const button = canEquip
-    ? `<button class="${item.active ? '' : 'primary'}" data-id="${esc(item.id)}" data-type="${esc(item.costType)}">${item.active ? 'Turn Off' : 'Equip'}</button>`
+    ? `<button class="${item.active ? 'btn' : 'btn-primary'}" data-id="${esc(item.id)}" data-type="${esc(item.costType)}">${item.active ? 'Turn Off' : 'Equip'}</button>`
     : '<span class="pill">pass / consumable</span>';
   return `<article class="card ${item.active ? 'active' : ''}">
     <div>
@@ -166,7 +232,7 @@ function renderCard(item) {
       <div class="name">${esc(item.name || item.id)}</div>
       <div class="desc">${esc(item.desc || '')}</div>
     </div>
-    <div style="margin-top:14px">${button}</div>
+    <div style="margin-top:0.85rem">${button}</div>
   </article>`;
 }
 function render() {

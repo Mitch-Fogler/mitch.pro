@@ -5,322 +5,169 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Join the Team — mitch.pro</title>
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-  :root {
-    --card-bg: rgba(255,255,255,0.03);
-    --card-border: rgba(255,255,255,0.08);
-    --input-bg: rgba(255,255,255,0.04);
-    --input-border: rgba(255,255,255,0.1);
-    --input-focus: var(--t-ac, #a78bfa);
-    --radius: 10px;
+  .apply-shell {
+    width: min(34rem, 100%);
+    max-width: 34rem;
   }
-
-  html { scroll-behavior: smooth; }
-
-  body {
-    min-height: 100vh;
-    background: var(--t-bg, #0d0d0d);
-    color: var(--t-fg, #e8e8e8);
-    font-family: 'DM Mono', monospace;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 40px 20px 60px;
-    position: relative;
-    overflow-x: hidden;
+  .page-head {
+    margin-bottom: 1.25rem;
+    animation: app-fade-in 0.45s ease both;
   }
-
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background:
-      radial-gradient(ellipse 60% 40% at 20% 10%, rgba(167,139,250,0.06) 0%, transparent 60%),
-      radial-gradient(ellipse 50% 35% at 80% 90%, rgba(96,165,250,0.04) 0%, transparent 55%);
-    pointer-events: none;
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(1.85rem, 4vw, 2.55rem);
+    letter-spacing: -0.035em;
   }
-
-  body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
-    background-size: 48px 48px;
-    pointer-events: none;
+  .page-sub {
+    margin: 0.5rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.9rem;
+    line-height: 1.55;
   }
-
-  .wrap {
-    width: 100%;
-    max-width: 560px;
-    position: relative;
-    z-index: 1;
+  .apply-panel {
+    animation: app-fade-in 0.55s ease 0.05s both;
   }
-
-  .header {
-    margin-bottom: 36px;
-    opacity: 0;
-    transform: translateY(14px);
-    animation: rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  }
-
-  .site-label {
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    font-weight: 400;
-    color: var(--t-fg2, #666);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .site-label::before {
-    content: '';
-    display: inline-block;
-    width: 18px;
-    height: 1px;
-    background: var(--t-fg2, #666);
-  }
-
-  h1 {
-    font-family: 'Syne', sans-serif;
-    font-size: clamp(2rem, 6vw, 2.8rem);
-    font-weight: 800;
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-    background: var(--t-gr, linear-gradient(135deg, #e8e8e8 0%, #a78bfa 60%, #60a5fa 100%));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 10px;
-  }
-
-  .subtitle {
-    font-size: 13px;
-    color: var(--t-fg2, #777);
-    line-height: 1.6;
-    font-style: italic;
-    font-weight: 300;
-  }
-
-  .card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 36px 40px 40px;
-    backdrop-filter: blur(12px);
-    opacity: 0;
-    transform: translateY(18px);
-    animation: rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.1s forwards;
-  }
-
-  @media (max-width: 520px) {
-    .card { padding: 28px 22px 32px; }
-  }
-
-  .field {
-    margin-bottom: 22px;
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  .field:nth-child(1) { animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) 0.18s forwards; }
-  .field:nth-child(2) { animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) 0.24s forwards; }
-  .field:nth-child(3) { animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) 0.30s forwards; }
-  .field:nth-child(4) { animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) 0.36s forwards; }
-  .field:nth-child(5) { animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) 0.42s forwards; }
-  .field:nth-child(6) { animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) 0.48s forwards; }
-
-  label {
+  .field { margin-bottom: 1rem; }
+  .field label {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--t-fg2, #666);
-    margin-bottom: 8px;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--t-fg2);
+    margin-bottom: 0.35rem;
   }
-  label .opt {
-    font-size: 9px;
-    font-weight: 300;
-    letter-spacing: 0;
-    text-transform: none;
-    color: var(--t-fg2, #555);
+  .field label .opt {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: color-mix(in srgb, var(--t-fg2) 75%, transparent);
     font-style: italic;
+  }
+  .field input,
+  .field textarea {
+    width: 100%;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: var(--t-bg2);
+    color: var(--t-fg);
+    font-family: inherit;
+    font-size: 0.92rem;
+    padding: 0.65rem 0.8rem;
+    outline: none;
+    transition:
+      border-color var(--t-motion, 0.15s) ease,
+      box-shadow var(--t-motion, 0.15s) ease,
+      background var(--t-motion, 0.15s) ease;
+  }
+  .field input:focus,
+  .field textarea:focus {
+    border-color: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls);
+  }
+  .field input::placeholder,
+  .field textarea::placeholder {
+    color: color-mix(in srgb, var(--t-fg2) 75%, transparent);
+  }
+  textarea { resize: vertical; line-height: 1.55; }
+  textarea.tall { min-height: 7.5rem; }
+  textarea.medium { min-height: 5.5rem; }
+  .divider {
+    border: none;
+    border-top: 1px solid var(--t-bd);
+    margin: 1.25rem 0 1.1rem;
     opacity: 0.7;
   }
-
-  input, textarea {
-    width: 100%;
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
-    border-radius: var(--radius);
-    color: var(--t-fg, #e8e8e8);
-    font-family: 'DM Mono', monospace;
-    font-size: 13px;
-    font-weight: 400;
-    padding: 11px 14px;
-    outline: none;
-    transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
-    -webkit-appearance: none;
-  }
-  input::placeholder, textarea::placeholder {
-    color: rgba(255,255,255,0.2);
-    font-style: italic;
-  }
-  input:focus, textarea:focus {
-    border-color: var(--input-focus);
-    background: rgba(167,139,250,0.05);
-    box-shadow: 0 0 0 3px rgba(167,139,250,0.08);
-  }
-  textarea {
-    resize: vertical;
-    line-height: 1.6;
-  }
-  textarea.tall   { min-height: 120px; }
-  textarea.medium { min-height: 90px; }
-
-  .divider {
-    height: 1px;
-    background: var(--card-border);
-    margin: 28px 0;
-    opacity: 0;
-    animation: rise 0.4s ease 0.44s forwards;
-  }
-
-  .submit-row {
-    opacity: 0;
-    animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) 0.52s forwards;
-  }
-
-  button[type=submit] {
-    width: 100%;
-    background: var(--t-ac, #a78bfa);
-    color: #fff;
-    border: none;
-    border-radius: var(--radius);
-    padding: 13px 20px;
-    font-family: 'Syne', sans-serif;
-    font-size: 14px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    cursor: pointer;
-    transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
-    position: relative;
-    overflow: hidden;
-  }
-  button[type=submit]::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0.12), transparent);
-    pointer-events: none;
-  }
-  button[type=submit]:hover:not(:disabled) {
-    opacity: 0.9;
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(167,139,250,0.25);
-  }
-  button[type=submit]:active:not(:disabled) { transform: translateY(0); }
-  button[type=submit]:disabled { opacity: 0.45; cursor: default; }
-
+  #submit-btn { width: 100%; }
   #msg {
-    margin-top: 14px;
-    font-size: 12px;
+    margin-top: 0.85rem;
+    font-size: 0.82rem;
     text-align: center;
     line-height: 1.5;
     min-height: 1.4em;
-    font-style: italic;
+    color: var(--t-fg2);
   }
-  #msg.ok  { color: #4ade80; }
+  #msg.ok { color: #4ade80; }
   #msg.err { color: #f87171; }
-
   .success-state {
     display: none;
     text-align: center;
-    padding: 20px 0 8px;
+    padding: 1rem 0 0.25rem;
   }
   .success-state .checkmark {
-    font-size: 2.4rem;
+    font-size: 1.8rem;
     display: block;
-    margin-bottom: 14px;
-    animation: pop 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards;
+    margin-bottom: 0.75rem;
+    color: var(--t-ac);
   }
   .success-state h2 {
-    font-family: 'Syne', sans-serif;
-    font-size: 1.25rem;
-    font-weight: 700;
-    margin-bottom: 8px;
-    color: var(--t-fg, #e8e8e8);
+    font-size: 1.2rem;
+    margin: 0 0 0.45rem;
   }
   .success-state p {
-    font-size: 13px;
-    color: var(--t-fg2, #777);
-    line-height: 1.6;
-    font-style: italic;
-    font-weight: 300;
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--t-fg2);
+    line-height: 1.55;
   }
-
-  @keyframes rise {
-    to { opacity: 1; transform: translateY(0); }
+  @media (prefers-reduced-motion: reduce) {
+    .page-head, .apply-panel { animation: none; }
   }
-  @keyframes pop {
-    from { transform: scale(0.5); opacity: 0; }
-    to   { transform: scale(1);   opacity: 1; }
+  .theme-no-motion .page-head,
+  .theme-no-motion .apply-panel,
+  .theme-no-motion .field input,
+  .theme-no-motion .field textarea {
+    animation: none !important;
+    transition: none !important;
   }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="header">
-    <div class="site-label">mitch.pro</div>
+<main class="app-main apply-shell">
+  <header class="page-head">
     <h1>Join the Team</h1>
-    <p class="subtitle">We review every application personally.</p>
-  </div>
+    <p class="page-sub">We review every application personally.</p>
+  </header>
 
-  <div class="card">
+  <section class="panel apply-panel">
     <form id="form">
       <div class="field">
-        <label>Name</label>
+        <label for="name">Name</label>
         <input id="name" type="text" placeholder="Your name" autocomplete="name" required>
       </div>
 
       <div class="field">
-        <label>Email</label>
+        <label for="email">Email</label>
         <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required>
       </div>
 
       <div class="field">
-        <label>Discord</label>
+        <label for="discord">Discord</label>
         <input id="discord" type="text" placeholder="@username" required>
       </div>
 
       <div class="field">
-        <label>Why do you want to join?</label>
+        <label for="why">Why do you want to join?</label>
         <textarea id="why" class="tall" placeholder="Tell us why you're interested in being part of the mitch.pro team…" required></textarea>
       </div>
 
       <div class="field">
-        <label>Skills &amp; experience</label>
+        <label for="skills">Skills &amp; experience</label>
         <textarea id="skills" class="medium" placeholder="What can you bring to the team? (dev, design, moderation, etc.)" required></textarea>
       </div>
 
       <div class="field">
-        <label>Anything else <span class="opt">optional</span></label>
+        <label for="extra">Anything else <span class="opt">optional</span></label>
         <textarea id="extra" class="medium" placeholder="Links, notes, or anything else you'd like us to know…"></textarea>
       </div>
 
-      <div class="divider"></div>
+      <hr class="divider">
 
       <div class="submit-row">
-        <button type="submit" id="submit-btn">Submit application</button>
+        <button type="submit" class="btn-primary" id="submit-btn">Submit application</button>
         <div id="msg"></div>
       </div>
     </form>
@@ -330,8 +177,8 @@
       <h2>Application received.</h2>
       <p>Thanks for applying! We'll review your application and reach out if you're a good fit.</p>
     </div>
-  </div>
-</div>
+  </section>
+</main>
 
 <script>
 document.getElementById('form').addEventListener('submit', async e => {

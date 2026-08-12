@@ -1,322 +1,329 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Members - mitch.pro</title>
-  <script src="/theme.js"></script>
-  <script src="/sync.js"></script>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--t-bg);
-      color: var(--t-fg);
-      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-    }
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background: var(--t-bgr);
-      z-index: 0;
-    }
-    .shell {
-      position: relative;
-      z-index: 1;
-      width: min(1180px, calc(100% - 28px));
-      margin: 0 auto;
-      padding: 24px 0 42px;
-    }
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      margin-bottom: 16px;
-    }
-    .back {
-      color: var(--t-ac);
-      text-decoration: none;
-      border: 1px solid var(--t-bd);
-      background: var(--t-bg3);
-      border-radius: 8px;
-      padding: 8px 11px;
-      font-size: .82rem;
-      font-weight: 800;
-    }
-    h1 { margin: 0; font-size: 1.55rem; letter-spacing: 0; }
-    .sub { margin: 5px 0 0; color: var(--t-fg2); font-size: .86rem; opacity: .78; }
-    .toolbar {
-      display: grid;
-      grid-template-columns: minmax(220px, 1fr) 150px 150px;
-      gap: 10px;
-      background: rgba(10,10,14,.74);
-      border: 1px solid var(--t-bd);
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 14px;
-    }
-    input, select, textarea, button {
-      font: inherit;
-      border-radius: 7px;
-      border: 1px solid var(--t-bd);
-      background: var(--t-bg3);
-      color: var(--t-fg);
-    }
-    input, select, textarea { padding: 9px 10px; outline: none; }
-    input:focus, select:focus, textarea:focus { border-color: var(--t-bda); }
-    button {
-      cursor: pointer;
-      color: var(--t-ac);
-      font-weight: 850;
-      padding: 8px 10px;
-    }
-    button:hover, .back:hover { border-color: var(--t-bda); }
-    button:disabled { opacity: .52; cursor: not-allowed; }
-    .stats {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin: 0 0 14px;
-      color: var(--t-fg2);
-      font-size: .78rem;
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      border: 1px solid var(--t-bd);
-      background: rgba(255,255,255,.04);
-      border-radius: 999px;
-      padding: 4px 9px;
-      white-space: nowrap;
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-      gap: 12px;
-      align-items: stretch;
-    }
-    .member {
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-height: 230px;
-      background: rgba(10,10,14,.82);
-      border: 1px solid var(--t-bd);
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 14px 36px rgba(0,0,0,.25);
-    }
-    .cover {
-      height: 58px;
-      background:
-        linear-gradient(135deg, rgba(20,184,166,.28), rgba(245,158,11,.18)),
-        var(--t-bg3);
-      border-bottom: 1px solid var(--t-bd);
-      position: relative;
-    }
-    .avatar {
-      position: absolute;
-      left: 14px;
-      bottom: -31px;
-      width: 62px;
-      height: 62px;
-      border-radius: 8px;
-      border: 2px solid var(--t-bg2);
-      background: var(--t-bg3);
-      overflow: hidden;
-      display: grid;
-      place-items: center;
-      color: var(--t-ac);
-      font-weight: 900;
-      font-size: 1.25rem;
-    }
-    .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .online-dot {
-      position: absolute;
-      left: 64px;
-      bottom: -28px;
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      border: 2px solid var(--t-bg2);
-      background: #64748b;
-    }
-    .online-dot.on { background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,.8); }
-    .body { padding: 38px 14px 12px; min-width: 0; }
-    .name-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      min-width: 0;
-    }
-    .name {
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-weight: 900;
-      font-size: .98rem;
-      color: var(--t-fg);
-    }
-    .handle {
-      color: var(--t-fg2);
-      opacity: .78;
-      font-size: .78rem;
-      margin-top: 2px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .role {
-      text-transform: uppercase;
-      letter-spacing: .05em;
-      font-size: .62rem;
-      font-weight: 900;
-      border-color: rgba(255,255,255,.14);
-    }
-    .role.owner { color: #facc15; border-color: rgba(250,204,21,.38); }
-    .role.admin { color: #f87171; border-color: rgba(248,113,113,.38); }
-    .role.moderator { color: #34d399; border-color: rgba(52,211,153,.38); }
-    .role.premium { color: #f59e0b; border-color: rgba(245,158,11,.38); }
-    .role.basic { color: var(--t-fg2); border-color: rgba(255,255,255,.18); }
-    .bio {
-      margin-top: 10px;
-      color: var(--t-fg2);
-      opacity: .82;
-      font-size: .78rem;
-      line-height: 1.45;
-      min-height: 2.9em;
-      overflow: hidden;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-    }
-    .actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 7px;
-      padding: 0 14px 14px;
-    }
-    .actions button, .actions a {
-      min-height: 36px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      text-decoration: none;
-      border-radius: 7px;
-      border: 1px solid var(--t-bd);
-      background: var(--t-bg3);
-      color: var(--t-ac);
-      font-size: .78rem;
-      font-weight: 850;
-      padding: 7px 8px;
-    }
-    .actions .wide { grid-column: 1 / -1; }
-    .report-btn { color: #f87171 !important; }
-    .empty {
-      grid-column: 1 / -1;
-      border: 1px dashed var(--t-bd);
-      background: rgba(10,10,14,.58);
-      border-radius: 8px;
-      padding: 28px;
-      text-align: center;
-      color: var(--t-fg2);
-      font-size: .88rem;
-    }
-    .modal {
-      position: fixed;
-      inset: 0;
-      z-index: 20;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0,0,0,.62);
-      padding: 16px;
-    }
-    .modal.show { display: flex; }
-    .dialog {
-      width: min(460px, 100%);
-      background: var(--t-bg2);
-      border: 1px solid var(--t-bd);
-      border-radius: 8px;
-      padding: 16px;
-      box-shadow: 0 24px 70px rgba(0,0,0,.52);
-    }
-    .dialog h2 { margin: 0 0 6px; font-size: 1rem; }
-    .dialog p { margin: 0 0 12px; color: var(--t-fg2); font-size: .82rem; line-height: 1.45; }
-    .dialog textarea { width: 100%; min-height: 110px; resize: vertical; margin-top: 8px; }
-    .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
-    .status { min-height: 1.2em; color: var(--t-fg2); font-size: .8rem; margin-top: 10px; }
-    .status.ok { color: #4ade80; }
-    .status.err { color: #f87171; }
-    @media (max-width: 720px) {
-      .shell { width: min(100% - 18px, 1180px); padding-top: 12px; }
-      .topbar { align-items: flex-start; }
-      .toolbar { grid-template-columns: 1fr; }
-      .grid { grid-template-columns: 1fr; }
-      .member { min-height: 214px; }
-      .actions { grid-template-columns: 1fr; }
-      .actions .wide { grid-column: auto; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Members — mitch.pro</title>
+<script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
+<script src="/sync.js"></script>
+<style>
+  .page-head { margin-bottom: 1.15rem; max-width: 40rem; }
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(1.85rem, 4vw, 2.55rem);
+    letter-spacing: -0.03em;
+  }
+  .page-sub {
+    margin: 0.5rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(14rem, 1fr) 9.5rem 9.5rem;
+    gap: 0.55rem;
+    margin-bottom: 0.9rem;
+  }
+  .toolbar input,
+  .toolbar select,
+  .dialog select,
+  .dialog textarea {
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: var(--t-bg2);
+    color: var(--t-fg);
+    font: inherit;
+    outline: none;
+    transition: border-color var(--t-motion, 0.15s), box-shadow var(--t-motion, 0.15s);
+  }
+  .toolbar input:focus,
+  .toolbar select:focus,
+  .dialog select:focus,
+  .dialog textarea:focus {
+    border-color: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls);
+  }
+  .stats {
+    display: flex;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+    margin: 0 0 1rem;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    border: 1px solid var(--t-bd);
+    background: var(--t-bg3);
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+    color: var(--t-fg2);
+    font-size: 0.72rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: 0.75rem;
+    align-items: stretch;
+  }
+  .member {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    min-height: 14rem;
+    background: color-mix(in srgb, var(--t-bg2) 88%, transparent);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    overflow: hidden;
+  }
+  .cover {
+    height: 3.4rem;
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--t-ac) 28%, transparent), color-mix(in srgb, var(--t-ac2, var(--t-ac)) 14%, transparent)),
+      var(--t-bg3);
+    border-bottom: 1px solid var(--t-bd);
+    position: relative;
+  }
+  .avatar {
+    position: absolute;
+    left: 0.85rem;
+    bottom: -1.85rem;
+    width: 3.7rem;
+    height: 3.7rem;
+    border-radius: var(--t-radius, 8px);
+    border: 2px solid var(--t-bg);
+    background: var(--t-bg3);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+    color: var(--t-ac);
+    font-family: Outfit, system-ui, sans-serif;
+    font-weight: 800;
+    font-size: 1.15rem;
+  }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .online-dot {
+    position: absolute;
+    left: 3.9rem;
+    bottom: -1.7rem;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    border: 2px solid var(--t-bg);
+    background: #64748b;
+  }
+  .online-dot.on { background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,.55); }
+  .body { padding: 2.35rem 0.9rem 0.75rem; min-width: 0; }
+  .name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+  .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: Outfit, system-ui, sans-serif;
+    font-weight: 750;
+    font-size: 0.98rem;
+    color: var(--t-fg);
+  }
+  .handle {
+    color: var(--t-fg2);
+    font-size: 0.78rem;
+    margin-top: 0.15rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .role {
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-size: 0.62rem;
+  }
+  .role.owner { color: #facc15; border-color: rgba(250,204,21,.38); }
+  .role.admin { color: #f87171; border-color: rgba(248,113,113,.38); }
+  .role.moderator { color: #34d399; border-color: rgba(52,211,153,.38); }
+  .role.premium { color: #f59e0b; border-color: rgba(245,158,11,.38); }
+  .role.basic { color: var(--t-fg2); }
+  .bio {
+    margin-top: 0.65rem;
+    color: var(--t-fg2);
+    font-size: 0.78rem;
+    line-height: 1.45;
+    min-height: 2.9em;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.45rem;
+    padding: 0 0.9rem 0.9rem;
+  }
+  .actions button,
+  .actions a,
+  .dialog-actions button {
+    min-height: 2.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    text-decoration: none;
+    border-radius: var(--t-radius, 8px);
+    border: 1px solid var(--t-bd);
+    background: var(--t-bg2);
+    color: var(--t-fg);
+    font-size: 0.78rem;
+    font-weight: 650;
+    padding: 0.4rem 0.55rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: border-color var(--t-motion, 0.15s), background var(--t-motion, 0.15s);
+  }
+  .actions button:hover,
+  .actions a:hover,
+  .dialog-actions button:hover {
+    border-color: var(--t-ac);
+  }
+  .actions button:disabled { opacity: 0.52; cursor: not-allowed; }
+  .actions .wide { grid-column: 1 / -1; }
+  .report-btn { color: #f87171 !important; }
+  .empty {
+    grid-column: 1 / -1;
+    border: 1px dashed var(--t-bd);
+    background: color-mix(in srgb, var(--t-bg2) 70%, transparent);
+    border-radius: var(--t-radius, 8px);
+    padding: 1.75rem;
+    text-align: center;
+    color: var(--t-fg2);
+    font-size: 0.88rem;
+  }
+  .modal {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,.55);
+    padding: 1rem;
+  }
+  .modal.show { display: flex; }
+  .dialog {
+    width: min(28rem, 100%);
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: calc(var(--t-radius, 8px) + 2px);
+    padding: 1rem;
+    box-shadow: 0 24px 70px rgba(0,0,0,.45);
+  }
+  .dialog h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+  }
+  .dialog p {
+    margin: 0 0 0.75rem;
+    color: var(--t-fg2);
+    font-size: 0.82rem;
+    line-height: 1.45;
+  }
+  .dialog textarea {
+    min-height: 6.5rem;
+    resize: vertical;
+    margin-top: 0.5rem;
+  }
+  .dialog-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    margin-top: 0.75rem;
+  }
+  .status {
+    min-height: 1.2em;
+    color: var(--t-fg2);
+    font-size: 0.8rem;
+    margin-top: 0.65rem;
+  }
+  .status.ok { color: #4ade80; }
+  .status.err { color: #f87171; }
+  @media (max-width: 719px) {
+    .toolbar { grid-template-columns: 1fr; }
+    .grid { grid-template-columns: 1fr; }
+    .actions { grid-template-columns: 1fr; }
+    .actions .wide { grid-column: auto; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toolbar input, .actions button, .actions a { transition: none; }
+  }
+  .theme-no-motion .toolbar input,
+  .theme-no-motion .actions button,
+  .theme-no-motion .actions a {
+    transition: none;
+  }
+</style>
 </head>
 <body>
-  <main class="shell">
-    <div class="topbar">
-      <div>
-        <h1>Members</h1>
-        <p class="sub">Search people, start chats, and manage friend requests.</p>
-      </div>
-      <a class="back" href="/">Back</a>
-    </div>
+<main class="app-main">
+  <header class="page-head">
+    <h1>Members</h1>
+    <p class="page-sub">Search people, start chats, and manage friend requests.</p>
+  </header>
 
-    <div class="toolbar">
-      <input id="search" type="search" placeholder="Search members by name, handle, or role" autocomplete="off">
-      <select id="roleFilter">
-        <option value="all">All roles</option>
-        <option value="online">Online now</option>
-        <option value="friends">Friends</option>
-        <option value="premium">Premium</option>
-        <option value="staff">Staff</option>
-      </select>
-      <select id="sortMode">
-        <option value="relevance">Best match</option>
-        <option value="online">Online first</option>
-        <option value="name">Name A-Z</option>
-      </select>
-    </div>
-
-    <div class="stats" id="stats"></div>
-    <div class="grid" id="membersGrid"><div class="empty">Loading members...</div></div>
-  </main>
-
-  <div class="modal" id="reportModal" aria-hidden="true">
-    <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
-      <h2 id="reportTitle">Report Profile</h2>
-      <p id="reportTarget">Send a profile report to the admin team.</p>
-      <select id="reportReason" style="width:100%;">
-        <option value="Inappropriate profile">Inappropriate profile</option>
-        <option value="Impersonation">Impersonation</option>
-        <option value="Harassment or bullying">Harassment or bullying</option>
-        <option value="Spam or scam">Spam or scam</option>
-        <option value="Other">Other</option>
-      </select>
-      <textarea id="reportDetails" maxlength="800" placeholder="Add context for admins..."></textarea>
-      <div class="dialog-actions">
-        <button type="button" id="cancelReport">Cancel</button>
-        <button type="button" id="submitReport">Send Report</button>
-      </div>
-      <div class="status" id="reportStatus"></div>
-    </div>
+  <div class="toolbar panel">
+    <input id="search" type="search" placeholder="Search members by name, handle, or role" autocomplete="off">
+    <select id="roleFilter">
+      <option value="all">All roles</option>
+      <option value="online">Online now</option>
+      <option value="friends">Friends</option>
+      <option value="premium">Premium</option>
+      <option value="staff">Staff</option>
+    </select>
+    <select id="sortMode">
+      <option value="relevance">Best match</option>
+      <option value="online">Online first</option>
+      <option value="name">Name A-Z</option>
+    </select>
   </div>
 
-  <script>
+  <div class="stats" id="stats"></div>
+  <div class="grid" id="membersGrid"><div class="empty">Loading members...</div></div>
+</main>
+
+<div class="modal" id="reportModal" aria-hidden="true">
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
+    <h2 id="reportTitle">Report Profile</h2>
+    <p id="reportTarget">Send a profile report to the admin team.</p>
+    <select id="reportReason">
+      <option value="Inappropriate profile">Inappropriate profile</option>
+      <option value="Impersonation">Impersonation</option>
+      <option value="Harassment or bullying">Harassment or bullying</option>
+      <option value="Spam or scam">Spam or scam</option>
+      <option value="Other">Other</option>
+    </select>
+    <textarea id="reportDetails" maxlength="800" placeholder="Add context for admins..."></textarea>
+    <div class="dialog-actions">
+      <button type="button" id="cancelReport">Cancel</button>
+      <button type="button" id="submitReport">Send Report</button>
+    </div>
+    <div class="status" id="reportStatus"></div>
+  </div>
+</div>
+
+<script>
     let members = [];
     let activeReportKey = '';
 
@@ -572,6 +579,6 @@
 
     reload();
   </script>
-  <script src="/cookie-consent.js" defer></script>
+<script src="/cookie-consent.js" defer></script>
 </body>
 </html>

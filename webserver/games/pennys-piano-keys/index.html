@@ -5,25 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Penny's Piano Keys — mitch.pro</title>
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
   <script src="/api.js"></script>
   <style>
-    
     :root {
       --ac-pink: #f472b6;
-      --ac-purple: #a855f7;
+      --ac-accent: var(--t-ac, #38bdf8);
       --ac-cyan: #06b6d4;
-      --panel: rgba(15, 10, 30, 0.45);
-      --line: rgba(255, 255, 255, 0.08);
-      --glass: backdrop-filter: blur(20px) saturate(180%);
+      --panel: var(--t-bg2, rgba(255, 255, 255, 0.04));
+      --line: var(--t-bd, rgba(255, 255, 255, 0.08));
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--t-bg, #06060c);
-      background-image: 
-        radial-gradient(circle at 10% 20%, rgba(168, 85, 247, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.08) 0%, transparent 40%);
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background-color: var(--t-bg, #06060c);
+      background-image: var(--t-bg-img-layer, var(--t-bgr, none));
+      background-attachment: fixed;
       color: var(--t-fg, #fff);
       min-height: 100vh;
       display: flex;
@@ -37,23 +35,22 @@
       position: fixed;
       top: 20px;
       left: 20px;
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--panel);
       border: 1px solid var(--line);
-      color: #fff;
-      padding: 10px 20px;
-      border-radius: 12px;
+      color: var(--t-fg);
+      padding: 10px 18px;
+      border-radius: var(--t-radius, 10px);
       text-decoration: none;
       font-weight: 700;
       z-index: 100;
-      transition: all 0.2s ease;
-      font-size: 0.9rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      transition: background var(--t-motion, 0.2s), border-color var(--t-motion, 0.2s);
+      font-size: 0.88rem;
+      letter-spacing: 0.02em;
     }
     #back-btn:hover {
-      background: rgba(255, 255, 255, 0.1);
-      transform: translateY(-2px);
-      box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+      border-color: var(--t-bda, var(--line));
+      color: var(--t-fg);
     }
 
     .container {
@@ -66,20 +63,17 @@
     }
 
     h1 {
-      font-family: 'Syne', sans-serif;
+      font-family: 'Outfit', system-ui, sans-serif;
       font-weight: 800;
-      font-size: 2.2rem;
+      font-size: clamp(1.7rem, 5vw, 2.2rem);
       text-align: center;
-      background: linear-gradient(135deg, var(--ac-pink), var(--ac-purple), var(--ac-cyan));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      text-shadow: 0 10px 30px rgba(244, 114, 182, 0.15);
-      letter-spacing: -0.02em;
+      color: var(--t-fg);
+      letter-spacing: -0.03em;
     }
 
     .subtitle {
       font-size: 0.95rem;
-      color: rgba(255, 255, 255, 0.6);
+      color: var(--t-fg2);
       text-align: center;
       margin-top: -12px;
       font-weight: 500;
@@ -96,7 +90,7 @@
       flex: 1;
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: var(--t-radius, 12px);
       padding: 12px;
       text-align: center;
       position: relative;
@@ -106,23 +100,23 @@
     .stat-card::after {
       content: '';
       position: absolute;
-      bottom: 0; left: 0; right: 0; height: 3px;
-      background: linear-gradient(90deg, var(--ac-pink), var(--ac-purple));
-      opacity: 0.5;
+      bottom: 0; left: 0; right: 0; height: 2px;
+      background: var(--ac-pink);
+      opacity: 0.55;
     }
     .stat-card.cyan::after {
-      background: linear-gradient(90deg, var(--ac-purple), var(--ac-cyan));
+      background: var(--ac-cyan);
     }
     .stat-lbl {
       font-size: 0.72rem;
-      font-weight: 800;
+      font-weight: 700;
       text-transform: uppercase;
-      opacity: 0.5;
+      color: var(--t-fg2);
       letter-spacing: 0.08em;
     }
     .stat-val {
-      font-family: 'Syne', sans-serif;
-      font-size: 1.6rem;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 1.55rem;
       font-weight: 700;
       line-height: 1.2;
       margin-top: 2px;
@@ -137,15 +131,13 @@
     /* Interactive Game Area */
     .game-viewport {
       width: 100%;
-      height: 550px;
-      background: rgba(8, 5, 20, 0.75);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 24px;
+      height: min(550px, 70vh);
+      background: color-mix(in srgb, var(--t-bg) 88%, #000);
+      border: 1px solid var(--line);
+      border-radius: var(--t-radius, 16px);
       position: relative;
       overflow: hidden;
-      box-shadow: 
-        0 25px 50px -12px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
       user-select: none;
       -webkit-user-select: none;
     }
@@ -202,11 +194,11 @@
       transition: all 0.1s ease;
     }
     .key-indicator.active .key-circle {
-      background: var(--ac-purple);
-      border-color: #d8b4fe;
+      background: var(--ac-accent);
+      border-color: color-mix(in srgb, var(--ac-accent) 70%, #fff);
       color: #fff;
       transform: scale(0.9);
-      box-shadow: 0 0 15px var(--ac-purple);
+      box-shadow: 0 0 12px color-mix(in srgb, var(--ac-accent) 45%, transparent);
     }
 
     /* Descending tiles */
@@ -222,11 +214,9 @@
       transition: background 0.08s ease, transform 0.05s ease;
     }
     .tile.active-black {
-      background: linear-gradient(180deg, #181824, #0b0b10);
-      border: 1.5px solid rgba(244, 114, 182, 0.4);
-      box-shadow: 
-        0 10px 20px rgba(0,0,0,0.5),
-        inset 0 1px 0 rgba(255,255,255,0.05);
+      background: linear-gradient(180deg, color-mix(in srgb, var(--t-bg2) 80%, #222), var(--t-bg));
+      border: 1.5px solid color-mix(in srgb, var(--ac-pink) 45%, transparent);
+      box-shadow: 0 8px 16px rgba(0,0,0,0.45);
       overflow: hidden;
     }
     .tile.active-black::before {
@@ -234,21 +224,20 @@
       position: absolute;
       inset: 4px;
       border-radius: 5px;
-      background: linear-gradient(135deg, rgba(244,114,182,0.1), transparent);
+      background: linear-gradient(135deg, color-mix(in srgb, var(--ac-pink) 12%, transparent), transparent);
     }
-    /* Neon active pulse */
     .tile.active-black::after {
       content: '';
       position: absolute;
-      bottom: 0; left: 0; right: 0; height: 4px;
-      background: linear-gradient(90deg, var(--ac-pink), var(--ac-purple));
-      box-shadow: 0 0 10px var(--ac-pink);
+      bottom: 0; left: 0; right: 0; height: 3px;
+      background: var(--ac-pink);
+      opacity: 0.85;
     }
 
     .tile.clicked {
-      background: rgba(168, 85, 247, 0.15) !important;
-      border-color: rgba(168, 85, 247, 0.6) !important;
-      box-shadow: inset 0 0 20px rgba(168, 85, 247, 0.3) !important;
+      background: color-mix(in srgb, var(--ac-accent) 18%, transparent) !important;
+      border-color: color-mix(in srgb, var(--ac-accent) 55%, transparent) !important;
+      box-shadow: inset 0 0 16px color-mix(in srgb, var(--ac-accent) 25%, transparent) !important;
       pointer-events: none;
       animation: keyClickAnimation 0.15s ease-out;
     }
@@ -285,7 +274,7 @@
     .overlay {
       position: absolute;
       inset: 0;
-      background: rgba(8, 5, 20, 0.9);
+      background: color-mix(in srgb, var(--t-bg) 92%, transparent);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -301,44 +290,45 @@
     }
 
     .play-btn {
-      background: linear-gradient(135deg, var(--ac-pink), var(--ac-purple));
+      background: var(--ac-pink);
       border: none;
       color: #fff;
       padding: 16px 36px;
-      font-size: 1.25rem;
+      font-size: 1.15rem;
       font-weight: 800;
-      border-radius: 16px;
+      border-radius: var(--t-radius, 12px);
       cursor: pointer;
-      font-family: inherit;
-      box-shadow: 0 10px 25px rgba(244, 114, 182, 0.35);
-      transition: all 0.2s ease;
+      font-family: 'Outfit', system-ui, sans-serif;
+      box-shadow: 0 8px 20px color-mix(in srgb, var(--ac-pink) 30%, transparent);
+      transition: transform var(--t-motion, 0.2s), box-shadow var(--t-motion, 0.2s);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
       margin-top: 20px;
     }
     .play-btn:hover {
       transform: translateY(-2px);
-      box-shadow: 0 15px 30px rgba(244, 114, 182, 0.5);
+      box-shadow: 0 12px 24px color-mix(in srgb, var(--ac-pink) 40%, transparent);
     }
     .play-btn:active {
       transform: translateY(1px);
     }
 
     .info-card {
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 18px;
+      border-radius: var(--t-radius, 12px);
       padding: 20px;
       width: 100%;
       max-width: 360px;
       margin-top: 25px;
       font-size: 0.88rem;
       line-height: 1.6;
-      color: rgba(255, 255, 255, 0.7);
+      color: var(--t-fg2);
     }
     .info-title {
+      font-family: 'Outfit', system-ui, sans-serif;
       font-weight: 800;
-      color: #fff;
+      color: var(--t-fg);
       text-transform: uppercase;
       font-size: 0.75rem;
       letter-spacing: 0.1em;
@@ -350,10 +340,9 @@
     }
 
     .gameover-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 2.2rem;
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 2rem;
       color: #ef4444;
-      text-shadow: 0 10px 25px rgba(239, 68, 68, 0.2);
       font-weight: 800;
       margin-bottom: 5px;
     }
@@ -367,23 +356,23 @@
     }
     .overlay-stat {
       flex: 1;
-      background: rgba(255, 255, 255, 0.03);
+      background: var(--panel);
       border: 1px solid var(--line);
       padding: 12px;
-      border-radius: 14px;
+      border-radius: var(--t-radius, 10px);
     }
     .overlay-stat-lbl {
       font-size: 0.7rem;
       text-transform: uppercase;
-      opacity: 0.5;
+      color: var(--t-fg2);
       font-weight: 700;
       letter-spacing: 0.05em;
     }
     .overlay-stat-val {
-      font-family: 'Syne', sans-serif;
+      font-family: 'Outfit', system-ui, sans-serif;
       font-size: 1.4rem;
       font-weight: 700;
-      color: #fff;
+      color: var(--t-fg);
       margin-top: 2px;
     }
 
@@ -403,39 +392,52 @@
     .payout-status {
       font-weight: 600;
       font-size: 0.95rem;
-      color: rgba(255, 255, 255, 0.85);
+      color: var(--t-fg);
       margin-top: 10px;
     }
 
-    /* Sound notification toggler */
     .sound-toggle {
-      background: rgba(255, 255, 255, 0.05);
+      background: var(--panel);
       border: 1px solid var(--line);
-      color: #fff;
+      color: var(--t-fg);
       padding: 6px 12px;
-      border-radius: 10px;
+      border-radius: var(--t-radius, 8px);
       font-size: 0.78rem;
       font-weight: 700;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
-      transition: all 0.2s;
+      transition: background var(--t-motion, 0.2s);
       margin-top: 10px;
     }
     .sound-toggle:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: color-mix(in srgb, var(--t-fg) 10%, transparent);
+    }
+
+    @media (max-width: 640px) {
+      body { padding: 72px 14px 28px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .play-btn:hover,
+      .key-indicator.active .key-circle { transform: none; }
     }
   </style>
 </head>
-<body>
+<body data-shell="off">
 
   <a href="/games" id="back-btn">← Back to Arcade</a>
 
   <div class="container">
     <div>
       <h1>Penny's Piano Keys</h1>
-      <div class="subtitle">Penny's Cyberpunk Melodies</div>
+      <div class="subtitle">Rhythm taps · earn MitchCoins</div>
       <div id="friend-bonus-banner" style="display:none; border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 10px; margin-top: 12px; font-size: 0.82rem; text-align: center;"></div>
     </div>
 
@@ -486,7 +488,7 @@
 
       <!-- Start Game Overlay -->
       <div class="overlay" id="start-overlay">
-        <h2 style="font-family: 'Syne', sans-serif; font-size: 1.8rem; font-weight: 800; line-height: 1.2;">Tap The Glowing Keys!</h2>
+        <h2 style="font-family: 'Outfit', system-ui, sans-serif; font-size: 1.8rem; font-weight: 800; line-height: 1.2;">Tap The Glowing Keys!</h2>
         <p style="font-size: 0.88rem; color: rgba(255,255,255,0.6); margin-top: 6px;">Don't let them hit the bottom, and don't click the blank spaces.</p>
         
         <button class="play-btn" id="start-btn">Start Playing</button>

@@ -3,178 +3,321 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Feedback - mitch.pro</title>
+<title>Feedback — mitch.pro</title>
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    min-height: 100vh;
-    color: var(--t-fg);
-    font-family: 'DM Mono', monospace;
-    padding: 38px 18px 72px;
+  .feedback-page {
+    position: relative;
+    isolation: isolate;
   }
+
+  .feedback-page::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 65% 45% at 50% -8%, color-mix(in srgb, var(--t-ac) 14%, transparent), transparent 70%),
+      radial-gradient(ellipse 40% 35% at 100% 100%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 7%, transparent), transparent 65%);
+  }
+
+  .feedback-shell {
+    width: min(64rem, 100%);
+    max-width: 64rem;
+  }
+
   .wrap {
-    width: min(1080px, 100%);
-    margin: 0 auto;
     display: grid;
-    grid-template-columns: minmax(0, .9fr) minmax(320px, 1.1fr);
-    gap: 22px;
+    grid-template-columns: minmax(0, 0.95fr) minmax(280px, 1.05fr);
+    gap: 1.1rem;
     align-items: stretch;
+    animation: app-fade-in 0.5s ease 0.05s both;
   }
-  .intro, .panel {
-    background: color-mix(in srgb, var(--t-bg2) 88%, transparent);
+
+  .intro,
+  .panel {
     border: 1px solid var(--t-bd);
-    border-radius: 8px;
-    box-shadow: 0 18px 56px rgba(0,0,0,.32);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    border-radius: calc(var(--t-radius, 8px) + 2px);
+    background:
+      linear-gradient(160deg, color-mix(in srgb, var(--t-bg2) 92%, transparent), color-mix(in srgb, var(--t-bg3) 80%, transparent));
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset;
   }
-  .intro { padding: 28px; display: flex; flex-direction: column; justify-content: space-between; min-height: 560px; }
-  .eyebrow { color: var(--t-ac); font-size: .74rem; font-weight: 800; text-transform: uppercase; letter-spacing: .14em; margin-bottom: 14px; }
-  h1 {
-    font-family: 'Syne', sans-serif;
-    font-size: clamp(2.35rem, 6vw, 4.9rem);
-    line-height: .94;
-    letter-spacing: 0;
-    background: var(--t-gr);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 18px;
+
+  .intro {
+    padding: 1.5rem 1.4rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 1.25rem;
+    min-height: 28rem;
   }
-  .lede { color: var(--t-fg2); line-height: 1.7; font-size: .95rem; max-width: 52ch; }
-  .idea-grid { display: grid; gap: 10px; margin-top: 26px; }
+
+  .eyebrow {
+    color: var(--t-ac);
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.75rem;
+  }
+
+  .intro h1 {
+    margin: 0 0 0.75rem;
+    font-size: clamp(1.85rem, 4vw, 2.75rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+    color: var(--t-fg);
+  }
+
+  .lede {
+    margin: 0;
+    color: var(--t-fg2);
+    line-height: 1.6;
+    font-size: 0.92rem;
+    max-width: 46ch;
+  }
+
+  .idea-grid {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 1.35rem;
+  }
+
   .idea {
     border: 1px solid var(--t-bd);
-    border-radius: 8px;
-    padding: 13px 14px;
-    background: var(--t-bg3);
+    border-radius: var(--t-radius, 8px);
+    padding: 0.75rem 0.85rem;
+    background: color-mix(in srgb, var(--t-bg3) 70%, transparent);
     color: var(--t-fg2);
-    font-size: .82rem;
+    font-size: 0.82rem;
     line-height: 1.5;
   }
-  .idea b { color: var(--t-fg); display: block; margin-bottom: 3px; }
-  .panel { padding: 22px; }
-  .field { margin-bottom: 16px; }
+
+  .idea b {
+    color: var(--t-fg);
+    display: block;
+    margin-bottom: 0.15rem;
+    font-family: Outfit, system-ui, sans-serif;
+    font-weight: 700;
+  }
+
+  .panel { padding: 1.25rem 1.2rem; }
+
+  .field { margin-bottom: 1rem; }
+
   label {
     display: flex;
     justify-content: space-between;
-    gap: 10px;
-    color: var(--t-fg);
-    font-size: .78rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: .08em;
-    margin-bottom: 8px;
-  }
-  label span { color: var(--t-fg2); font-weight: 500; text-transform: none; letter-spacing: 0; }
-  .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .chip {
-    min-height: 42px;
-    border-radius: 8px;
-    border: 1px solid var(--t-bd);
-    background: var(--t-bg3);
+    gap: 0.65rem;
     color: var(--t-fg2);
-    font-family: 'Syne', sans-serif;
-    font-size: .86rem;
-    font-weight: 800;
-    cursor: pointer;
-    transition: border-color .15s, background .15s, color .15s, transform .15s;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    margin-bottom: 0.4rem;
   }
-  .chip:hover { border-color: var(--t-bda); color: var(--t-fg); }
-  .chip.active { background: var(--t-gls); border-color: var(--t-ac); color: var(--t-ac); }
-  textarea, input {
+
+  label span {
+    color: color-mix(in srgb, var(--t-fg2) 80%, transparent);
+    font-weight: 500;
+  }
+
+  .chips {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.45rem;
+  }
+
+  .chip {
+    min-height: 2.55rem;
+    border-radius: var(--t-radius, 8px);
+    border: 1px solid var(--t-bd);
+    background: var(--t-bg2);
+    color: var(--t-fg2);
+    font-family: Outfit, system-ui, sans-serif;
+    font-size: 0.84rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      border-color var(--t-motion, 0.15s) ease,
+      background var(--t-motion, 0.15s) ease,
+      color var(--t-motion, 0.15s) ease;
+  }
+
+  .chip:hover {
+    border-color: color-mix(in srgb, var(--t-bd) 70%, var(--t-ac) 30%);
+    color: var(--t-fg);
+  }
+
+  .chip.active {
+    background: color-mix(in srgb, var(--t-ac) 14%, transparent);
+    border-color: color-mix(in srgb, var(--t-ac) 55%, var(--t-bd));
+    color: var(--t-fg);
+  }
+
+  textarea,
+  input {
     width: 100%;
-    background: var(--t-bg3);
+    background: var(--t-bg2);
     color: var(--t-fg);
     border: 1px solid var(--t-bd);
-    border-radius: 8px;
-    padding: 12px 13px;
-    font-family: 'DM Mono', monospace;
-    font-size: .9rem;
+    border-radius: var(--t-radius, 8px);
+    padding: 0.7rem 0.85rem;
+    font-family: inherit;
+    font-size: 0.92rem;
     outline: none;
+    transition:
+      border-color var(--t-motion, 0.15s) ease,
+      box-shadow var(--t-motion, 0.15s) ease;
   }
-  textarea { min-height: 190px; resize: vertical; line-height: 1.6; }
-  textarea:focus, input:focus { border-color: var(--t-ac); box-shadow: 0 0 0 3px var(--t-gls); }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+
+  textarea {
+    min-height: 11rem;
+    resize: vertical;
+    line-height: 1.55;
+  }
+
+  textarea:focus,
+  input:focus {
+    border-color: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls, transparent);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.85rem;
+    flex-wrap: wrap;
+  }
+
   #submitBtn {
-    min-height: 44px;
-    border-radius: 8px;
-    border: 1px solid transparent;
-    background: var(--t-gr);
+    min-height: 2.5rem;
+    border-radius: var(--t-radius, 8px);
+    border: 1px solid var(--t-bda, transparent);
+    background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
     color: #fff;
-    padding: 0 18px;
-    font-family: 'Syne', sans-serif;
-    font-weight: 900;
+    padding: 0 1.15rem;
+    font-family: Outfit, system-ui, sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
     cursor: pointer;
+    transition:
+      background var(--t-motion, 0.15s) ease,
+      box-shadow var(--t-motion, 0.15s) ease,
+      transform 0.12s ease;
   }
-  #submitBtn:disabled { opacity: .5; cursor: default; }
-  #status { color: var(--t-fg2); font-size: .82rem; min-height: 1.3em; }
+
+  #submitBtn:hover {
+    background: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls, transparent);
+  }
+
+  #submitBtn:active { transform: scale(0.97); }
+  #submitBtn:disabled { opacity: 0.5; cursor: default; transform: none; box-shadow: none; }
+
+  #status {
+    color: var(--t-fg2);
+    font-size: 0.82rem;
+    min-height: 1.3em;
+  }
+
   #status.ok { color: #34d399; }
   #status.err { color: #f87171; }
-  .recaptcha-wrap { margin-top: 12px; transform-origin: left top; }
-  .tiny { color: var(--t-fg2); font-size: .72rem; line-height: 1.55; margin-top: 12px; }
+
+  .recaptcha-wrap { margin-top: 0.75rem; transform-origin: left top; }
+
+  .tiny {
+    color: var(--t-fg2);
+    font-size: 0.74rem;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .tiny + .tiny { margin-top: 0.75rem; }
+
   @media (max-width: 860px) {
-    body { padding-top: 22px; }
     .wrap { grid-template-columns: 1fr; }
     .intro { min-height: 0; }
     .row, .chips { grid-template-columns: 1fr; }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .wrap { animation: none !important; }
+    .chip, #submitBtn { transition: none !important; }
+  }
+
+  .theme-no-motion .wrap,
+  .theme-no-motion .chip,
+  .theme-no-motion #submitBtn {
+    animation: none !important;
+    transition: none !important;
+  }
 </style>
 </head>
-<body>
-<main class="wrap">
-  <section class="intro">
-    <div>
-      <div class="eyebrow">Help shape mitch.pro</div>
-      <h1>Tell us what should get better.</h1>
-      <p class="lede">Send bugs, feature ideas, page requests, design notes, or anything that made the site annoying to use. Good feedback gets read, sorted, and turned into actual fixes.</p>
-      <div class="idea-grid">
-        <div class="idea"><b>Broken?</b> Tell us what page, what you clicked, and what happened.</div>
-        <div class="idea"><b>Missing?</b> Ask for a game, tool, shortcut, or admin feature.</div>
-        <div class="idea"><b>Confusing?</b> Point out wording, layout, or flows that felt weird.</div>
-      </div>
-    </div>
-    <p class="tiny">Submitting feedback can award coins when you are signed in. Abuse or spam may be ignored.</p>
-  </section>
-
-  <section class="panel">
-    <form id="feedbackForm">
-      <div class="field">
-        <label>Type <span>Pick the closest match</span></label>
-        <div class="chips" id="typeChips">
-          <button class="chip active" type="button" data-type="feedback">General feedback</button>
-          <button class="chip" type="button" data-type="broken_game">Something is broken</button>
-          <button class="chip" type="button" data-type="add_page">Add a page/game</button>
-          <button class="chip" type="button" data-type="general">Other idea</button>
+<body class="feedback-page">
+<main class="app-main feedback-shell">
+  <div class="wrap">
+    <section class="intro">
+      <div>
+        <div class="eyebrow">Help shape mitch.pro</div>
+        <h1>Tell us what should get better.</h1>
+        <p class="lede">Send bugs, feature ideas, page requests, design notes, or anything that made the site annoying to use. Good feedback gets read, sorted, and turned into actual fixes.</p>
+        <div class="idea-grid">
+          <div class="idea"><b>Broken?</b> Tell us what page, what you clicked, and what happened.</div>
+          <div class="idea"><b>Missing?</b> Ask for a game, tool, shortcut, or admin feature.</div>
+          <div class="idea"><b>Confusing?</b> Point out wording, layout, or flows that felt weird.</div>
         </div>
       </div>
+      <p class="tiny">Submitting feedback can award coins when you are signed in. Abuse or spam may be ignored.</p>
+    </section>
 
-      <div class="row">
+    <section class="panel">
+      <form id="feedbackForm">
         <div class="field">
-          <label>Page <span>optional</span></label>
-          <input id="pageField" placeholder="/encrypt.html or homepage">
+          <label>Type <span>Pick the closest match</span></label>
+          <div class="chips" id="typeChips">
+            <button class="chip active" type="button" data-type="feedback">General feedback</button>
+            <button class="chip" type="button" data-type="broken_game">Something is broken</button>
+            <button class="chip" type="button" data-type="add_page">Add a page/game</button>
+            <button class="chip" type="button" data-type="general">Other idea</button>
+          </div>
         </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Page <span>optional</span></label>
+            <input id="pageField" placeholder="/encrypt.html or homepage">
+          </div>
+          <div class="field">
+            <label>Mood <span>optional</span></label>
+            <input id="moodField" placeholder="bug, idea, urgent, nice">
+          </div>
+        </div>
+
         <div class="field">
-          <label>Mood <span>optional</span></label>
-          <input id="moodField" placeholder="bug, idea, urgent, nice">
+          <label>Message <span id="count">0 / 2000</span></label>
+          <textarea id="site" placeholder="What should we fix or build? Add details like device, browser, page, and what you expected."></textarea>
         </div>
-      </div>
 
-      <div class="field">
-        <label>Message <span id="count">0 / 2000</span></label>
-        <textarea id="site" placeholder="What should we fix or build? Add details like device, browser, page, and what you expected."></textarea>
-      </div>
-
-
-
-      <div class="actions">
-        <button id="submitBtn" type="submit">Send feedback</button>
-        <div id="status"></div>
-      </div>
-      <p class="tiny">This form sends your signed-in ID with the report so admins can understand context and prevent spam.</p>
-    </form>
-  </section>
+        <div class="actions">
+          <button id="submitBtn" type="submit">Send feedback</button>
+          <div id="status"></div>
+        </div>
+        <p class="tiny">This form sends your signed-in ID with the report so admins can understand context and prevent spam.</p>
+      </form>
+    </section>
+  </div>
 </main>
 
 <script>

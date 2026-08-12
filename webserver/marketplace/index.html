@@ -5,253 +5,308 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Player Marketplace — mitch.pro</title>
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --primary: #81b64c;
-    --primary-dim: rgba(129,182,76,0.1);
-    --primary-border: rgba(129,182,76,0.2);
-    --card-bg: rgba(255,255,255,0.02);
-    --card-border: rgba(255,255,255,0.06);
-    --input-bg: rgba(255,255,255,0.04);
-    --input-border: rgba(255,255,255,0.08);
-    --radius: 12px;
+    --primary: var(--t-ac);
+    --primary-dim: color-mix(in srgb, var(--t-ac) 12%, transparent);
+    --primary-border: color-mix(in srgb, var(--t-ac) 28%, transparent);
+    --card-bg: color-mix(in srgb, var(--t-bg2) 78%, transparent);
+    --card-border: var(--t-bd);
+    --input-bg: var(--t-bg2);
+    --input-border: var(--t-bd);
+    --radius: var(--t-radius, 8px);
     --gold: #f59e0b;
     --gold-dim: rgba(245,158,11,0.1);
   }
-  body {
-    min-height: 100vh;
-    background: var(--t-bg, #0d0d0d);
-    color: var(--t-fg, #e8e8e8);
-    font-family: 'DM Mono', monospace;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 60px 20px 100px;
-    position: relative;
-    overflow-x: hidden;
+  .page-head {
+    margin-bottom: 1.25rem;
+    max-width: 40rem;
   }
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(129,182,76,0.05) 0%, transparent 60%);
-    pointer-events: none;
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(1.85rem, 4vw, 2.6rem);
+    letter-spacing: -0.03em;
   }
-  .wrap { width: 100%; max-width: 1000px; position: relative; z-index: 1; }
-  .header { text-align: center; margin-bottom: 40px; }
-  .badge {
+  .page-head h1 span { color: var(--t-ac); }
+  .subline {
+    margin: 0.55rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  .kicker {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    background: var(--primary-dim);
-    border: 1px solid var(--primary-border);
-    border-radius: 99px;
-    padding: 4px 14px;
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.12em;
+    gap: 0.35rem;
+    min-height: 1.5rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--t-ac) 28%, transparent);
+    color: var(--t-ac);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--primary);
-    margin-bottom: 18px;
+    margin-bottom: 0.75rem;
   }
-  h1 { font-family: 'Syne', sans-serif; font-size: clamp(2rem, 6vw, 2.8rem); font-weight: 800; line-height: 1.1; margin-bottom: 12px; }
-  h1 span { color: var(--primary); }
-  .subtitle { font-size: 13px; color: var(--t-fg2, #777); font-style: italic; }
-
-  /* Warnings Disclaimer Styling */
   .warning-banner {
     background: rgba(239, 68, 68, 0.08);
     border: 1px solid rgba(239, 68, 68, 0.25);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 30px;
+    border-radius: calc(var(--radius) + 4px);
+    padding: 1rem 1.1rem;
+    margin-bottom: 1.15rem;
     display: flex;
-    gap: 15px;
+    gap: 0.85rem;
     align-items: flex-start;
   }
-  .warning-icon { font-size: 24px; line-height: 1; }
-  .warning-text h4 { font-family: 'Syne', sans-serif; color: #f87171; font-size: 14px; margin-bottom: 5px; font-weight: 700; }
-  .warning-text p { font-size: 12px; color: rgba(248, 113, 113, 0.85); line-height: 1.5; }
-
+  .warning-icon { font-size: 1.35rem; line-height: 1; }
+  .warning-text h4 {
+    font-family: 'Outfit', system-ui, sans-serif;
+    color: #f87171;
+    font-size: 0.85rem;
+    margin: 0 0 0.3rem;
+    font-weight: 700;
+  }
+  .warning-text p {
+    margin: 0;
+    font-size: 0.78rem;
+    color: rgba(248, 113, 113, 0.9);
+    line-height: 1.5;
+  }
+  .balance-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-size: 0.82rem;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 0.7rem 0.95rem;
+    margin-bottom: 1.15rem;
+  }
+  .balance-bar strong { color: var(--gold); font-family: 'Outfit', system-ui, sans-serif; }
+  .balance-hint { color: var(--t-fg2); font-size: 0.75rem; }
   .layout {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 30px;
+    gap: 1.25rem;
   }
   @media (min-width: 768px) {
-    .layout { grid-template-columns: 320px 1fr; }
+    .layout { grid-template-columns: min(20rem, 34%) 1fr; }
   }
-
   .card {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 24px;
-    backdrop-filter: blur(12px);
+    border-radius: calc(var(--radius) + 4px);
+    padding: 1.15rem 1.2rem;
     height: fit-content;
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
   }
-
   .card-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 16px;
-    font-weight: 700;
-    margin-bottom: 20px;
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 750;
+    margin: 0 0 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid var(--card-border);
-    padding-bottom: 12px;
+    padding-bottom: 0.7rem;
   }
-
-  /* Form Styling */
-  .form-group { margin-bottom: 16px; }
-  .form-group label { display: block; font-size: 11px; color: #999; margin-bottom: 6px; font-weight: 600; text-transform: uppercase; }
-  input, select, textarea {
+  .form-group { margin-bottom: 0.95rem; }
+  .form-group label {
+    display: block;
+    font-size: 0.72rem;
+    color: var(--t-fg2);
+    margin-bottom: 0.4rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .form-group .hint {
+    font-size: 0.7rem;
+    color: var(--t-fg2);
+    margin-top: 0.35rem;
+    line-height: 1.35;
+  }
+  .app-main input,
+  .app-main select,
+  .app-main textarea {
     width: 100%;
-    background: var(--input-bg);
-    border: 1px solid var(--input-border);
-    border-radius: var(--radius);
-    color: var(--t-fg, #e8e8e8);
-    font-family: inherit;
-    font-size: 13px;
-    padding: 10px 14px;
-    outline: none;
-    transition: all 0.2s;
   }
-  input:focus, select:focus, textarea:focus { border-color: var(--primary); background: rgba(129,182,76,0.03); }
   .btn {
     width: 100%;
-    background: var(--primary);
-    color: #0d0d0d;
-    border: none;
+    background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
+    color: #fff;
+    border: 1px solid var(--t-bda, transparent);
     border-radius: var(--radius);
-    padding: 12px;
-    font-family: 'Syne', sans-serif;
-    font-size: 13px;
-    font-weight: 800;
+    padding: 0.7rem 0.9rem;
+    font-family: inherit;
+    font-size: 0.86rem;
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.2s;
+    transition:
+      background var(--t-motion, .15s),
+      transform .12s,
+      box-shadow var(--t-motion, .15s);
     text-align: center;
     text-decoration: none;
     display: inline-block;
   }
-  .btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(129,182,76,0.25); }
-  .btn:active { transform: translateY(0); }
-  .btn.sec { background: rgba(255,255,255,0.08); color: #fff; border: 1px solid var(--card-border); }
-  .btn.sec:hover { background: rgba(255,255,255,0.12); }
-  .btn.danger { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-  .btn.danger:hover { background: rgba(239, 68, 68, 0.3); }
-
-  /* Balance Bar */
-  .balance-bar {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    background: rgba(255,255,255,0.02);
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
-    padding: 8px 12px;
-    margin-bottom: 20px;
+  .btn:hover:not(:disabled) {
+    background: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls);
   }
-
-  /* Feeds & Listings */
-  .feed-tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn.sec {
+    background: var(--t-bg3);
+    color: var(--t-fg);
+    border: 1px solid var(--t-bd);
+  }
+  .btn.sec:hover:not(:disabled) {
+    background: var(--t-bg2);
+    border-color: color-mix(in srgb, var(--t-bd) 65%, var(--t-ac) 35%);
+    box-shadow: none;
+  }
+  .btn.danger {
+    background: rgba(239, 68, 68, 0.16);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+  }
+  .btn.danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.28);
+    box-shadow: none;
+  }
+  .feed-tabs {
+    display: flex;
+    gap: 0.45rem;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
   .feed-tab {
-    padding: 8px 16px;
-    background: transparent;
-    border: 1px solid var(--card-border);
-    border-radius: 99px;
-    color: #888;
-    font-size: 11px;
+    padding: 0.5rem 0.85rem;
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--radius);
+    color: var(--t-fg2);
+    font-size: 0.78rem;
     font-weight: 700;
     cursor: pointer;
-    font-family: 'Syne', sans-serif;
-    transition: all 0.2s;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: border-color var(--t-motion, .15s), background var(--t-motion, .15s), color var(--t-motion, .15s);
   }
-  .feed-tab.active { background: var(--primary-dim); border-color: var(--primary-border); color: var(--primary); }
-
-  .listings-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  .feed-tab:hover { color: var(--t-fg); border-color: color-mix(in srgb, var(--t-bd) 65%, var(--t-ac) 35%); }
+  .feed-tab.active {
+    background: color-mix(in srgb, var(--t-ac) 16%, transparent);
+    border-color: color-mix(in srgb, var(--t-ac) 45%, var(--t-bd));
+    color: var(--t-fg);
+  }
+  .listings-grid { display: grid; grid-template-columns: 1fr; gap: 0.85rem; }
   @media (min-width: 900px) {
     .listings-grid { grid-template-columns: 1fr 1fr; }
   }
-
   .listing-item {
-    background: rgba(255,255,255,0.015);
-    border: 1px solid var(--card-border);
-    border-radius: 14px;
-    padding: 20px;
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: calc(var(--radius) + 2px);
+    padding: 1.05rem;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    position: relative;
-    transition: all 0.2s;
+    gap: 0.85rem;
+    transition: border-color var(--t-motion, .15s), background var(--t-motion, .15s);
   }
-  .listing-item:hover { border-color: rgba(129,182,76,0.3); background: rgba(129,182,76,0.005); }
-
-  .listing-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-  .listing-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700; color: #fff; }
-  .listing-price { font-size: 13px; font-weight: 700; color: var(--gold); background: var(--gold-dim); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(245,158,11,0.15); }
-  
-  .listing-desc { font-size: 12px; color: #aaa; line-height: 1.5; margin-bottom: 16px; }
-  .listing-meta { font-size: 10px; color: #666; display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; border-top: 1px solid rgba(255,255,255,0.03); padding-top: 10px; }
-  .listing-meta span strong { color: #888; }
-
-  /* Badges inside listings */
+  .listing-item:hover {
+    border-color: color-mix(in srgb, var(--t-bd) 55%, var(--t-ac) 45%);
+    background: color-mix(in srgb, var(--t-bg3) 70%, var(--t-bg2));
+  }
+  .listing-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.65rem; margin-bottom: 0.55rem; }
+  .listing-title {
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 0.98rem;
+    font-weight: 750;
+    color: var(--t-fg);
+    line-height: 1.25;
+  }
+  .listing-price {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--gold);
+    background: var(--gold-dim);
+    padding: 0.25rem 0.55rem;
+    border-radius: 6px;
+    border: 1px solid rgba(245,158,11,0.2);
+    white-space: nowrap;
+  }
+  .listing-desc { font-size: 0.8rem; color: var(--t-fg2); line-height: 1.5; margin: 0 0 0.75rem; }
+  .listing-meta {
+    font-size: 0.7rem;
+    color: color-mix(in srgb, var(--t-fg2) 85%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.25rem;
+    border-top: 1px solid var(--t-bd);
+    padding-top: 0.65rem;
+  }
+  .listing-meta span strong { color: var(--t-fg2); }
   .item-display-badge {
     display: inline-block;
-    padding: 2px 6px;
+    padding: 0.15rem 0.45rem;
     border-radius: 4px;
-    font-size: 9px;
+    font-size: 0.65rem;
     font-weight: 800;
     text-transform: uppercase;
-    margin-bottom: 8px;
-    background: rgba(255,255,255,0.05);
-    color: #ccc;
-    border: 1px solid rgba(255,255,255,0.08);
+    margin-bottom: 0.45rem;
+    background: var(--t-bg3);
+    color: var(--t-fg2);
+    border: 1px solid var(--t-bd);
   }
-
   .status-tag {
     display: inline-block;
-    padding: 3px 8px;
+    padding: 0.2rem 0.5rem;
     border-radius: 4px;
-    font-size: 9px;
+    font-size: 0.65rem;
     font-weight: 800;
     text-transform: uppercase;
-    margin-bottom: 10px;
+    margin-bottom: 0.55rem;
     width: fit-content;
   }
-  .status-active { background: rgba(129,182,76,0.15); color: var(--primary); border: 1px solid var(--primary-border); }
-  .status-pending { background: rgba(245,158,11,0.15); color: var(--gold); border: 1px solid rgba(245,158,11,0.25); }
-  .status-finalized { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
-  .status-undone { background: rgba(255,255,255,0.06); color: #888; border: 1px solid rgba(255,255,255,0.1); }
-  .status-disputed { background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
-
-  .empty-state { text-align: center; padding: 60px 20px; color: #555; font-style: italic; font-size: 13px; }
-
-  .back-btn {
-    display: inline-block;
-    margin-bottom: 20px;
-    color: var(--primary);
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-    transition: opacity 0.2s;
+  .status-active { background: var(--primary-dim); color: var(--primary); border: 1px solid var(--primary-border); }
+  .status-pending { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(245,158,11,0.25); }
+  .status-finalized { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+  .status-undone { background: var(--t-bg3); color: var(--t-fg2); border: 1px solid var(--t-bd); }
+  .status-disputed { background: rgba(239, 68, 68, 0.12); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.25); }
+  .empty-state {
+    text-align: center;
+    padding: 2.5rem 1.25rem;
+    color: var(--t-fg2);
+    font-size: 0.88rem;
+    border: 1px dashed var(--t-bd);
+    border-radius: var(--radius);
   }
-  .back-btn:hover { opacity: 0.8; }
+  @media (prefers-reduced-motion: reduce) {
+    .btn, .feed-tab, .listing-item { transition: none !important; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <a href="/" class="back-btn">← Back to Hub</a>
-  
-  <div class="header">
-    <div class="badge">mitch.pro market</div>
-    <h1>Player <span>Marketplace.</span></h1>
-    <p class="subtitle">Decentralized, player-to-player escrow system.</p>
-  </div>
+<main class="app-main">
+  <header class="page-head app-fade-in">
+    <div class="kicker">Player market</div>
+    <h1>Player <span>Marketplace</span></h1>
+    <p class="subline">Peer-to-peer listings with optional escrow mediation. Keep trades in-game.</p>
+  </header>
 
-  <!-- Prominent Warranty and Safety Warnings -->
   <div class="warning-banner">
     <div class="warning-icon">⚠️</div>
     <div class="warning-text">
@@ -261,13 +316,12 @@
   </div>
 
   <div class="balance-bar">
-    <span>My Balance: <strong style="color: var(--gold)" id="myCoins">0.00</strong> Coins</span>
-    <span style="color: #666">Instant trade or 24h Escrow Protection</span>
+    <span>My Balance: <strong id="myCoins">0.00</strong> Coins</span>
+    <span class="balance-hint">Instant trade or 24h Escrow Protection</span>
   </div>
 
   <div class="layout">
-    <!-- Sidebar: Create Listing -->
-    <div class="card">
+    <div class="card panel">
       <div class="card-title">Create Listing</div>
       <form id="createListingForm">
         <div class="form-group">
@@ -298,14 +352,13 @@
         <div class="form-group">
           <label>Mediator Email (Optional)</label>
           <input type="email" id="listingMediator" placeholder="mediator@student.mitch.pro">
-          <p style="font-size: 9px; color: #666; margin-top: 4px; line-height: 1.3">Specifying a mediator holds coins in escrow for 24h. The mediator can resolve the trade or refund the coins if rules are breached.</p>
+          <p class="hint">Specifying a mediator holds coins in escrow for 24h. The mediator can resolve the trade or refund the coins if rules are breached.</p>
         </div>
 
-        <button type="submit" class="btn" style="margin-top: 10px;">Post Listing</button>
+        <button type="submit" class="btn" style="margin-top: 0.35rem;">Post Listing</button>
       </form>
     </div>
 
-    <!-- Main Content: Feeds -->
     <div>
       <div class="feed-tabs">
         <button class="feed-tab active" data-tab="active">Active Market</button>
@@ -314,11 +367,10 @@
       </div>
 
       <div id="listingsFeed" class="listings-grid">
-        <!-- Dynamically injected -->
       </div>
     </div>
   </div>
-</div>
+</main>
 
 <script>
   let activeTab = 'active';
@@ -405,7 +457,7 @@
       card.className = 'listing-item';
 
       let itemLabel = l.type === 'cosmetic' ? l.itemId.replace(/_/g, ' ').toUpperCase() : 'CUSTOM LISTING';
-      let displayTag = l.type === 'cosmetic' ? `<span class="item-display-badge">Cosmetic</span>` : `<span class="item-display-badge" style="border-color: rgba(129,182,76,0.3); color: var(--primary);">Text Trade</span>`;
+      let displayTag = l.type === 'cosmetic' ? `<span class="item-display-badge">Cosmetic</span>` : `<span class="item-display-badge" style="border-color: color-mix(in srgb, var(--t-ac) 35%, transparent); color: var(--primary);">Text Trade</span>`;
       
       let statusTag = '';
       if (activeTab !== 'active') {

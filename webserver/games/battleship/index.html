@@ -6,14 +6,15 @@
   <title>Battleship – MitchCoin Multiplayer</title>
   <meta name="description" content="Play Battleship against friends and earn MitchCoins. 100% server-side game with anti-cheat protection.">
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
   <script src="/api.js"></script>
   <style>
     :root {
       --bg: var(--t-bg, #060d1a);
       --surface: var(--t-bg2, #0d1b2e);
       --surface2: var(--t-bg3, #112240);
-      --accent: var(--t-ac, #00d4ff);
-      --accent2: var(--t-ac2, #0077ff);
+      --accent: #00d4ff;
+      --accent2: #0077ff;
       --danger: #ff4d6d;
       --success: #00e676;
       --warn: #ffca28;
@@ -23,12 +24,12 @@
       --miss: #1e3a5f;
       --ship: #2a5298;
       --sunk: #7b1fa2;
-      --radius: 12px;
+      --radius: var(--t-radius, 12px);
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--bg);
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background-color: var(--bg);
       color: var(--text);
       min-height: 100vh;
       background-image: var(--t-bg-img-layer, radial-gradient(ellipse at 20% 20%, #001a3a 0%, transparent 60%),
@@ -36,24 +37,32 @@
       background-attachment: fixed !important;
     }
     header {
-      background: linear-gradient(135deg, #0a1628, #0d2040);
+      background: color-mix(in srgb, var(--t-bg2) 85%, transparent);
       border-bottom: 1px solid var(--t-bd, #1a3a5c);
       padding: 16px 24px;
       display: flex;
       align-items: center;
       gap: 16px;
       position: relative;
+      backdrop-filter: blur(14px);
     }
-    header h1 { font-size: 1.5rem; font-weight: 900; color: var(--accent); letter-spacing: 1px; }
+    header h1 {
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 1.45rem;
+      font-weight: 800;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
     header p { font-size: 0.85rem; color: var(--muted); }
     .coin-badge {
       margin-left: auto;
-      background: linear-gradient(135deg, #1a3a10, #2a5a1a);
-      border: 1px solid #4a9a2a;
-      border-radius: 20px;
+      background: color-mix(in srgb, var(--success) 14%, transparent);
+      border: 1px solid color-mix(in srgb, var(--success) 45%, transparent);
+      border-radius: 999px;
       padding: 6px 14px;
+      font-family: 'Outfit', system-ui, sans-serif;
       font-weight: 700;
-      color: #7dff5a;
+      color: var(--success);
       font-size: 0.9rem;
       z-index: 10;
     }
@@ -72,16 +81,22 @@
       padding: 24px;
       margin-bottom: 20px;
     }
-    .panel h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; color: var(--accent); }
+    .panel h2 {
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      color: var(--accent);
+    }
     .online-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
     .online-chip {
       background: var(--t-bg3, #0d2040);
       border: 1px solid var(--t-bd, #1a4a6a);
-      border-radius: 20px;
+      border-radius: 999px;
       padding: 5px 12px;
       font-size: 0.8rem;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: background var(--t-motion, 0.2s), border-color var(--t-motion, 0.2s), color var(--t-motion, 0.2s);
     }
     .online-chip:hover { background: var(--t-bg2, #1a3a6a); border-color: var(--accent); color: var(--accent); }
     .online-chip.selected { background: var(--accent2); border-color: var(--accent); color: #fff; }
@@ -89,36 +104,35 @@
     input, select {
       background: var(--t-bg, #060d1a);
       border: 1px solid var(--t-bd, #1a3a5c);
-      border-radius: 8px;
+      border-radius: var(--t-radius, 8px);
       color: var(--text);
       padding: 10px 14px;
       font-family: inherit;
       font-size: 0.9rem;
       outline: none;
-      transition: border-color: 0.2s;
+      transition: border-color var(--t-motion, 0.2s);
     }
     input:focus, select:focus { border-color: var(--accent); }
     input[type="number"] { width: 120px; }
     .btn {
       padding: 10px 22px;
-      border-radius: 8px;
+      border-radius: var(--t-radius, 8px);
       border: none;
-      font-family: inherit;
+      font-family: 'Outfit', system-ui, sans-serif;
       font-size: 0.9rem;
       font-weight: 700;
       cursor: pointer;
-      transition: all 0.2s;
-      letter-spacing: 0.5px;
+      transition: transform var(--t-motion, 0.2s), box-shadow var(--t-motion, 0.2s), opacity var(--t-motion, 0.2s);
+      letter-spacing: 0.02em;
     }
     .btn-primary {
-      background: linear-gradient(135deg, var(--accent2), #0055cc);
+      background: var(--accent2);
       color: #fff;
-      box-shadow: 0 0 16px #0077ff40;
     }
-    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 20px #0077ff60; }
-    .btn-danger { background: linear-gradient(135deg, #c62828, #e53935); color: #fff; }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px color-mix(in srgb, var(--accent2) 40%, transparent); }
+    .btn-danger { background: #c62828; color: #fff; }
     .btn-danger:hover { transform: translateY(-1px); }
-    .btn-success { background: linear-gradient(135deg, #2e7d32, #43a047); color: #fff; }
+    .btn-success { background: #2e7d32; color: #fff; }
     .btn-success:hover { transform: translateY(-1px); }
     .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
     .challenge-card {
@@ -196,7 +210,7 @@
       background: var(--bg);
       aspect-ratio: 1;
       cursor: default;
-      transition: all 0.15s;
+      transition: background var(--t-motion, 0.15s), box-shadow var(--t-motion, 0.15s);
       border-radius: 2px;
       display: flex;
       align-items: center;
@@ -283,6 +297,17 @@
     .turn-indicator.my-turn { background: #0d2a10; border: 2px solid var(--success); color: var(--success); animation: pulse 1.5s infinite; }
     .turn-indicator.their-turn { background: #2a1a0d; border: 2px solid var(--warn); color: var(--warn); }
     @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 #00e67640; } 50% { box-shadow: 0 0 0 8px transparent; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .btn-primary:hover,
+      .btn-danger:hover,
+      .btn-success:hover { transform: none; }
+    }
     .collusion-warning {
       background: #2a1a00;
       border: 2px solid var(--warn);
@@ -303,11 +328,11 @@
     }
     .game-over-banner h2 { font-size: 2rem; color: var(--success); margin-bottom: 8px; }
     .game-over-banner p { color: var(--muted); margin-bottom: 16px; }
-    .back-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; }
-    .back-link:hover { text-decoration: underline; }
+    .back-link { color: var(--accent); text-decoration: none; font-size: 0.85rem; font-weight: 600; }
+    .back-link:hover { text-decoration: underline; color: var(--accent); }
   </style>
 </head>
-<body>
+<body data-shell="off">
 
 <header>
   <div>

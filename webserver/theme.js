@@ -382,6 +382,7 @@
   }
 
   function applyBgImg(url) {
+    // Animated GIF backgrounds crush Firefox and low-DPI Chromebooks.
     if (IS_FIREFOX_FAMILY && /\.gif(?:[?#]|$)/i.test(String(url || ''))) {
       url = '';
     }
@@ -444,9 +445,13 @@
     'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}' +
     '.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}' +
     '.theme-firefox body{background-attachment:scroll!important;}' +
-    '.theme-firefox .glass-card,.theme-firefox .card,.theme-firefox #theme-panel,.theme-firefox #sw-notif-panel,.theme-firefox #_ap{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
-    '.theme-firefox.theme-light .glass-card,.theme-firefox.theme-light .card,.theme-firefox.theme-light #theme-panel,.theme-firefox.theme-light #sw-notif-panel,.theme-firefox.theme-light #_ap{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
-    '.theme-firefox button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s),transform var(--t-motion,.15s)}' +
+    '.theme-firefox .glass-card,.theme-firefox .card,.theme-firefox #theme-panel,.theme-firefox #sw-notif-panel,.theme-firefox #_ap,' +
+    '.theme-firefox .app-topbar,.theme-firefox .panel,.theme-firefox .side-section,.theme-firefox #member-side-rail' +
+    '{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
+    '.theme-firefox.theme-light .glass-card,.theme-firefox.theme-light .card,.theme-firefox.theme-light #theme-panel,.theme-firefox.theme-light #sw-notif-panel,.theme-firefox.theme-light #_ap' +
+    '{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
+    '.theme-firefox button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn)' +
+    '{transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s)!important;}' +
     'hr{border:none;border-top:1px solid var(--t-bd)}' +
     'a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}' +
     'label{color:var(--t-fg2)}';
@@ -455,7 +460,7 @@
   var lightStyle = document.createElement('style');
   lightStyle.id = 'theme-light-overrides';
   lightStyle.textContent =
-    '.theme-light .glass-card,.theme-light .card{background:rgba(255,255,255,0.55)!important;backdrop-filter:blur(28px) saturate(190%)!important;-webkit-backdrop-filter:blur(28px) saturate(190%)!important;border:1px solid rgba(0,0,0,0.09)!important;box-shadow:0 24px 64px rgba(0,0,0,0.07),inset 0 1px 0 rgba(255,255,255,0.85)!important;}' +
+    '.theme-light .glass-card,.theme-light .card{background:rgba(255,255,255,0.55)!important; saturate(190%)!important; saturate(190%)!important;border:1px solid rgba(0,0,0,0.09)!important;box-shadow:0 24px 64px rgba(0,0,0,0.07),inset 0 1px 0 rgba(255,255,255,0.85)!important;}' +
     '.theme-light #site-topbar #theme-btn{background:rgba(255,255,255,0.75)!important;border:1px solid rgba(0,0,0,0.14)!important;color:#1e1b4b!important;}' +
     '.theme-light #site-topbar #theme-clean-btn{background:rgba(255,255,255,0.7)!important;border:1px solid rgba(0,0,0,0.12)!important;color:#374151!important;}' +
     '.theme-light #site-topbar #_ab{background:rgba(255,255,255,0.75)!important;border:1px solid rgba(0,0,0,0.14)!important;color:#374151!important;}' +
@@ -535,7 +540,7 @@
       'background:rgba(10,10,10,0.4);color:rgba(255,255,255,0.8);' +
       'font-size:11px;cursor:pointer;opacity:0.7;' +
       'transition:transform .15s,opacity .15s,background .15s;padding:0;' +
-      'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);' +
+      '' +
       'display:flex;align-items:center;justify-content:center;flex-shrink:0;' +
       'line-height:1;font-family:inherit;';
     btn.onmouseenter = function () { this.style.transform = 'scale(1.1)'; this.style.opacity = '1'; this.style.background = t.sw; };
@@ -545,7 +550,7 @@
     panel.id = 'theme-panel';
     panel.style.cssText =
       'display:none;position:fixed;right:12px;top:50px;z-index:999999;' +
-      'background:rgba(6,4,14,0.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);' +
+      'background:rgba(6,4,14,0.95);' +
       'border:1px solid rgba(255,255,255,0.1);border-radius:14px;' +
       'padding:8px 6px 10px;min-width:248px;max-width:min(340px,calc(100vw - 24px));max-height:min(78vh,720px);overflow:auto;' +
       'box-shadow:0 8px 32px rgba(0,0,0,0.65);' +
@@ -868,7 +873,7 @@
       'background:rgba(30,30,30,0.55);color:rgba(180,180,180,0.8);' +
       'font-size:11px;cursor:pointer;padding:0;flex-shrink:0;' +
       'display:flex;align-items:center;justify-content:center;' +
-      'backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);' +
+      '' +
       'transition:opacity .15s;line-height:1;font-family:inherit;';
     xBtn.onmouseenter = function () { xBtn.style.opacity = '1'; xBtn.style.borderColor = 'rgba(200,200,200,0.7)'; };
     xBtn.onmouseleave = function () { xBtn.style.opacity = ''; xBtn.style.borderColor = 'rgba(160,160,160,0.45)'; };
@@ -940,7 +945,7 @@
         'background:rgba(88,101,242,0.92)!important;color:#fff!important;font-size:11px;' +
         'font-weight:900;letter-spacing:.02em;padding:0 10px!important;cursor:pointer;' +
         'box-shadow:0 8px 24px rgba(0,0,0,0.35);' +
-        'backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:block;';
+        'display:block;';
 
       var discordPanel = document.createElement('div');
       discordPanel.id = 'discord-server-panel';
@@ -950,7 +955,7 @@
         'border:1px solid rgba(88,101,242,0.35);border-radius:10px;padding:12px;' +
         'box-shadow:0 18px 50px rgba(0,0,0,0.55);color:var(--t-fg);' +
         'font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.45;' +
-        'backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);';
+        '';
       discordPanel.innerHTML =
         '<div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#cfd4ff;margin-bottom:6px;">Discord Server</div>' +
         '<div style="color:var(--t-fg2);margin-bottom:10px;">Join here through a different device if you are using your chromebook.</div>' +
@@ -1125,7 +1130,7 @@
 
     var bar = document.createElement('div');
     bar.id = 'mitch-quick-access';
-    bar.style.cssText = 'position:fixed;right:10px;top:50%;transform:translateY(-50%);z-index:10000;display:flex;flex-direction:column;gap:8px;padding:8px;background:rgba(10,10,10,0.4);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.1);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);transition:opacity 0.2s;';
+    bar.style.cssText = 'position:fixed;right:10px;top:50%;transform:translateY(-50%);z-index:10000;display:flex;flex-direction:column;gap:8px;padding:8px;background:rgba(10,10,10,0.4);border:1px solid rgba(255,255,255,0.1);border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,0.5);transition:opacity 0.2s;';
     
     var links = [
       { h:'/', i:'🏠', t:'Home' },

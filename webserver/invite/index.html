@@ -6,378 +6,435 @@
   <title>Invite Friends — mitch.pro</title>
   <meta name="description" content="Invite friends to mitch.pro and earn 2,000 MitchCoins for every signup.">
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/api.js"></script>
+  <script src="/app-shell.js" defer></script>
   <style>
-
-    :root {
-      --brand: #a78bfa;
-      --brand2: #7c3aed;
-      --gold: #f59e0b;
-      --panel: rgba(255,255,255,0.04);
-      --line: rgba(255,255,255,0.09);
-      --green: #4ade80;
-      --red: #f87171;
+    .invite-page {
+      position: relative;
+      isolation: isolate;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--t-bg, #07060f);
-      color: var(--t-fg, #f1f0ff);
-      min-height: 100vh;
-      padding: 40px 20px 80px;
-      overflow-x: hidden;
+    .invite-page::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 65% 45% at 50% -8%, color-mix(in srgb, var(--t-ac) 14%, transparent), transparent 70%),
+        radial-gradient(ellipse 40% 35% at 100% 100%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 7%, transparent), transparent 65%);
     }
 
-    #back-btn {
-      position: fixed; top: 20px; left: 20px;
-      background: var(--panel); border: 1px solid var(--line);
-      color: #fff; padding: 8px 16px; border-radius: 10px;
-      text-decoration: none; font-weight: 700; z-index: 100;
-      backdrop-filter: blur(10px);
+    .invite-shell {
+      width: min(42rem, 100%);
+      max-width: 42rem;
     }
 
-    .page-header {
-      text-align: center;
-      margin: 60px auto 48px;
-      max-width: 600px;
+    .page-head {
+      margin-bottom: 1.25rem;
+      max-width: 38rem;
+      animation: app-fade-in 0.45s ease both;
     }
 
-    .page-header h1 {
-      font-family: 'Syne', sans-serif;
-      font-size: clamp(2.2rem, 6vw, 3.5rem);
-      background: linear-gradient(135deg, #a78bfa, #7c3aed, #f59e0b);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      line-height: 1.1;
-      margin-bottom: 14px;
+    .page-head h1 {
+      margin: 0;
+      font-size: clamp(1.85rem, 4vw, 2.55rem);
+      font-weight: 800;
+      letter-spacing: -0.035em;
     }
 
-    .page-header p {
-      color: rgba(241,240,255,0.65);
-      font-size: 1.05rem;
-      line-height: 1.6;
+    .page-sub {
+      margin: 0.55rem 0 0;
+      color: var(--t-fg2);
+      font-size: 0.92rem;
+      line-height: 1.55;
     }
 
     .coin-badge {
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.35);
+      gap: 0.35rem;
+      min-height: 1.7rem;
+      padding: 0.28rem 0.75rem;
+      margin-bottom: 0.85rem;
+      border-radius: calc(var(--t-radius, 8px) + 2px);
+      background: rgba(245, 158, 11, 0.1);
+      border: 1px solid rgba(245, 158, 11, 0.32);
       color: #f59e0b;
-      font-weight: 900;
-      font-size: 0.85rem;
-      padding: 6px 14px;
-      border-radius: 99px;
-      margin-bottom: 20px;
-      letter-spacing: 0.03em;
+      font-family: Outfit, system-ui, sans-serif;
+      font-weight: 750;
+      font-size: 0.78rem;
+      letter-spacing: 0.02em;
     }
 
     .wrap {
-      max-width: 680px;
-      margin: 0 auto;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 0.75rem;
+      animation: app-fade-in 0.55s ease 0.06s both;
     }
 
     .card {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 20px;
-      padding: 28px;
-      backdrop-filter: blur(20px);
+      padding: 1.2rem 1.15rem;
+      border: 1px solid var(--t-bd);
+      border-radius: calc(var(--t-radius, 8px) + 2px);
+      background:
+        linear-gradient(160deg, color-mix(in srgb, var(--t-bg2) 92%, transparent), color-mix(in srgb, var(--t-bg3) 80%, transparent));
+      box-shadow: 0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset;
     }
 
     .card-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 1.1rem;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--brand);
-      margin-bottom: 18px;
+      font-family: Outfit, system-ui, sans-serif;
+      font-size: 0.95rem;
+      font-weight: 750;
+      color: var(--t-fg);
+      margin: 0 0 1rem;
+      letter-spacing: -0.02em;
     }
 
     .stat-row {
       display: flex;
-      gap: 16px;
-      margin-bottom: 24px;
+      gap: 0.65rem;
+      margin-bottom: 1.15rem;
     }
 
     .stat-box {
       flex: 1;
-      background: rgba(167,139,250,0.07);
-      border: 1px solid rgba(167,139,250,0.18);
-      border-radius: 14px;
-      padding: 16px;
+      background: color-mix(in srgb, var(--t-bg3) 70%, transparent);
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      padding: 0.9rem;
       text-align: center;
     }
 
     .stat-num {
-      font-family: 'Syne', sans-serif;
-      font-size: 2rem;
-      color: var(--brand);
+      font-family: Outfit, system-ui, sans-serif;
+      font-size: 1.75rem;
+      color: var(--t-ac);
       font-weight: 800;
+      letter-spacing: -0.03em;
     }
 
     .stat-label {
-      font-size: 0.75rem;
-      color: rgba(241,240,255,0.5);
+      font-size: 0.7rem;
+      color: var(--t-fg2);
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.07em;
-      margin-top: 4px;
+      margin-top: 0.2rem;
     }
 
     label {
       display: block;
       font-size: 0.78rem;
-      font-weight: 800;
-      color: rgba(241,240,255,0.6);
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      margin-bottom: 8px;
+      font-weight: 600;
+      color: var(--t-fg2);
+      margin-bottom: 0.4rem;
+    }
+
+    .card > p {
+      font-size: 0.85rem;
+      color: var(--t-fg2);
+      margin: 0 0 1rem;
+      line-height: 1.5;
     }
 
     .code-display {
       display: flex;
       align-items: center;
-      gap: 10px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      padding: 14px 16px;
-      font-family: monospace;
-      font-size: 1.5rem;
-      font-weight: 900;
-      color: var(--brand);
-      letter-spacing: 0.12em;
+      gap: 0.65rem;
+      background: var(--t-bg2);
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      padding: 0.85rem 0.95rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 1.35rem;
+      font-weight: 800;
+      color: var(--t-ac);
+      letter-spacing: 0.1em;
     }
 
-    .code-display .code-text { flex: 1; }
+    .code-display .code-text { flex: 1; min-width: 0; word-break: break-all; }
 
     .copy-btn {
+      appearance: none;
       background: transparent;
-      border: 1px solid rgba(167,139,250,0.3);
-      color: var(--brand);
-      padding: 6px 14px;
-      border-radius: 8px;
-      font-size: 0.8rem;
-      font-weight: 800;
+      border: 1px solid var(--t-bd);
+      color: var(--t-fg2);
+      padding: 0.35rem 0.75rem;
+      border-radius: calc(var(--t-radius, 8px) - 2px);
+      font-size: 0.78rem;
+      font-weight: 700;
       cursor: pointer;
-      transition: all 0.2s;
-      font-family: 'Outfit', sans-serif;
+      font-family: inherit;
+      transition:
+        border-color var(--t-motion, 0.15s) ease,
+        background var(--t-motion, 0.15s) ease,
+        color var(--t-motion, 0.15s) ease;
     }
-    .copy-btn:hover { background: rgba(167,139,250,0.15); }
-    .copy-btn.copied { color: var(--green); border-color: rgba(74,222,128,0.4); }
+
+    .copy-btn:hover {
+      border-color: var(--t-ac);
+      color: var(--t-fg);
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+    }
+
+    .copy-btn.copied {
+      color: #4ade80;
+      border-color: rgba(74, 222, 128, 0.4);
+    }
 
     .link-display {
-      margin-top: 14px;
-      background: rgba(255,255,255,0.04);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 12px 14px;
+      margin-top: 0.75rem;
+      background: color-mix(in srgb, var(--t-bg3) 60%, transparent);
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      padding: 0.75rem 0.85rem;
       font-size: 0.78rem;
-      color: rgba(241,240,255,0.55);
+      color: var(--t-fg2);
       word-break: break-all;
       display: flex;
       align-items: flex-start;
-      gap: 10px;
+      gap: 0.65rem;
     }
 
     .link-display .link-text { flex: 1; }
 
-    input[type="text"], input[type="email"] {
+    input[type="text"],
+    input[type="email"] {
       width: 100%;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--line);
-      color: #f1f0ff;
-      border-radius: 10px;
-      padding: 12px 14px;
-      font-size: 0.95rem;
-      font-family: 'Outfit', sans-serif;
+      background: var(--t-bg2);
+      border: 1px solid var(--t-bd);
+      color: var(--t-fg);
+      border-radius: var(--t-radius, 8px);
+      padding: 0.7rem 0.85rem;
+      font-size: 0.92rem;
+      font-family: inherit;
       outline: none;
-      transition: border-color 0.2s;
+      transition:
+        border-color var(--t-motion, 0.15s) ease,
+        box-shadow var(--t-motion, 0.15s) ease;
     }
-    input:focus { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(167,139,250,0.12); }
+
+    input:focus {
+      border-color: var(--t-ac);
+      box-shadow: 0 0 0 3px var(--t-gls, transparent);
+    }
 
     .btn {
       width: 100%;
-      border: 0;
-      border-radius: 12px;
-      padding: 13px 18px;
-      font-weight: 900;
-      font-size: 0.95rem;
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: var(--t-radius, 8px);
+      padding: 0.7rem 1.1rem;
+      min-height: 2.55rem;
+      font-weight: 700;
+      font-size: 0.9rem;
       cursor: pointer;
-      font-family: 'Outfit', sans-serif;
-      transition: all 0.2s;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      margin-top: 14px;
+      font-family: Outfit, system-ui, sans-serif;
+      margin-top: 0.85rem;
+      transition:
+        background var(--t-motion, 0.15s) ease,
+        box-shadow var(--t-motion, 0.15s) ease,
+        transform 0.12s ease,
+        opacity var(--t-motion, 0.15s) ease;
     }
 
-    .btn-primary { background: var(--brand); color: #1a0533; }
-    .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
-    .btn-primary:active { transform: scale(0.98); }
-    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-    .btn-gold { background: var(--gold); color: #1c1004; }
-    .btn-gold:hover { filter: brightness(1.1); transform: translateY(-1px); }
-    .btn-gold:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-primary {
+      background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
+      color: #fff;
+      border-color: var(--t-bda, transparent);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--t-ac);
+      box-shadow: 0 0 0 3px var(--t-gls, transparent);
+    }
+
+    .btn-gold {
+      background: #f59e0b;
+      color: #1c1004;
+      border-color: rgba(245, 158, 11, 0.5);
+    }
+
+    .btn-gold:hover:not(:disabled) {
+      filter: brightness(1.05);
+      box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+    }
 
     .msg {
       min-height: 1.2em;
       font-size: 0.85rem;
-      font-weight: 700;
-      margin-top: 10px;
+      font-weight: 600;
+      margin-top: 0.65rem;
       text-align: center;
+      color: var(--t-fg2);
     }
-    .msg.ok { color: var(--green); }
-    .msg.err { color: var(--red); }
+
+    .msg.ok { color: #4ade80; }
+    .msg.err { color: #f87171; }
 
     .premium-lock {
       display: flex;
-      align-items: center;
-      gap: 10px;
-      background: rgba(245,158,11,0.06);
-      border: 1px solid rgba(245,158,11,0.25);
-      border-radius: 12px;
-      padding: 14px 18px;
+      align-items: flex-start;
+      gap: 0.65rem;
+      background: rgba(245, 158, 11, 0.06);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: var(--t-radius, 8px);
+      padding: 0.85rem 1rem;
       font-size: 0.85rem;
-      color: rgba(245,158,11,0.85);
-      font-weight: 700;
+      color: rgba(245, 158, 11, 0.9);
+      font-weight: 600;
+      line-height: 1.45;
     }
 
-    .premium-lock a { color: #f59e0b; }
+    .premium-lock a { color: #f59e0b; font-weight: 700; }
 
     .how-it-works {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      margin-top: 4px;
+      gap: 0.65rem;
     }
 
     .step {
-      background: rgba(255,255,255,0.03);
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      padding: 16px;
+      background: color-mix(in srgb, var(--t-bg3) 55%, transparent);
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      padding: 0.9rem 0.75rem;
       text-align: center;
     }
 
     .step-num {
-      width: 32px; height: 32px;
-      background: var(--brand2);
+      width: 1.85rem;
+      height: 1.85rem;
+      background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
+      color: #fff;
       border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-weight: 900; font-size: 0.9rem;
-      margin: 0 auto 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Outfit, system-ui, sans-serif;
+      font-weight: 800;
+      font-size: 0.85rem;
+      margin: 0 auto 0.6rem;
     }
 
-    .step-text { font-size: 0.82rem; color: rgba(241,240,255,0.65); line-height: 1.4; }
+    .step-text {
+      font-size: 0.8rem;
+      color: var(--t-fg2);
+      line-height: 1.4;
+    }
 
     .divider {
       height: 1px;
-      background: var(--line);
-      margin: 6px 0 18px;
+      background: var(--t-bd);
+      margin: 0 0 1rem;
     }
 
-    #invite-email-wrap { margin-top: 14px; }
+    #invite-email-wrap { margin-top: 0.85rem; }
 
     @media (max-width: 600px) {
       .how-it-works { grid-template-columns: 1fr; }
       .stat-row { flex-direction: column; }
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      .page-head, .wrap { animation: none !important; }
+      .btn, .copy-btn, input { transition: none !important; }
+    }
+
+    .theme-no-motion .page-head,
+    .theme-no-motion .wrap,
+    .theme-no-motion .btn,
+    .theme-no-motion .copy-btn {
+      animation: none !important;
+      transition: none !important;
+    }
   </style>
 </head>
-<body>
-  <a href="/" id="back-btn">← Home</a>
+<body class="invite-page">
+  <main class="app-main invite-shell">
+    <header class="page-head">
+      <div class="coin-badge">2,000 MitchCoins per signup</div>
+      <h1>Invite Friends</h1>
+      <p class="page-sub">Share your personal invite link. Every time someone signs up using it, you earn <strong>2,000 MitchCoins</strong> — automatically, the moment they verify their email.</p>
+    </header>
 
-  <div class="page-header">
-    <div class="coin-badge">🪙 2,000 MitchCoins per signup</div>
-    <h1>Invite Friends</h1>
-    <p>Share your personal invite link. Every time someone signs up using it, you earn <strong>2,000 MitchCoins</strong> — automatically, the moment they verify their email.</p>
-  </div>
-
-  <div class="wrap">
-
-    <!-- Stats card -->
-    <div class="card">
-      <div class="card-title">Your Invite Stats</div>
-      <div class="stat-row">
-        <div class="stat-box">
-          <div class="stat-num" id="stat-signups">—</div>
-          <div class="stat-label">Signups</div>
+    <div class="wrap">
+      <div class="card">
+        <div class="card-title">Your Invite Stats</div>
+        <div class="stat-row">
+          <div class="stat-box">
+            <div class="stat-num" id="stat-signups">—</div>
+            <div class="stat-label">Signups</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num" id="stat-coins">—</div>
+            <div class="stat-label">Coins Earned</div>
+          </div>
         </div>
-        <div class="stat-box">
-          <div class="stat-num" id="stat-coins">—</div>
-          <div class="stat-label">Coins Earned</div>
+
+        <label>Your Invite Code</label>
+        <div class="code-display">
+          <span class="code-text" id="code-text">Loading...</span>
+          <button class="copy-btn" id="copy-code-btn" onclick="copyCode()">Copy</button>
         </div>
-      </div>
 
-      <label>Your Invite Code</label>
-      <div class="code-display">
-        <span class="code-text" id="code-text">Loading...</span>
-        <button class="copy-btn" id="copy-code-btn" onclick="copyCode()">Copy</button>
-      </div>
-
-      <div class="link-display">
-        <span class="link-text" id="link-text">Loading your invite link...</span>
-        <button class="copy-btn" id="copy-link-btn" onclick="copyLink()">Copy</button>
-      </div>
-    </div>
-
-    <!-- Custom code (premium) -->
-    <div class="card" id="custom-code-card">
-      <div class="card-title">✨ Custom Invite Code</div>
-      <div id="premium-content" style="display:none;">
-        <p style="font-size:0.85rem;color:rgba(241,240,255,0.6);margin-bottom:16px;">As a Premium member you can set a memorable vanity code.</p>
-        <label for="custom-code-input">New Code (3–20 characters, letters & numbers only)</label>
-        <input type="text" id="custom-code-input" placeholder="e.g. MITCHGANG" maxlength="20" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
-        <button class="btn btn-gold" id="set-code-btn" onclick="setCode()">Set Custom Code</button>
-        <div class="msg" id="code-msg"></div>
-      </div>
-      <div id="premium-lock-content">
-        <div class="premium-lock">
-          🔒 Custom codes are a <a href="/shop/">Premium</a> feature. Non-premium users get an auto-generated code.
+        <div class="link-display">
+          <span class="link-text" id="link-text">Loading your invite link...</span>
+          <button class="copy-btn" id="copy-link-btn" onclick="copyLink()">Copy</button>
         </div>
       </div>
-    </div>
 
-    <!-- Send invite -->
-    <div class="card">
-      <div class="card-title">📨 Send an Invite Email</div>
-      <p style="font-size:0.85rem;color:rgba(241,240,255,0.6);margin-bottom:16px;">Enter their email below — we'll send them a personalised invite with your code and their email pre-filled in the signup form.</p>
-      <label for="invite-to">Friend's Email Address</label>
-      <input type="email" id="invite-to" placeholder="friend@school.edu">
-      <button class="btn btn-primary" id="send-btn" onclick="sendInvite()">Send Invite Email</button>
-      <div class="msg" id="send-msg"></div>
-    </div>
+      <div class="card" id="custom-code-card">
+        <div class="card-title">Custom Invite Code</div>
+        <div id="premium-content" style="display:none;">
+          <p>As a Premium member you can set a memorable vanity code.</p>
+          <label for="custom-code-input">New Code (3–20 characters, letters & numbers only)</label>
+          <input type="text" id="custom-code-input" placeholder="e.g. MITCHGANG" maxlength="20" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'')">
+          <button class="btn btn-gold" id="set-code-btn" onclick="setCode()">Set Custom Code</button>
+          <div class="msg" id="code-msg"></div>
+        </div>
+        <div id="premium-lock-content">
+          <div class="premium-lock">
+            Custom codes are a <a href="/shop/">Premium</a> feature. Non-premium users get an auto-generated code.
+          </div>
+        </div>
+      </div>
 
-    <!-- How it works -->
-    <div class="card">
-      <div class="card-title">How It Works</div>
-      <div class="divider"></div>
-      <div class="how-it-works">
-        <div class="step">
-          <div class="step-num">1</div>
-          <div class="step-text">Share your invite link or send an email invite to a friend</div>
-        </div>
-        <div class="step">
-          <div class="step-num">2</div>
-          <div class="step-text">They sign up with their email pre-filled and your code applied</div>
-        </div>
-        <div class="step">
-          <div class="step-num">3</div>
-          <div class="step-text">The moment they verify their email, you instantly earn 2,000 MitchCoins</div>
+      <div class="card">
+        <div class="card-title">Send an Invite Email</div>
+        <p>Enter their email below — we'll send them a personalised invite with your code and their email pre-filled in the signup form.</p>
+        <label for="invite-to">Friend's Email Address</label>
+        <input type="email" id="invite-to" placeholder="friend@school.edu">
+        <button class="btn btn-primary" id="send-btn" onclick="sendInvite()">Send Invite Email</button>
+        <div class="msg" id="send-msg"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">How It Works</div>
+        <div class="divider"></div>
+        <div class="how-it-works">
+          <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">Share your invite link or send an email invite to a friend</div>
+          </div>
+          <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">They sign up with their email pre-filled and your code applied</div>
+          </div>
+          <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">The moment they verify their email, you instantly earn 2,000 MitchCoins</div>
+          </div>
         </div>
       </div>
     </div>
-
-  </div>
+  </main>
 
   <script>
     var myCode = '';

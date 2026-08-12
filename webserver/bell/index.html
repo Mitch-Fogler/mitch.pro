@@ -17,251 +17,280 @@
 <meta property="og:url" content="https://mitch.pro/bell/">
 
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
 
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  /* Calm schedule chrome — aliases keep JS inline styles working */
   :root {
-    --primary: #81b64c;
-    --primary-dim: rgba(129,182,76,0.12);
-    --primary-border: rgba(129,182,76,0.22);
-    --card-bg: rgba(255,255,255,0.03);
-    --card-border: rgba(255,255,255,0.07);
-    --input-bg: rgba(255,255,255,0.04);
-    --input-border: rgba(255,255,255,0.09);
-    --radius: 12px;
+    --primary: var(--t-ac);
+    --primary-dim: color-mix(in srgb, var(--t-ac) 12%, transparent);
+    --primary-border: color-mix(in srgb, var(--t-ac) 28%, transparent);
+    --card-bg: color-mix(in srgb, var(--t-bg2) 78%, transparent);
+    --card-border: var(--t-bd);
+    --radius: var(--t-radius, 8px);
     --gold: #f59e0b;
     --gold-dim: rgba(245,158,11,0.12);
     --gold-border: rgba(245,158,11,0.22);
   }
-  body {
-    min-height: 100vh;
-    background: var(--t-bg, #0d0d0d);
-    color: var(--t-fg, #e8e8e8);
-    font-family: 'DM Mono', monospace;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 60px 20px 100px;
-    position: relative;
-    overflow-x: hidden;
-  }
-  body::before {
+  .bell-page::before {
     content: '';
     position: fixed;
     inset: 0;
-    background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(129,182,76,0.06) 0%, transparent 60%);
+    z-index: -1;
     pointer-events: none;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% -6%, color-mix(in srgb, var(--t-ac) 10%, transparent), transparent 70%);
   }
-  .wrap { width: 100%; max-width: 750px; position: relative; z-index: 1; }
-  .header { text-align: center; margin-bottom: 40px; }
-  .badge {
+  .bell-shell { width: min(46rem, 100%); max-width: 46rem; }
+  .page-head { margin-bottom: 1.35rem; max-width: 36rem; }
+  .kicker {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.35rem;
+    min-height: 1.5rem;
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
     background: var(--primary-dim);
     border: 1px solid var(--primary-border);
-    border-radius: 99px;
-    padding: 4px 14px;
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
     color: var(--primary);
-    margin-bottom: 18px;
-  }
-  h1 { font-family: 'Syne', sans-serif; font-size: clamp(2rem, 6vw, 3rem); font-weight: 800; line-height: 1.1; margin-bottom: 12px; }
-  h1 span { color: var(--primary); }
-  .subtitle { font-size: 13px; color: var(--t-fg2, #777); font-style: italic; }
-
-  /* Navigation Shortcuts */
-  .back-btn {
-    display: inline-block;
-    margin-bottom: 20px;
-    color: var(--primary);
-    text-decoration: none;
-    font-size: 13px;
-    font-weight: 600;
-    transition: opacity 0.2s;
-  }
-  .back-btn:hover { opacity: 0.8; }
-
-  /* Main Card styling */
-  .card {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 16px;
-    padding: 24px;
-    backdrop-filter: blur(12px);
-    margin-bottom: 30px;
-  }
-
-  .card-title {
-    font-family: 'Syne', sans-serif;
-    font-size: 20px;
+    font-size: 0.68rem;
     font-weight: 700;
-    margin-bottom: 16px;
-    color: #fff;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
   }
-
-  /* Lunch Selector Panel */
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(1.85rem, 4vw, 2.55rem);
+    letter-spacing: -0.03em;
+  }
+  .page-head h1 span { color: var(--primary); }
+  .subline {
+    margin: 0.55rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
   .lunch-selector {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: rgba(255, 255, 255, 0.02);
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    background: var(--card-bg);
     border: 1px solid var(--card-border);
-    padding: 12px 18px;
+    padding: 0.75rem 1rem;
     border-radius: var(--radius);
-    margin-bottom: 24px;
+    margin-bottom: 1rem;
   }
-  .lunch-selector-label { font-size: 12px; font-weight: 700; color: #aaa; text-transform: uppercase; }
-  .lunch-options { display: flex; gap: 8px; }
-  .lunch-btn {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--card-border);
-    border-radius: 6px;
-    color: #999;
-    padding: 6px 14px;
-    cursor: pointer;
-    font-family: 'Syne', sans-serif;
-    font-size: 12px;
+  .lunch-selector-label {
+    font-size: 0.72rem;
     font-weight: 700;
-    transition: all 0.2s;
+    color: var(--t-fg2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
   }
+  .lunch-options { display: flex; gap: 0.4rem; }
+  .lunch-btn {
+    background: var(--t-bg);
+    border: 1px solid var(--t-bd);
+    border-radius: calc(var(--radius) - 2px);
+    color: var(--t-fg2);
+    padding: 0.4rem 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 700;
+    transition: border-color var(--t-motion,.15s), background var(--t-motion,.15s), color var(--t-motion,.15s);
+  }
+  .lunch-btn:hover { color: var(--t-fg); border-color: color-mix(in srgb, var(--t-bd) 60%, var(--t-ac) 40%); }
   .lunch-btn.active {
     background: var(--primary-dim);
     border-color: var(--primary-border);
     color: var(--primary);
-    box-shadow: 0 0 12px rgba(129,182,76,0.15);
   }
-
-  /* Live Tracker Display */
   .live-tracker {
-    background: linear-gradient(135deg, rgba(129,182,76,0.06), rgba(255,255,255,0.01));
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--t-ac) 8%, transparent), color-mix(in srgb, var(--t-bg2) 80%, transparent));
     border: 1px solid var(--primary-border);
-    border-radius: var(--radius);
-    padding: 20px;
-    margin-bottom: 24px;
+    border-radius: calc(var(--radius) + 4px);
+    padding: 1.15rem 1.2rem;
+    margin-bottom: 1rem;
     text-align: center;
-    position: relative;
-    overflow: hidden;
   }
-  .live-tracker-title { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--primary); letter-spacing: 0.15em; margin-bottom: 8px; }
-  .live-period { font-family: 'Syne', sans-serif; font-size: clamp(1.4rem, 4vw, 2.2rem); font-weight: 800; color: #fff; margin-bottom: 6px; }
-  .live-countdown { font-size: 14px; color: var(--gold); font-weight: 700; }
-
-  /* Schedule Table Display */
-  .period-list { display: flex; flex-direction: column; gap: 10px; }
+  .live-tracker-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--primary);
+    letter-spacing: 0.12em;
+    margin-bottom: 0.45rem;
+  }
+  .live-period {
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: clamp(1.35rem, 3.5vw, 2rem);
+    font-weight: 800;
+    color: var(--t-fg);
+    margin-bottom: 0.35rem;
+    letter-spacing: -0.02em;
+  }
+  .live-countdown {
+    font-size: 0.9rem;
+    color: var(--gold);
+    font-weight: 700;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: calc(var(--radius) + 4px);
+    padding: 1.15rem 1.2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 5%, transparent) inset;
+  }
+  .card-title {
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 750;
+    margin: 0 0 0.9rem;
+    color: var(--t-fg);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  .card-title #todayDateStr {
+    font-size: 0.72rem;
+    color: var(--primary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+  }
+  .period-list { display: flex; flex-direction: column; gap: 0.5rem; }
   .period-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 14px 18px;
-    background: rgba(255,255,255,0.015);
+    gap: 0.75rem;
+    padding: 0.8rem 0.95rem;
+    background: color-mix(in srgb, var(--t-bg) 55%, transparent);
     border: 1px solid var(--card-border);
     border-radius: var(--radius);
-    transition: all 0.25s ease;
+    transition: border-color var(--t-motion,.2s), background var(--t-motion,.2s);
   }
   .period-row.active {
     background: var(--primary-dim);
     border-color: var(--primary-border);
-    box-shadow: 0 0 15px rgba(129,182,76,0.1);
   }
   .period-row.active .period-name { color: var(--primary); font-weight: 700; }
-  .period-name { font-size: 14px; font-weight: 600; color: #fff; font-family: 'Syne', sans-serif; display: flex; align-items: center; gap: 8px; }
+  .period-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--t-fg);
+    font-family: 'Outfit', system-ui, sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
   .period-name .pulse {
     display: none;
     width: 6px;
     height: 6px;
     border-radius: 50%;
     background: var(--primary);
-    box-shadow: 0 0 8px var(--primary);
+    box-shadow: 0 0 8px color-mix(in srgb, var(--t-ac) 55%, transparent);
     animation: blink 1.2s infinite;
   }
   .period-row.active .period-name .pulse { display: block; }
-  @keyframes blink { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
-
-  .period-time { font-size: 13px; color: #aaa; text-align: right; }
-  .period-duration { font-size: 10px; color: #666; font-style: italic; margin-top: 2px; }
-
-  /* Other Days Section */
-  .days-section { margin-top: 40px; }
-  .section-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
+  @keyframes blink { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+  .period-time { font-size: 0.82rem; color: var(--t-fg2); text-align: right; }
+  .period-duration { font-size: 0.7rem; color: color-mix(in srgb, var(--t-fg2) 80%, transparent); margin-top: 0.15rem; }
+  .days-section { margin-top: 0.5rem; }
+  .section-title {
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 1rem;
+    font-weight: 750;
+    color: var(--t-fg);
+    margin: 0 0 0.85rem;
+    letter-spacing: -0.01em;
+  }
   .day-accordion {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: 12px;
-    margin-bottom: 12px;
+    border-radius: var(--radius);
+    margin-bottom: 0.55rem;
     overflow: hidden;
-    transition: all 0.2s;
+    transition: border-color var(--t-motion,.15s);
   }
-  .day-accordion.open { border-color: rgba(255, 255, 255, 0.15); }
+  .day-accordion.open { border-color: color-mix(in srgb, var(--t-bd) 55%, var(--t-ac) 45%); }
   .day-trigger {
-    padding: 16px 20px;
+    padding: 0.85rem 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
-    font-family: 'Syne', sans-serif;
-    font-size: 14px;
+    font-family: 'Outfit', system-ui, sans-serif;
+    font-size: 0.9rem;
     font-weight: 700;
-    transition: background 0.2s;
+    color: var(--t-fg);
+    transition: background var(--t-motion,.15s);
   }
-  .day-trigger:hover { background: rgba(255, 255, 255, 0.02); }
-  .day-trigger span.indicator { color: var(--primary); font-weight: 900; transition: transform 0.2s; }
+  .day-trigger:hover { background: color-mix(in srgb, var(--t-bg3) 55%, transparent); }
+  .day-trigger span.indicator {
+    color: var(--primary);
+    font-weight: 900;
+    transition: transform var(--t-motion,.15s);
+  }
   .day-accordion.open .day-trigger span.indicator { transform: rotate(90deg); }
-
   .day-content {
     display: none;
-    padding: 20px;
+    padding: 0.9rem 1rem 1.05rem;
     border-top: 1px solid var(--card-border);
-    background: rgba(0, 0, 0, 0.1);
+    background: color-mix(in srgb, var(--t-bg) 40%, transparent);
   }
   .day-accordion.open .day-content { display: block; }
+  @media (max-width: 719px) {
+    .lunch-selector { align-items: stretch; }
+    .lunch-options { width: 100%; }
+    .lunch-btn { flex: 1; text-align: center; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .period-row, .lunch-btn, .day-trigger, .day-trigger span.indicator { transition: none !important; }
+    .period-name .pulse { animation: none !important; opacity: 1; }
+  }
 </style>
 </head>
-<body>
-<div class="wrap">
-  <a href="/" class="back-btn">← Back to Hub</a>
-  
-  <header class="header">
-    <div class="badge">Woodcreek WHS Schedule</div>
-    <h1>Bell <span>Schedules.</span></h1>
-    <p class="subtitle">Live tracking & period schedules for Woodcreek High School (WHS)</p>
+<body class="bell-page">
+<main class="app-main bell-shell">
+  <header class="page-head app-fade-in">
+    <div class="kicker">Woodcreek WHS Schedule</div>
+    <h1>Bell <span>Schedules</span></h1>
+    <p class="subline">Live tracking and period schedules for Woodcreek High School (WHS).</p>
   </header>
 
-  <!-- Customizable Lunch Picker -->
   <section class="lunch-selector">
-    <span class="lunch-selector-label">My Lunch Assignment:</span>
+    <span class="lunch-selector-label">My Lunch Assignment</span>
     <div class="lunch-options">
       <button id="lunch1Btn" class="lunch-btn active" onclick="setLunch(1)">Lunch 1</button>
       <button id="lunch2Btn" class="lunch-btn" onclick="setLunch(2)">Lunch 2</button>
     </div>
   </section>
 
-  <!-- Live Dynamic Period Tracker -->
   <section id="liveTracker" class="live-tracker" style="display: none;">
     <div class="live-tracker-title">Live Tracking</div>
     <div id="livePeriodName" class="live-period">Period 1</div>
     <div id="liveTimeLeft" class="live-countdown">14 minutes remaining</div>
   </section>
 
-  <!-- Today's Schedule -->
-  <main class="card">
+  <section class="card">
     <div class="card-title">
       <span id="todayDayName">Today's Schedule</span>
-      <span style="font-size: 11px; color: var(--primary); text-transform: uppercase;" id="todayDateStr">Monday</span>
+      <span id="todayDateStr">Monday</span>
     </div>
-    
-    <div id="todayScheduleContainer" class="period-list">
-      <!-- Injected by JS -->
-    </div>
-  </main>
+    <div id="todayScheduleContainer" class="period-list"></div>
+  </section>
 
-  <!-- Weekly Accordion (Other Days) -->
   <section class="days-section">
     <h2 class="section-title">Weekly Schedule Views</h2>
 
@@ -315,8 +344,7 @@
       </div>
     </div>
   </section>
-
-</div>
+</main>
 
 <script>
   let activeLunch = 1; // 1 or 2
@@ -651,6 +679,7 @@
     setInterval(updateLiveTracker, 1000); // refresh every 1s
   });
 </script>
+
 <script src="/cookie-consent.js" defer></script>
 </body>
 </html>

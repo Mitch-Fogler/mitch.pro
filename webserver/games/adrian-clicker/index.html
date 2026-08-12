@@ -5,20 +5,22 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Adrian Clicker 2.0 — mitch.pro</title>
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
   <script src="/api.js"></script>
   <style>
-    
     :root {
       --ac: #ff7b35;
-      --panel: rgba(255, 255, 255, 0.03);
-      --line: rgba(255, 255, 255, 0.08);
+      --panel: var(--t-bg2, rgba(255, 255, 255, 0.03));
+      --line: var(--t-bd, rgba(255, 255, 255, 0.08));
       --green: #4ade80;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Outfit', sans-serif;
-      background: var(--t-bg, #060608);
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background-color: var(--t-bg, #060608);
+      background-image: var(--t-bg-img-layer, var(--t-bgr, none));
+      background-attachment: fixed;
       color: var(--t-fg, #fff);
       min-height: 100vh;
       display: flex;
@@ -38,8 +40,8 @@
     .main-panel {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 24px;
-      padding: 40px;
+      border-radius: var(--t-radius, 16px);
+      padding: clamp(24px, 4vw, 40px);
       text-align: center;
       backdrop-filter: blur(20px);
       display: flex;
@@ -49,20 +51,33 @@
     }
 
     .stats { margin-bottom: 30px; }
-    .points { font-family: 'Syne', sans-serif; font-size: 3.5rem; line-height: 1; color: var(--ac); margin-bottom: 8px; }
-    .mitchcoins { font-size: 1.2rem; color: var(--t-fg2); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .points {
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: clamp(2.4rem, 6vw, 3.5rem);
+      line-height: 1;
+      color: var(--ac);
+      margin-bottom: 8px;
+      font-weight: 800;
+    }
+    .mitchcoins {
+      font-size: 1.05rem;
+      color: var(--t-fg2);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
 
     .click-target {
-      width: 320px;
-      height: 320px;
+      width: min(320px, 78vw);
+      height: min(320px, 78vw);
       border-radius: 50%;
       cursor: pointer;
       position: relative;
-      transition: transform 0.05s;
+      transition: transform var(--t-motion, 0.05s);
       user-select: none;
       -webkit-user-drag: none;
       border: 6px solid var(--ac);
-      box-shadow: 0 0 60px rgba(255, 123, 53, 0.25);
+      box-shadow: 0 0 40px color-mix(in srgb, var(--ac) 28%, transparent);
       overflow: hidden;
       margin: 20px 0;
     }
@@ -78,25 +93,32 @@
     .upgrade-card {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: var(--t-radius, 12px);
       padding: 16px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition:
+        border-color var(--t-motion, 0.2s),
+        background var(--t-motion, 0.2s),
+        transform var(--t-motion, 0.2s);
       display: flex;
       flex-direction: column;
       gap: 4px;
       position: relative;
     }
-    .upgrade-card:hover { border-color: var(--ac); background: rgba(255, 123, 53, 0.06); transform: translateX(5px); }
+    .upgrade-card:hover {
+      border-color: var(--ac);
+      background: color-mix(in srgb, var(--ac) 8%, transparent);
+      transform: translateX(4px);
+    }
     .upgrade-card.disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
-    .upgrade-name { font-weight: 800; font-size: 1.05rem; }
+    .upgrade-name { font-family: 'Outfit', system-ui, sans-serif; font-weight: 700; font-size: 1.05rem; }
     .upgrade-desc { font-size: 0.85rem; color: var(--t-fg2); }
-    .upgrade-cost { font-weight: 900; color: var(--ac); font-size: 0.95rem; margin-top: 6px; }
+    .upgrade-cost { font-weight: 800; color: var(--ac); font-size: 0.95rem; margin-top: 6px; }
 
     .payout-progress {
       width: 100%;
       height: 6px;
-      background: rgba(255,255,255,0.05);
+      background: color-mix(in srgb, var(--t-fg) 8%, transparent);
       border-radius: 3px;
       margin-top: 15px;
       overflow: hidden;
@@ -105,16 +127,34 @@
       height: 100%;
       background: var(--ac);
       width: 0%;
-      transition: width 0.3s;
+      transition: width var(--t-motion, 0.3s);
     }
 
-    h2 { font-family: 'Syne', sans-serif; margin-bottom: 12px; font-size: 1.5rem; text-transform: uppercase; letter-spacing: -0.02em; }
+    h2 {
+      font-family: 'Outfit', system-ui, sans-serif;
+      margin-bottom: 12px;
+      font-size: 1.35rem;
+      text-transform: uppercase;
+      letter-spacing: -0.02em;
+    }
 
     #back-btn {
       position: fixed; top: 20px; left: 20px;
-      background: var(--panel); border: 1px solid var(--line); color: #fff;
-      padding: 8px 16px; border-radius: 10px; text-decoration: none; font-weight: 700;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--t-fg);
+      padding: 8px 16px;
+      border-radius: var(--t-radius, 10px);
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 0.88rem;
       z-index: 100;
+      transition: border-color var(--t-motion, 0.15s), background var(--t-motion, 0.15s);
+    }
+    #back-btn:hover {
+      border-color: var(--t-bda, var(--ac));
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+      color: var(--t-fg);
     }
 
     .claim-btn {
@@ -123,28 +163,29 @@
       color: #fff;
       border: none;
       padding: 12px 24px;
-      border-radius: 12px;
-      font-weight: 900;
+      border-radius: var(--t-radius, 12px);
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-weight: 800;
       cursor: pointer;
       text-transform: uppercase;
       letter-spacing: 0.05em;
-      transition: all 0.2s;
+      transition: transform var(--t-motion, 0.2s), filter var(--t-motion, 0.2s);
     }
-    .claim-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
-    .claim-btn:active { transform: scale(0.95); }
+    .claim-btn:hover { transform: scale(1.04); filter: brightness(1.08); }
+    .claim-btn:active { transform: scale(0.96); }
 
     .amt-btn {
       background: transparent;
       border: none;
       color: var(--t-fg2);
       font-size: 0.75rem;
-      font-weight: 800;
+      font-weight: 700;
       padding: 4px 8px;
       border-radius: 6px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: color var(--t-motion, 0.2s), background var(--t-motion, 0.2s);
     }
-    .amt-btn:hover { color: #fff; }
+    .amt-btn:hover { color: var(--t-fg); }
     .amt-btn.active { background: var(--ac); color: #fff; }
 
     .tech-bar {
@@ -153,7 +194,7 @@
       gap: 8px;
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: var(--t-radius, 12px);
       padding: 10px;
       margin-bottom: 20px;
       min-height: 64px;
@@ -164,45 +205,62 @@
       height: 44px;
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: var(--t-radius, 8px);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 1.5rem;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: border-color var(--t-motion, 0.2s), transform var(--t-motion, 0.2s), background var(--t-motion, 0.2s);
       position: relative;
     }
-    .tech-icon:hover { border-color: var(--ac); background: rgba(255,123,53,0.1); transform: scale(1.1); }
+    .tech-icon:hover {
+      border-color: var(--ac);
+      background: color-mix(in srgb, var(--ac) 12%, transparent);
+      transform: scale(1.06);
+    }
     .tech-icon.disabled { opacity: 0.3; cursor: not-allowed; filter: grayscale(1); }
-    
+
     .tech-tooltip {
       position: absolute;
       bottom: 110%;
       left: 50%;
       transform: translateX(-50%);
-      background: #000;
+      background: var(--t-bg, #0a0a10);
       border: 1px solid var(--line);
       padding: 10px 15px;
-      border-radius: 12px;
+      border-radius: var(--t-radius, 10px);
       width: 220px;
       font-size: 0.85rem;
       pointer-events: none;
       opacity: 0;
-      transition: all 0.2s;
+      transition: opacity var(--t-motion, 0.2s), bottom var(--t-motion, 0.2s);
       z-index: 100;
       text-align: center;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+      color: var(--t-fg);
     }
     .tech-icon:hover .tech-tooltip { opacity: 1; bottom: 120%; }
 
     @media (max-width: 800px) {
       .container { grid-template-columns: 1fr; }
       .main-panel { position: static; }
+      body { padding: 72px 14px 28px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .upgrade-card:hover,
+      .claim-btn:hover,
+      .tech-icon:hover { transform: none; }
     }
   </style>
 </head>
-<body>
+<body data-shell="off">
   <a href="/games/" id="back-btn">← Back</a>
 
   <header style="text-align: center; margin-bottom: 40px;">

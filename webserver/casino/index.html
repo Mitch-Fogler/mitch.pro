@@ -3,83 +3,64 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>The Casino</title>
+<title>The Casino — mitch.pro</title>
 <script src="/theme.js"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    min-height: 100vh;
-    background: var(--t-bg);
-    color: var(--t-fg);
-    font-family: var(--t-font, "Segoe UI", system-ui, -apple-system, sans-serif);
+  .casino-main {
+    width: min(82rem, 100%);
   }
-  body::before {
+  .casino-page {
+    position: relative;
+  }
+  .casino-page::before {
     content: "";
     position: fixed;
     inset: 0;
-    z-index: 0;
+    z-index: -1;
     pointer-events: none;
     background:
       linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px),
-      radial-gradient(circle at 18% 20%, rgba(250,204,21,.16), transparent 32%),
-      radial-gradient(circle at 80% 12%, rgba(56,189,248,.13), transparent 30%),
-      radial-gradient(circle at 50% 92%, rgba(74,222,128,.12), transparent 34%);
+      radial-gradient(circle at 18% 20%, color-mix(in srgb, #facc15 16%, transparent), transparent 32%),
+      radial-gradient(circle at 80% 12%, color-mix(in srgb, var(--t-ac) 13%, transparent), transparent 30%),
+      radial-gradient(circle at 50% 92%, color-mix(in srgb, #4ade80 12%, transparent), transparent 34%);
     background-size: 42px 42px, 42px 42px, auto, auto, auto;
   }
   button, input, select { font: inherit; }
-  a { color: inherit; text-decoration: none; }
-  .shell {
-    position: relative;
-    z-index: 1;
-    width: min(1320px, 100%);
-    margin: 0 auto;
-    padding: 22px 14px 46px;
-  }
-  .topbar {
+  .page-head {
     display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 12px;
-    align-items: center;
-    margin-bottom: 14px;
+    grid-template-columns: 1fr auto;
+    gap: 1rem;
+    align-items: end;
+    margin-bottom: 1rem;
   }
-  .home, .wallet, .hero, .betbox, .card, .panel {
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(1.85rem, 4vw, 2.75rem);
+    letter-spacing: -0.03em;
+    text-transform: none;
+    text-shadow: none;
+    color: var(--t-fg);
+    font-weight: 800;
+  }
+  .page-sub {
+    margin: 0.5rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.9rem;
+    line-height: 1.55;
+    max-width: 40rem;
+    font-weight: 500;
+  }
+  .wallet, .hero, .betbox, .card, .cpanel {
     border: 1px solid var(--t-bd);
     border-radius: var(--t-radius, 8px);
     background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.025)), rgba(6,8,14,.78);
     box-shadow: 0 18px 55px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.06);
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
-  }
-  .home {
-    min-height: 42px;
-    padding: 0 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--t-fg2);
-    font-weight: 900;
-  }
-  .brand {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    color: #fff;
-    font-weight: 950;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-  }
-  .mark {
-    width: 34px;
-    height: 34px;
-    display: grid;
-    place-items: center;
-    border-radius: 9px;
-    color: #111;
-    background: linear-gradient(135deg, #facc15, #fff6a8);
-    box-shadow: 0 0 28px rgba(250,204,21,.34);
   }
   .wallet {
     min-height: 42px;
@@ -132,22 +113,19 @@
     letter-spacing: .08em;
     text-transform: uppercase;
   }
-  h1 {
-    color: #fff;
-    font-size: 6rem;
-    line-height: .86;
-    font-weight: 950;
-    text-transform: uppercase;
-    letter-spacing: 0;
-    text-shadow: 0 18px 45px rgba(0,0,0,.44);
+  .hero-copy h2 {
+    margin: 0;
+    color: var(--t-fg);
+    font-size: clamp(1.35rem, 3vw, 1.85rem);
+    letter-spacing: -0.02em;
   }
-  .hero p {
-    max-width: 660px;
-    margin-top: 16px;
+  .hero-copy p {
+    max-width: 40rem;
+    margin-top: 0.75rem;
     color: var(--t-fg2);
-    font-size: 1.04rem;
+    font-size: 0.95rem;
     line-height: 1.55;
-    font-weight: 650;
+    font-weight: 500;
   }
   .betbox {
     padding: 16px;
@@ -162,7 +140,7 @@
     letter-spacing: .08em;
     text-transform: uppercase;
   }
-  .betbox h2, .panel h2 {
+  .betbox h2, .cpanel h2 {
     color: #fff;
     font-size: 1.22rem;
     line-height: 1.15;
@@ -200,11 +178,12 @@
     background: rgba(255,255,255,.06);
     color: var(--t-fg);
     padding: 8px 12px;
-    font-weight: 900;
+    font-family: inherit;
+    font-weight: 700;
     cursor: pointer;
-    transition: transform .15s ease, border-color .15s ease, background .15s ease, opacity .15s ease;
+    transition: transform var(--t-motion, .15s) ease, border-color var(--t-motion, .15s) ease, background var(--t-motion, .15s) ease, opacity var(--t-motion, .15s) ease;
   }
-  .btn:hover, .choice:hover, .home:hover, .keno-cell:hover {
+  .btn:hover, .choice:hover, .keno-cell:hover {
     transform: translateY(-1px);
     border-color: var(--t-bda);
     background: rgba(255,255,255,.095);
@@ -395,9 +374,9 @@
     display: grid;
     gap: 14px;
     position: sticky;
-    top: 14px;
+    top: 4.5rem;
   }
-  .panel { padding: 16px; }
+  .cpanel { padding: 16px; }
   .result {
     min-height: 220px;
     display: grid;
@@ -520,14 +499,22 @@
     .side { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 780px) {
-    .topbar, .hero { grid-template-columns: 1fr; }
-    .brand { justify-content: flex-start; }
-    .wallet { justify-content: space-between; }
+    .page-head, .hero { grid-template-columns: 1fr; }
+    .wallet { justify-content: space-between; width: 100%; }
     .side { grid-template-columns: 1fr; }
-    h1 { font-size: 4.2rem; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .btn, .choice, .keno-cell, .toast, .opt-btn { transition: none !important; }
+  }
+  .theme-no-motion .btn,
+  .theme-no-motion .choice,
+  .theme-no-motion .keno-cell,
+  .theme-no-motion .toast,
+  .theme-no-motion .opt-btn {
+    transition: none !important;
   }
   /* Light Theme Adjustments */
-  .theme-light body::before {
+  .theme-light .casino-page::before {
     background:
       linear-gradient(rgba(0,0,0,.035) 1px, transparent 1px),
       linear-gradient(90deg, rgba(0,0,0,.025) 1px, transparent 1px),
@@ -536,20 +523,19 @@
       radial-gradient(circle at 50% 92%, rgba(74,222,128,.08), transparent 34%);
     background-size: 42px 42px, 42px 42px, auto, auto, auto;
   }
-  .theme-light .home,
   .theme-light .wallet,
   .theme-light .hero,
   .theme-light .betbox,
   .theme-light .card,
-  .theme-light .panel {
+  .theme-light .cpanel {
     background: linear-gradient(135deg, rgba(255,255,255,.9), rgba(255,255,255,.78));
     border-color: var(--t-bd);
     box-shadow: 0 12px 38px rgba(0,0,0,.08);
   }
-  .theme-light .brand,
-  .theme-light h1,
+  .theme-light .page-head h1,
+  .theme-light .hero-copy h2,
   .theme-light .betbox h2,
-  .theme-light .panel h2,
+  .theme-light .cpanel h2,
   .theme-light .wallet strong,
   .theme-light .room-card strong,
   .theme-light .stat strong,
@@ -558,11 +544,6 @@
   .theme-light .hist strong,
   .theme-light .bet-info strong {
     color: var(--t-fg) !important;
-  }
-  .theme-light .mark {
-    color: #fff;
-    background: linear-gradient(135deg, var(--t-ac), var(--t-ac2));
-    box-shadow: 0 0 20px var(--t-gls);
   }
   .theme-light input,
   .theme-light select {
@@ -604,23 +585,25 @@
   }
 </style>
 </head>
-<body>
-<main class="shell">
-  <nav class="topbar">
-    <a class="home" href="/">Back Home</a>
-    <div class="brand"><span class="mark">$</span><span>The Casino</span></div>
+<body class="casino-page">
+<main class="app-main casino-main">
+  <header class="page-head">
+    <div>
+      <h1>The Casino</h1>
+      <p class="page-sub">Play with site coins, watch your wallet, and check recent rounds before the next spin, draw, roll, or hand.</p>
+    </div>
     <div class="wallet"><span>Balance</span><strong id="balance">Loading...</strong></div>
-  </nav>
+  </header>
 
   <section class="hero">
-    <div>
+    <div class="hero-copy">
       <div class="chips">
         <span class="pill">Virtual coins only</span>
         <span class="pill">Live games</span>
         <span class="pill">History saved</span>
       </div>
-      <h1>Casino</h1>
-      <p>Play with site coins, watch your wallet, and check recent rounds before the next spin, draw, roll, or hand.</p>
+      <h2>Pick a room. Place a wager.</h2>
+      <p>Slots, tables, and quick games — all on virtual coins. History stays in the sidebar.</p>
     </div>
     <aside class="betbox">
       <div class="kicker">Bankroll</div>
@@ -765,11 +748,11 @@
     </div>
 
     <aside class="side">
-      <section class="panel">
+      <section class="cpanel">
         <h2>Global Gambling Feed</h2>
         <div id="global-feed" class="history"><div class="empty">Loading feed...</div></div>
       </section>
-      <section class="panel">
+      <section class="cpanel">
         <h2>Recent History</h2>
         <div id="history" class="history"><div class="empty">Loading history...</div></div>
       </section>
@@ -778,7 +761,7 @@
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <div id="result" class="result" style="display:none;"><div><div class="title">Choose a room.</div><div class="meta">Results, payouts, cards, numbers, and symbols show here.</div></div></div>
-<div id="blackjack-table" class="panel" style="display:none;"><div class="empty">No active hand.</div></div>
+<div id="blackjack-table" class="cpanel" style="display:none;"><div class="empty">No active hand.</div></div>
 
 <script>
 (function () {
