@@ -856,6 +856,15 @@
         </select>
       </div>
       <div class="field">
+        <label>Surface Material</label>
+        <select id="materialSelect">
+          <option value="auto">Auto (solid)</option>
+          <option value="glass">Liquid glass</option>
+          <option value="solid">Solid</option>
+        </select>
+        <div class="field-hint">Auto is solid. Liquid glass uses frosted blur when the browser supports backdrop-filter (including Firefox).</div>
+      </div>
+      <div class="field">
         <label>Appearance Tools</label>
         <div class="mini-actions">
           <button class="soft-btn primary" type="button" id="applyAppearanceBtn">Apply now</button>
@@ -1548,7 +1557,7 @@ var DISPLAY_CONFIG_KEY  = '_prefDisplay';
 var SYNC_CONFIG_KEY     = '_prefSync';
 var TOOLS_CONFIG_KEY    = '_prefTools';
 var PREF_BACKUP_KEYS    = [VFX_CONFIG_KEY, PRIVACY_CONFIG_KEY, AI_CONFIG_KEY, HOME_CONFIG_KEY, DISPLAY_CONFIG_KEY, SYNC_CONFIG_KEY, TOOLS_CONFIG_KEY];
-var THEME_PREF_KEYS     = ['accent','dim','bgmode','bgpos','density','radius','font','motion'];
+var THEME_PREF_KEYS     = ['accent','dim','bgmode','bgpos','density','radius','font','motion','material'];
 
 function load(key, def) {
   try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || '{}')); }
@@ -1878,6 +1887,8 @@ function syncAppearanceControls() {
   document.getElementById('radiusSelect').value = getThemePref('radius', 'soft');
   document.getElementById('fontSelect').value = getThemePref('font', 'system');
   document.getElementById('motionSelect').value = getThemePref('motion', 'on');
+  var mat = document.getElementById('materialSelect');
+  if (mat) mat.value = getThemePref('material', 'auto');
 }
 
 function selectThemePreset(btn) {
@@ -1929,15 +1940,18 @@ function setupAppearanceControls() {
     applyAppearanceLive('Background dim updated.');
   });
 
-  ['bgModeSelect','bgPosSelect','densitySelect','radiusSelect','fontSelect','motionSelect'].forEach(function(id) {
-    document.getElementById(id).addEventListener('change', function() {
+  ['bgModeSelect','bgPosSelect','densitySelect','radiusSelect','fontSelect','motionSelect','materialSelect'].forEach(function(id) {
+    var node = document.getElementById(id);
+    if (!node) return;
+    node.addEventListener('change', function() {
       var map = {
         bgModeSelect: 'bgmode',
         bgPosSelect: 'bgpos',
         densitySelect: 'density',
         radiusSelect: 'radius',
         fontSelect: 'font',
-        motionSelect: 'motion'
+        motionSelect: 'motion',
+        materialSelect: 'material'
       };
       setThemePref(map[id], this.value);
       if (id === 'motionSelect') {

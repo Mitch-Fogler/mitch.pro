@@ -7,16 +7,16 @@
 
   var T = {
     void: {
-      name: 'Void',
-      bg: '#07070f', bg2: 'rgba(255,255,255,0.04)', bg3: 'rgba(255,255,255,0.025)',
-      fg: '#e0e0f0', fg2: 'rgba(200,200,220,0.65)',
-      ac: '#7c3aed', ac2: '#3b82f6', ac3: '#f472b6',
-      bd: 'rgba(255,255,255,0.08)', bda: 'rgba(124,58,237,0.45)',
-      gl: 'rgba(124,58,237,0.5)', gls: 'rgba(124,58,237,0.15)',
-      gr: 'linear-gradient(135deg,#c084fc,#60a5fa,#f472b6)',
-      bgr: 'radial-gradient(ellipse at 20% 20%,rgba(120,40,200,.15) 0%,transparent 60%),radial-gradient(ellipse at 80% 80%,rgba(0,180,255,.12) 0%,transparent 60%),radial-gradient(ellipse at 60% 10%,rgba(255,0,180,.08) 0%,transparent 50%)',
-      bgImg: 'https://i.pinimg.com/originals/51/a3/73/51a373c8546364bf1aaaaa65d369e328.gif',
-      sw: '#7c3aed',
+      name: 'Editorial',
+      bg: '#0c0d10', bg2: '#14161c', bg3: '#1b1e26',
+      fg: '#eef0f4', fg2: '#9aa3b2',
+      ac: '#c8a45a', ac2: '#d4b56e', ac3: '#e8d5a3',
+      bd: 'rgba(255,255,255,0.08)', bda: 'rgba(200,164,90,0.45)',
+      gl: 'rgba(200,164,90,0.42)', gls: 'rgba(200,164,90,0.14)',
+      gr: 'linear-gradient(135deg,#e8d5a3,#c8a45a,#8f7340)',
+      bgr: 'radial-gradient(ellipse at 50% -10%,rgba(200,164,90,.10) 0%,transparent 55%),radial-gradient(ellipse at 100% 100%,rgba(255,255,255,.03) 0%,transparent 45%),linear-gradient(160deg,#0c0d10,#101218 55%,#0a0b0e)',
+      bgImg: '',
+      sw: '#c8a45a',
     },
     cyber: {
       name: 'Cyber',
@@ -372,6 +372,29 @@
       r.setProperty('--t-gr', 'linear-gradient(135deg,' + accent + ',var(--t-ac3,#60a5fa))');
     }
     document.documentElement.classList.toggle('theme-no-motion', motion === 'off');
+    applyMaterialMode();
+  }
+
+  function canUseGlass() {
+    try {
+      return !!(window.CSS && CSS.supports && (
+        CSS.supports('backdrop-filter', 'blur(8px)') ||
+        CSS.supports('-webkit-backdrop-filter', 'blur(8px)')
+      ));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function applyMaterialMode() {
+    var pref = getPref('material', 'auto');
+    if (pref !== 'glass' && pref !== 'solid' && pref !== 'auto') pref = 'auto';
+    // Auto always solid. Explicit glass works wherever backdrop-filter is supported (incl. Firefox).
+    var useGlass = pref === 'glass' ? canUseGlass() : false;
+    document.documentElement.classList.toggle('theme-glass', useGlass);
+    document.documentElement.classList.toggle('theme-solid', !useGlass);
+    document.documentElement.setAttribute('data-material', useGlass ? 'glass' : 'solid');
+    document.documentElement.setAttribute('data-material-pref', pref);
   }
 
   function getEffectiveBgImg(themeName) {
@@ -382,16 +405,12 @@
   }
 
   function applyBgImg(url) {
-    // Animated GIF backgrounds crush Firefox and low-DPI Chromebooks.
-    if (IS_FIREFOX_FAMILY && /\.gif(?:[?#]|$)/i.test(String(url || ''))) {
-      url = '';
-    }
     var r = document.documentElement.style;
     if (url) {
       r.setProperty('--t-bg-img-layer',
         'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5))),url(' + JSON.stringify(url) + ')');
     } else {
-      r.setProperty('--t-bg-img-layer', IS_FIREFOX_FAMILY ? 'none' : 'var(--t-bgr, none)');
+      r.setProperty('--t-bg-img-layer', 'var(--t-bgr, none)');
     }
     var inp = document.getElementById('theme-bg-input');
     if (inp) inp.value = getBgImgCookie();
@@ -444,14 +463,6 @@
       'font-family:inherit;font-size:.88rem;font-weight:500;transition:all var(--t-motion,.15s)}' +
     'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}' +
     '.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}' +
-    '.theme-firefox body{background-attachment:scroll!important;}' +
-    '.theme-firefox .glass-card,.theme-firefox .card,.theme-firefox #theme-panel,.theme-firefox #sw-notif-panel,.theme-firefox #_ap,' +
-    '.theme-firefox .app-topbar,.theme-firefox .panel,.theme-firefox .side-section,.theme-firefox #member-side-rail' +
-    '{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
-    '.theme-firefox.theme-light .glass-card,.theme-firefox.theme-light .card,.theme-firefox.theme-light #theme-panel,.theme-firefox.theme-light #sw-notif-panel,.theme-firefox.theme-light #_ap' +
-    '{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;}' +
-    '.theme-firefox button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn)' +
-    '{transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s)!important;}' +
     'hr{border:none;border-top:1px solid var(--t-bd)}' +
     'a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}' +
     'label{color:var(--t-fg2)}';
@@ -831,9 +842,14 @@
       ['on', 'Animations on'],
       ['off', 'Animations off']
     ], 'motion'));
+    panel.appendChild(mkSelect('material', [
+      ['auto', 'Material: Auto (solid)'],
+      ['glass', 'Material: Liquid glass'],
+      ['solid', 'Material: Solid']
+    ], 'surface material'));
 
     var resetCustom = mkBtn('reset customization', 'Reset visual customization controls', function () {
-      ['accent','dim','bgmode','bgpos','density','radius','font','motion'].forEach(function(k) {
+      ['accent','dim','bgmode','bgpos','density','radius','font','motion','material'].forEach(function(k) {
         try { localStorage.removeItem('theme_' + k); } catch (_) {}
       });
       panel.remove();
@@ -986,7 +1002,24 @@
   if (document.body) { addWatermark(); }
   else { document.addEventListener('DOMContentLoaded', addWatermark); }
 
-  window.__theme = { apply: applyTheme, get: getCookie, themes: T, setBg: function(url) { setBgImgCookie(url); applyBgImg(url); } };
+  window.__theme = {
+    apply: applyTheme,
+    get: getCookie,
+    themes: T,
+    setBg: function(url) { setBgImgCookie(url); applyBgImg(url); },
+    applyMaterial: applyMaterialMode,
+    canUseGlass: canUseGlass
+  };
+
+  // Pointer-follow tilt on liquid-glass pages
+  (function ensureLiquidGlassJs() {
+    if (document.getElementById('liquid-glass-js')) return;
+    var s = document.createElement('script');
+    s.id = 'liquid-glass-js';
+    s.src = '/liquid-glass.js';
+    s.defer = true;
+    (document.head || document.documentElement).appendChild(s);
+  })();
 
   // ── Visual Effects ──────────────────────────────────────────────────────────
   function applyVFX() {
@@ -997,7 +1030,6 @@
     
     var any = vfx.snow || vfx.stars || vfx.rain || vfx.particles;
     if (!any) return;
-    if (IS_FIREFOX_FAMILY && vfx.firefoxEffects !== true) return;
 
     var canvas = document.createElement('canvas');
     canvas.id = 'mitch-vfx-canvas';
@@ -1007,7 +1039,7 @@
     var ctx = canvas.getContext('2d');
     var w, h;
     function resize() {
-      var dpr = IS_FIREFOX_FAMILY ? 1 : Math.min(window.devicePixelRatio || 1, 2);
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = canvas.width = Math.floor(window.innerWidth * dpr);
       h = canvas.height = Math.floor(window.innerHeight * dpr);
       canvas.style.width = window.innerWidth + 'px';

@@ -1,6 +1,29 @@
-/* mitch.pro shared page chrome — uses theme.js tokens (--t-*) */
+/* mitch.pro shared page chrome — uses theme.js tokens (--t-*)
+   Default palette (Void) is editorial dark: graphite + sparse gold accent. */
 
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+
+:root {
+  --t-bg: #0c0d10;
+  --t-bg2: #14161c;
+  --t-bg3: #1b1e26;
+  --t-fg: #eef0f4;
+  --t-fg2: #9aa3b2;
+  --t-ac: #c8a45a;
+  --t-ac2: #d4b56e;
+  --t-ac3: #e8d5a3;
+  --t-bd: rgba(255, 255, 255, 0.08);
+  --t-bda: rgba(200, 164, 90, 0.45);
+  --t-gl: rgba(200, 164, 90, 0.42);
+  --t-gls: rgba(200, 164, 90, 0.14);
+  --t-gr: linear-gradient(135deg, #e8d5a3, #c8a45a, #8f7340);
+  --t-bgr: radial-gradient(ellipse at 50% -10%, rgba(200, 164, 90, 0.1) 0%, transparent 55%),
+    radial-gradient(ellipse at 100% 100%, rgba(255, 255, 255, 0.03) 0%, transparent 45%),
+    linear-gradient(160deg, #0c0d10, #101218 55%, #0a0b0e);
+  --t-radius: 8px;
+  --t-motion: 0.15s;
+  --sheet-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
 
 *,
 *::before,
@@ -321,10 +344,9 @@ h1, h2, h3, h4, h5, h6 {
 .panel {
   padding: 1rem 1.1rem;
   border: 1px solid var(--t-bd);
-  border-radius: var(--t-radius, 8px);
-  background:
-    linear-gradient(160deg, color-mix(in srgb, var(--t-bg2) 92%, transparent), color-mix(in srgb, var(--t-bg3) 80%, transparent));
-  box-shadow: 0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset;
+  border-radius: calc(var(--t-radius, 8px) + 4px);
+  background: var(--t-bg2);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
 }
 
 .panel-title {
@@ -488,3 +510,190 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 
+
+/* —— Liquid glass material system ——
+   Applied only when html.theme-glass (never on Firefox — see theme.js).
+   Solid surfaces remain the default / theme-solid path. */
+
+:root {
+  --glass-blur: 0px;
+  --glass-sat: 100%;
+  --glass-fill: color-mix(in srgb, var(--t-bg) 92%, var(--t-bg2));
+  --glass-fill-strong: color-mix(in srgb, var(--t-bg) 96%, var(--t-bg2));
+  --glass-stroke: var(--t-bd);
+  --glass-spec: inset 0 1px 0 color-mix(in srgb, #fff 7%, transparent);
+  --glass-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  --glass-tint: color-mix(in srgb, var(--t-ac) 14%, transparent);
+  --press-scale: 0.98;
+  --sheet-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+html.theme-glass {
+  --glass-blur: 22px;
+  --glass-sat: 165%;
+  --glass-fill: color-mix(in srgb, var(--t-bg) 48%, transparent);
+  --glass-fill-strong: color-mix(in srgb, var(--t-bg) 62%, transparent);
+  --glass-stroke: color-mix(in srgb, var(--t-bd) 70%, color-mix(in srgb, var(--t-ac) 18%, #fff));
+  --glass-spec:
+    inset 0 1px 0 color-mix(in srgb, #fff 18%, transparent),
+    inset 0 -1px 0 color-mix(in srgb, #000 12%, transparent);
+  --glass-shadow:
+    0 18px 48px rgba(0, 0, 0, 0.34),
+    0 0 0 1px color-mix(in srgb, var(--t-ac) 10%, transparent);
+}
+
+.liquid-glass,
+html.theme-glass .panel,
+html.theme-glass .app-topbar,
+html.theme-glass .glass-card {
+  background: var(--glass-fill);
+  border: 1px solid var(--glass-stroke);
+  box-shadow: var(--glass-spec), var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+}
+
+html.theme-glass .app-topbar {
+  border-bottom-color: transparent;
+  border-radius: 0 0 calc(var(--t-radius, 8px) + 10px) calc(var(--t-radius, 8px) + 10px);
+  margin: 0.45rem 0.65rem 0;
+  width: calc(100% - 1.3rem);
+  align-self: center;
+  background:
+    linear-gradient(180deg, var(--glass-tint), transparent 42%),
+    var(--glass-fill);
+}
+
+html.theme-glass .app-nav a[aria-current="page"] {
+  background: color-mix(in srgb, var(--t-ac) 18%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--t-ac) 28%, transparent);
+}
+
+html.theme-glass .btn-primary {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, #fff 16%, transparent), transparent 45%),
+    color-mix(in srgb, var(--t-ac) 82%, #000 8%);
+  border-color: color-mix(in srgb, var(--t-ac) 55%, #fff 12%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent),
+    0 10px 28px color-mix(in srgb, var(--t-ac) 28%, transparent);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+html.theme-glass .btn-ghost {
+  background: color-mix(in srgb, var(--t-bg) 35%, transparent);
+  border-color: color-mix(in srgb, var(--t-bd) 80%, #fff 10%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Pointer-follow tilt — liquid-glass.js sets inline transform while hovering */
+html.theme-glass .btn,
+html.theme-glass .btn-primary,
+html.theme-glass .btn-ghost,
+html.theme-glass .auth-tab-btn,
+html.theme-glass a.site-link {
+  transform-style: preserve-3d;
+  transform-origin: center center;
+}
+
+html.theme-glass .btn.lg-tilting,
+html.theme-glass .btn-primary.lg-tilting,
+html.theme-glass .btn-ghost.lg-tilting,
+html.theme-glass .auth-tab-btn.lg-tilting,
+html.theme-glass a.site-link.lg-tilting {
+  box-shadow:
+    0 14px 28px rgba(0, 0, 0, 0.28),
+    0 0 0 1px color-mix(in srgb, var(--t-ac) 22%, transparent);
+  position: relative;
+}
+
+html.theme-glass .btn:active,
+html.theme-glass .btn-primary:active,
+html.theme-glass .btn-ghost:active,
+html.theme-glass .app-nav a:active,
+html.theme-glass a.site-link:active {
+  transform: scale(var(--press-scale));
+}
+
+html.theme-no-motion.theme-glass .btn,
+html.theme-no-motion.theme-glass .btn-primary,
+html.theme-no-motion.theme-glass .btn-ghost,
+html.theme-no-motion.theme-glass .auth-tab-btn,
+html.theme-no-motion.theme-glass a.site-link {
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-glass .btn,
+  html.theme-glass .btn-primary,
+  html.theme-glass .btn-ghost,
+  html.theme-glass .auth-tab-btn,
+  html.theme-glass a.site-link {
+    transform: none !important;
+  }
+}
+
+html.theme-glass .panel {
+  background:
+    linear-gradient(160deg, var(--glass-tint), transparent 55%),
+    var(--glass-fill);
+}
+
+/* Specular glide — intentional, not continuous aurora */
+html.theme-glass .liquid-glass::after,
+html.theme-glass .panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    color-mix(in srgb, #fff 10%, transparent) 48%,
+    transparent 62%
+  );
+  opacity: 0;
+  transform: translateX(-30%);
+  transition: opacity 0.45s var(--sheet-ease), transform 0.7s var(--sheet-ease);
+}
+
+html.theme-glass .liquid-glass,
+html.theme-glass .panel {
+  position: relative;
+  overflow: hidden;
+}
+
+html.theme-glass .liquid-glass:hover::after,
+html.theme-glass .panel:hover::after {
+  opacity: 1;
+  transform: translateX(30%);
+}
+
+html.theme-solid .liquid-glass::after,
+html.theme-solid .panel::after,
+html.theme-no-motion .liquid-glass::after,
+html.theme-no-motion .panel::after {
+  content: none !important;
+}
+
+html.theme-solid .app-topbar,
+html.theme-solid .panel,
+html.theme-solid .glass-card,
+html.theme-solid .btn-primary,
+html.theme-solid .btn-ghost {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-glass .liquid-glass::after,
+  html.theme-glass .panel::after {
+    transition: none !important;
+    opacity: 0 !important;
+  }
+}

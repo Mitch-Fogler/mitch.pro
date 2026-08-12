@@ -42,16 +42,12 @@
     text-shadow: 0 0 2px rgba(0,0,0,0.3);
   }
   @keyframes rainbow_move { to { background-position: 200% center; } }
-  .theme-firefox .name.rainbow_name .name-inner {
-    animation: none !important;
-    background-size: 100% auto !important;
-  }
   .l-badge { font-size: 10px; margin-left: 5px; vertical-align: middle; }
   .badge-verified { color: #3b82f6; }
   .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
   .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 0 2px; border-radius: 2px; font-weight: 800; font-size: 7px; }
 
-  body{background-color:var(--t-bg);color:var(--t-fg);font-family:'Plus Jakarta Sans',var(--t-font),system-ui,-apple-system,sans-serif;background-image:var(--t-bg-img-layer,none)!important;background-size:var(--t-bg-size,cover)!important;background-position:var(--t-bg-pos,center)!important;background-repeat:var(--t-bg-repeat,no-repeat)!important;background-attachment:scroll!important;}input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){background:var(--t-bg2);color:var(--t-ac);border:1px solid var(--t-bda);padding:7px 16px;border-radius:var(--t-radius,8px);cursor:pointer;font-family:inherit;font-size:.88rem;font-weight:500;transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s),transform var(--t-motion,.15s)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}.theme-firefox body{background-attachment:scroll!important}.theme-firefox .glass-card,.theme-firefox .card{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}hr{border:none;border-top:1px solid var(--t-bd)}a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}label{color:var(--t-fg2)}</style>
+  body{background-color:var(--t-bg);color:var(--t-fg);font-family:'Plus Jakarta Sans',var(--t-font),system-ui,-apple-system,sans-serif;background-image:var(--t-bg-img-layer,none)!important;background-size:var(--t-bg-size,cover)!important;background-position:var(--t-bg-pos,center)!important;background-repeat:var(--t-bg-repeat,no-repeat)!important;background-attachment:scroll!important;}input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){background:var(--t-bg2);color:var(--t-ac);border:1px solid var(--t-bda);padding:7px 16px;border-radius:var(--t-radius,8px);cursor:pointer;font-family:inherit;font-size:.88rem;font-weight:500;transition:background-color var(--t-motion,.15s),border-color var(--t-motion,.15s),color var(--t-motion,.15s),opacity var(--t-motion,.15s),transform var(--t-motion,.15s)}button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}hr{border:none;border-top:1px solid var(--t-bd)}a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}label{color:var(--t-fg2)}</style>
 <script>
 async function loadSites() {
   try {
@@ -333,6 +329,7 @@ function parseSites(text) {
 
   updateHomeCounts(entries, categories);
   renderQuickActions(entries);
+  renderPopularStrip(candidateEntries);
 
   var sortedCats = Object.keys(categories).sort(function(a, b) {
     if (a === 'Popular & Frequent') return -1;
@@ -347,12 +344,14 @@ function parseSites(text) {
   for (var j = 0; j < sortedCats.length; j++) {
     var catName = sortedCats[j];
     if (categories[catName].length === 0) continue;
+    // Popular lives in the hub strip — avoid duplicating the full list below
+    if (catName === 'Popular & Frequent') continue;
     var catDiv = document.createElement('section');
     catDiv.className = 'category-group' + (catName === 'Admin' ? ' admin-category' : '');
     catDiv.dataset.category = catName.toLowerCase();
     var catTitle = document.createElement('div');
     catTitle.className = 'category-title';
-    catTitle.innerHTML = '<span>' + escText(catName) + '</span><small>' + categories[catName].length + ' → ' + escText(describeCategory(catName)) + '</small>';
+    catTitle.innerHTML = '<span>' + escText(catName) + '</span><small>' + categories[catName].length + ' · ' + escText(describeCategory(catName)) + '</small>';
     catDiv.appendChild(catTitle);
     
     var gridDiv = document.createElement('div');
@@ -365,6 +364,77 @@ function parseSites(text) {
   filterHomeLinks();
   window.cachedEntries = entries;
   updateRecommendation(entries);
+}
+
+function renderPopularStrip(entries) {
+  var strip = document.getElementById('popular-strip');
+  var wrap = document.getElementById('popular-hub');
+  if (!strip) return;
+  strip.innerHTML = '';
+  var list = (entries || []).slice(0, 12);
+  if (!list.length) {
+    strip.innerHTML = '<p class="popular-empty">Your frequent pages will show up here.</p>';
+    if (wrap) wrap.hidden = false;
+    return;
+  }
+  list.forEach(function(e) {
+    strip.appendChild(makeSiteLink(e.type, e.href, e.label, 'popular-site-link hub-popular-link'));
+  });
+  if (wrap) wrap.hidden = false;
+}
+
+function openMembersRail(event) {
+  if (event) event.preventDefault();
+  var rail = document.getElementById('member-side-rail');
+  if (!rail) {
+    window.location.href = '/friends/';
+    return;
+  }
+  try {
+    if (window.matchMedia('(min-width: 981px)').matches) {
+      rail.classList.add('is-open');
+      rail.classList.remove('is-collapsed');
+      rail.setAttribute('aria-expanded', 'true');
+      var handle = document.getElementById('member-side-rail-collapsed-handle');
+      if (handle) handle.setAttribute('aria-expanded', 'true');
+    } else {
+      rail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  } catch (err) {
+    window.location.href = '/friends/';
+  }
+}
+
+function focusAllPages(event) {
+  if (event) event.preventDefault();
+  var target = document.getElementById('home-catalog') || document.getElementById('links');
+  if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function syncHubDailyChip(state) {
+  var chip = document.getElementById('hub-daily-chip');
+  if (!chip) return;
+  if (!state) {
+    chip.hidden = true;
+    return;
+  }
+  chip.hidden = false;
+  if (state.canClaim) {
+    chip.textContent = 'Claim +' + state.nextReward;
+    chip.classList.add('is-claimable');
+    chip.onclick = function(e) {
+      e.preventDefault();
+      claimDailyReward();
+    };
+  } else {
+    chip.textContent = 'Streak ' + state.streak;
+    chip.classList.remove('is-claimable');
+    chip.onclick = function(e) {
+      e.preventDefault();
+      var w = document.getElementById('daily-login-widget');
+      if (w) w.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+  }
 }
 
 function updateRecommendation(entries) {
@@ -472,6 +542,11 @@ function filterHomeLinks() {
     });
     group.style.display = groupVisible ? '' : 'none';
     visibleCount += groupVisible;
+  });
+  document.querySelectorAll('#popular-strip a.site-link').forEach(function(link) {
+    var visible = !q || (link.dataset.search || '').includes(q);
+    link.classList.toggle('is-filter-hidden', !visible);
+    if (visible) visibleCount++;
   });
   if (empty) empty.style.display = visibleCount ? 'none' : '';
 }
@@ -1001,6 +1076,7 @@ function escText(t) {
       if (!r.ok) {
         msgLabel.textContent = 'Sign in to claim daily login rewards.';
         btn.disabled = true;
+        syncHubDailyChip(null);
         return;
       }
       var state = await r.json();
@@ -1022,6 +1098,7 @@ function escText(t) {
       } else {
         btn.textContent = 'Claimed Today';
       }
+      syncHubDailyChip(state);
 
       // Update progress bar (0 to 60 days)
       var displayStreak = state.streak;
@@ -1032,6 +1109,7 @@ function escText(t) {
     } catch(e) {
       msgLabel.textContent = 'Failed to load daily login reward state.';
       btn.disabled = true;
+      syncHubDailyChip(null);
     }
   }
 
@@ -1580,11 +1658,9 @@ function initFriendsSystem() {
   loadPendingFriendRequests();
   sendPresenceHeartbeat();
 
-  var slowPolling = document.documentElement.classList.contains('theme-firefox')
-   ;
-  setInterval(loadFriends, slowPolling ? 45000 : 15000);
-  setInterval(loadPendingFriendRequests, slowPolling ? 45000 : 15000);
-  setInterval(sendPresenceHeartbeat, slowPolling ? 60000 : 30000);
+  setInterval(loadFriends, 15000);
+  setInterval(loadPendingFriendRequests, 15000);
+  setInterval(sendPresenceHeartbeat, 30000);
 }
 
 async function initHome() {
@@ -1602,9 +1678,7 @@ async function initHome() {
   setupAdminNotificationMode();
   loadOnlineMembers();
   initMemberSideRail();
-  var slowPolling = document.documentElement.classList.contains('theme-firefox')
-   ;
-  setInterval(loadOnlineMembers, slowPolling ? 45000 : 15000);
+  setInterval(loadOnlineMembers, 15000);
   initFriendsSystem();
 }
 
@@ -2269,13 +2343,13 @@ if (document.readyState === 'loading') {
 
   .home-grid {
     display: grid;
-    grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+    grid-template-columns: 1fr;
     gap: 16px;
     align-items: start;
   }
 
-  body.home-no-quick .home-grid {
-    grid-template-columns: 1fr;
+  body.home-no-quick .home-rewards-row {
+    display: none !important;
   }
 
   body.home-compact #mainpage {
@@ -3088,29 +3162,6 @@ if (document.readyState === 'loading') {
 
   }
 
-  .theme-firefox body::before,
-  .theme-firefox body::after {
-    display: none !important;
-    animation: none !important;
-    filter: none !important;
-  }
-
-  .theme-firefox .glass-card,
-  .theme-firefox.theme-light .glass-card,
-  .theme-firefox .home-title-block,
-  .theme-firefox.theme-light .home-title-block,
-  .theme-firefox .home-quick-panel,
-  .theme-firefox.theme-light .home-quick-panel,
-  .theme-firefox #member-side-rail,
-  .theme-firefox.theme-light #member-side-rail,
-  .theme-firefox #preferences-card,
-  .theme-firefox.theme-light #preferences-card,
-  .theme-firefox #stats-bar {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28) !important;
-  }
-
   /* Elevated Glassmorphic Main Card Container */
   .glass-card {
     background: color-mix(in srgb, var(--t-bg) 90%, var(--t-bg2)) !important;
@@ -3120,6 +3171,92 @@ if (document.readyState === 'loading') {
       inset 0 1px 0 rgba(255, 255, 255, 0.06) !important;
     border-radius: 24px !important;
     padding: 26px !important;
+  }
+
+  /* Liquid glass home layers (Chromium / theme-glass only) */
+  html.theme-glass .glass-card {
+    background:
+      linear-gradient(165deg, color-mix(in srgb, var(--t-ac) 10%, transparent), transparent 42%),
+      color-mix(in srgb, var(--t-bg) 52%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--t-bd) 65%, #fff 14%) !important;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fff 16%, transparent),
+      0 22px 56px rgba(0, 0, 0, 0.42) !important;
+    backdrop-filter: blur(24px) saturate(170%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(170%) !important;
+  }
+
+  html.theme-glass .home-title-block,
+  html.theme-glass #greeting-card,
+  html.theme-glass .home-quick-panel,
+  html.theme-glass #preferences-card,
+  html.theme-glass #stats-bar,
+  html.theme-glass .home-search-box {
+    background:
+      linear-gradient(160deg, color-mix(in srgb, var(--t-ac) 12%, transparent), transparent 50%),
+      color-mix(in srgb, var(--t-bg) 46%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--t-bd) 70%, #fff 12%) !important;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent),
+      0 12px 32px rgba(0, 0, 0, 0.22) !important;
+    backdrop-filter: blur(18px) saturate(160%) !important;
+    -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+  }
+
+  html.theme-glass a.site-link {
+    background: color-mix(in srgb, var(--t-bg) 42%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--t-bd) 75%, #fff 10%) !important;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fff 10%, transparent),
+      0 8px 20px rgba(0, 0, 0, 0.16) !important;
+    backdrop-filter: blur(14px) saturate(150%) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(150%) !important;
+    transition:
+      transform 0.18s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      background-color 0.18s ease !important;
+  }
+
+  html.theme-glass a.site-link:hover {
+    border-color: color-mix(in srgb, var(--t-ac) 40%, var(--t-bd)) !important;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fff 16%, transparent),
+      0 14px 30px color-mix(in srgb, var(--t-ac) 16%, transparent) !important;
+  }
+
+  html.theme-glass a.site-link:active {
+    transform: scale(0.98);
+  }
+
+  html.theme-glass #home-games-mega {
+    background:
+      linear-gradient(135deg, color-mix(in srgb, var(--t-ac) 28%, transparent), color-mix(in srgb, var(--t-bg) 40%, transparent)) !important;
+    backdrop-filter: blur(16px) saturate(160%) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(160%) !important;
+  }
+
+  html.theme-glass #member-side-rail {
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--t-ac) 10%, transparent), transparent 30%),
+      color-mix(in srgb, var(--t-bg) 55%, transparent) !important;
+    border-color: color-mix(in srgb, var(--t-bd) 70%, #fff 12%) !important;
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, #fff 12%, transparent),
+      -10px 0 40px rgba(0, 0, 0, 0.35) !important;
+    backdrop-filter: blur(22px) saturate(165%) !important;
+    -webkit-backdrop-filter: blur(22px) saturate(165%) !important;
+    transition: transform 0.38s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)), box-shadow 0.3s ease !important;
+  }
+
+  html.theme-solid .glass-card,
+  html.theme-solid .home-title-block,
+  html.theme-solid #greeting-card,
+  html.theme-solid a.site-link,
+  html.theme-solid #member-side-rail,
+  html.theme-solid #home-games-mega {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
   }
 
   /* Home chrome — token-forward, quiet surfaces */
@@ -3370,7 +3507,7 @@ if (document.readyState === 'loading') {
       box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35) !important;
       backdrop-filter: none !important;
       -webkit-backdrop-filter: none !important;
-      transition: transform 0.22s ease, box-shadow 0.22s ease !important;
+      transition: transform 0.38s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)), box-shadow 0.28s ease !important;
       cursor: default;
     }
     #member-side-rail:not(.is-open):not(:hover) .side-section {
@@ -3471,29 +3608,6 @@ if (document.readyState === 'loading') {
       font-size: 13px !important;
       padding: 6px 12px !important;
     }
-  }
-
-  .theme-firefox #member-side-rail,
-  .theme-firefox .side-section {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-  }
-
-  .theme-firefox .glass-card {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background: color-mix(in srgb, var(--t-bg) 92%, var(--t-bg2)) !important;
-    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28) !important;
-  }
-
-  .theme-firefox a.site-link:hover {
-    transform: none !important;
-    box-shadow: none !important;
-  }
-
-  .theme-firefox body::before,
-  .theme-firefox body::after {
-    display: none !important;
   }
 
   @media (max-width: 980px) {
@@ -3656,7 +3770,7 @@ if (document.readyState === 'loading') {
     }
 
     #member-side-rail {
-      order: 3 !important; /* Put member side rail at the bottom below main content */
+      order: 3 !important;
       position: static !important;
       transform: none !important;
       width: min(620px, calc(100vw - 16px)) !important;
@@ -3665,16 +3779,31 @@ if (document.readyState === 'loading') {
       display: grid !important;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
       gap: 12px !important;
-      padding: 0 10px !important;
+      padding: 14px !important;
+      border-radius: 18px !important;
     }
 
     #member-side-rail .side-section {
       margin: 0 !important;
       min-width: 0;
+      padding: 10px !important;
     }
 
     #member-side-rail .side-list {
-      max-height: 180px !important;
+      max-height: 220px !important;
+    }
+
+    #member-side-rail .member-chip,
+    #member-side-rail .online-chip {
+      min-height: 34px !important;
+      font-size: 13px !important;
+      padding: 6px 12px !important;
+    }
+
+    #member-side-rail #friend-req-input,
+    #member-side-rail #friend-req-submit-btn {
+      min-height: 42px !important;
+      font-size: 14px !important;
     }
 
     #mainpage {
@@ -4101,6 +4230,493 @@ if (document.readyState === 'loading') {
   }
 </style>
 
+<style id="home-editorial-theme">
+/* Homepage hub layout — colors from sitewide editorial tokens (--t-*) */
+
+body.home-editorial #mainpage.home-editorial-main {
+  width: min(920px, 100%);
+  margin: 0 auto;
+  padding: clamp(1.25rem, 4vh, 2.5rem) clamp(1rem, 3vw, 1.5rem) 3rem;
+}
+
+body.home-editorial .home-shell.glass-card {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+  max-width: none !important;
+}
+
+body.home-editorial .home-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  padding-bottom: 1.75rem;
+  border-bottom: 1px solid var(--t-bd);
+  animation: home-ed-in 0.55s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+}
+
+@keyframes home-ed-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+body.home-editorial .home-title-block {
+  text-align: left;
+  margin: 0;
+  padding: 0;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+body.home-editorial .home-kicker {
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t-fg2);
+}
+
+body.home-editorial .home-brand {
+  margin: 0;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-size: clamp(2.6rem, 8vw, 3.6rem);
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.95;
+  color: var(--t-fg);
+}
+
+body.home-editorial .home-lede {
+  margin: 0.7rem 0 0;
+  max-width: 36ch;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  color: var(--t-fg2);
+}
+
+body.home-editorial .home-greeting-slim {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+body.home-editorial .home-greeting-slim .greeting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.75rem;
+  width: 100%;
+  justify-content: space-between;
+}
+
+body.home-editorial #greeting-text {
+  color: var(--t-fg2);
+  font-size: 0.9rem;
+}
+
+body.home-editorial #greeting-email {
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--t-fg);
+}
+
+body.home-editorial #greeting-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--t-fg2);
+  font-size: 0.82rem;
+}
+
+body.home-editorial .home-games-mega-hidden,
+body.home-editorial .home-rec-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+body.home-editorial .home-search-row {
+  margin: 0;
+}
+
+body.home-editorial .home-search-box {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--t-bd);
+  border-radius: 10px;
+  background: var(--t-bg2);
+  transition: border-color 0.2s ease, box-shadow 0.25s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+body.home-editorial .home-search-box:focus-within {
+  border-color: color-mix(in srgb, var(--t-ac) 55%, var(--t-bd));
+  box-shadow: 0 0 0 3px var(--t-gls);
+}
+
+body.home-editorial .home-search-box span {
+  color: var(--t-fg2);
+  font-size: 1rem;
+}
+
+body.home-editorial #home-search {
+  flex: 1;
+  min-height: 2.4rem;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--t-fg) !important;
+  font-size: 0.95rem;
+  padding: 0 !important;
+}
+
+body.home-editorial #home-search-clear {
+  border: 1px solid var(--t-bd);
+  background: transparent;
+  color: var(--t-fg2);
+  border-radius: 6px;
+  min-height: 1.9rem;
+  padding: 0 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+body.home-editorial .home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+body.home-editorial .hub-action {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.55rem;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--t-bd);
+  background: var(--t-bg2);
+  color: var(--t-fg);
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.2s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)), border-color 0.2s ease, background 0.2s ease;
+}
+
+body.home-editorial .hub-action:hover {
+  border-color: color-mix(in srgb, var(--t-ac) 40%, var(--t-bd));
+  transform: translateY(-1px);
+  color: var(--t-fg);
+}
+
+body.home-editorial .hub-action-primary {
+  background: var(--t-ac);
+  color: #0c0d10;
+  border-color: color-mix(in srgb, var(--t-ac) 70%, #fff 20%);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--t-ac) 28%, transparent);
+  font-weight: 800;
+}
+
+body.home-editorial .hub-action-primary:hover {
+  color: #0c0d10;
+  background: var(--t-ac2, var(--t-ac));
+  border-color: var(--t-ac2, var(--t-ac));
+  transform: translateY(-1px);
+}
+
+body.home-editorial .hub-daily.is-claimable {
+  border-color: color-mix(in srgb, var(--t-ac) 50%, var(--t-bd));
+  color: var(--t-ac);
+  background: var(--t-gls);
+}
+
+body.home-editorial .popular-hub {
+  margin-top: 0.35rem;
+}
+
+body.home-editorial .popular-hub-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+body.home-editorial .popular-hub-head h2 {
+  margin: 0;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+body.home-editorial .popular-hub-head p {
+  margin: 0.2rem 0 0;
+  color: var(--t-fg2);
+  font-size: 0.8rem;
+}
+
+body.home-editorial .popular-see-all {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--t-ac);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+body.home-editorial .popular-see-all:hover {
+  border-bottom-color: var(--t-ac);
+}
+
+body.home-editorial .popular-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 0.55rem;
+}
+
+body.home-editorial .popular-strip a.site-link.hub-popular-link {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 3rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--t-bd);
+  border-radius: 10px;
+  background: var(--t-bg2);
+  color: var(--t-fg);
+  text-decoration: none;
+  transition: border-color 0.2s ease, transform 0.2s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)), background 0.2s ease;
+}
+
+body.home-editorial .popular-strip a.site-link.hub-popular-link:hover {
+  border-color: color-mix(in srgb, var(--t-ac) 45%, var(--t-bd));
+  transform: translateY(-2px);
+  background: var(--t-bg3);
+}
+
+body.home-editorial .popular-strip a.site-link.hub-popular-link .lbl {
+  font-weight: 650;
+  font-size: 0.84rem;
+  letter-spacing: -0.01em;
+}
+
+body.home-editorial .popular-strip a.site-link.hub-popular-link .link-arrow {
+  margin-left: auto;
+  opacity: 0.45;
+}
+
+body.home-editorial .popular-empty {
+  margin: 0;
+  color: var(--t-fg2);
+  font-size: 0.85rem;
+}
+
+body.home-editorial .home-nudge {
+  margin-top: 0.85rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--t-bd);
+  border-radius: 8px;
+  background: var(--t-bg2);
+  font-size: 0.8rem;
+  color: var(--t-fg2);
+}
+
+body.home-editorial .home-below {
+  padding-top: 1.5rem;
+  margin-top: 0.25rem;
+}
+
+body.home-editorial .home-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.85rem;
+  color: var(--t-fg2);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+body.home-editorial .home-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin-bottom: 1.1rem;
+}
+
+body.home-editorial .home-toolbar > * {
+  border: 1px solid var(--t-bd) !important;
+  background: var(--t-bg2) !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+/* Full-width rewards strip — does not shrink All Pages */
+body.home-editorial .home-rewards-row,
+.home-rewards-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  width: 100%;
+}
+
+body.home-editorial .home-links-full,
+.home-links-full {
+  width: 100%;
+  min-width: 0;
+}
+
+body.home-editorial .home-links-panel,
+body.home-editorial .home-rewards-row .daily-login-card,
+body.home-editorial .home-rewards-row #top-games {
+  border: 1px solid var(--t-bd);
+  border-radius: 12px;
+  background: var(--t-bg2);
+  padding: 0.85rem;
+}
+
+body.home-editorial .daily-login-inline,
+.daily-login-inline {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.85rem 1.1rem;
+  align-items: center;
+  padding: 0.85rem 1rem !important;
+}
+
+body.home-editorial .daily-login-inline-main,
+.daily-login-inline-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+body.home-editorial .daily-login-inline-head,
+.daily-login-inline-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+}
+
+body.home-editorial .daily-login-inline-meta,
+.daily-login-inline-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+body.home-editorial .daily-login-inline .daily-login-msg,
+.daily-login-inline .daily-login-msg {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--t-fg2);
+}
+
+body.home-editorial .daily-login-inline .daily-login-progress-container,
+.daily-login-inline .daily-login-progress-container {
+  margin: 0;
+  max-width: 420px;
+}
+
+body.home-editorial .daily-login-inline .daily-login-claim-btn,
+.daily-login-inline .daily-login-claim-btn {
+  min-height: 2.6rem;
+  min-width: 9.5rem;
+  margin: 0;
+  white-space: nowrap;
+}
+
+body.home-editorial .panel-heading,
+body.home-editorial .links-heading,
+body.home-editorial .category-title {
+  color: var(--t-fg);
+  border-color: var(--t-bd) !important;
+}
+
+body.home-editorial .category-title small,
+body.home-editorial .panel-heading small {
+  color: var(--t-fg2);
+}
+
+body.home-editorial a.site-link {
+  border-color: var(--t-bd) !important;
+  background: var(--t-bg3) !important;
+}
+
+html.theme-glass body.home-editorial .home-search-box,
+html.theme-glass body.home-editorial .hub-action:not(.hub-action-primary),
+html.theme-glass body.home-editorial .popular-strip a.site-link.hub-popular-link,
+html.theme-glass body.home-editorial .daily-login-inline {
+  background: color-mix(in srgb, var(--t-bg2) 55%, transparent) !important;
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html.theme-glass body.home-editorial .hub-action-primary {
+  background: var(--t-ac) !important;
+  color: #0c0d10 !important;
+  border-color: color-mix(in srgb, var(--t-ac) 70%, #fff 20%) !important;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--t-ac) 28%, transparent) !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+@media (max-width: 719px) {
+  body.home-editorial .home-toolbar {
+    grid-template-columns: 1fr;
+  }
+  body.home-editorial .popular-hub-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  body.home-editorial .home-brand {
+    font-size: clamp(2.3rem, 12vw, 3rem);
+  }
+  body.home-editorial .daily-login-inline,
+  .daily-login-inline {
+    grid-template-columns: 1fr;
+  }
+  body.home-editorial .daily-login-inline .daily-login-claim-btn,
+  .daily-login-inline .daily-login-claim-btn {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.home-editorial .home-hub {
+    animation: none !important;
+  }
+}
+</style>
+
 <!-- AUTH_INJECT_START -->
 <style>
   #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
@@ -4109,7 +4725,7 @@ if (document.readyState === 'loading') {
 <!-- AUTH_INJECT_END -->
 <style>#_ab{position:fixed;bottom:55px;left:12px;z-index:2147483630;width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;background:#81b64c;color:#fff;font-size:.65rem;font-weight:700;letter-spacing:.02em;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 14px rgba(0,0,0,.45);transition:transform .15s,box-shadow .15s;font-family:system-ui,sans-serif;}#_ab:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(0,0,0,.55);}#_ap{position:fixed;bottom:103px;left:12px;z-index:2147483629;width:310px;max-height:440px;display:flex;flex-direction:column;background:#1e1a17;border:1px solid #3d3a37;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.65);overflow:hidden;transform:translateY(10px) scale(.97);opacity:0;pointer-events:none;transition:transform .18s ease,opacity .18s ease;}#_ap.vis{transform:none;opacity:1;pointer-events:all;}#_ah{display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #3d3a37;font-family:system-ui,sans-serif;font-size:.8rem;font-weight:700;color:#e8e6e3;gap:6px;}#_ah .logo{color:#81b64c;font-size:.75rem;font-weight:900;}#_ah .title{flex:1;}#_ahx{background:none;border:none;color:#555;cursor:pointer;font-size:.9rem;padding:2px 5px;border-radius:4px;line-height:1;}#_ahx:hover{color:#e8e6e3;}#_am{flex:1;overflow-y:auto;padding:9px 11px;display:flex;flex-direction:column;gap:7px;font-family:system-ui,sans-serif;font-size:.79rem;line-height:1.55;min-height:60px;}._mb{max-width:88%;padding:6px 10px;border-radius:10px;word-break:break-word;}._mu{background:#302e2b;color:#e8e6e3;align-self:flex-end;border-radius:10px 10px 2px 10px;white-space:pre-wrap;}._ma{background:#272522;color:#bababa;align-self:flex-start;border-radius:10px 10px 10px 2px;}._ma p{margin:0 0 .4em;}._ma p:last-child{margin:0;}._ma strong{color:#e8e6e3;font-weight:700;}._ma em{font-style:italic;}._ma code{background:#1a1815;color:#81b64c;padding:1px 4px;border-radius:3px;font-size:.88em;font-family:monospace;}._ma pre{background:#1a1815;padding:7px 9px;border-radius:6px;overflow-x:auto;margin:.3em 0;}._ma pre code{background:none;padding:0;color:#c8c5c0;font-size:.85em;}._ma ul,._ma ol{margin:.2em 0 .2em 1.2em;padding:0;}._ma li{margin:.1em 0;}._ma h1,._ma h2,._ma h3{color:#e8e6e3;font-weight:700;margin:.3em 0 .15em;line-height:1.2;}._ma h1{font-size:1em;}._ma h2{font-size:.95em;}._ma h3{font-size:.9em;}._ma a{color:#81b64c;text-decoration:underline;}._ma hr{border:none;border-top:1px solid #3d3a37;margin:.4em 0;}._merr{color:#e57373;font-size:.73rem;align-self:center;padding:3px 8px;background:rgba(192,57,43,.12);border-radius:6px;}._mnotice{color:#f0c040;font-size:.69rem;align-self:center;padding:3px 8px;background:rgba(240,192,64,.08);border-radius:6px;}#_ai{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #3d3a37;align-items:flex-end;}#_at{flex:1;resize:none;background:#272522;border:1px solid #3d3a37;color:#e8e6e3;border-radius:8px;padding:6px 8px;font-size:.79rem;font-family:system-ui,sans-serif;outline:none;line-height:1.4;max-height:80px;overflow-y:auto;}#_at:focus{border-color:#81b64c;}#_as{background:#81b64c;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:.79rem;font-weight:700;cursor:pointer;flex-shrink:0;}#_as:disabled{opacity:.35;cursor:default;}</style></head>
 
-<body data-shell="off">
+<body data-shell="off" class="home-editorial">
 
 <div id="admin-action-wrap">
   <a id="admin-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/admin/" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Admin</a>
@@ -4176,15 +4792,16 @@ if (document.readyState === 'loading') {
   </div>
 </div>
 
-<div id="mainpage">
-  <div class="glass-card">
-    <div class="home-hero">
+<div id="mainpage" class="home-editorial-main">
+  <div class="glass-card home-shell">
+    <header class="home-hub">
       <div class="home-title-block">
         <p class="home-kicker">Woodcreek student portal</p>
         <h1 class="home-brand">mitch.pro</h1>
         <p class="home-lede">Games, pages, and your account — one calm place.</p>
       </div>
-      <div id="greeting-card">
+
+      <div id="greeting-card" class="home-greeting-slim">
         <div class="greeting-row">
           <div class="greeting-copy">
             <span id="greeting-text">Good evening,</span>
@@ -4192,14 +4809,15 @@ if (document.readyState === 'loading') {
           </div>
           <span id="greeting-clock">6:44 PM</span>
         </div>
-        <a id="home-games-mega" data-task5-old="https://mitch.dnswish.com/" href="/games/" onclick="openHomeHref(event, '/games/');">
+        <!-- Keep games mega + recommendation for JS hooks; visually tucked as secondary -->
+        <a id="home-games-mega" class="home-games-mega-hidden" data-task5-old="https://mitch.dnswish.com/" href="/games/" onclick="openHomeHref(event, '/games/');" tabindex="-1" aria-hidden="true">
           <span class="mega-game-copy">
             <strong>Play Games</strong>
             <small id="home-games-day">Sunday, May 17</small>
           </span>
           <span class="mega-game-arrow">→</span>
         </a>
-        <div id="game-recommendation" class="game-rec">
+        <div id="game-recommendation" class="game-rec home-rec-hidden" aria-hidden="true">
           <div class="game-rec-copy">
             <span id="recommended-game-reason" class="game-rec-reason">Recommended for you</span>
             <span id="recommended-game-name" class="game-rec-name">Jeopardy Battle</span>
@@ -4207,67 +4825,86 @@ if (document.readyState === 'loading') {
           <a id="recommended-game-link" href="/games/jeopardy-battle/" class="btn btn-ghost game-rec-cta">Play Now</a>
         </div>
       </div>
-    </div>
 
-    <div id="happy-hour-nudge">
+      <div class="home-search-row">
+        <div class="home-search-box">
+          <span aria-hidden="true">⌕</span>
+          <input id="home-search" type="search" placeholder="Search pages, games, chat..." autocomplete="off">
+          <button id="home-search-clear" type="button">Clear</button>
+        </div>
+      </div>
+
+      <nav class="home-actions" aria-label="Quick actions">
+        <a class="hub-action hub-action-primary" href="/games/" onclick="openHomeHref(event, '/games/');">Games</a>
+        <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');">Shop</a>
+        <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)">Friends</button>
+        <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily</button>
+      </nav>
+
+      <section id="popular-hub" class="popular-hub" aria-label="Popular and frequent">
+        <div class="popular-hub-head">
+          <div>
+            <h2>Popular &amp; Frequent</h2>
+            <p>Your most used pages — always one click away.</p>
+          </div>
+          <a class="popular-see-all" href="#home-catalog" onclick="focusAllPages(event)">See all pages</a>
+        </div>
+        <div id="popular-strip" class="popular-strip">
+          <p class="popular-empty">Loading…</p>
+        </div>
+      </section>
+    </header>
+
+    <div id="happy-hour-nudge" class="home-nudge">
       <span id="happy-hour-pulse" class="pulse-glow-cyan"></span>
       <span id="happy-hour-text"></span>
     </div>
 
-    <div id="achievement-nudge">&#9733; Keep going! You're close to your next achievement.</div>
+    <div id="achievement-nudge" class="home-nudge">&#9733; Keep going! You're close to your next achievement.</div>
 
-    <div class="home-status-row">
-      <span id="home-link-count">23 links</span>
-      <span id="home-admin-count">Standard user view</span>
-    </div>
-
-    <div class="home-toolbar">
-      <div id="abToggleBar">
-        <label class="toggle-switch">
-          <input type="checkbox" id="abToggle">
-          <span class="toggle-slider"></span>
-        </label>
-        <span>about:blank</span>
+    <div class="home-below" id="home-catalog">
+      <div class="home-status-row">
+        <span id="home-link-count">23 links</span>
+        <span id="home-admin-count">Standard user view</span>
       </div>
-      <a id="preferences-card" data-task5-old="https://mitch.dnswish.com/" href="/preferences.html">
-        <span>&#9881; Preferences</span>
-        <small>Theme, homepage, controls</small>
-      </a>
-      <div id="stats-bar"></div>
-    </div>
 
-    <div class="home-search-row">
-      <div class="home-search-box">
-        <span>&#8981;</span>
-        <input id="home-search" type="search" placeholder="Search pages, games, chat..." autocomplete="off">
-        <button id="home-search-clear" type="button">Clear</button>
+      <div class="home-toolbar">
+        <div id="abToggleBar">
+          <label class="toggle-switch">
+            <input type="checkbox" id="abToggle">
+            <span class="toggle-slider"></span>
+          </label>
+          <span>about:blank</span>
+        </div>
+        <a id="preferences-card" data-task5-old="https://mitch.dnswish.com/" href="/preferences.html">
+          <span>&#9881; Preferences</span>
+          <small>Theme, homepage, controls</small>
+        </a>
+        <div id="stats-bar"></div>
       </div>
-    </div>
 
-    <div class="home-grid">
-      <aside class="home-quick-panel">
-        <!-- Daily Login Widget -->
-        <div id="daily-login-widget" class="daily-login-card">
-          <div class="panel-heading" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:4px;">
-            <span>Daily Login</span>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span id="daily-login-freezes" title="Streak Freezes Owned" style="font-size:0.7rem; color:#60a5fa; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.25); padding:2px 6px; border-radius:99px; display:none;">❄️ 0</span>
-              <small id="daily-login-streak-label">Streak: 0 days</small>
+      <div class="home-rewards-row home-quick-panel">
+        <div id="daily-login-widget" class="daily-login-card daily-login-inline">
+          <div class="daily-login-inline-main">
+            <div class="panel-heading daily-login-inline-head">
+              <span>Daily Login</span>
+              <div class="daily-login-inline-meta">
+                <span id="daily-login-freezes" title="Streak Freezes Owned" style="font-size:0.7rem; color:#60a5fa; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.25); padding:2px 6px; border-radius:99px; display:none;">❄️ 0</span>
+                <small id="daily-login-streak-label">Streak: 0 days</small>
+              </div>
             </div>
-          </div>
-          <div class="daily-login-body">
             <div id="daily-login-message" class="daily-login-msg">Loading reward...</div>
-            <button id="daily-login-btn" class="daily-login-claim-btn" disabled>Claim Reward</button>
             <div id="daily-login-progress-wrap" class="daily-login-progress-container">
               <div class="progress-bar-bg">
                 <div id="daily-login-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
               </div>
               <div class="progress-labels">
                 <span id="daily-login-progress-text">Day 0/60</span>
-                <span>🔥 Day 60: Premium</span>
+                <span>Day 60: Premium</span>
               </div>
             </div>
           </div>
+          <button id="daily-login-btn" class="daily-login-claim-btn" disabled>Claim Reward</button>
         </div>
         <div id="top-games" style="display: none;">
           <div class="panel-heading">
@@ -4276,8 +4913,9 @@ if (document.readyState === 'loading') {
           </div>
           <div id="top-games-list"></div>
         </div>
-      </aside>
-      <section class="home-links-panel">
+      </div>
+
+      <section class="home-links-panel home-links-full">
         <div class="panel-heading links-heading">
           <span>All Pages</span>
           <small>Grouped by purpose</small>

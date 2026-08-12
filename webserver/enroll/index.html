@@ -1217,6 +1217,40 @@ async function claimToken(mode) {
     }
   }
 })();
+
+// Enter submits the active auth action (inputs are not in <form>s)
+document.addEventListener('keydown', function (e) {
+  if (e.key !== 'Enter') return;
+  var t = e.target;
+  if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'SELECT')) return;
+  if (t.type === 'checkbox' || t.type === 'radio') return;
+  e.preventDefault();
+
+  var twofa = document.getElementById('login-2fa-panel');
+  if (document.getElementById('pane-login') && document.getElementById('pane-login').classList.contains('active')) {
+    if (twofa && twofa.style.display !== 'none' && twofa.style.display !== '') {
+      verifyLogin2fa();
+    } else {
+      login();
+    }
+    return;
+  }
+  if (document.getElementById('pane-invite') && document.getElementById('pane-invite').classList.contains('active')) {
+    if (document.getElementById('invite-step-2') && document.getElementById('invite-step-2').style.display !== 'none') {
+      verifySignup();
+    } else {
+      submit();
+    }
+    return;
+  }
+  if (document.getElementById('pane-reset') && document.getElementById('pane-reset').classList.contains('active')) {
+    if (document.getElementById('reset-step-2') && document.getElementById('reset-step-2').style.display !== 'none') {
+      claimToken('reset');
+    } else {
+      requestReset();
+    }
+  }
+});
 </script>
 <script src="/cookie-consent.js" defer></script>
 <script src="/sync.js" defer></script><script src="/assistant.js" defer></script><script src="/broadcast.js" defer></script><div id="_agree_footer" style="position:fixed;bottom:5px;left:0;right:0;text-align:center;pointer-events:none;z-index:2147483647;font-size:.65rem;color:rgba(255,255,255,.15);font-family:system-ui,sans-serif;letter-spacing:.01em;">By using mitch.pro you agree to the <a href="/use-agreement.html" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">use agreement</a> and <a href="/privacy/" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">privacy policy</a>.</div></body>
