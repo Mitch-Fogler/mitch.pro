@@ -1804,7 +1804,7 @@ if (document.readyState === 'loading') {
   .category-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
   a.site-link { display: flex !important; align-items: center; gap: 8px; padding: 0.75rem !important; }
   a.site-link .icon { font-size: 1.1rem; flex-shrink: 0; }
-  a.site-link .lbl { font-size: 0.85rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  a.site-link .lbl { font-size: 0.85rem; font-weight: 600; white-space: normal; overflow: visible; text-overflow: clip; }
 
   #links-old {
     display: flex;
@@ -2587,9 +2587,9 @@ if (document.readyState === 'loading') {
     color: inherit;
     font-size: .85rem;
     font-weight: 800;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
   }
 
   .link-arrow {
@@ -3681,7 +3681,7 @@ if (document.readyState === 'loading') {
   }
 
   #member-side-rail .side-section {
-    flex: 0 1 auto;
+    flex: 0 0 auto !important;
     min-width: 0;
   }
 
@@ -3874,9 +3874,9 @@ if (document.readyState === 'loading') {
     a.site-link .lbl {
       font-size: 0.78rem !important;
       font-weight: 800 !important;
-      white-space: nowrap !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
       display: block !important;
     }
 
@@ -4742,6 +4742,10 @@ html.theme-glass body.home-editorial .hub-action-primary {
     <div id="collapsed-pfps-container" class="collapsed-pfps"></div>
   </div>
 
+  <div id="online-members-wrap" class="side-section" style="display:none">
+    <div class="side-title" style="color:#4ade80;">&#9679; Online Members</div>
+    <div id="online-members-list" class="side-list"></div>
+  </div>
   <div id="owner-members-wrap" class="side-section" style="display:none">
     <div class="side-title" style="color:#eab308;">Owner</div>
     <div id="owner-members-list" class="side-list"></div>
@@ -4757,10 +4761,6 @@ html.theme-glass body.home-editorial .hub-action-primary {
   <div id="premium-members-wrap" class="side-section" style="display:none">
     <div class="side-title" style="color:#f59e0b;">&#10022; Premium Members</div>
     <div id="premium-members-list" class="side-list"></div>
-  </div>
-  <div id="online-members-wrap" class="side-section" style="display:none">
-    <div class="side-title" style="color:#4ade80;">&#9679; Online Members</div>
-    <div id="online-members-list" class="side-list"></div>
   </div>
   
   <div id="friends-section-wrap" class="side-section" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
