@@ -8386,6 +8386,36 @@ Mitch.pro Team`;
       return jsonResp(200, { ok: true, set: true });
     }
 
+    if (path === '/api/admin/reset-other-passphrase' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      
+      const targetEmail = String(body.targetEmail || '').trim();
+      const newPassphrase = String(body.newPassphrase || '').trim();
+      
+      if (!targetEmail) return jsonResp(400, { error: 'target_email_required' });
+      if (newPassphrase.length < 4) return jsonResp(400, { error: 'passphrase_too_short' });
+      
+      const callingEmail = emailFromSid(sid) || 'admin';
+      const targetNorm = normalizeEmail(targetEmail);
+      
+      if (!isAdminEmail(targetEmail)) {
+        return jsonResp(400, { error: 'target_user_is_not_an_admin' });
+      }
+      
+      saveAdminPassphraseForUser(targetNorm, {
+        hash: await Bun.password.hash(newPassphrase),
+        updatedAt: Date.now(),
+        setBy: callingEmail,
+      });
+      
+      logAdminAction(callingEmail, 'reset_other_admin_passphrase', { target: targetEmail });
+      return jsonResp(200, { ok: true, message: 'Passphrase reset successfully.' });
+    }
+
     if (path === '/api/me/coin-gifts/read') {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const cookies = getCookies(req);
