@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v2';
+const CACHE_NAME = 'mitch-pro-cache-v3';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json'
@@ -44,7 +44,24 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  if (isHtmlRequest(e.request)) {
+  const requestUrl = new URL(e.request.url);
+  const isThemeJs = requestUrl.pathname === '/theme.js';
+
+  if (isThemeJs) {
+    // Force a fresh fetch by using cache: 'no-store' and a timestamp parameter
+    e.respondWith(
+      fetch(e.request.url + '?t=' + Date.now(), { cache: 'no-store' }).then((response) => {
+        if (response && response.status === 200) {
+          // Store under the original request URL so caches.match(e.request) still resolves offline
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+        }
+        return response;
+      }).catch(() => {
+        return caches.match(e.request);
+      })
+    );
+  } else if (isHtmlRequest(e.request)) {
     // Network-first for HTML pages — always get fresh content
     e.respondWith(
       fetch(e.request).then((response) => {

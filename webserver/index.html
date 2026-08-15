@@ -384,7 +384,10 @@ function renderPopularStrip(entries) {
 }
 
 function openMembersRail(event) {
-  if (event) event.preventDefault();
+  if (event) {
+    event.preventDefault();
+    event.stopPropagation(); // Stop click event propagation to prevent document handler from closing it!
+  }
   var rail = document.getElementById('member-side-rail');
   if (!rail) {
     window.location.href = '/friends/';
@@ -392,11 +395,20 @@ function openMembersRail(event) {
   }
   try {
     if (window.matchMedia('(min-width: 981px)').matches) {
-      rail.classList.add('is-open');
-      rail.classList.remove('is-collapsed');
-      rail.setAttribute('aria-expanded', 'true');
-      var handle = document.getElementById('member-side-rail-collapsed-handle');
-      if (handle) handle.setAttribute('aria-expanded', 'true');
+      var isOpen = rail.classList.contains('is-open');
+      if (isOpen) {
+        rail.classList.remove('is-open');
+        rail.classList.add('is-collapsed');
+        rail.setAttribute('aria-expanded', 'false');
+        var handle = document.getElementById('member-side-rail-collapsed-handle');
+        if (handle) handle.setAttribute('aria-expanded', 'false');
+      } else {
+        rail.classList.add('is-open');
+        rail.classList.remove('is-collapsed');
+        rail.setAttribute('aria-expanded', 'true');
+        var handle = document.getElementById('member-side-rail-collapsed-handle');
+        if (handle) handle.setAttribute('aria-expanded', 'true');
+      }
     } else {
       rail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -1680,6 +1692,428 @@ async function initHome() {
   initMemberSideRail();
   setInterval(loadOnlineMembers, 15000);
   initFriendsSystem();
+  initHudTerminal();
+}
+
+function toggleHudTerminal() {
+  var term = document.getElementById('hud-terminal-overlay');
+  if (!term) return;
+  term.classList.toggle('visible');
+  if (term.classList.contains('visible')) {
+    setTimeout(function() {
+      var input = document.getElementById('terminal-input');
+      if (input) input.focus();
+    }, 100);
+  }
+}
+
+document.addEventListener('keydown', function(e) {
+  if (e.key === '`') {
+    e.preventDefault();
+    toggleHudTerminal();
+  }
+});
+
+function initHudTerminal() {
+  var input = document.getElementById('terminal-input');
+  var body = document.getElementById('terminal-body');
+  if (!input || !body) return;
+
+  function appendLine(text, type) {
+    var line = document.createElement('div');
+    line.className = 'terminal-line' + (type ? ' ' + type : '');
+    line.innerHTML = text;
+    body.appendChild(line);
+    body.scrollTop = body.scrollHeight;
+  }
+
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      var val = input.value.trim();
+      input.value = '';
+      if (!val) return;
+
+      appendLine('> ' + escText(val), 'user-cmd');
+      var rawParts = val.split(/\s+/);
+      var parts = val.toLowerCase().split(/\s+/);
+      var cmd = parts[0];
+
+      switch(cmd) {
+        case 'help':
+          appendLine('Active System Commands:', 'sys-cmd');
+          appendLine('  status   - Show system diagnostics info');
+          appendLine('  ping     - Verify portal gateway latency');
+          appendLine('  matrix   - Spawn active data rain background overlay');
+          appendLine('  hack     - Initiate simulated server hack sequence');
+          appendLine('  shell    - Launch in-browser VM environment');
+          appendLine('  neofetch - Display system hardware & branding stats');
+          appendLine('  sysinfo  - Print detailed client hardware telemetry');
+          appendLine('  coins    - Fetch current MitchCoin & reward metrics');
+          appendLine('  theme    - Manage and switch client dashboard themes');
+          appendLine('  htb      - Access the interactive Hack The Box Arena');
+          appendLine('  ls       - List directory contents');
+          appendLine('  cat      - Display file contents');
+          appendLine('  whoami   - Display active user identifier');
+          appendLine('  nmap     - Scan network host port map');
+          appendLine('  curl     - Send HTTP request payload');
+          appendLine('  ssh      - Open SSH link to gateway');
+          appendLine('  clear    - Clear telemetry buffer');
+          appendLine('  help     - Show command list');
+          break;
+        case 'ping':
+          appendLine('PING gateway (mitch.pro)...');
+          setTimeout(function() {
+            appendLine('PONG! Gateway active. Latency: ' + Math.floor(Math.random() * 15 + 12) + 'ms.');
+          }, 200);
+          break;
+        case 'status':
+          appendLine('SYSTEM METRICS:', 'sys-cmd');
+          appendLine('  Client Theme : ' + (document.documentElement.className || 'default'));
+          appendLine('  Session State: ACTIVE');
+          appendLine('  Module Count : ' + (document.querySelectorAll('.site-link').length || 0) + ' items');
+          appendLine('  Local Host   : ' + window.location.hostname);
+          break;
+        case 'clear':
+          body.innerHTML = '';
+          break;
+        case 'matrix':
+          appendLine('Booting digital rain matrix overlay...', 'sys-cmd');
+          toggleMatrixRain();
+          break;
+        case 'hack':
+          appendLine('Connecting to server backup gateway...', 'sys-err');
+          setTimeout(function() { appendLine('Bypassing firewall protocols...', 'sys-warn'); }, 400);
+          setTimeout(function() { appendLine('Injecting payload script...', 'sys-warn'); }, 800);
+          setTimeout(function() { appendLine('ACCESS GRANTED: MitchCoins database acquired.', 'sys-success'); }, 1200);
+          break;
+        case 'shell':
+          appendLine('Loading Virtual Machine kernel...', 'sys-warn');
+          setTimeout(function() { appendLine('Mounting virtual block devices (/dev/vda1)...', 'sys-warn'); }, 200);
+          setTimeout(function() { appendLine('Virtual memory mapping complete: 512MB RAM allocated.', 'sys-cmd'); }, 400);
+          setTimeout(function() { 
+            appendLine('ERROR: VM acceleration driver driver node offline.', 'sys-err'); 
+            appendLine('Standard in-browser VM shell is offline. A full kernel/OS environment will be linked in a future update.', 'sys-warn');
+          }, 700);
+          break;
+        case 'neofetch':
+          var activeTheme = document.documentElement.className || 'void (default)';
+          var upSec = Math.floor(performance.now() / 1000);
+          var upStr = upSec < 60 ? upSec + 's' : Math.floor(upSec / 60) + 'm ' + (upSec % 60) + 's';
+          var cpuCores = navigator.hardwareConcurrency || 'unknown';
+          
+          appendLine(' <span style="color:var(--t-ac); font-weight:bold;">  /\\_/\\  </span>   <span style="color:#ffffff; font-weight:bold;">mitch.pro</span>@gateway', 'sys-cmd');
+          appendLine(' <span style="color:var(--t-ac); font-weight:bold;"> ( o.o ) </span>   --------------', 'sys-cmd');
+          appendLine(' <span style="color:var(--t-ac); font-weight:bold;">  > ^ &lt;  </span>   <span style="color:var(--t-ac);">OS</span>: browser-vm v4.0.0', 'sys-cmd');
+          appendLine('             <span style="color:var(--t-ac);">Host</span>: Client Console Terminal', 'sys-cmd');
+          appendLine('             <span style="color:var(--t-ac);">Kernel</span>: Webkit/Blink Canvas v2.0', 'sys-cmd');
+          appendLine('             <span style="color:var(--t-ac);">Uptime</span>: ' + upStr, 'sys-cmd');
+          appendLine('             <span style="color:var(--t-ac);">Shell</span>: hudsh v1.2', 'sys-cmd');
+          appendLine('             <span style="color:var(--t-ac);">Resolution</span>: ' + window.innerWidth + 'x' + window.innerHeight, 'sys-cmd');
+          appendLine('             <span style="color:var(--t-ac);">Theme</span>: ' + activeTheme, 'sys-cmd');
+          appendLine('             <span style="color:var(--t-ac);">CPU Cores</span>: ' + cpuCores, 'sys-cmd');
+          break;
+        case 'sysinfo':
+          appendLine('HARDWARE TELEMETRY:', 'sys-cmd');
+          appendLine('  User Agent   : ' + navigator.userAgent);
+          appendLine('  Platform     : ' + (navigator.platform || 'unknown'));
+          appendLine('  Language     : ' + (navigator.language || 'en-US'));
+          appendLine('  Online State : ' + (navigator.onLine ? 'ONLINE' : 'OFFLINE'));
+          appendLine('  Color Depth  : ' + window.screen.colorDepth + '-bit');
+          if (navigator.connection) {
+            appendLine('  Network Type : ' + (navigator.connection.effectiveType || 'unknown'));
+            appendLine('  Downlink     : ' + (navigator.connection.downlink || 'unknown') + ' Mbps');
+          }
+          break;
+        case 'coins':
+          var streakLabel = document.getElementById('daily-login-streak-label');
+          var streak = streakLabel ? streakLabel.textContent : 'Streak: 0 days';
+          var freezesEl = document.getElementById('daily-login-freezes');
+          var freezes = (freezesEl && freezesEl.style.display !== 'none') ? freezesEl.textContent : '❄️ 0';
+          
+          appendLine('TELEMETRY STATUS:', 'sys-cmd');
+          appendLine('  Account      : ' + (document.getElementById('greeting-email') ? document.getElementById('greeting-email').textContent : 'Anonymous'));
+          appendLine('  ' + streak);
+          appendLine('  Streak Freeze: ' + freezes);
+          appendLine('  Daily Claims : Check the Daily Streak card to claim your MitchCoins!');
+          break;
+        case 'theme':
+          var themeArg = parts[1];
+          if (!themeArg) {
+            appendLine('Theme Management. Usage: theme &lt;theme-name&gt;', 'sys-cmd');
+            appendLine('Available themes:', 'sys-cmd');
+            appendLine('  Dark: void (default), cyber, matrix, synthwave, abyss, sunset, github, sakura, senpai-cafe, adrian-lopez');
+            appendLine('  Light: daylight, paper, arctic, blossom');
+            break;
+          }
+          if (typeof T !== 'undefined' && T[themeArg]) {
+            applyTheme(themeArg);
+            setCookie(themeArg);
+            var panel = document.getElementById('theme-panel');
+            if (panel) {
+              panel.querySelectorAll('[data-tk]').forEach(function (el) {
+                el.style.background = el.getAttribute('data-tk') === themeArg ? 'rgba(255,255,255,0.09)' : '';
+              });
+            }
+            window.dispatchEvent(new CustomEvent('themechange', { detail: themeArg }));
+            appendLine('Theme successfully changed to: ' + themeArg, 'sys-success');
+          } else {
+            appendLine("Error: Theme '" + escText(themeArg) + "' not found. Type 'theme' to view list.", 'sys-err');
+          }
+          break;
+        case 'htb':
+        case 'puzzles':
+          var sub = parts[1];
+          if (!sub) {
+            appendLine('========================================', 'sys-cmd');
+            appendLine('       HACK THE BOX ARENA v1.0.0       ', 'sys-cmd');
+            appendLine('========================================', 'sys-cmd');
+            appendLine('Commands:', 'sys-cmd');
+            appendLine('  htb list        - List all security challenges', 'sys-cmd');
+            appendLine('  htb info &lt;id&gt;   - View challenge description', 'sys-cmd');
+            appendLine('  htb hint &lt;id&gt;   - Get a hint for a challenge', 'sys-cmd');
+            appendLine('  htb solve &lt;id&gt; &lt;flag/payload&gt; - Submit a solution', 'sys-cmd');
+            break;
+          }
+          if (sub === 'list') {
+            appendLine('Fetching challenge statuses from mainframe...', 'sys-warn');
+            fetch('/api/puzzles/list')
+              .then(function(r) { return r.json(); })
+              .then(function(data) {
+                var solves = data.solves || [];
+                appendLine('ACTIVE SECURITY CHALLENGES:', 'sys-cmd');
+                var puzzles = [
+                  { id: 1, name: 'Cipher Breach', diff: 'Easy', reward: 200 },
+                  { id: 2, name: 'SQL Injection Bypass', diff: 'Medium', reward: 300 },
+                  { id: 3, name: 'Hash Cracker', diff: 'Medium', reward: 250 },
+                  { id: 4, name: 'Path Traversal', diff: 'Medium', reward: 250 }
+                ];
+                puzzles.forEach(function(p) {
+                  var isSolved = solves.indexOf(p.id) !== -1;
+                  var statusStr = isSolved ? '<span style="color:var(--t-success); font-weight:bold;">[SOLVED]</span>' : '<span style="color:var(--t-err); font-weight:bold;">[UNSOLVED]</span>';
+                  appendLine('  ID ' + p.id + ': ' + p.name + ' (' + p.diff + ') - ' + p.reward + ' MitchCoins ' + statusStr, 'sys-cmd');
+                });
+              })
+              .catch(function() {
+                appendLine('Error contacting validation service.', 'sys-err');
+              });
+          } else if (sub === 'info') {
+            var id = parseInt(parts[2]);
+            if (!id || isNaN(id) || id < 1 || id > 4) {
+              appendLine('Usage: htb info &lt;1-4&gt;', 'sys-err');
+            } else {
+              if (id === 1) {
+                appendLine('Challenge 1: Cipher Breach (Easy - 200 MitchCoins)', 'sys-cmd');
+                appendLine('Our telemetry gateway encrypted a key using a basic substitution cipher. The ciphertext is:', 'sys-cmd');
+                appendLine('  <span style="color:yellow;font-family:monospace;">cbegny_tngrjnl_npprff_tenagrq</span>', 'sys-cmd');
+                appendLine('Find the flag/plaintext.', 'sys-cmd');
+              } else if (id === 2) {
+                appendLine('Challenge 2: SQL Injection Bypass (Medium - 300 MitchCoins)', 'sys-cmd');
+                appendLine('A mock database query checks login credentials using:', 'sys-cmd');
+                appendLine('  <span style="color:yellow;font-family:monospace;">SELECT * FROM users WHERE username = \'admin\' AND password = \'\' + PAYLOAD + \'\'</span>', 'sys-cmd');
+                appendLine('Inject a payload that makes this query always true.', 'sys-cmd');
+              } else if (id === 3) {
+                appendLine('Challenge 3: Hash Cracker (Medium - 250 MitchCoins)', 'sys-cmd');
+                appendLine('We intercepted an MD5 hash of an admin numeric passcode:', 'sys-cmd');
+                appendLine('  <span style="color:yellow;font-family:monospace;">827ccb0eea8a706c4c34a16891f84e7b</span>', 'sys-cmd');
+                appendLine('Find the 5-digit number that generates this MD5 hash.', 'sys-cmd');
+              } else if (id === 4) {
+                appendLine('Challenge 4: Path Traversal (Medium - 250 MitchCoins)', 'sys-cmd');
+                appendLine('An insecure reader endpoint accepts local paths. Submit a relative directory traversal', 'sys-cmd');
+                appendLine('payload to read the system shadow file at /etc/shadow.', 'sys-cmd');
+              }
+            }
+          } else if (sub === 'hint') {
+            var id = parseInt(parts[2]);
+            if (!id || isNaN(id) || id < 1 || id > 4) {
+              appendLine('Usage: htb hint &lt;1-4&gt;', 'sys-err');
+            } else {
+              if (id === 1) {
+                appendLine('Hint: ROT13 substitution is extremely common in retro systems.', 'sys-warn');
+              } else if (id === 2) {
+                appendLine("Hint: Try standard SQL injection patterns like `' OR 1=1 --` to bypass password verification.", 'sys-warn');
+              } else if (id === 3) {
+                appendLine('Hint: MD5 is fast to brute-force online, or you can check hashes of 5-digit numeric values.', 'sys-warn');
+              } else if (id === 4) {
+                appendLine('Hint: Use directory traversal sequences like `../../` to escape the root directory.', 'sys-warn');
+              }
+            }
+          } else if (sub === 'solve') {
+            var id = parseInt(parts[2]);
+            if (!id || isNaN(id)) {
+              appendLine('Usage: htb solve &lt;id&gt; &lt;flag/payload&gt;', 'sys-err');
+            } else {
+              var idx = val.indexOf(rawParts[2]) + rawParts[2].length;
+              var flag = val.substring(idx).trim();
+              if (!flag) {
+                appendLine('Usage: htb solve &lt;id&gt; &lt;flag/payload&gt;', 'sys-err');
+              } else {
+                appendLine('Submitting solution to validation node...', 'sys-warn');
+                fetch('/api/puzzles/claim', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ puzzleId: id, flag: flag })
+                })
+                .then(function(r) { return r.json(); })
+                .then(function(res) {
+                  if (res.error) {
+                    appendLine('Error: ' + escText(res.error), 'sys-err');
+                  } else if (res.correct) {
+                    appendLine('SUCCESS: Puzzle ' + id + ' solved!', 'sys-success');
+                    appendLine('Reward earned: +' + res.rewardCoins + ' MitchCoins!', 'sys-success');
+                    if (typeof loadGreeting === 'function') loadGreeting();
+                  } else {
+                    appendLine('Validation Failed: Incorrect flag or payload.', 'sys-err');
+                  }
+                })
+                .catch(function(e) {
+                  appendLine('Error contacting validation service.', 'sys-err');
+                });
+              }
+            }
+          } else {
+            appendLine("Unknown subcommand: '" + escText(sub) + "'. Type 'htb' for instructions.", 'sys-err');
+          }
+          break;
+        case 'whoami':
+          var emailEl = document.getElementById('greeting-email');
+          var emailStr = emailEl ? emailEl.textContent.trim() : 'guest';
+          appendLine(emailStr, 'sys-cmd');
+          break;
+        case 'ls':
+          appendLine('total 24', 'sys-cmd');
+          appendLine('drwxr-xr-x  2 root  root  4096 Jul  4 12:00 <span style="color:#00aaff;">home/</span>', 'sys-cmd');
+          appendLine('drwxr-xr-x  4 root  root  4096 Jul  4 12:00 <span style="color:#00aaff;">var/</span>', 'sys-cmd');
+          appendLine('drwxr-xr-x  2 root  root  4096 Jul  4 12:00 <span style="color:#00aaff;">etc/</span>', 'sys-cmd');
+          appendLine('-rwxr-xr-x  1 root  root  8192 Jul  4 12:00 <span style="color:#00ff55;">netscan.sh</span>', 'sys-cmd');
+          appendLine('-rw-r--r--  1 root  root   256 Jul  4 12:00 read_secret.txt', 'sys-cmd');
+          break;
+        case 'cat':
+          var fileArg = parts[1];
+          if (!fileArg) {
+            appendLine('Usage: cat &lt;filename&gt;', 'sys-err');
+          } else if (fileArg === 'read_secret.txt') {
+            appendLine('Decrypting data blocks...', 'sys-warn');
+            setTimeout(function() {
+              appendLine('--- MITCH.PRO SYSTEM MEMO ---', 'sys-cmd');
+              appendLine('Flag submission node: POST /api/puzzles/claim', 'sys-cmd');
+              appendLine('Puzzles are catalogued under the \'htb\' utility.', 'sys-cmd');
+            }, 300);
+          } else if (fileArg === 'netscan.sh') {
+            appendLine('Generating execution buffer...', 'sys-warn');
+            setTimeout(function() {
+              appendLine('#!/bin/bash', 'sys-cmd');
+              appendLine('echo "Scanning local subnets..."', 'sys-cmd');
+              appendLine('nmap -T4 -F mitch.pro', 'sys-cmd');
+            }, 300);
+          } else if (fileArg.indexOf('etc/shadow') !== -1 || fileArg.indexOf('shadow') !== -1) {
+            if (fileArg.includes('..') && fileArg.includes('etc/shadow')) {
+              appendLine('<span style="color:var(--t-success); font-weight:bold;">[SUCCESS] Path Traversal Validated!</span>', 'sys-success');
+              appendLine('Payload detected: ' + escText(fileArg), 'sys-success');
+              appendLine('Submit this payload using: <span style="color:yellow;">htb solve 4 &lt;payload&gt;</span> to claim the reward.', 'sys-success');
+            } else {
+              appendLine('cat: /etc/shadow: Permission denied (Requires traversal or admin root)', 'sys-err');
+            }
+          } else {
+            appendLine("cat: " + escText(fileArg) + ": No such file or directory", 'sys-err');
+          }
+          break;
+        case 'nmap':
+          var host = parts[1] || 'mitch.pro';
+          appendLine('Starting Nmap 7.92 ( https://nmap.org ) at ' + new Date().toISOString(), 'sys-cmd');
+          appendLine('Initiating Ping Scan...', 'sys-cmd');
+          setTimeout(function() {
+            appendLine('Scanning ' + escText(host) + ' (127.0.0.1) [1000 ports]...', 'sys-cmd');
+            setTimeout(function() {
+              appendLine('Discovered open port 22/tcp', 'sys-success');
+              appendLine('Discovered open port 80/tcp', 'sys-success');
+              appendLine('Discovered open port 443/tcp', 'sys-success');
+              appendLine('Discovered open port 3000/tcp', 'sys-success');
+              appendLine('Nmap done: 1 IP address (1 host up) scanned in 1.42 seconds', 'sys-cmd');
+            }, 600);
+          }, 300);
+          break;
+        case 'curl':
+          var urlArg = parts[1];
+          if (!urlArg) {
+            appendLine('Usage: curl &lt;url&gt;', 'sys-err');
+          } else {
+            appendLine('Sending request to ' + escText(urlArg) + '...', 'sys-warn');
+            setTimeout(function() {
+              if (urlArg.indexOf('api/me') !== -1) {
+                appendLine('HTTP/1.1 200 OK', 'sys-success');
+                appendLine('Content-Type: application/json', 'sys-cmd');
+                appendLine('{"status":"active","session":"valid"}', 'sys-cmd');
+              } else if (urlArg.indexOf('mitch.pro') !== -1 || urlArg.indexOf('localhost') !== -1) {
+                appendLine('HTTP/1.1 200 OK', 'sys-success');
+                appendLine('Content-Type: text/html', 'sys-cmd');
+                appendLine('&lt;html&gt;&lt;head&gt;&lt;title&gt;mitch.pro&lt;/title&gt;&lt;/head&gt;...', 'sys-cmd');
+              } else {
+                appendLine('curl: (6) Could not resolve host: ' + escText(urlArg), 'sys-err');
+              }
+            }, 400);
+          }
+          break;
+        case 'ssh':
+          var hostArg = parts[1] || 'mitch.pro';
+          appendLine('Connecting to ' + escText(hostArg) + '...', 'sys-warn');
+          setTimeout(function() {
+            appendLine('Warning: Permanently added \'' + escText(hostArg) + '\' (ECDSA) to the list of known hosts.', 'sys-warn');
+            appendLine('student@' + escText(hostArg) + '\'s password: ', 'sys-cmd');
+            appendLine('SSH shell access is disabled via console. Please use the terminal shell wrapper or local terminal.', 'sys-err');
+          }, 500);
+          break;
+        default:
+          appendLine("Command error: '" + escText(cmd) + "' not recognized. Type 'help' for console menu.", 'sys-err');
+      }
+    }
+  });
+}
+
+function toggleMatrixRain() {
+  var canvas = document.getElementById('matrix-rain-canvas');
+  if (canvas) {
+    var intervalId = canvas.dataset.intervalId;
+    if (intervalId) clearInterval(parseInt(intervalId, 10));
+    canvas.remove();
+    return;
+  }
+  canvas = document.createElement('canvas');
+  canvas.id = 'matrix-rain-canvas';
+  canvas.style.position = 'fixed';
+  canvas.style.inset = '0';
+  canvas.style.zIndex = '0';
+  canvas.style.pointerEvents = 'none';
+  canvas.style.opacity = '0.15';
+  document.body.appendChild(canvas);
+
+  var ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  var columns = Math.floor(canvas.width / 20);
+  var ypos = Array(columns).fill(0);
+
+  function draw() {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = '#4ade80';
+    ctx.font = '15px monospace';
+
+    ypos.forEach(function(y, index) {
+      var text = String.fromCharCode(Math.floor(Math.random() * 93 + 33));
+      var x = index * 20;
+      ctx.fillText(text, x, y);
+
+      if (y > 100 + Math.random() * 10000) {
+        ypos[index] = 0;
+      } else {
+        ypos[index] = y + 20;
+      }
+    });
+  }
+  var interval = setInterval(draw, 33);
+  canvas.dataset.intervalId = interval;
 }
 
 if (document.readyState === 'loading') {
@@ -3946,210 +4380,137 @@ if (document.readyState === 'loading') {
   /* ========================================== */
   /* Elegant Light-Theme Overrides for Glassmorphic Home */
   /* ========================================== */
-  .theme-light .glass-card {
-    background: rgba(255, 255, 255, 0.92) !important;
+  html.theme-light body.home-editorial {
+    background-color: var(--t-bg) !important;
+    color: var(--t-fg) !important;
+  }
+
+  html.theme-light body.home-editorial .hud-topbar,
+  html.theme-light body.home-editorial .hud-hero-card,
+  html.theme-light body.home-editorial .hud-widget-card,
+  html.theme-light body.home-editorial .category-group,
+  html.theme-light body.home-editorial #member-side-rail,
+  html.theme-light body.home-editorial #hud-terminal-overlay {
+    background: rgba(255, 255, 255, 0.72) !important;
     border: 1px solid rgba(0, 0, 0, 0.08) !important;
-    box-shadow:
-      0 18px 40px rgba(0, 0, 0, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
-  }
-
-  .theme-light .home-title-block {
-    background:
-      radial-gradient(ellipse 90% 80% at 0% 0%, color-mix(in srgb, var(--t-ac) 8%, transparent), transparent 55%),
-      linear-gradient(160deg, color-mix(in srgb, var(--t-bg2) 92%, #fff), color-mix(in srgb, var(--t-bg3) 88%, #fff)) !important;
-    border: 1px solid var(--t-bd) !important;
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
-      0 8px 24px rgba(0, 0, 0, 0.05) !important;
-  }
-
-  .theme-light .home-title-block h1,
-  .theme-light .home-brand {
-    color: var(--t-fg) !important;
-    background: none !important;
-    -webkit-background-clip: unset !important;
-    -webkit-text-fill-color: unset !important;
-    background-clip: unset !important;
-    text-shadow: none !important;
-  }
-
-  .theme-light .home-kicker {
-    display: block !important;
-    color: var(--t-fg2) !important;
-  }
-
-  .theme-light .home-lede,
-  .theme-light .home-subtitle {
-    color: var(--t-fg2) !important;
-  }
-
-  .theme-light #greeting-card {
-    background: color-mix(in srgb, var(--t-bg2) 88%, #fff) !important;
-    border: 1px solid var(--t-bd) !important;
-    box-shadow:
-      inset 0 1px 0 color-mix(in srgb, #fff 70%, transparent),
-      0 8px 20px rgba(0, 0, 0, 0.04) !important;
-  }
-
-  .theme-light #greeting-text {
-    color: var(--t-fg2) !important;
-  }
-
-  .theme-light #greeting-email {
-    color: var(--t-fg) !important;
-    background: none !important;
-    -webkit-background-clip: unset !important;
-    -webkit-text-fill-color: unset !important;
-    background-clip: unset !important;
-  }
-
-  .theme-light #greeting-clock {
-    color: var(--t-fg) !important;
-    text-shadow: none !important;
-  }
-
-  .theme-light .home-search-box {
-    background: rgba(0, 0, 0, 0.035) !important;
-    border: 1px solid rgba(0, 0, 0, 0.09) !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02) !important;
-  }
-
-  .theme-light .home-search-box:focus-within {
-    border-color: #4f46e5 !important;
-    background: rgba(255, 255, 255, 0.95) !important;
     box-shadow: 
-      0 0 20px rgba(79, 70, 229, 0.1),
+      0 12px 32px rgba(0, 0, 0, 0.03),
       inset 0 1px 0 rgba(255, 255, 255, 0.8) !important;
+    color: #0f1123 !important;
+    backdrop-filter: blur(24px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
   }
 
-  .theme-light #home-search {
-    color: #181824 !important;
+  html.theme-light body.home-editorial .hud-brand,
+  html.theme-light body.home-editorial #greeting-email,
+  html.theme-light body.home-editorial #greeting-clock,
+  html.theme-light body.home-editorial .widget-title,
+  html.theme-light body.home-editorial .category-title span,
+  html.theme-light body.home-editorial #preferences-card span,
+  html.theme-light body.home-editorial #abToggleBar span {
+    color: #0f1123 !important;
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    -webkit-text-fill-color: unset !important;
+    background-clip: unset !important;
+    text-shadow: none !important;
   }
 
-  .theme-light #home-search::placeholder {
-    color: rgba(24, 24, 36, 0.5) !important;
+  html.theme-light body.home-editorial .hud-kicker,
+  html.theme-light body.home-editorial #greeting-text,
+  html.theme-light body.home-editorial .hero-subtitle,
+  html.theme-light body.home-editorial .status-user-view,
+  html.theme-light body.home-editorial .category-title small {
+    color: rgba(15, 17, 35, 0.7) !important;
+    text-shadow: none !important;
   }
 
-  .theme-light #home-search-clear {
-    background: rgba(0, 0, 0, 0.04) !important;
+  html.theme-light body.home-editorial .home-search-box {
+    background: rgba(0, 0, 0, 0.03) !important;
     border: 1px solid rgba(0, 0, 0, 0.08) !important;
-    color: rgba(24, 24, 36, 0.72) !important;
   }
 
-  .theme-light #home-search-clear:hover {
-    background: rgba(0, 0, 0, 0.08) !important;
-    border-color: #4f46e5 !important;
-    color: #181824 !important;
+  html.theme-light body.home-editorial #home-search {
+    color: #0f1123 !important;
+  }
+  html.theme-light body.home-editorial #home-search::placeholder {
+    color: rgba(15, 17, 35, 0.4) !important;
   }
 
-  .theme-light a.site-link {
-    background: rgba(255, 255, 255, 0.5) !important;
+  html.theme-light body.home-editorial a.site-link {
+    background: rgba(255, 255, 255, 0.45) !important;
     border: 1px solid rgba(0, 0, 0, 0.06) !important;
     box-shadow: 
-      0 4px 10px rgba(0, 0, 0, 0.02),
+      0 4px 10px rgba(0, 0, 0, 0.01),
       inset 0 1px 0 rgba(255, 255, 255, 0.7) !important;
+    color: #0f1123 !important;
   }
 
-  .theme-light a.site-link:hover {
+  html.theme-light body.home-editorial a.site-link:hover {
     background: rgba(255, 255, 255, 0.9) !important;
-    border-color: #4f46e5 !important;
+    border-color: var(--t-ac) !important;
     box-shadow: 
-      0 12px 28px rgba(0, 0, 0, 0.05),
-      0 0 16px rgba(79, 70, 229, 0.08),
+      0 12px 28px rgba(0, 0, 0, 0.04),
       inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+    color: var(--t-ac) !important;
   }
 
-  .theme-light a.site-link .lbl {
-    color: rgba(24, 24, 36, 0.8) !important;
+  html.theme-light body.home-editorial a.site-link .lbl {
+    color: #0f1123 !important;
+  }
+  html.theme-light body.home-editorial a.site-link:hover .lbl {
+    color: var(--t-ac) !important;
   }
 
-  .theme-light a.site-link:hover .lbl {
-    color: #181824 !important;
-  }
-
-  .theme-light .category-title {
-    color: rgba(24, 24, 36, 0.5) !important;
+  html.theme-light body.home-editorial .category-title {
+    color: rgba(15, 17, 35, 0.5) !important;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08) !important;
   }
 
-  .theme-light .category-title span {
-    color: #4f46e5 !important;
-    text-shadow: none !important;
-  }
-
-  .theme-light .category-title small {
-    color: rgba(24, 24, 36, 0.35) !important;
-  }
-
-  .theme-light #abToggleBar,
-  .theme-light #preferences-card,
-  .theme-light #stats-bar {
-    background: rgba(255, 255, 255, 0.5) !important;
+  html.theme-light body.home-editorial #abToggleBar,
+  html.theme-light body.home-editorial #preferences-card,
+  html.theme-light body.home-editorial #stats-bar {
+    background: rgba(255, 255, 255, 0.45) !important;
     border: 1px solid rgba(0, 0, 0, 0.06) !important;
-    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.8) !important;
+    color: #0f1123 !important;
   }
 
-  .theme-light #preferences-card:hover {
+  html.theme-light body.home-editorial #preferences-card:hover {
     background: rgba(255, 255, 255, 0.8) !important;
-    border-color: rgba(0, 0, 0, 0.1) !important;
+    border-color: var(--t-ac) !important;
   }
 
-  .theme-light .home-quick-panel {
-    background: rgba(255, 255, 255, 0.4) !important;
+  html.theme-light body.home-editorial .side-title {
+    color: var(--t-ac) !important;
+    border-bottom-color: rgba(0, 0, 0, 0.08) !important;
+  }
+
+  html.theme-light body.home-editorial .side-member {
+    background: rgba(0, 0, 0, 0.02) !important;
     border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    color: #0f1123 !important;
   }
 
-  .theme-light .panel-heading {
-    border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
-    color: #181824 !important;
-  }
-
-  .theme-light #member-side-rail {
-    background: rgba(255, 255, 255, 0.5) !important;
-    border: 1px solid rgba(0, 0, 0, 0.08) !important;
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.03) !important;
-  }
-
-  .theme-light .side-title {
-    color: #4f46e5 !important;
-    border-bottom-color: rgba(0, 0, 0, 0.05) !important;
-  }
-
-  .theme-light .side-member {
-    background: rgba(0, 0, 0, 0.03) !important;
-    border: 1px solid rgba(0, 0, 0, 0.05) !important;
-    color: #181824 !important;
-  }
-
-  .theme-light .side-member:hover {
+  html.theme-light body.home-editorial .side-member:hover {
     background: rgba(255, 255, 255, 0.8) !important;
-    border-color: #4f46e5 !important;
-    color: #181824 !important;
+    border-color: var(--t-ac) !important;
+    color: #0f1123 !important;
   }
 
-  .theme-light #home-games-mega {
-    border: 1px solid color-mix(in srgb, var(--t-ac) 35%, var(--t-bd)) !important;
-    background:
-      linear-gradient(135deg, color-mix(in srgb, var(--t-ac) 12%, transparent), color-mix(in srgb, var(--t-bg2) 85%, #fff)) !important;
-    box-shadow:
-      0 8px 20px color-mix(in srgb, var(--t-ac) 8%, transparent),
-      inset 0 1px 0 color-mix(in srgb, #fff 80%, transparent) !important;
+  html.theme-light body.home-editorial .status-pill {
+    background: rgba(0, 0, 0, 0.02) !important;
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    color: #0f1123 !important;
   }
 
-  .theme-light #home-games-mega:hover {
-    border-color: var(--t-bda) !important;
-    box-shadow:
-      0 12px 28px color-mix(in srgb, var(--t-ac) 14%, transparent),
-      inset 0 1px 0 color-mix(in srgb, #fff 85%, transparent) !important;
+  html.theme-light body.home-editorial .hud-terminal-toggle-btn {
+    background: rgba(0, 0, 0, 0.02) !important;
+    border: 1px solid rgba(0, 0, 0, 0.05) !important;
+    color: #0f1123 !important;
   }
-
-  .theme-light .mega-game-arrow {
-    background: color-mix(in srgb, var(--t-fg) 6%, transparent) !important;
-  }
-
-  .theme-light #home-games-mega:hover .mega-game-arrow {
-    background: color-mix(in srgb, var(--t-fg) 10%, transparent) !important;
+  html.theme-light body.home-editorial .hud-terminal-toggle-btn:hover {
+    background: rgba(0, 0, 0, 0.05) !important;
+    border-color: var(--t-ac) !important;
   }
 
   /* Home CTA — keep compact on phones */
@@ -4231,12 +4592,29 @@ if (document.readyState === 'loading') {
 </style>
 
 <style id="home-editorial-theme">
-/* Homepage hub layout — colors from sitewide editorial tokens (--t-*) */
+/* Futuristic HUD Command Center Theme - Overhauled Stylesheet */
+
+/* Animated mesh background */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: 
+    radial-gradient(circle at 12% 18%, rgba(200, 164, 90, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 85% 75%, rgba(99, 102, 241, 0.08) 0%, transparent 50%),
+    radial-gradient(circle at 50% 50%, rgba(139, 92, 246, 0.04) 0%, transparent 55%),
+    linear-gradient(160deg, #050608, #0c0d12 60%, #030405) !important;
+  pointer-events: none;
+  z-index: 0;
+}
 
 body.home-editorial #mainpage.home-editorial-main {
-  width: min(920px, 100%);
+  width: 100%;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: clamp(1.25rem, 4vh, 2.5rem) clamp(1rem, 3vw, 1.5rem) 3rem;
+  padding: clamp(1rem, 4vh, 3rem) clamp(1rem, 3vw, 2.5rem) 4rem;
+  position: relative;
+  z-index: 1;
 }
 
 body.home-editorial .home-shell.glass-card {
@@ -4249,158 +4627,261 @@ body.home-editorial .home-shell.glass-card {
   max-width: none !important;
 }
 
-body.home-editorial .home-hub {
+/* Top Navigation Bar */
+body.home-editorial .hud-topbar {
   display: flex;
-  flex-direction: column;
-  gap: 1.15rem;
-  padding-bottom: 1.75rem;
-  border-bottom: 1px solid var(--t-bd);
-  animation: home-ed-in 0.55s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1rem 1.75rem;
+  background: rgba(255, 255, 255, 0.01) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 18px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  margin-bottom: 2rem;
+  box-shadow: 
+    0 15px 35px rgba(0, 0, 0, 0.3), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  animation: hud-slide-down 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-@keyframes home-ed-in {
-  from { opacity: 0; transform: translateY(10px); }
+@keyframes hud-slide-down {
+  from { opacity: 0; transform: translateY(-10px); }
   to { opacity: 1; transform: none; }
 }
 
-body.home-editorial .home-title-block {
-  text-align: left;
-  margin: 0;
-  padding: 0;
-  background: none !important;
-  border: none !important;
-  box-shadow: none !important;
+body.home-editorial .hud-logo-area {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
 }
 
-body.home-editorial .home-kicker {
-  margin: 0 0 0.45rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--t-fg2);
-}
-
-body.home-editorial .home-brand {
-  margin: 0;
-  font-family: 'Outfit', system-ui, sans-serif;
-  font-size: clamp(2.6rem, 8vw, 3.6rem);
+body.home-editorial .hud-kicker {
+  font-size: 0.65rem;
   font-weight: 800;
-  letter-spacing: -0.055em;
-  line-height: 0.95;
-  color: var(--t-fg);
+  letter-spacing: 0.22em;
+  color: var(--t-ac);
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(200, 164, 90, 0.15);
+  margin-bottom: 0.15rem;
 }
 
-body.home-editorial .home-lede {
-  margin: 0.7rem 0 0;
-  max-width: 36ch;
-  font-size: 0.95rem;
-  line-height: 1.45;
-  color: var(--t-fg2);
-}
-
-body.home-editorial .home-greeting-slim {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.35rem 0;
-  background: none !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-body.home-editorial .home-greeting-slim .greeting-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.35rem 0.75rem;
-  width: 100%;
-  justify-content: space-between;
-}
-
-body.home-editorial #greeting-text {
-  color: var(--t-fg2);
-  font-size: 0.9rem;
-}
-
-body.home-editorial #greeting-email {
-  font-family: 'Outfit', system-ui, sans-serif;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--t-fg);
-}
-
-body.home-editorial #greeting-clock {
-  font-variant-numeric: tabular-nums;
-  color: var(--t-fg2);
-  font-size: 0.82rem;
-}
-
-body.home-editorial .home-games-mega-hidden,
-body.home-editorial .home-rec-hidden {
-  position: absolute !important;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-body.home-editorial .home-search-row {
+body.home-editorial .hud-brand {
+  font-size: 1.85rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
   margin: 0;
+  line-height: 0.95;
+  background: linear-gradient(135deg, #ffffff 30%, #e8d5a3 70%, #c8a45a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-body.home-editorial .home-search-box {
+body.home-editorial .hud-search-area {
+  flex: 1;
+  max-width: 460px;
+}
+
+body.home-editorial .hud-search-area .home-search-box {
   display: flex;
   align-items: center;
   gap: 0.55rem;
-  padding: 0.55rem 0.85rem;
-  border: 1px solid var(--t-bd);
+  padding: 0.5rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 10px;
-  background: var(--t-bg2);
-  transition: border-color 0.2s ease, box-shadow 0.25s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  background: rgba(0, 0, 0, 0.2) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.01);
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-body.home-editorial .home-search-box:focus-within {
-  border-color: color-mix(in srgb, var(--t-ac) 55%, var(--t-bd));
-  box-shadow: 0 0 0 3px var(--t-gls);
+body.home-editorial .hud-search-area .home-search-box:focus-within {
+  border-color: rgba(200, 164, 90, 0.4) !important;
+  box-shadow: 0 0 15px rgba(200, 164, 90, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.03) !important;
+  background: rgba(0, 0, 0, 0.3) !important;
 }
 
-body.home-editorial .home-search-box span {
-  color: var(--t-fg2);
-  font-size: 1rem;
-}
-
-body.home-editorial #home-search {
+body.home-editorial .hud-search-area #home-search {
   flex: 1;
-  min-height: 2.4rem;
+  min-height: 2rem;
   border: none !important;
   background: transparent !important;
   box-shadow: none !important;
   color: var(--t-fg) !important;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   padding: 0 !important;
 }
 
-body.home-editorial #home-search-clear {
-  border: 1px solid var(--t-bd);
-  background: transparent;
+body.home-editorial .hud-search-area #home-search-clear {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
   color: var(--t-fg2);
-  border-radius: 6px;
-  min-height: 1.9rem;
-  padding: 0 0.55rem;
-  font-size: 0.72rem;
+  border-radius: 5px;
+  min-height: 1.7rem;
+  padding: 0 0.45rem;
+  font-size: 0.68rem;
   font-weight: 700;
+  cursor: pointer;
+}
+
+body.home-editorial .hud-system-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+body.home-editorial #greeting-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--t-fg);
+  font-size: 0.88rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+body.home-editorial .status-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: rgba(74, 222, 128, 0.06);
+  border: 1px solid rgba(74, 222, 128, 0.15);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+body.home-editorial .status-indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 8px #4ade80;
+  animation: pulse-status-dot 2s infinite;
+}
+
+@keyframes pulse-status-dot {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+body.home-editorial #home-link-count {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #4ade80;
+  letter-spacing: 0.02em;
+}
+
+body.home-editorial .status-user-view {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: var(--t-fg2);
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 4px 8px;
+  border-radius: 8px;
+  letter-spacing: 0.05em;
+  opacity: 0.85;
+}
+
+/* Two-column workspace alignment */
+body.home-editorial .hud-workspace {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 2rem;
+  align-items: start;
+  animation: hud-fade-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes hud-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+
+body.home-editorial .hud-pane-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+body.home-editorial .hud-pane-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Welcome Hero Card */
+body.home-editorial .hud-hero-card {
+  position: relative;
+  overflow: hidden;
+  background: 
+    radial-gradient(circle at 0% 0%, rgba(200, 164, 90, 0.08) 0%, transparent 60%),
+    rgba(255, 255, 255, 0.01) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 24px;
+  padding: 2.25rem;
+  box-shadow: 
+    0 15px 35px rgba(0, 0, 0, 0.25), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  margin-bottom: 1.5rem;
+}
+
+body.home-editorial .hero-glow-blob {
+  position: absolute;
+  top: -20%;
+  left: -20%;
+  width: 50%;
+  height: 80%;
+  background: radial-gradient(circle, rgba(200, 164, 90, 0.06) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+body.home-editorial .hero-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+body.home-editorial .hero-text-group {
+  display: flex;
+  flex-direction: column;
+}
+
+body.home-editorial #greeting-text {
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--t-ac);
+  text-transform: uppercase;
+}
+
+body.home-editorial #greeting-email {
+  font-family: 'Outfit', sans-serif;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: #ffffff;
+  margin: 0.25rem 0 0.5rem;
+  line-height: 1.1;
+}
+
+body.home-editorial .hero-subtitle {
+  font-size: 0.94rem;
+  line-height: 1.5;
+  color: var(--t-fg2);
+  max-width: 56ch;
+  opacity: 0.9;
 }
 
 body.home-editorial .home-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.65rem;
 }
 
 body.home-editorial .hub-action {
@@ -4408,312 +4889,609 @@ body.home-editorial .hub-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.55rem;
-  padding: 0.45rem 1rem;
-  border-radius: 999px;
-  border: 1px solid var(--t-bd);
-  background: var(--t-bg2);
+  min-height: 2.5rem;
+  padding: 0.4rem 1.15rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02) !important;
   color: var(--t-fg);
   font-family: 'Outfit', system-ui, sans-serif;
-  font-size: 0.84rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.2s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)), border-color 0.2s ease, background 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 body.home-editorial .hub-action:hover {
-  border-color: color-mix(in srgb, var(--t-ac) 40%, var(--t-bd));
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06) !important;
   transform: translateY(-1px);
-  color: var(--t-fg);
 }
 
 body.home-editorial .hub-action-primary {
-  background: var(--t-ac);
-  color: #0c0d10;
-  border-color: color-mix(in srgb, var(--t-ac) 70%, #fff 20%);
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--t-ac) 28%, transparent);
-  font-weight: 800;
+  background: var(--t-ac) !important;
+  color: #07080b !important;
+  border-color: var(--t-ac) !important;
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--t-ac) 20%, transparent) !important;
 }
 
 body.home-editorial .hub-action-primary:hover {
-  color: #0c0d10;
-  background: var(--t-ac2, var(--t-ac));
-  border-color: var(--t-ac2, var(--t-ac));
-  transform: translateY(-1px);
+  background: var(--t-ac2, var(--t-ac)) !important;
+  border-color: var(--t-ac2) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--t-ac) 30%, transparent) !important;
 }
 
 body.home-editorial .hub-daily.is-claimable {
-  border-color: color-mix(in srgb, var(--t-ac) 50%, var(--t-bd));
-  color: var(--t-ac);
-  background: var(--t-gls);
+  border-color: var(--t-ac) !important;
+  color: var(--t-ac) !important;
+  background: var(--t-gls) !important;
 }
 
-body.home-editorial .popular-hub {
+body.home-editorial .home-games-mega-hidden,
+body.home-editorial .home-rec-hidden {
+  display: none !important;
+}
+
+/* Nudges Cards Layout */
+body.home-editorial .hud-notifications-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+}
+
+body.home-editorial .hud-nudge-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.9rem 1.15rem !important;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.01) !important;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--t-fg2);
+}
+
+body.home-editorial .nudge-star {
+  color: var(--t-ac);
+  font-size: 1rem;
+}
+
+/* Right Column Frosted Widget Cards */
+body.home-editorial .hud-widget-card {
+  background: rgba(255, 255, 255, 0.01) !important;
+  border: 1px solid rgba(255, 255, 255, 0.05) !important;
+  border-radius: 20px;
+  padding: 1.5rem !important;
+  box-shadow: 
+    0 10px 30px rgba(0, 0, 0, 0.2), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+body.home-editorial .widget-title {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--t-ac);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.85rem;
+  display: block;
+}
+
+/* Daily reward widget overrides */
+body.home-editorial .daily-login-inline {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  padding: 0 !important;
+}
+
+body.home-editorial .daily-login-inline-head {
+  border: none !important;
+}
+
+body.home-editorial .daily-login-inline-head .widget-title {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
+body.home-editorial .daily-login-inline-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+body.home-editorial #daily-login-streak-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--t-fg2);
+}
+
+body.home-editorial #daily-login-freezes {
+  font-size: 0.7rem;
+  color: #60a5fa;
+  background: rgba(96,165,250,0.08);
+  border: 1px solid rgba(96,165,250,0.2);
+  padding: 2px 6px;
+  border-radius: 99px;
+}
+
+body.home-editorial .daily-login-msg {
+  font-size: 0.82rem;
+  color: var(--t-fg2);
+  margin-top: 0.5rem;
+}
+
+body.home-editorial .daily-login-progress-container {
+  margin-top: 0.55rem;
+  width: 100%;
+}
+
+body.home-editorial .progress-bar-bg {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+body.home-editorial .progress-bar-fill {
+  height: 100%;
+  background: var(--t-ac);
+  box-shadow: 0 0 10px var(--t-gls);
+  transition: width 0.4s ease;
+}
+
+body.home-editorial .progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--t-fg2);
   margin-top: 0.35rem;
 }
 
-body.home-editorial .popular-hub-head {
+body.home-editorial .daily-login-claim-btn {
+  margin-top: 1rem !important;
+  width: 100%;
+  min-height: 2.5rem;
+  border-radius: 10px;
+}
+
+/* Console Control Widget Overrides */
+body.home-editorial .hud-preferences-widget .home-toolbar {
   display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
 }
 
-body.home-editorial .popular-hub-head h2 {
-  margin: 0;
-  font-family: 'Outfit', system-ui, sans-serif;
-  font-size: 1.05rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-body.home-editorial .popular-hub-head p {
-  margin: 0.2rem 0 0;
-  color: var(--t-fg2);
-  font-size: 0.8rem;
-}
-
-body.home-editorial .popular-see-all {
-  flex-shrink: 0;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--t-ac);
+body.home-editorial .hud-preferences-widget .home-toolbar > * {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+  background: rgba(255, 255, 255, 0.01) !important;
+  border-radius: 10px !important;
+  padding: 0.6rem 0.85rem !important;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-shadow: none !important;
+  transition: all 0.2s ease !important;
   text-decoration: none;
-  border-bottom: 1px solid transparent;
 }
 
-body.home-editorial .popular-see-all:hover {
-  border-bottom-color: var(--t-ac);
+body.home-editorial .hud-preferences-widget .home-toolbar > *:hover {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+body.home-editorial #abToggleBar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+body.home-editorial #abToggleBar span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--t-fg2);
+}
+
+body.home-editorial #preferences-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+body.home-editorial #preferences-card span {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--t-fg);
+}
+
+body.home-editorial #preferences-card small {
+  font-size: 0.72rem;
+  color: var(--t-fg2);
+  opacity: 0.75;
+}
+
+/* Popular Places Widget Overrides */
+body.home-editorial .popular-hub {
+  padding-bottom: 1.25rem !important;
 }
 
 body.home-editorial .popular-strip {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 body.home-editorial .popular-strip a.site-link.hub-popular-link {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  min-height: 3rem;
-  padding: 0.65rem 0.8rem;
-  border: 1px solid var(--t-bd);
-  border-radius: 10px;
-  background: var(--t-bg2);
+  gap: 0.65rem;
+  min-height: 40px !important;
+  padding: 0.5rem 0.75rem !important;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.01) !important;
   color: var(--t-fg);
   text-decoration: none;
-  transition: border-color 0.2s ease, transform 0.2s var(--sheet-ease, cubic-bezier(0.22, 1, 0.36, 1)), background 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 body.home-editorial .popular-strip a.site-link.hub-popular-link:hover {
-  border-color: color-mix(in srgb, var(--t-ac) 45%, var(--t-bd));
-  transform: translateY(-2px);
-  background: var(--t-bg3);
+  border-color: rgba(200, 164, 90, 0.25);
+  background: rgba(255, 255, 255, 0.04) !important;
+  padding-left: 0.95rem !important;
 }
 
 body.home-editorial .popular-strip a.site-link.hub-popular-link .lbl {
-  font-weight: 650;
-  font-size: 0.84rem;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  font-size: 0.8rem;
 }
 
 body.home-editorial .popular-strip a.site-link.hub-popular-link .link-arrow {
   margin-left: auto;
-  opacity: 0.45;
-}
-
-body.home-editorial .popular-empty {
-  margin: 0;
-  color: var(--t-fg2);
-  font-size: 0.85rem;
-}
-
-body.home-editorial .home-nudge {
-  margin-top: 0.85rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--t-bd);
-  border-radius: 8px;
-  background: var(--t-bg2);
   font-size: 0.8rem;
-  color: var(--t-fg2);
+  opacity: 0.25;
+  transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
-body.home-editorial .home-below {
-  padding-top: 1.5rem;
-  margin-top: 0.25rem;
+body.home-editorial .popular-strip a.site-link.hub-popular-link:hover .link-arrow {
+  opacity: 0.7;
+  transform: translateX(2px);
 }
 
-body.home-editorial .home-status-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem 1rem;
-  margin-bottom: 0.85rem;
-  color: var(--t-fg2);
-  font-size: 0.75rem;
-  letter-spacing: 0.02em;
-}
-
-body.home-editorial .home-toolbar {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.55rem;
-  margin-bottom: 1.1rem;
-}
-
-body.home-editorial .home-toolbar > * {
-  border: 1px solid var(--t-bd) !important;
-  background: var(--t-bg2) !important;
-  border-radius: 10px !important;
+/* Module Categories Catalog Grid */
+body.home-editorial .home-links-panel {
+  border: none !important;
+  background: transparent !important;
   box-shadow: none !important;
+  backdrop-filter: none !important;
+  padding: 0 !important;
 }
 
-/* Full-width rewards strip — does not shrink All Pages */
-body.home-editorial .home-rewards-row,
-.home-rewards-row {
+body.home-editorial .links-heading {
+  border: none !important;
+  margin-bottom: 1rem;
+}
+
+body.home-editorial .links-heading h3 {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--t-fg2);
+  text-transform: uppercase;
+  margin: 0;
+}
+
+body.home-editorial .links-heading p {
+  font-size: 0.76rem;
+  color: var(--t-fg2);
+  opacity: 0.65;
+  margin: 0.15rem 0 0;
+}
+
+body.home-editorial #links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+body.home-editorial .category-group {
+  background: rgba(255, 255, 255, 0.01) !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+  border-radius: 18px;
+  padding: 1.15rem !important;
+  box-shadow: 
+    0 10px 25px rgba(0,0,0,0.15), 
+    inset 0 1px 0 rgba(255, 255, 255, 0.02);
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  margin-bottom: 1rem;
-  width: 100%;
+  transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-body.home-editorial .home-links-full,
-.home-links-full {
-  width: 100%;
-  min-width: 0;
+body.home-editorial .category-group:hover {
+  border-color: rgba(200, 164, 90, 0.2) !important;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25), 0 0 15px rgba(200, 164, 90, 0.03);
+  transform: translateY(-2px);
 }
 
-body.home-editorial .home-links-panel,
-body.home-editorial .home-rewards-row .daily-login-card,
-body.home-editorial .home-rewards-row #top-games {
-  border: 1px solid var(--t-bd);
-  border-radius: 12px;
-  background: var(--t-bg2);
-  padding: 0.85rem;
-}
-
-body.home-editorial .daily-login-inline,
-.daily-login-inline {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.85rem 1.1rem;
+body.home-editorial .category-title {
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 0.76rem !important;
+  letter-spacing: 0.06em !important;
+  color: var(--t-ac) !important;
+  text-transform: uppercase !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+  padding-bottom: 0.4rem !important;
+  margin-bottom: 0.15rem !important;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  padding: 0.85rem 1rem !important;
 }
 
-body.home-editorial .daily-login-inline-main,
-.daily-login-inline-main {
-  min-width: 0;
+body.home-editorial .category-title small {
+  color: var(--t-fg2);
+  opacity: 0.65;
+  text-transform: none;
+  font-weight: 500;
+  letter-spacing: normal;
+}
+
+body.home-editorial .category-grid {
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
 }
 
-body.home-editorial .daily-login-inline-head,
-.daily-login-inline-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem 0.75rem;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: none !important;
-}
-
-body.home-editorial .daily-login-inline-meta,
-.daily-login-inline-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-body.home-editorial .daily-login-inline .daily-login-msg,
-.daily-login-inline .daily-login-msg {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--t-fg2);
-}
-
-body.home-editorial .daily-login-inline .daily-login-progress-container,
-.daily-login-inline .daily-login-progress-container {
-  margin: 0;
-  max-width: 420px;
-}
-
-body.home-editorial .daily-login-inline .daily-login-claim-btn,
-.daily-login-inline .daily-login-claim-btn {
-  min-height: 2.6rem;
-  min-width: 9.5rem;
-  margin: 0;
-  white-space: nowrap;
-}
-
-body.home-editorial .panel-heading,
-body.home-editorial .links-heading,
-body.home-editorial .category-title {
-  color: var(--t-fg);
-  border-color: var(--t-bd) !important;
-}
-
-body.home-editorial .category-title small,
-body.home-editorial .panel-heading small {
-  color: var(--t-fg2);
-}
-
+/* Site Links with left marker reveal */
 body.home-editorial a.site-link {
-  border-color: var(--t-bd) !important;
-  background: var(--t-bg3) !important;
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 44px !important;
+  padding: 0.55rem 0.85rem !important;
+  border-radius: 10px !important;
+  border: 1px solid rgba(255, 255, 255, 0.03) !important;
+  background: rgba(255, 255, 255, 0.01) !important;
+  color: var(--t-fg) !important;
+  text-decoration: none !important;
+  box-shadow: none !important;
+  transition: all 0.25s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+  position: relative;
+  overflow: hidden;
 }
 
-html.theme-glass body.home-editorial .home-search-box,
-html.theme-glass body.home-editorial .hub-action:not(.hub-action-primary),
-html.theme-glass body.home-editorial .popular-strip a.site-link.hub-popular-link,
-html.theme-glass body.home-editorial .daily-login-inline {
-  background: color-mix(in srgb, var(--t-bg2) 55%, transparent) !important;
-  backdrop-filter: blur(16px) saturate(150%);
-  -webkit-backdrop-filter: blur(16px) saturate(150%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+body.home-editorial a.site-link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 25%;
+  height: 50%;
+  width: 3px;
+  background: var(--t-ac);
+  border-radius: 0 4px 4px 0;
+  opacity: 0;
+  transition: opacity 0.2s ease, height 0.2s ease, top 0.2s ease;
 }
 
-html.theme-glass body.home-editorial .hub-action-primary {
-  background: var(--t-ac) !important;
-  color: #0c0d10 !important;
-  border-color: color-mix(in srgb, var(--t-ac) 70%, #fff 20%) !important;
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--t-ac) 28%, transparent) !important;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+body.home-editorial a.site-link:hover {
+  background: rgba(255, 255, 255, 0.03) !important;
+  border-color: rgba(200, 164, 90, 0.25) !important;
+  padding-left: 1.15rem !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12), 0 0 8px var(--t-gls) !important;
 }
 
-@media (max-width: 719px) {
-  body.home-editorial .home-toolbar {
-    grid-template-columns: 1fr;
+body.home-editorial a.site-link:hover::before {
+  opacity: 1;
+  height: 70%;
+  top: 15%;
+}
+
+body.home-editorial a.site-link .icon {
+  font-size: 1.05rem !important;
+  width: auto !important;
+  height: auto !important;
+  background: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+body.home-editorial a.site-link:hover .icon {
+  transform: scale(1.15) rotate(4deg);
+}
+
+body.home-editorial a.site-link .lbl {
+  font-size: 0.84rem !important;
+  font-weight: 600 !important;
+  color: rgba(255, 255, 255, 0.85) !important;
+  font-family: 'Plus Jakarta Sans', sans-serif !important;
+}
+
+body.home-editorial a.site-link:hover .lbl {
+  color: #ffffff !important;
+}
+
+body.home-editorial a.site-link .link-arrow {
+  margin-left: auto;
+  font-size: 0.9rem !important;
+  opacity: 0.3;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+body.home-editorial a.site-link:hover .link-arrow {
+  opacity: 0.85;
+  transform: translateX(3px);
+}
+
+/* Glass theme integrations */
+html.theme-glass body.home-editorial .hud-topbar,
+html.theme-glass body.home-editorial .hud-hero-card,
+html.theme-glass body.home-editorial .category-group,
+html.theme-glass body.home-editorial .hud-widget-card {
+  background: rgba(255, 255, 255, 0.02) !important;
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+/* Responsive configurations */
+@media (max-width: 980px) {
+  body.home-editorial #mainpage.home-editorial-main {
+    padding: 1.5rem 1rem 3rem;
   }
-  body.home-editorial .popular-hub-head {
+  
+  body.home-editorial .hud-topbar {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+    padding: 1.25rem;
+    gap: 1rem;
   }
-  body.home-editorial .home-brand {
-    font-size: clamp(2.3rem, 12vw, 3rem);
-  }
-  body.home-editorial .daily-login-inline,
-  .daily-login-inline {
+  
+  body.home-editorial .hud-workspace {
     grid-template-columns: 1fr;
+    gap: 1.5rem;
   }
-  body.home-editorial .daily-login-inline .daily-login-claim-btn,
-  .daily-login-inline .daily-login-claim-btn {
-    width: 100%;
+  
+  body.home-editorial #links {
+    grid-template-columns: 1fr;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body.home-editorial .home-hub {
+  body.home-editorial .hud-topbar,
+  body.home-editorial .hud-workspace {
     animation: none !important;
   }
+}
+
+/* Console Terminal Overlay Styles */
+body.home-editorial .hud-terminal-toggle-btn {
+  background: rgba(200, 164, 90, 0.08);
+  border: 1px solid rgba(200, 164, 90, 0.25);
+  color: var(--t-ac);
+  font-family: 'Outfit', sans-serif;
+  font-weight: 800;
+  font-size: 0.72rem;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+}
+body.home-editorial .hud-terminal-toggle-btn:hover {
+  background: rgba(200, 164, 90, 0.16);
+  border-color: var(--t-ac);
+  box-shadow: 0 0 10px rgba(200, 164, 90, 0.15);
+}
+
+#hud-terminal-overlay {
+  position: fixed;
+  top: -420px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(600px, 95%);
+  height: 380px;
+  background: rgba(5, 7, 10, 0.96);
+  border: 1px solid rgba(200, 164, 90, 0.35);
+  border-top: none;
+  border-radius: 0 0 16px 16px;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.8), 0 0 30px rgba(200, 164, 90, 0.15);
+  font-family: 'Courier New', Courier, monospace;
+  transition: top 0.35s cubic-bezier(0.19, 1, 0.22, 1);
+  color: #4ade80;
+}
+#hud-terminal-overlay.visible {
+  top: 0;
+}
+.terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: rgba(200, 164, 90, 0.1);
+  border-bottom: 1px solid rgba(200, 164, 90, 0.2);
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #e8d5a3;
+}
+#close-terminal-btn {
+  background: none;
+  border: none;
+  color: #fb7185;
+  font-size: 1.2rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+.terminal-body {
+  flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.terminal-input-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0,0,0,0.4);
+}
+.terminal-prompt {
+  font-weight: 700;
+}
+#terminal-input {
+  flex: 1;
+  background: none !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+  font-family: inherit;
+  font-size: 0.8rem;
+  padding: 0 !important;
+}
+.terminal-line.user-cmd {
+  color: #a855f7;
+}
+.terminal-line.sys-cmd {
+  color: #eab308;
+}
+.terminal-line.sys-err {
+  color: #ef4444;
+}
+.terminal-line.sys-warn {
+  color: #f97316;
+}
+.terminal-line.sys-success {
+  color: #22c55e;
 }
 </style>
 
@@ -4793,137 +5571,165 @@ html.theme-glass body.home-editorial .hub-action-primary {
 </div>
 
 <div id="mainpage" class="home-editorial-main">
-  <div class="glass-card home-shell">
-    <header class="home-hub">
-      <div class="home-title-block">
-        <p class="home-kicker">Woodcreek student portal</p>
-        <h1 class="home-brand">mitch.pro</h1>
-        <p class="home-lede">Games, pages, and your account — one calm place.</p>
+  <!-- Top Command Header Bar -->
+  <header class="hud-topbar">
+    <div class="hud-logo-area">
+      <span class="hud-kicker">STUDENT PORTAL</span>
+      <h1 class="hud-brand" id="home-brand">mitch.pro</h1>
+    </div>
+    
+    <div class="hud-search-area">
+      <div class="home-search-box">
+        <span aria-hidden="true" class="search-icon">⌕</span>
+        <input id="home-search" type="search" placeholder="Execute command or search pages..." autocomplete="off">
+        <button id="home-search-clear" type="button">Reset</button>
       </div>
-
-      <div id="greeting-card" class="home-greeting-slim">
-        <div class="greeting-row">
-          <div class="greeting-copy">
-            <span id="greeting-text">Good evening,</span>
-            <strong id="greeting-email">mitch@mitch.pro</strong>
-          </div>
-          <span id="greeting-clock">6:44 PM</span>
-        </div>
-        <!-- Keep games mega + recommendation for JS hooks; visually tucked as secondary -->
-        <a id="home-games-mega" class="home-games-mega-hidden" data-task5-old="https://mitch.dnswish.com/" href="/games/" onclick="openHomeHref(event, '/games/');" tabindex="-1" aria-hidden="true">
-          <span class="mega-game-copy">
-            <strong>Play Games</strong>
-            <small id="home-games-day">Sunday, May 17</small>
-          </span>
-          <span class="mega-game-arrow">→</span>
-        </a>
-        <div id="game-recommendation" class="game-rec home-rec-hidden" aria-hidden="true">
-          <div class="game-rec-copy">
-            <span id="recommended-game-reason" class="game-rec-reason">Recommended for you</span>
-            <span id="recommended-game-name" class="game-rec-name">Jeopardy Battle</span>
-          </div>
-          <a id="recommended-game-link" href="/games/jeopardy-battle/" class="btn btn-ghost game-rec-cta">Play Now</a>
-        </div>
-      </div>
-
-      <div class="home-search-row">
-        <div class="home-search-box">
-          <span aria-hidden="true">⌕</span>
-          <input id="home-search" type="search" placeholder="Search pages, games, chat..." autocomplete="off">
-          <button id="home-search-clear" type="button">Clear</button>
-        </div>
-      </div>
-
-      <nav class="home-actions" aria-label="Quick actions">
-        <a class="hub-action hub-action-primary" href="/games/" onclick="openHomeHref(event, '/games/');">Games</a>
-        <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');">Shop</a>
-        <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)">Friends</button>
-        <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily</button>
-      </nav>
-
-      <section id="popular-hub" class="popular-hub" aria-label="Popular and frequent">
-        <div class="popular-hub-head">
-          <div>
-            <h2>Popular &amp; Frequent</h2>
-            <p>Your most used pages — always one click away.</p>
-          </div>
-          <a class="popular-see-all" href="#home-catalog" onclick="focusAllPages(event)">See all pages</a>
-        </div>
-        <div id="popular-strip" class="popular-strip">
-          <p class="popular-empty">Loading…</p>
-        </div>
-      </section>
-    </header>
-
-    <div id="happy-hour-nudge" class="home-nudge">
-      <span id="happy-hour-pulse" class="pulse-glow-cyan"></span>
-      <span id="happy-hour-text"></span>
     </div>
 
-    <div id="achievement-nudge" class="home-nudge">&#9733; Keep going! You're close to your next achievement.</div>
-
-    <div class="home-below" id="home-catalog">
-      <div class="home-status-row">
+    <div class="hud-system-status">
+      <span id="greeting-clock">6:44 PM</span>
+      <button type="button" class="hud-terminal-toggle-btn" onclick="toggleHudTerminal()" title="Toggle system console terminal">
+        <span>CONSOLE [ ` ]</span>
+      </button>
+      <div class="status-pill">
+        <span class="status-indicator-dot"></span>
         <span id="home-link-count">23 links</span>
-        <span id="home-admin-count">Standard user view</span>
       </div>
+      <span id="home-admin-count" class="status-user-view">Standard</span>
+    </div>
+  </header>
 
-      <div class="home-toolbar">
-        <div id="abToggleBar">
-          <label class="toggle-switch">
-            <input type="checkbox" id="abToggle">
-            <span class="toggle-slider"></span>
-          </label>
-          <span>about:blank</span>
-        </div>
-        <a id="preferences-card" data-task5-old="https://mitch.dnswish.com/" href="/preferences.html">
-          <span>&#9881; Preferences</span>
-          <small>Theme, homepage, controls</small>
-        </a>
-        <div id="stats-bar"></div>
-      </div>
-
-      <div class="home-rewards-row home-quick-panel">
-        <div id="daily-login-widget" class="daily-login-card daily-login-inline">
-          <div class="daily-login-inline-main">
-            <div class="panel-heading daily-login-inline-head">
-              <span>Daily Login</span>
-              <div class="daily-login-inline-meta">
-                <span id="daily-login-freezes" title="Streak Freezes Owned" style="font-size:0.7rem; color:#60a5fa; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.25); padding:2px 6px; border-radius:99px; display:none;">❄️ 0</span>
-                <small id="daily-login-streak-label">Streak: 0 days</small>
-              </div>
-            </div>
-            <div id="daily-login-message" class="daily-login-msg">Loading reward...</div>
-            <div id="daily-login-progress-wrap" class="daily-login-progress-container">
-              <div class="progress-bar-bg">
-                <div id="daily-login-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
-              </div>
-              <div class="progress-labels">
-                <span id="daily-login-progress-text">Day 0/60</span>
-                <span>Day 60: Premium</span>
-              </div>
-            </div>
+  <!-- Main Grid Workspace -->
+  <div class="hud-workspace">
+    <!-- Left Workspace Pane (Main content) -->
+    <main class="hud-pane-main">
+      <!-- Welcome Hero Banner -->
+      <section class="hud-hero-card">
+        <div class="hero-glow-blob"></div>
+        <div class="hero-content">
+          <div class="hero-text-group">
+            <span id="greeting-text">Welcome back,</span>
+            <h2 id="greeting-email">mitch@mitch.pro</h2>
+            <p class="hero-subtitle">Your student workspace is fully operational. Access games, pages, and preferences from this secure hub.</p>
           </div>
-          <button id="daily-login-btn" class="daily-login-claim-btn" disabled>Claim Reward</button>
+          <!-- Quick actions inside hero -->
+          <nav class="home-actions" aria-label="Quick actions">
+            <a class="hub-action hub-action-primary" href="/games/" onclick="openHomeHref(event, '/games/');">Launch Games</a>
+            <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');">Marketplace</a>
+            <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)">Friends List</button>
+            <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily Claims</button>
+          </nav>
         </div>
-        <div id="top-games" style="display: none;">
-          <div class="panel-heading">
-            <span>Most Played</span>
-            <small>Personalized</small>
-          </div>
-          <div id="top-games-list"></div>
+      </section>
+
+      <!-- System Notifications (Nudges) -->
+      <div class="hud-notifications-row">
+        <div id="happy-hour-nudge" class="home-nudge hud-nudge-card">
+          <span id="happy-hour-pulse" class="pulse-glow-cyan"></span>
+          <span id="happy-hour-text"></span>
+        </div>
+
+        <div id="achievement-nudge" class="home-nudge hud-nudge-card">
+          <span class="nudge-star">★</span>
+          <span>Keep going! You're close to your next achievement.</span>
         </div>
       </div>
 
+      <!-- Catalog Directory -->
       <section class="home-links-panel home-links-full">
         <div class="panel-heading links-heading">
-          <span>All Pages</span>
-          <small>Grouped by purpose</small>
+          <h3>ALL ACTIVE MODULES</h3>
+          <p>Grouped by purpose & frequency</p>
         </div>
-        <div id="links"><div class="quick-empty">Loading pages...</div></div>
-        <div id="links-empty" style="display: none;">No matching pages found.</div>
+        <div id="links">
+          <div class="quick-empty">Initializing modules...</div>
+        </div>
+        <div id="links-empty" style="display: none;">No matching modules discovered.</div>
       </section>
-    </div>
+    </main>
+
+    <!-- Right Workspace Pane (Widgets drawer) -->
+    <aside class="hud-pane-aside">
+      <!-- Daily Reward Widget -->
+      <div id="daily-login-widget" class="daily-login-card daily-login-inline hud-widget-card">
+        <div class="daily-login-inline-main">
+          <div class="panel-heading daily-login-inline-head">
+            <span class="widget-title">Daily Streak</span>
+            <div class="daily-login-inline-meta">
+              <span id="daily-login-freezes" title="Streak Freezes Owned" style="font-size:0.7rem; color:#60a5fa; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.25); padding:2px 6px; border-radius:99px; display:none;">❄️ 0</span>
+              <small id="daily-login-streak-label">Streak: 0 days</small>
+            </div>
+          </div>
+          <div id="daily-login-message" class="daily-login-msg">Loading daily rewards status...</div>
+          <div id="daily-login-progress-wrap" class="daily-login-progress-container">
+            <div class="progress-bar-bg">
+              <div id="daily-login-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            <div class="progress-labels">
+              <span id="daily-login-progress-text">Day 0/60</span>
+              <span>Premium Unlock</span>
+            </div>
+          </div>
+        </div>
+        <button id="daily-login-btn" class="daily-login-claim-btn" disabled>Claim</button>
+      </div>
+
+      <!-- Personalized Top Games -->
+      <div id="top-games" class="hud-widget-card" style="display: none;">
+        <div class="panel-heading">
+          <span class="widget-title">Frequent Launch</span>
+          <small>Personalized</small>
+        </div>
+        <div id="top-games-list"></div>
+      </div>
+
+      <!-- Quick Preferences Console -->
+      <div class="hud-preferences-widget hud-widget-card">
+        <div class="widget-heading">
+          <span class="widget-title">Console Controls</span>
+        </div>
+        <div class="home-toolbar">
+          <div id="abToggleBar">
+            <label class="toggle-switch">
+              <input type="checkbox" id="abToggle">
+              <span class="toggle-slider"></span>
+            </label>
+            <span>about:blank</span>
+          </div>
+          <a id="preferences-card" data-task5-old="https://mitch.dnswish.com/" href="/preferences.html">
+            <span>⚙ Settings</span>
+            <small>Personalize client console</small>
+          </a>
+          <div id="stats-bar"></div>
+        </div>
+      </div>
+
+      <!-- Popular Items Sidebar -->
+      <section id="popular-hub" class="hud-widget-card popular-hub" aria-label="Popular and frequent">
+        <div class="popular-hub-head">
+          <span class="widget-title">POPULAR PLACES</span>
+        </div>
+        <div id="popular-strip" class="popular-strip">
+          <p class="popular-empty">Loading recommendations...</p>
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<!-- Retro HUD Terminal Overlay -->
+<div id="hud-terminal-overlay">
+  <div class="terminal-header">
+    <span class="terminal-title">>_ SYSTEM CONSOLE TERMINAL</span>
+    <button type="button" id="close-terminal-btn" onclick="toggleHudTerminal()">×</button>
+  </div>
+  <div id="terminal-body" class="terminal-body">
+    <div class="terminal-line">mitch.pro [Version 4.0.0]</div>
+    <div class="terminal-line">Type 'help' to view active commands.</div>
+  </div>
+  <div class="terminal-input-line">
+    <span class="terminal-prompt">></span>
+    <input type="text" id="terminal-input" autocomplete="off" placeholder="...">
   </div>
 </div>
 
