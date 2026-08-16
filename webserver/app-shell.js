@@ -4,9 +4,21 @@
   var NAV = [
     { href: '/', label: 'Home', match: function (p) { return p === '/' || p === '/index.html'; } },
     { href: '/games/', label: 'Games', match: function (p) { return p.indexOf('/games') === 0; } },
-    { href: '/shop/', label: 'Shop', match: function (p) { return p.indexOf('/shop') === 0 || p.indexOf('/marketplace') === 0; } },
+    { href: '/public-chat/', label: 'Plaza', match: function (p) { return p.indexOf('/public-chat') === 0 || p.indexOf('/encrypt') === 0; } },
+    { href: '/shop/', label: 'Market', match: function (p) { return p.indexOf('/shop') === 0 || p.indexOf('/marketplace') === 0; } },
+    { href: '/casino/', label: 'Casino', match: function (p) { return p.indexOf('/casino') === 0; } },
+    { href: '/leaderboard/', label: 'Ranks', match: function (p) { return p.indexOf('/leaderboard') === 0; } },
     { href: '/preferences/', label: 'Preferences', match: function (p) { return p.indexOf('/preferences') === 0; } }
   ];
+
+  function ensureRelaunchStyles() {
+    if (document.getElementById('mitch-relaunch') || document.querySelector('link[href="/relaunch.css"], link[href^="/relaunch.css?"]')) return;
+    var link = document.createElement('link');
+    link.id = 'mitch-relaunch';
+    link.rel = 'stylesheet';
+    link.href = '/relaunch.css';
+    (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
+  }
 
   function ensureViewport() {
     if (document.querySelector('meta[name="viewport"]')) return;
@@ -93,6 +105,7 @@
   function inject() {
     ensureViewport();
     ensureFonts();
+    ensureRelaunchStyles();
     if (!shouldInject()) {
       window.MitchShell = { ready: true, injected: false };
       return;

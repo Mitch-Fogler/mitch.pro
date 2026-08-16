@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v3';
+const CACHE_NAME = 'mitch-pro-cache-v4';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json'
@@ -98,7 +98,7 @@ self.addEventListener('fetch', (e) => {
 
 // Push notification listeners
 self.addEventListener('push', e => {
-  let data = { title: 'New message', body: '', url: 'https://mitchdog.com/encrypt.html' };
+  let data = { title: 'New message', body: '', url: 'https://mitch.pro/encrypt/' };
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
   e.waitUntil(self.registration.showNotification(data.title, {
     body: data.body,
@@ -109,10 +109,10 @@ self.addEventListener('push', e => {
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const url = e.notification.data?.url || 'https://mitchdog.com/encrypt.html';
+  const url = e.notification.data?.url || 'https://mitch.pro/encrypt/';
   e.waitUntil(clients.matchAll({ type: 'window' }).then(cs => {
     for (const c of cs) {
-      if (c.url.includes('/encrypt.html') && 'focus' in c) return c.focus();
+      if ((c.url.includes('/encrypt/') || c.url.includes('/encrypt.html')) && 'focus' in c) return c.focus();
     }
     return clients.openWindow(url);
   }));

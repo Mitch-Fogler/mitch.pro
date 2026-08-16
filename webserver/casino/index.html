@@ -589,8 +589,9 @@
 <main class="app-main casino-main">
   <header class="page-head">
     <div>
-      <h1>The Casino</h1>
-      <p class="page-sub">Play with site coins, watch your wallet, and check recent rounds before the next spin, draw, roll, or hand.</p>
+      <div class="casino-kicker">MITCHCOIN NIGHT DISTRICT</div>
+      <h1>The <span>Casino</span></h1>
+      <p class="page-sub">Eleven live rooms. One wallet. Every spin, draw, roll, and hand recorded in real time.</p>
     </div>
     <div class="wallet"><span>Balance</span><strong id="balance">Loading...</strong></div>
   </header>
@@ -599,7 +600,7 @@
     <div class="hero-copy">
       <div class="chips">
         <span class="pill">Virtual coins only</span>
-        <span class="pill">Live games</span>
+        <span class="pill">11 live games</span>
         <span class="pill">History saved</span>
       </div>
       <h2>Pick a room. Place a wager.</h2>
@@ -731,6 +732,18 @@
         </div>
       </article>
 
+      <article class="card" id="card-high-low">
+        <div class="card-head"><div><div class="kicker">Cards</div><h2>High / Low</h2></div><div class="card-options"><div class="icon">7?</div></div></div>
+        <p>Predict whether the next card lands above or below seven. Seven pushes; ace plays low.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-high-low')" type="button">Play High / Low</button>
+          <div style="display:none;">
+            <div class="choice-row" data-group="highlow"><button class="choice active" data-highlow="higher" type="button">Higher</button><button class="choice" data-highlow="lower" type="button">Lower</button></div>
+            <button class="btn primary" id="high-low" type="button">Draw Card</button>
+          </div>
+        </div>
+      </article>
+
       <article class="card wide" id="card-keno">
         <div class="card-head"><div><div class="kicker">Numbers</div><h2>Keno Rush</h2></div><div class="card-options"><a href="/casino-guide.html#keno" class="opt-btn help" title="How to play">?</a><div class="icon">40</div></div></div>
         <p>Pick 3 to 10 numbers and watch the draw.</p>
@@ -765,7 +778,7 @@
 
 <script>
 (function () {
-  var state = { coinSide: "heads", diceSide: "under", keno: new Set(), bjBet: 0, busy: false };
+  var state = { coinSide: "heads", diceSide: "under", highLow: "higher", keno: new Set(), bjBet: 0, busy: false };
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.from((root || document).querySelectorAll(sel)); };
 
@@ -898,6 +911,12 @@
         $$('[data-group="dice"] .choice').forEach(function (b) { b.classList.toggle("active", b === btn); });
       };
     });
+    $$('[data-group="highlow"] .choice').forEach(function (btn) {
+      btn.onclick = function () {
+        state.highLow = btn.dataset.highlow;
+        $$('[data-group="highlow"] .choice').forEach(function (b) { b.classList.toggle("active", b === btn); });
+      };
+    });
   }
   function buildKeno() {
     var board = $("#keno-board");
@@ -994,6 +1013,10 @@
     var d = await post("/api/casino/scratch", { amount: bet() });
     var extra = '<div class="scratch">' + (d.tiles || []).map(function (s) { return '<span class="item">' + esc(s) + '</span>'; }).join("") + '</div>';
     result("Scratch: " + d.rank, "Payout " + coins(d.win) + " coins at " + coins(d.mult) + "x.", d.net, extra);
+  }); };
+  $("#high-low").onclick = function () { play(async function () {
+    var d = await post("/api/casino/high-low", { amount: bet(), choice: state.highLow });
+    result(d.push ? "High / Low: Push" : (d.won ? "High / Low: Win" : "High / Low: Miss"), "You called " + esc(state.highLow) + ". The card was " + esc(d.card) + ".", d.net, itemRow([d.card], "carditem"));
   }); };
   $("#keno").onclick = function () { play(async function () {
     var picks = Array.from(state.keno).sort(function (a, b) { return a - b; });
