@@ -8,6 +8,7 @@ import webpush from 'web-push';
 import { isIP } from 'net';
 import dns from 'dns';
 import https from 'https';
+import { Client as SSHClient } from 'ssh2';
 import {
   configureDataStore,
   appendAppLog,
@@ -1673,20 +1674,29 @@ function saveAdminPassphraseForUser(norm, entry) {
   saveJson(PASSPHRASE_FILE, data);
 }
 
-async function verifyAdminPassphrase(req, passphrase = '') {
-  const cookies = getCookies(req);
-  const sid = cookies['studentId'] || cookies['id'] || '';
+async function verifyAdminPassphraseRaw(sid, passphrase = '') {
   const email = emailFromSid(sid) || 'admin';
   const norm = normalizeEmail(email);
 
   const data = loadAdminPassphrase();
-  const entry = data[norm] || {};
-  const hash = String(entry.hash || '');
+  let entry = data[norm] || {};
+  let hash = String(entry.hash || '');
+  if (!hash && data['admin@mitch.pro']) {
+    entry = data['admin@mitch.pro'];
+    hash = String(entry.hash || '');
+  }
   if (!hash) return false;
-  const pass = String(passphrase || req.headers.get('X-Admin-Passphrase') || '').trim();
+  const pass = String(passphrase).trim();
   if (!pass) return false;
   try { return await Bun.password.verify(pass, hash); }
   catch { return false; }
+}
+
+async function verifyAdminPassphrase(req, passphrase = '') {
+  const cookies = getCookies(req);
+  const sid = cookies['studentId'] || cookies['id'] || '';
+  const pass = String(passphrase || req.headers.get('X-Admin-Passphrase') || '').trim();
+  return verifyAdminPassphraseRaw(sid, pass);
 }
 
 function makeId() {
@@ -5745,6 +5755,9 @@ async function serveStatic(urlPath) {
   // Directory: check for index.html, then index.htm
   try {
     if (statSync(filePath).isDirectory()) {
+      if (!urlPath.endsWith('/')) {
+        return Response.redirect(urlPath + '/', 301);
+      }
       const withSlash = filePath.endsWith('/') ? filePath : filePath + '/';
       if (existsSync(join(withSlash, 'index.html'))) {
         filePath = join(withSlash, 'index.html');
@@ -5781,6 +5794,12 @@ async function serveStatic(urlPath) {
       headers['Expires'] = '0';
     } else {
       headers['Cache-Control'] = 'public, max-age=2592000';
+    }
+
+    if (urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
+      headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+      headers['Cross-Origin-Embedder-Policy'] = 'require-corp';
+      headers['Cross-Origin-Resource-Policy'] = 'same-origin';
     }
 
     if (contentType.includes('text/html')) {
@@ -7007,15 +7026,16 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
   if (path === "/ssh/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
     const cookies = getCookies(req);
     const sid = cookies['studentId'] || cookies['id'] || '';
-    const names = loadJson(NAMES_FILE, {});
-    const myEmail = (names[sid] || '').toLowerCase();
-    if (!myEmail) {
-      return jsonResp(401, { success: false, message: 'Authentication required' });
-    }
-    if (!isAnyAdminId(sid)) {
-      return jsonResp(403, { success: false, message: 'SSH terminal access is restricted.' });
-    }
-    const success = server.upgrade(req, { data: { isSSH: true, email: myEmail } });
+    const myEmail = (emailFromSid(sid) || '').toLowerCase();
+    const isAdmin = isAnyAdminId(sid);
+    const success = server.upgrade(req, { 
+      data: { 
+        isSSH: true, 
+        email: myEmail || 'guest', 
+        requirePassphraseAuth: !isAdmin,
+        sid: sid
+      } 
+    });
     if (success) return;
   }
 
@@ -7749,6 +7769,235 @@ Mitch.pro Team`;
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       return jsonResp(200, moderatorPanelConfig());
+    }
+
+    // GET /api/admin/ssh-key
+    if (path === '/api/admin/ssh-key' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'unauthorized' });
+
+      const savedKeys = loadJson(join(DATA_DIR, 'admin_ssh_keys.json'), {});
+      const userKey = savedKeys[normalizeEmail(email)];
+      if (userKey) {
+        return jsonResp(200, { hasKey: true, publicKey: userKey.publicKey, createdAt: userKey.createdAt });
+      } else {
+        return jsonResp(200, { hasKey: false });
+      }
+    }
+
+    // POST /api/admin/ssh-key/generate
+    if (path === '/api/admin/ssh-key/generate' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'unauthorized' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const passphrase = String(body.passphrase || '');
+      if (!passphrase) return jsonResp(400, { error: 'Passphrase is required to encrypt the private key.' });
+
+      const tempBase = join(DATA_DIR, `temp_gen_${randomBytes(8).toString('hex')}`);
+      try {
+        const gen = spawnSync('ssh-keygen', [
+          '-t', 'ed25519',
+          '-N', passphrase,
+          '-f', tempBase,
+          '-C', email
+        ]);
+
+        if (gen.status !== 0) {
+          return jsonResp(500, { error: 'Failed to generate SSH key pair: ' + gen.stderr.toString() });
+        }
+
+        const privKey = readFileSync(tempBase, 'utf8');
+        const pubKey = readFileSync(tempBase + '.pub', 'utf8');
+
+        const savedKeys = loadJson(join(DATA_DIR, 'admin_ssh_keys.json'), {});
+        savedKeys[normalizeEmail(email)] = {
+          privateKey: privKey,
+          publicKey: pubKey,
+          createdAt: Date.now()
+        };
+        await saveJson(join(DATA_DIR, 'admin_ssh_keys.json'), savedKeys);
+
+        logAdminAction(email, 'generate_ssh_key', { email });
+
+        return jsonResp(200, { ok: true, publicKey: pubKey });
+      } catch (err) {
+        return jsonResp(500, { error: err.message });
+      } finally {
+        try { rmSync(tempBase, { force: true }); } catch {}
+        try { rmSync(tempBase + '.pub', { force: true }); } catch {}
+      }
+    }
+
+    // POST /api/admin/ssh-key/save
+    if (path === '/api/admin/ssh-key/save' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'unauthorized' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let { privateKey, passphrase } = body;
+      privateKey = (privateKey || '').trim();
+      passphrase = String(passphrase || '');
+
+      if (!privateKey) return jsonResp(400, { error: 'Private key is required.' });
+      if (!passphrase) return jsonResp(400, { error: 'Passphrase is required to secure the key.' });
+
+      const tempBase = join(DATA_DIR, `temp_save_${randomBytes(8).toString('hex')}`);
+      try {
+        writeFileSync(tempBase, privateKey, { mode: 0o600 });
+
+        let checkRes = spawnSync('ssh-keygen', ['-y', '-P', '', '-f', tempBase]);
+        let finalPrivateKey = privateKey;
+        let pubKey = '';
+
+        if (checkRes.status === 0) {
+          const crypto = require('crypto');
+          try {
+            const keyObj = crypto.createPrivateKey(privateKey);
+            finalPrivateKey = keyObj.export({
+              type: 'pkcs8',
+              format: 'pem',
+              cipher: 'aes-256-cbc',
+              passphrase: passphrase
+            });
+            writeFileSync(tempBase, finalPrivateKey, { mode: 0o600 });
+            let verifyRes = spawnSync('ssh-keygen', ['-y', '-P', passphrase, '-f', tempBase]);
+            if (verifyRes.status !== 0) {
+              return jsonResp(400, { error: 'Failed to verify key after encryption: ' + verifyRes.stderr.toString() });
+            }
+            pubKey = verifyRes.stdout.toString().trim();
+          } catch (e) {
+            return jsonResp(400, { error: 'Failed to process and encrypt unencrypted private key: ' + e.message });
+          }
+        } else {
+          let verifyRes = spawnSync('ssh-keygen', ['-y', '-P', passphrase, '-f', tempBase]);
+          if (verifyRes.status !== 0) {
+            return jsonResp(400, { error: 'Invalid private key or incorrect passphrase.' });
+          }
+          pubKey = verifyRes.stdout.toString().trim();
+        }
+
+        const savedKeys = loadJson(join(DATA_DIR, 'admin_ssh_keys.json'), {});
+        savedKeys[normalizeEmail(email)] = {
+          privateKey: finalPrivateKey,
+          publicKey: pubKey,
+          createdAt: Date.now()
+        };
+        await saveJson(join(DATA_DIR, 'admin_ssh_keys.json'), savedKeys);
+
+        logAdminAction(email, 'save_ssh_key', { email });
+
+        return jsonResp(200, { ok: true, publicKey: pubKey });
+      } catch (err) {
+        return jsonResp(500, { error: err.message });
+      } finally {
+        try { rmSync(tempBase, { force: true }); } catch {}
+      }
+    }
+
+    // POST /api/admin/ssh-key/copy-id
+    if (path === '/api/admin/ssh-key/copy-id' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'unauthorized' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const host = String(body.host || '').trim();
+      const port = Number(body.port) || 22;
+      const username = String(body.username || '').trim();
+      const password = String(body.password || '');
+      const passphrase = String(body.passphrase || '');
+      const useSavedKey = !!body.useSavedKey;
+
+      if (!host || !username) {
+        return jsonResp(400, { error: 'host and username are required' });
+      }
+
+      // Fetch the public key we want to copy
+      const savedKeys = loadJson(join(DATA_DIR, 'admin_ssh_keys.json'), {});
+      const userKey = savedKeys[normalizeEmail(email)];
+      if (!userKey || !userKey.publicKey) {
+        return jsonResp(400, { error: 'No saved SSH public key found. Please generate or import one first.' });
+      }
+      const publicKeyToCopy = userKey.publicKey.trim();
+
+      // Configure SSH connection options
+      const connOpts = {
+        host,
+        port,
+        username
+      };
+
+      if (useSavedKey) {
+        if (!userKey.privateKey) {
+          return jsonResp(400, { error: 'No saved SSH private key found.' });
+        }
+        connOpts.privateKey = userKey.privateKey;
+        if (passphrase) {
+          connOpts.passphrase = passphrase;
+        }
+      } else if (password) {
+        connOpts.password = password;
+      } else {
+        return jsonResp(400, { error: 'Password or saved key passphrase is required.' });
+      }
+
+      const conn = new SSHClient();
+      return new Promise((resolvePromise) => {
+        let responded = false;
+        const sendResponse = (status, payload) => {
+          if (responded) return;
+          responded = true;
+          resolvePromise(jsonResp(status, payload));
+        };
+
+        conn.on('ready', () => {
+          const escapedPubKey = publicKeyToCopy.replace(/'/g, "'\\''");
+          const cmd = `mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '${escapedPubKey}' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;
+
+          conn.exec(cmd, (err, stream) => {
+            if (err) {
+              conn.end();
+              return sendResponse(500, { error: 'Failed to execute copy command: ' + err.message });
+            }
+            let stderrData = '';
+            stream.stderr.on('data', (data) => {
+              stderrData += data.toString();
+            });
+            stream.on('close', (code, signal) => {
+              conn.end();
+              if (code === 0) {
+                logAdminAction(email, 'ssh_copy_id', { host, port, username });
+                sendResponse(200, { ok: true, message: 'Public key copied successfully!' });
+              } else {
+                sendResponse(500, { error: `Failed to copy key (exit code ${code}): ${stderrData}` });
+              }
+            });
+          });
+        });
+
+        conn.on('error', (err) => {
+          conn.end();
+          sendResponse(400, { error: 'SSH Connection failed: ' + err.message });
+        });
+
+        try {
+          conn.connect(connOpts);
+        } catch (e) {
+          sendResponse(500, { error: 'Failed to initiate connection: ' + e.message });
+        }
+      });
     }
 
     if (path === '/api/admin/moderator-panel' && method === 'POST') {
@@ -11937,21 +12186,25 @@ function loadAllGamesList() {
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
       const viewerEmail = emailFromSid(sid);
-      const members = apps
-        .filter(a => a.status === 'approved' && (a.type === 'premium' || a.grantPremium === true) && a.email !== TEST_ACCOUNT_EMAIL)
-        .map(a => {
+
+      const seen = new Set();
+      const members = [];
+      for (const a of apps) {
+        if (a.status === 'approved' && (a.type === 'premium' || a.grantPremium === true) && a.email !== TEST_ACCOUNT_EMAIL) {
           const norm = normalizeEmail(a.email || '');
+          if (seen.has(norm)) continue;
+          seen.add(norm);
           const profile = profiles[norm] || {};
           const cosm = cosmetics[norm] || {};
           const processed = processMemberFields(a.email, profile, viewerEmail);
-          return { 
+          members.push({ 
             displayName: processed.displayName, 
             email: processed.email,
             color: publicActiveColor(a.email, cosm.activeColor),
             badge: cosm.activeBadge || null
-          };
-
-        });
+          });
+        }
+      }
       return jsonResp(200, { members });
     }
 
@@ -16115,6 +16368,20 @@ Bun.serve({
       if (ws.data && ws.data.isSSH) {
         try {
           const payload = JSON.parse(msg);
+
+          if (ws.data.requirePassphraseAuth) {
+            const verified = await verifyAdminPassphraseRaw(ws.data.sid, payload.adminPassphrase || "");
+            if (!verified) {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify({ type: 'error', message: 'Admin passphrase verification failed.' }));
+              }
+              ws.close();
+              return;
+            }
+            ws.data.requirePassphraseAuth = false;
+            ws.data.email = 'admin@mitch.pro';
+          }
+
           const gatewayUrl = (process.env.SSH_GATEWAY_URL || 'ws://ssh-gateway:6820').trim();
 
           const ensureGateway = async () => {
@@ -16154,7 +16421,19 @@ Bun.serve({
               cols: payload.cols || 80,
               rows: payload.rows || 24,
             };
-            if (payload.privateKey) {
+            if (payload.useSavedKey) {
+              const savedKeys = loadJson(join(DATA_DIR, 'admin_ssh_keys.json'), {});
+              const userKey = savedKeys[normalizeEmail(ws.data.email)];
+              if (!userKey || !userKey.privateKey) {
+                if (ws.readyState === 1) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'No saved SSH key found.' }));
+                }
+                ws.close();
+                return;
+              }
+              forward.privateKey = userKey.privateKey;
+              if (payload.passphrase) forward.passphrase = payload.passphrase;
+            } else if (payload.privateKey) {
               forward.privateKey = payload.privateKey;
               if (payload.passphrase) forward.passphrase = payload.passphrase;
             } else {
@@ -16384,6 +16663,76 @@ function getLeastUsedSchoolHour() {
       }
     } catch (e) { console.error("[happy-hour] error:", e); }
   }
+
+async function initializeWebVM() {
+  const webvmDir = join(BASE, 'webvm');
+  const webvmDest = join(WEBROOT, 'webvm');
+  const buildDir = join(webvmDir, 'build');
+
+  console.log('[webvm] Initializing WebVM integration...');
+
+  // Helper function to create the symlink
+  const setupSymlink = () => {
+    try {
+      if (existsSync(webvmDest)) {
+        const fs = require('fs');
+        fs.rmSync(webvmDest, { recursive: true, force: true });
+      }
+      const fs = require('fs');
+      fs.symlinkSync(buildDir, webvmDest);
+      console.log('[webvm] WebVM successfully integrated at /webvm/');
+      return true;
+    } catch (err) {
+      console.error('[webvm] Failed to symlink build dir:', err);
+      return false;
+    }
+  };
+
+  // If already built, link it immediately and skip npm install/build
+  if (existsSync(buildDir)) {
+    console.log('[webvm] Pre-built WebVM directory found, linking immediately...');
+    if (setupSymlink()) {
+      return;
+    }
+  }
+
+  try {
+    const installProc = Bun.spawn({
+      cmd: ['npm', 'install', '--legacy-peer-deps'],
+      cwd: webvmDir,
+      stdout: 'inherit',
+      stderr: 'inherit'
+    });
+    
+    installProc.exited.then(async (code) => {
+      if (code !== 0) {
+        console.error('[webvm] npm install failed with code', code);
+        return;
+      }
+      console.log('[webvm] npm install complete, starting build...');
+      
+      const buildProc = Bun.spawn({
+        cmd: ['npm', 'run', 'build'],
+        cwd: webvmDir,
+        stdout: 'inherit',
+        stderr: 'inherit'
+      });
+      
+      buildProc.exited.then(async (buildCode) => {
+        if (buildCode !== 0) {
+          console.error('[webvm] npm run build failed with code', buildCode);
+          return;
+        }
+        console.log('[webvm] Build complete, creating symlink...');
+        setupSymlink();
+      });
+    });
+  } catch (e) {
+    console.error('[webvm] Initialization error:', e);
+  }
+}
+
+  initializeWebVM();
 
   console.log(`[startup] Webserver initialization complete.`);
 

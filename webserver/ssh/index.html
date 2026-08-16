@@ -262,6 +262,7 @@
         <div class="tabs">
           <div class="tab active" id="tab-pass" onclick="setAuthMethod('password')">Password</div>
           <div class="tab" id="tab-key" onclick="setAuthMethod('key')">Private Key</div>
+          <div class="tab" id="tab-saved" onclick="setAuthMethod('saved')">Saved Key</div>
         </div>
 
         <!-- Password input -->
@@ -282,10 +283,63 @@
           </div>
         </div>
 
+        <!-- Saved Key input -->
+        <div class="hidden" id="group-saved">
+          <div id="saved-key-status-msg" style="font-size: 0.85rem; color: var(--fg2); margin-bottom: 10px; line-height: 1.4;"></div>
+          <div class="form-group" id="group-saved-passphrase-container">
+            <label for="saved-passphrase">Key Passphrase</label>
+            <input type="password" id="saved-passphrase" placeholder="Key Passphrase">
+          </div>
+        </div>
+
         <button type="submit" class="btn-connect" id="btn-submit">Connect Session</button>
       </form>
 
       <div class="status-msg" id="status"></div>
+
+      <hr style="border: 0; border-top: 1px solid var(--bd, rgba(255, 255, 255, 0.08)); margin: 20px 0;">
+      <a href="#" onclick="toggleManager(event)" id="btn-toggle-manager" style="display:block; text-align:center; font-size:0.85rem; color:var(--ac, #6366F1); text-decoration:none; font-weight: 500;">⚙️ Manage Saved SSH Keys</a>
+      
+      <div id="key-manager-panel" class="hidden" style="margin-top: 15px;">
+        <div style="background: rgba(0, 0, 0, 0.25); padding: 16px; border-radius: 8px; border: 1px solid var(--bd, rgba(255, 255, 255, 0.05));">
+          <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; color: var(--fg);">SSH Key Manager</h4>
+          
+          <div id="pubkey-info" class="hidden" style="margin-bottom: 12px;">
+            <label style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Current Public Key (add to target authorized_keys)</label>
+            <textarea readonly id="manager-pubkey" style="min-height: 50px; font-size: 0.75rem; background: var(--bg3); padding: 6px; resize: none;"></textarea>
+            <button type="button" onclick="copyPubKey()" style="background: rgba(99, 102, 241, 0.2); border: 1px solid var(--ac); color: var(--fg); padding: 6px 12px; font-size: 0.75rem; border-radius: 4px; margin-top: 6px; cursor: pointer; width: 100%; font-weight: 600; transition: background 0.2s;">Copy Public Key</button>
+          </div>
+
+          <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+            <button type="button" id="btn-mgr-gen" onclick="setMgrAction('generate')" style="flex: 1; font-size: 0.75rem; padding: 6px; border-radius: 4px; border: 1px solid var(--bd); background: transparent; color: var(--fg2); cursor: pointer; font-weight: 500;">Generate Key</button>
+            <button type="button" id="btn-mgr-imp" onclick="setMgrAction('import')" style="flex: 1; font-size: 0.75rem; padding: 6px; border-radius: 4px; border: 1px solid var(--bd); background: transparent; color: var(--fg2); cursor: pointer; font-weight: 500;">Import Key</button>
+          </div>
+
+          <!-- Generate Form -->
+          <div id="mgr-form-gen" class="hidden">
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label for="gen-passphrase" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Key Passphrase</label>
+              <input type="password" id="gen-passphrase" placeholder="Passphrase to encrypt generated key" style="padding: 8px 12px; font-size: 0.85rem;">
+            </div>
+            <button type="button" onclick="generateKey()" class="btn-connect" style="margin-top: 5px; padding: 8px 12px; font-size: 0.85rem;">Generate Ed25519 Key</button>
+          </div>
+
+          <!-- Import Form -->
+          <div id="mgr-form-imp" class="hidden">
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label for="imp-key" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Private Key (PEM format)</label>
+              <textarea id="imp-key" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----&#10;...&#10;-----END OPENSSH PRIVATE KEY-----" style="min-height: 80px; font-size: 0.75rem; padding: 6px; font-family: monospace;"></textarea>
+            </div>
+            <div class="form-group" style="margin-bottom: 10px;">
+              <label for="imp-passphrase" style="font-size: 0.8rem; display: block; margin-bottom: 4px;">Passphrase to Encrypt/Verify Key</label>
+              <input type="password" id="imp-passphrase" placeholder="Key Passphrase" style="padding: 8px 12px; font-size: 0.85rem;">
+            </div>
+            <button type="button" onclick="importKey()" class="btn-connect" style="margin-top: 5px; padding: 8px 12px; font-size: 0.85rem;">Save Encrypted Key</button>
+          </div>
+
+          <div id="mgr-status" class="status-msg" style="margin-top: 10px; font-size: 0.8rem; min-height: 18px;"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -310,9 +364,11 @@
       authMethod = method;
       document.getElementById('tab-pass').classList.toggle('active', method === 'password');
       document.getElementById('tab-key').classList.toggle('active', method === 'key');
+      document.getElementById('tab-saved').classList.toggle('active', method === 'saved');
 
       document.getElementById('group-pass').classList.toggle('hidden', method !== 'password');
       document.getElementById('group-key').classList.toggle('hidden', method !== 'key');
+      document.getElementById('group-saved').classList.toggle('hidden', method !== 'saved');
     }
 
     function showStatus(text, type = 'info') {
@@ -362,9 +418,15 @@
       const password = document.getElementById('password').value;
       const privateKey = document.getElementById('private-key').value.trim();
       const passphrase = document.getElementById('passphrase').value;
+      const savedPassphrase = document.getElementById('saved-passphrase').value;
 
       if (!hostInput) {
         showStatus('Please fill in Host.', 'error');
+        return;
+      }
+
+      if (authMethod === 'saved' && !hasSavedKey) {
+        showStatus('No saved SSH key found. Generate or import one below.', 'error');
         return;
       }
 
@@ -403,6 +465,7 @@
         // Create terminal instance (but keep hidden until successfully connected)
         initTerminal();
 
+        const adminPass = sessionStorage.getItem('admin_passphrase') || '';
         // Send initialization payload
         const payload = {
           type: 'init',
@@ -413,9 +476,16 @@
           rows: term.rows
         };
 
+        if (adminPass) {
+          payload.adminPassphrase = adminPass;
+        }
+
         if (authMethod === 'key') {
           payload.privateKey = privateKey;
           if (passphrase) payload.passphrase = passphrase;
+        } else if (authMethod === 'saved') {
+          payload.useSavedKey = true;
+          if (savedPassphrase) payload.passphrase = savedPassphrase;
         } else {
           payload.password = password;
         }
@@ -536,6 +606,180 @@
         }
       }, 500);
     }
+
+    let hasSavedKey = false;
+    let savedPubKey = '';
+
+    async function checkSavedKey() {
+      try {
+        const resp = await fetch('/api/admin/ssh-key');
+        if (resp.status === 200) {
+          const data = await resp.json();
+          if (data.hasKey) {
+            hasSavedKey = true;
+            savedPubKey = data.publicKey;
+            updateSavedKeyUI();
+          } else {
+            hasSavedKey = false;
+            updateSavedKeyUI();
+          }
+        }
+      } catch (e) {
+        console.error("Error checking saved key:", e);
+      }
+    }
+
+    function updateSavedKeyUI() {
+      const statusMsg = document.getElementById('saved-key-status-msg');
+      const container = document.getElementById('group-saved-passphrase-container');
+      const pubkeyInfo = document.getElementById('pubkey-info');
+      const managerPubkey = document.getElementById('manager-pubkey');
+
+      if (hasSavedKey) {
+        statusMsg.innerHTML = `<span style="color:#10B981; font-weight:600;">✓ Saved Key Found</span><br><span style="font-size:0.75rem; word-break:break-all;">Public Key: ${savedPubKey}</span>`;
+        container.classList.remove('hidden');
+        pubkeyInfo.classList.remove('hidden');
+        managerPubkey.value = savedPubKey;
+      } else {
+        statusMsg.innerHTML = `<span style="color:#EF4444; font-weight:600;">✗ No Saved Key Found</span><br>Use the manager below to generate or import a key.`;
+        container.classList.add('hidden');
+        pubkeyInfo.classList.add('hidden');
+        managerPubkey.value = '';
+      }
+    }
+
+    function toggleManager(e) {
+      if (e) e.preventDefault();
+      const panel = document.getElementById('key-manager-panel');
+      const isHidden = panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', !isHidden);
+      document.getElementById('btn-toggle-manager').textContent = isHidden ? '▲ Hide Key Manager' : '⚙️ Manage Saved SSH Keys';
+      if (isHidden) {
+        checkSavedKey();
+      }
+    }
+
+    let mgrAction = 'generate';
+    function setMgrAction(action) {
+      mgrAction = action;
+      document.getElementById('btn-mgr-gen').style.background = action === 'generate' ? 'var(--ac)' : 'transparent';
+      document.getElementById('btn-mgr-gen').style.color = action === 'generate' ? 'white' : 'var(--fg2)';
+      document.getElementById('btn-mgr-imp').style.background = action === 'import' ? 'var(--ac)' : 'transparent';
+      document.getElementById('btn-mgr-imp').style.color = action === 'import' ? 'white' : 'var(--fg2)';
+
+      document.getElementById('mgr-form-gen').classList.toggle('hidden', action !== 'generate');
+      document.getElementById('mgr-form-imp').classList.toggle('hidden', action !== 'import');
+    }
+
+    function showMgrStatus(text, type = 'info') {
+      const el = document.getElementById('mgr-status');
+      el.textContent = text;
+      el.className = 'status-msg ' + type;
+    }
+
+    async function generateKey() {
+      const passphrase = document.getElementById('gen-passphrase').value;
+      if (!passphrase) {
+        showMgrStatus('Passphrase is required to encrypt key pair.', 'error');
+        return;
+      }
+      showMgrStatus('Generating key pair...', 'info');
+      try {
+        const resp = await fetch('/api/admin/ssh-key/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ passphrase })
+        });
+        const data = await resp.json();
+        if (resp.status === 200) {
+          showMgrStatus('Key pair generated and saved successfully!', 'info');
+          document.getElementById('gen-passphrase').value = '';
+          await checkSavedKey();
+        } else {
+          showMgrStatus(data.error || 'Failed to generate key pair.', 'error');
+        }
+      } catch (err) {
+        showMgrStatus(err.message, 'error');
+      }
+    }
+
+    async function importKey() {
+      const privateKey = document.getElementById('imp-key').value;
+      const passphrase = document.getElementById('imp-passphrase').value;
+      if (!privateKey) {
+        showMgrStatus('Private key is required.', 'error');
+        return;
+      }
+      if (!passphrase) {
+        showMgrStatus('Passphrase is required to secure the key.', 'error');
+        return;
+      }
+      showMgrStatus('Importing key...', 'info');
+      try {
+        const resp = await fetch('/api/admin/ssh-key/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ privateKey, passphrase })
+        });
+        const data = await resp.json();
+        if (resp.status === 200) {
+          showMgrStatus('Key imported and secured successfully!', 'info');
+          document.getElementById('imp-key').value = '';
+          document.getElementById('imp-passphrase').value = '';
+          await checkSavedKey();
+        } else {
+          showMgrStatus(data.error || 'Failed to import key.', 'error');
+        }
+      } catch (err) {
+        showMgrStatus(err.message, 'error');
+      }
+    }
+
+    function copyPubKey() {
+      const el = document.getElementById('manager-pubkey');
+      el.select();
+      document.execCommand('copy');
+      alert('Public key copied to clipboard!');
+    }
+
+    // Run check on load
+    window.addEventListener('DOMContentLoaded', () => {
+      checkSavedKey();
+      setMgrAction('generate');
+
+      // Auto-fill parameters from URL search query if provided
+      const urlParams = new URLSearchParams(window.location.search);
+      const hostParam = urlParams.get('host');
+      const userParam = urlParams.get('username');
+      const portParam = urlParams.get('port');
+      const authParam = urlParams.get('auth');
+      const connectParam = urlParams.get('connect');
+
+      if (hostParam) {
+        document.getElementById('host').value = hostParam;
+      }
+      if (userParam) {
+        document.getElementById('username').value = userParam;
+      }
+      if (portParam) {
+        document.getElementById('port').value = portParam;
+      }
+      if (authParam) {
+        setAuthMethod(authParam);
+      }
+      if (connectParam === 'true' || connectParam === '1') {
+        setTimeout(() => {
+          const form = document.getElementById('connect-form');
+          if (form) {
+            if (typeof form.requestSubmit === 'function') {
+              form.requestSubmit();
+            } else {
+              form.dispatchEvent(new Event('submit'));
+            }
+          }
+        }, 500);
+      }
+    });
   </script>
 </body>
 </html>
