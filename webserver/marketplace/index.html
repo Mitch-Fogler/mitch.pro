@@ -302,9 +302,9 @@
 <body>
 <main class="app-main">
   <header class="page-head app-fade-in">
-    <div class="kicker">Player market</div>
+    <div class="kicker">LIVE PLAYER ECONOMY</div>
     <h1>Player <span>Marketplace</span></h1>
-    <p class="subline">Peer-to-peer listings with optional escrow mediation. Keep trades in-game.</p>
+    <p class="subline">Discover rare cosmetics, community services, and protected player-to-player trades.</p>
   </header>
 
   <div class="warning-banner">
@@ -317,7 +317,7 @@
 
   <div class="balance-bar">
     <span>My Balance: <strong id="myCoins">0.00</strong> Coins</span>
-    <span class="balance-hint">Instant trade or 24h Escrow Protection</span>
+    <span class="balance-hint"><i></i> Live market · 24h escrow protection</span>
   </div>
 
   <div class="layout">
@@ -366,6 +366,12 @@
         <button class="feed-tab" data-tab="mediate-inbox">Mediation Inbox (<span id="mediationCount">0</span>)</button>
       </div>
 
+      <div class="market-tools">
+        <label><span>⌕</span><input id="marketSearch" type="search" placeholder="Search listings, sellers, and items" autocomplete="off"></label>
+        <select id="marketSort" aria-label="Sort marketplace"><option value="newest">Newest first</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select>
+        <span class="market-count"><b id="marketCount">0</b> listings</span>
+      </div>
+
       <div id="listingsFeed" class="listings-grid">
       </div>
     </div>
@@ -377,6 +383,11 @@
   let myInventory = { cosmetics: {} };
   let myEmail = '';
   let fullListings = [];
+  let marketQuery = '';
+  let marketSort = 'newest';
+  let actionBusy = false;
+
+  const esc = value => String(value == null ? '' : value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   const createForm = document.getElementById('createListingForm');
   const listingType = document.getElementById('listingType');
@@ -396,15 +407,17 @@
 
   async function loadData() {
     try {
-      const meRes = await fetch('/api/me');
+      const meRes = await fetch('/api/me', { credentials:'include', cache:'no-store' });
+      if (!meRes.ok) throw new Error('Sign in required');
       const meData = await meRes.json();
       myEmail = meData.email;
       if (!myEmail) location.href = '/enroll/';
 
-      const r = await fetch('/api/marketplace/items');
+      const r = await fetch('/api/marketplace/items', { credentials:'include', cache:'no-store' });
+      if (!r.ok) throw new Error('Marketplace is unavailable');
       const d = await r.json();
       document.getElementById('myCoins').textContent = Number(d.coins).toFixed(2);
-      myInventory = d.inventory;
+      myInventory = d.inventory || { cosmetics:{} };
       fullListings = d.listings || [];
 
       // Populate owned cosmetics dropdown
@@ -421,7 +434,7 @@
         ...(cosm.tools || [])
       ];
 
-      allOwned.forEach(itemId => {
+      [...new Set(allOwned)].forEach(itemId => {
         const opt = document.createElement('option');
         opt.value = itemId;
         opt.textContent = itemId.replace(/_/g, ' ').toUpperCase();
@@ -429,7 +442,9 @@
       });
 
       renderFeed();
-    } catch (e) {}
+    } catch (e) {
+      document.getElementById('listingsFeed').innerHTML = `<div class="empty-state"><strong>Market connection lost</strong><br>${esc(e.message || 'Please try again shortly.')}</div>`;
+    }
   }
 
   function renderFeed() {
@@ -445,6 +460,10 @@
       items = fullListings.filter(l => l.isMediator && l.status === 'pending');
     }
 
+    if (marketQuery) items = items.filter(l => [l.itemId,l.description,l.seller,l.buyer,l.mediator,l.type].some(v => String(v || '').toLowerCase().includes(marketQuery)));
+    items.sort((a,b) => marketSort === 'price-low' ? Number(a.price)-Number(b.price) : marketSort === 'price-high' ? Number(b.price)-Number(a.price) : Number(b.created_at || b.ts || 0)-Number(a.created_at || a.ts || 0));
+    document.getElementById('marketCount').textContent = items.length;
+
     document.getElementById('mediationCount').textContent = fullListings.filter(l => l.isMediator && l.status === 'pending').length;
 
     if (items.length === 0) {
@@ -456,7 +475,7 @@
       const card = document.createElement('div');
       card.className = 'listing-item';
 
-      let itemLabel = l.type === 'cosmetic' ? l.itemId.replace(/_/g, ' ').toUpperCase() : 'CUSTOM LISTING';
+      let itemLabel = l.type === 'cosmetic' ? String(l.itemId || '').replace(/_/g, ' ').toUpperCase() : 'CUSTOM LISTING';
       let displayTag = l.type === 'cosmetic' ? `<span class="item-display-badge">Cosmetic</span>` : `<span class="item-display-badge" style="border-color: color-mix(in srgb, var(--t-ac) 35%, transparent); color: var(--primary);">Text Trade</span>`;
       
       let statusTag = '';
@@ -466,16 +485,17 @@
           pending: 'status-pending',
           finalized: 'status-finalized',
           undone: 'status-undone',
-          disputed: 'status-disputed'
+          disputed: 'status-disputed',
+          cancelled: 'status-undone'
         };
         statusTag = `<span class="status-tag ${statuses[l.status]}">${l.status}</span>`;
       }
 
       let metaSection = `
         <div class="listing-meta">
-          <span><strong>Seller:</strong> ${l.seller}</span>
-          ${l.buyer ? `<span><strong>Buyer:</strong> ${l.buyer}</span>` : ''}
-          ${l.mediator ? `<span><strong>Mediator:</strong> ${l.mediator}</span>` : ''}
+          <span><strong>Seller:</strong> ${esc(l.seller)}</span>
+          ${l.buyer ? `<span><strong>Buyer:</strong> ${esc(l.buyer)}</span>` : ''}
+          ${l.mediator ? `<span><strong>Mediator:</strong> ${esc(l.mediator)}</span>` : ''}
           ${l.bought_at ? `<span><strong>Traded:</strong> ${new Date(l.bought_at).toLocaleString()}</span>` : ''}
         </div>
       `;
@@ -483,7 +503,7 @@
       let actionBtn = '';
       if (activeTab === 'active') {
         if (l.isSeller) {
-          actionBtn = `<button class="btn sec" disabled>Your Listing</button>`;
+          actionBtn = `<button class="btn danger" onclick="cancelListing('${l.id}')">Cancel listing</button>`;
         } else {
           actionBtn = `<button class="btn" onclick="buyListing('${l.id}')">Buy for ${l.price} Coins</button>`;
         }
@@ -506,11 +526,11 @@
         <div>
           ${statusTag}
           <div class="listing-header">
-            <span class="listing-title">${itemLabel}</span>
-            <span class="listing-price">${l.price} Coins</span>
+            <span class="listing-title">${esc(itemLabel)}</span>
+            <span class="listing-price">${Number(l.price || 0).toLocaleString()} Coins</span>
           </div>
           ${displayTag}
-          <p class="listing-desc">${l.description || 'Virtual shop cosmetic trade.'}</p>
+          <p class="listing-desc">${esc(l.description || 'Virtual shop cosmetic trade.')}</p>
           ${metaSection}
         </div>
         <div>
@@ -534,16 +554,22 @@
 
   // Action listeners
   async function buyListing(id) {
+    if (actionBusy) return;
     if (!confirm('Are you sure you want to purchase this listing? Coins will be deducted immediately.')) return;
+    actionBusy = true;
+    try {
     const recaptcha_token = await getMarketplaceCaptchaToken('buy_listing');
     const r = await fetch('/api/marketplace/buy', {
       method: 'POST',
+      credentials: 'include',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ listingId: id, recaptcha_token })
     });
-    const d = await r.json();
-    alert(d.message || d.error);
-    loadData();
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || 'Purchase failed');
+    alert(d.message || 'Purchase complete.');
+    await loadData();
+    } catch (e) { alert(e.message); } finally { actionBusy = false; }
   }
 
   async function appealListing(id) {
@@ -551,12 +577,26 @@
     if (!reason || !reason.trim()) return;
     const r = await fetch('/api/marketplace/appeal', {
       method: 'POST',
+      credentials: 'include',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ listingId: id, reason })
     });
     const d = await r.json();
     alert(d.message || d.error);
     loadData();
+  }
+
+  async function cancelListing(id) {
+    if (actionBusy || !confirm('Cancel this listing? Any listed cosmetic will return to your inventory.')) return;
+    actionBusy = true;
+    try {
+      const r = await fetch('/api/marketplace/cancel', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ listingId:id }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Could not cancel listing');
+      alert(d.message || 'Listing cancelled.');
+      await loadData();
+    } catch (error) { alert(error.message); }
+    finally { actionBusy = false; }
   }
 
   async function mediateListing(id, action) {
@@ -567,6 +607,7 @@
 
     const r = await fetch('/api/marketplace/mediate', {
       method: 'POST',
+      credentials: 'include',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ listingId: id, action })
     });
@@ -588,15 +629,21 @@
       alert('Please choose a cosmetic item from your inventory to sell.');
       return;
     }
+    if (type === 'text' && !description.trim()) { alert('Describe what you are listing.'); return; }
+    if (!Number.isFinite(Number(price)) || Number(price) <= 0) { alert('Price must be greater than zero.'); return; }
+    if (actionBusy) return;
 
     if (mediator && typeof myEmail === 'string' && mediator.trim().toLowerCase() === myEmail.trim().toLowerCase()) {
       alert('You cannot choose yourself as the mediator for your own listing!');
       return;
     }
 
+    actionBusy = true;
+    try {
     const recaptcha_token = await getMarketplaceCaptchaToken('create_listing');
     const r = await fetch('/api/marketplace/list', {
       method: 'POST',
+      credentials: 'include',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ type, itemId, description, price, mediator, recaptcha_token })
     });
@@ -605,9 +652,14 @@
       alert('Listing posted successfully!');
       createForm.reset();
       listingType.onchange();
-      loadData();
+      await loadData();
     } else {
       alert(d.error || 'Failed to create listing.');
+    }
+    } catch (error) {
+      alert(error.message || 'Failed to create listing.');
+    } finally {
+      actionBusy = false;
     }
   };
 
@@ -620,6 +672,9 @@
       renderFeed();
     };
   });
+
+  document.getElementById('marketSearch').addEventListener('input', event => { marketQuery = event.target.value.trim().toLowerCase(); renderFeed(); });
+  document.getElementById('marketSort').addEventListener('change', event => { marketSort = event.target.value; renderFeed(); });
 
   loadData();
 </script>

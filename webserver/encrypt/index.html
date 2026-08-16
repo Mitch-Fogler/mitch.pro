@@ -815,6 +815,7 @@ button {
 
 <script>
 let myEmail = null, myDisplayName = null, myNick = null, myKP = null, myLegacyKP = null;
+let myHistoricalKPs = [];
 let members = [], groups = [], allMessages = [], currentMessages = [];
 let myNickPubKey = null;
 let activeView = 'direct';
@@ -836,7 +837,13 @@ const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
 let msgExpiry = 0;
 try { msgExpiry = parseInt(localStorage.getItem('_chatExpiry') || '0', 10) || 0; } catch {}
 
-const h2b = h => Uint8Array.from(String(h || '').match(/../g).map(x => parseInt(x,16)));
+const h2b = h => {
+  const value = String(h || '').trim();
+  if (!value || value.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(value)) {
+    throw new Error('Invalid encrypted payload encoding');
+  }
+  return Uint8Array.from(value.match(/../g), x => parseInt(x,16));
+};
 const b2h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
 
 async function deriveEncryptionKeyFromPassword(password, email) {
@@ -868,6 +875,49 @@ async function genKP() {
 }
 async function exportPub(kp) {
   return b2h(await crypto.subtle.exportKey('raw', kp.publicKey));
+}
+
+async function importKeypairJwk(jwk) {
+  if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.x || !jwk.y || !jwk.d) {
+    throw new Error('Invalid P-256 key');
+  }
+  const publicKey = await crypto.subtle.importKey(
+    'jwk',
+    { kty:'EC', crv:'P-256', x:jwk.x, y:jwk.y },
+    { name:'ECDH', namedCurve:'P-256' },
+    true,
+    []
+  );
+  const privateJwk = { ...jwk, key_ops:['deriveKey','deriveBits'] };
+  const privateKey = await crypto.subtle.importKey(
+    'jwk', privateJwk, { name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey','deriveBits']
+  );
+  return { publicKey, privateKey };
+}
+
+async function loadHistoricalKeypairs() {
+  myHistoricalKPs = [];
+  try {
+    const saved = JSON.parse(localStorage.getItem('_e2e_key_history_v2') || '[]');
+    for (const item of Array.isArray(saved) ? saved.slice(0, 5) : []) {
+      try { myHistoricalKPs.push(await importKeypairJwk(item.jwk || item)); } catch {}
+    }
+  } catch {}
+}
+
+async function archiveCurrentKeypair() {
+  if (!myKP) return;
+  try {
+    const jwk = await crypto.subtle.exportKey('jwk', myKP.privateKey);
+    const pub = await exportPub(myKP);
+    let saved = JSON.parse(localStorage.getItem('_e2e_key_history_v2') || '[]');
+    if (!Array.isArray(saved)) saved = [];
+    saved = [{ pub, jwk, archivedAt:Date.now() }, ...saved.filter(item => item.pub !== pub)].slice(0, 5);
+    localStorage.setItem('_e2e_key_history_v2', JSON.stringify(saved));
+    await loadHistoricalKeypairs();
+  } catch (err) {
+    console.warn('Unable to archive prior chat key', err);
+  }
 }
 
 function normEmail(email) {
@@ -938,10 +988,9 @@ function isActiveMessage(m) {
 }
 
 let derivedKeysCache = {};
-async function deriveSharedKey(peerPubKeyHex, useLegacy = false) {
-  const kp = useLegacy ? myLegacyKP : myKP;
+async function deriveSharedKey(peerPubKeyHex, kp = myKP, keyId = 'current') {
   if (!kp) throw new Error("Keypair not ready");
-  const cacheKey = peerPubKeyHex + (useLegacy ? '_legacy' : '');
+  const cacheKey = keyId + ':' + peerPubKeyHex;
   if (derivedKeysCache[cacheKey]) return derivedKeysCache[cacheKey];
   const peerPubKey = await crypto.subtle.importKey(
     'raw',
@@ -977,22 +1026,24 @@ async function decryptMessageContent(m) {
       
       const peerEmail = payload.group ? m.from : (sameEmail(m.from, myEmail) ? m.to : m.from);
       const peer = memberFor(peerEmail);
-      if (!peer) {
+      if (!peer && !payload.senderPubKey) {
         m.text = "[Decryption Error: Peer not found]";
         return m;
       }
       
       // Gather all possible public keys of the peer
       const peerPubKeys = [];
-      if (peer.pubKey) peerPubKeys.push(peer.pubKey);
-      if (peer.legacyPubKey && peer.legacyPubKey !== peer.pubKey) {
+      if (payload.senderPubKey) peerPubKeys.push(payload.senderPubKey);
+      if (peer && peer.pubKey && !peerPubKeys.includes(peer.pubKey)) peerPubKeys.push(peer.pubKey);
+      if (peer && peer.legacyPubKey && peer.legacyPubKey !== peer.pubKey) {
         peerPubKeys.push(peer.legacyPubKey);
       }
       
       // Gather all our own private keys
       const ourKeypairs = [];
-      if (myKP) ourKeypairs.push({ kp: myKP, isLegacy: false });
-      if (myLegacyKP) ourKeypairs.push({ kp: myLegacyKP, isLegacy: true });
+      if (myKP) ourKeypairs.push({ kp: myKP, id: 'current' });
+      if (myLegacyKP) ourKeypairs.push({ kp: myLegacyKP, id: 'legacy' });
+      myHistoricalKPs.forEach((kp, index) => ourKeypairs.push({ kp, id: 'history-' + index }));
       
       let decryptedText = null;
       
@@ -1004,7 +1055,7 @@ async function decryptMessageContent(m) {
           for (const ourKp of ourKeypairs) {
             for (const peerPub of peerPubKeys) {
               try {
-                const sharedSecret = await deriveSharedKey(peerPub, ourKp.isLegacy);
+                const sharedSecret = await deriveSharedKey(peerPub, ourKp.kp, ourKp.id);
                 const decrypted = await crypto.subtle.decrypt(
                   { name: 'AES-GCM', iv: h2b(innerPayload.iv) },
                   sharedSecret,
@@ -1022,7 +1073,8 @@ async function decryptMessageContent(m) {
             m.text = decryptedText;
             m.decrypted = true;
           } else {
-            m.text = "[Decryption Error]";
+            m.text = "This older message could not be unlocked on this device.";
+            m.decryptFailed = true;
           }
         } else {
           m.text = "[E2E encrypted group message - not a recipient]";
@@ -1033,7 +1085,7 @@ async function decryptMessageContent(m) {
         for (const ourKp of ourKeypairs) {
           for (const peerPub of peerPubKeys) {
             try {
-              const sharedSecret = await deriveSharedKey(peerPub, ourKp.isLegacy);
+              const sharedSecret = await deriveSharedKey(peerPub, ourKp.kp, ourKp.id);
               const decrypted = await crypto.subtle.decrypt(
                 { name: 'AES-GCM', iv: h2b(payload.iv) },
                 sharedSecret,
@@ -1051,7 +1103,8 @@ async function decryptMessageContent(m) {
           m.text = decryptedText;
           m.decrypted = true;
         } else {
-          m.text = "[Decryption Error]";
+          m.text = "This older message could not be unlocked on this device.";
+          m.decryptFailed = true;
         }
       }
     }
@@ -1088,6 +1141,7 @@ async function init() {
     myDisplayName = pref.greetingName || null;
   } catch {}
   myNick = myEmail;
+  await loadHistoricalKeypairs();
 
   try {
     // 1. Load legacy key as fallback
@@ -1269,6 +1323,29 @@ async function init() {
               
               localStorage.setItem('_e2e_private_jwk', JSON.stringify(decryptedJwk));
               myKP = { publicKey: pubKey, privateKey };
+
+              // Recover prior rotated keys that were encrypted with the same login password.
+              const recovered = [];
+              for (const oldEntry of Array.isArray(fetchedData.keyHistory) ? fetchedData.keyHistory : []) {
+                try {
+                  const oldBytes = await crypto.subtle.decrypt(
+                    { name:'AES-GCM', iv:h2b(oldEntry.ivHex) },
+                    aesKey,
+                    h2b(oldEntry.encryptedPrivateJwk)
+                  );
+                  const oldJwk = JSON.parse(new TextDecoder().decode(oldBytes));
+                  await importKeypairJwk(oldJwk);
+                  recovered.push({ pub:oldEntry.pubKeyHex, jwk:oldJwk, archivedAt:oldEntry.updatedAt || 0 });
+                } catch {}
+              }
+              if (recovered.length) {
+                let localHistory = [];
+                try { localHistory = JSON.parse(localStorage.getItem('_e2e_key_history_v2') || '[]'); } catch {}
+                const merged = [...recovered, ...(Array.isArray(localHistory) ? localHistory : [])];
+                const unique = merged.filter((item, index) => item.pub && merged.findIndex(other => other.pub === item.pub) === index).slice(0, 5);
+                localStorage.setItem('_e2e_key_history_v2', JSON.stringify(unique));
+                await loadHistoricalKeypairs();
+              }
             }
             
             document.getElementById('e2e-modal').classList.remove('show');
@@ -1295,7 +1372,7 @@ async function init() {
             errDiv.style.display = "block";
             return;
           }
-          if (!confirm("Are you sure you want to discard your E2E secure chat keys?\n\nWARNING: This will permanently reset your keys. You will NOT be able to decrypt past secure messages, but you will be able to send and receive new messages.")) {
+          if (!confirm("Reset Secure Chat keys? This device will keep a local recovery copy for older messages, but other devices may need to be unlocked again.")) {
             return;
           }
           submitBtn.disabled = true;
@@ -1323,6 +1400,7 @@ async function init() {
           }
           
           try {
+            await archiveCurrentKeypair();
             const aesKey = await deriveEncryptionKeyFromPassword(password, myEmail);
             const kp = await genKP();
             const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
@@ -1351,6 +1429,7 @@ async function init() {
             
             localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
             myKP = kp;
+            derivedKeysCache = {};
             
             document.getElementById('e2e-modal').classList.remove('show');
             submitBtn.disabled = false;
@@ -2121,7 +2200,7 @@ async function send() {
 
   if (text) {
     if (activeChat.type === 'group') {
-      const group = groups.find(g => g.id === activeChat.id);
+      const group = groups.find(g => String(g.id) === String(activeChat.id));
       if (group && group.members) {
         const payloads = {};
         const allMembers = [...group.members];
@@ -2155,7 +2234,9 @@ async function send() {
         }
         textToSend = JSON.stringify({
           e2e: true,
+          version: 2,
           group: true,
+          senderPubKey: await exportPub(myKP),
           payloads
         });
       }
@@ -2174,6 +2255,8 @@ async function send() {
           );
           textToSend = JSON.stringify({
             e2e: true,
+            version: 2,
+            senderPubKey: await exportPub(myKP),
             iv: b2h(iv),
             ciphertext: b2h(ciphertext)
           });

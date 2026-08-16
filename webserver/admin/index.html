@@ -491,6 +491,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="/admin-dayboard.css">
 </head>
 <body class="admin-locked">
   <main class="shell">
@@ -502,6 +503,64 @@
       </div>
       <div class="status"><span class="dot"></span><span id="access-status">Checking access</span></div>
     </div>
+
+    <section class="admin-dayboard" aria-labelledby="admin-dayboard-title">
+      <header class="admin-dayboard-head">
+        <div>
+          <p><span></span> LIVE COMMAND VIEW</p>
+          <h2 id="admin-dayboard-title">Today at Woodcreek</h2>
+        </div>
+        <div class="admin-live-clock" aria-live="polite">
+          <strong id="admin-live-time">--:--:--</strong>
+          <span id="admin-live-date">Loading local time</span>
+        </div>
+      </header>
+      <div class="admin-dayboard-grid">
+        <article class="admin-day-card admin-weather" id="admin-weather-card">
+          <div class="admin-card-head">
+            <div><small>ROSEVILLE WEATHER</small><h3 id="admin-weather-condition">Connecting</h3></div>
+            <span class="admin-live-pill" id="admin-weather-state"><i></i> LIVE</span>
+          </div>
+          <div class="admin-weather-now">
+            <span class="admin-weather-icon" id="admin-weather-icon" aria-hidden="true">☀</span>
+            <strong id="admin-weather-temp">--°</strong>
+          </div>
+          <div class="admin-weather-metrics">
+            <span><small>FEELS</small><b id="admin-weather-feels">--°</b></span>
+            <span><small>HIGH / LOW</small><b id="admin-weather-range">--° / --°</b></span>
+            <span><small>WIND</small><b id="admin-weather-wind">-- mph</b></span>
+          </div>
+          <footer id="admin-weather-updated">Open-Meteo forecast</footer>
+        </article>
+
+        <article class="admin-day-card admin-calendar">
+          <div class="admin-card-head">
+            <div><small>SCHOOL CALENDAR</small><h3 id="admin-calendar-title">This month</h3></div>
+            <div class="admin-calendar-nav">
+              <button type="button" id="admin-cal-prev" aria-label="Previous month">‹</button>
+              <button type="button" id="admin-cal-today">Today</button>
+              <button type="button" id="admin-cal-next" aria-label="Next month">›</button>
+            </div>
+          </div>
+          <div class="admin-calendar-week"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div>
+          <div class="admin-calendar-days" id="admin-calendar-days"></div>
+          <div class="admin-calendar-agenda"><small>UP NEXT</small><ol id="admin-school-events"><li>Loading Woodcreek events…</li></ol></div>
+        </article>
+
+        <article class="admin-day-card admin-bells">
+          <div class="admin-card-head">
+            <div><small>WOODCREEK HIGH SCHOOL</small><h3>Today’s bell schedule</h3></div>
+            <span class="admin-live-pill" id="admin-bell-state"><i></i> CHECKING</span>
+          </div>
+          <div class="admin-bell-summary">
+            <strong id="admin-bell-current">Checking today’s schedule</strong>
+            <span id="admin-bell-countdown">Pacific time</span>
+          </div>
+          <ol class="admin-periods" id="admin-periods"></ol>
+          <footer><span id="admin-bell-note">Period names only — no personal class data</span></footer>
+        </article>
+      </div>
+    </section>
 
     <div class="notice" id="policy-note">
       Security monitoring dashboard: admin actions, reports, moderation signals, and operational status are shown for authorized staff. Private chat history is not exposed here.
@@ -2639,6 +2698,7 @@
       document.getElementById('access-status').textContent = 'Unavailable';
     });
   </script>
+<script src="/admin-dayboard.js" defer></script>
 <script src="/cookie-consent.js" defer></script>
 </body>
 </html>

@@ -172,6 +172,12 @@ try {
 const lastRecaptchaSuccess = new Map();
 const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
+const ROSEVILLE_WEATHER_URL = 'https://api.open-meteo.com/v1/forecast?latitude=38.7521&longitude=-121.2880&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FLos_Angeles&forecast_days=3';
+const WOODCREEK_CALENDAR_URL = 'https://calendar.google.com/calendar/ical/c_635a46affcb227e30bc25d20d23583c36b2b344b2266d8244cdc81f119b9aa1d%40group.calendar.google.com/public/basic.ics';
+const dayboardCache = {
+  weather: { expiresAt: 0, payload: null },
+  calendar: { expiresAt: 0, payload: null },
+};
 configureDataStore({ baseDir: BASE, dataDir: DATA_DIR });
 
 const APP_DEBUG_LOGS = process.env.APP_DEBUG_LOGS === '1';
@@ -1136,6 +1142,7 @@ const RATE_LIMITS = {
   '/api/dm/send':              [3,   10],
   '/api/marketplace/list':     [1,   30],
   '/api/marketplace/buy':      [1,   30],
+  '/api/marketplace/cancel':   [2,   30],
   '/api/marketplace/mediate':  [1,   30],
   '/api/marketplace/appeal':   [1,   30],
   '/api/marketplace/items':    [60,  60],
@@ -4090,6 +4097,123 @@ function jsonResp(code, obj) {
     { status: code, headers: { 'Content-Type': 'application/json' } });
 }
 
+async function fetchWithDeadline(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function rosevilleWeatherPayload() {
+  const cached = dayboardCache.weather;
+  if (cached.payload && cached.expiresAt > Date.now()) return cached.payload;
+  try {
+    const response = await fetchWithDeadline(ROSEVILLE_WEATHER_URL, {
+      headers: { Accept: 'application/json', 'User-Agent': 'mitch.pro command-center weather' },
+    }, 6500);
+    if (!response.ok) throw new Error(`weather upstream ${response.status}`);
+    const payload = await response.json();
+    if (!payload?.current || !payload?.hourly || !payload?.daily) throw new Error('weather response incomplete');
+    const result = { ...payload, location: 'Roseville, CA', source: 'Open-Meteo', generated_at: new Date().toISOString(), stale: false };
+    cached.payload = result;
+    cached.expiresAt = Date.now() + 10 * 60 * 1000;
+    return result;
+  } catch (error) {
+    if (cached.payload) return { ...cached.payload, stale: true };
+    throw error;
+  }
+}
+
+function unfoldIcalLines(value) {
+  return String(value || '').replace(/\r\n/g, '\n').split('\n').reduce((lines, line) => {
+    if (/^[ \t]/.test(line) && lines.length) lines[lines.length - 1] += line.slice(1);
+    else lines.push(line.replace(/\r$/, ''));
+    return lines;
+  }, []);
+}
+
+function decodeIcalText(value) {
+  return String(value || '').replace(/\\[Nn]/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\').trim();
+}
+
+function parseIcalDate(value, field = '') {
+  const raw = String(value || '').trim();
+  const allDay = /VALUE=DATE/i.test(field) || /^\d{8}$/.test(raw);
+  const match = raw.match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?/);
+  if (!match) return null;
+  const [, year, month, day, hour = '00', minute = '00', second = '00', utc] = match;
+  const iso = `${year}-${month}-${day}T${hour}:${minute}:${second}${utc ? 'Z' : '-07:00'}`;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  let displayTime = null;
+  if (!allDay) {
+    if (utc) {
+      displayTime = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit',
+      }).format(date);
+    } else {
+      const hourNumber = Number(hour);
+      displayTime = `${hourNumber % 12 || 12}:${minute} ${hourNumber >= 12 ? 'PM' : 'AM'}`;
+    }
+  }
+  return { date, dateKey: `${year}-${month}-${day}`, allDay, displayTime };
+}
+
+function parseWoodcreekCalendar(ical) {
+  const events = [];
+  let current = null;
+  for (const line of unfoldIcalLines(ical)) {
+    if (line === 'BEGIN:VEVENT') { current = {}; continue; }
+    if (line === 'END:VEVENT') { if (current) events.push(current); current = null; continue; }
+    if (!current || !line.includes(':')) continue;
+    const colon = line.indexOf(':');
+    const field = line.slice(0, colon);
+    const name = field.split(';')[0].toUpperCase();
+    if (!(name in current)) current[name] = { field, value: line.slice(colon + 1) };
+  }
+  const seen = new Set();
+  return events.map((event) => {
+    if (String(event.STATUS?.value || '').toUpperCase() === 'CANCELLED') return null;
+    const start = parseIcalDate(event.DTSTART?.value, event.DTSTART?.field);
+    const end = parseIcalDate(event.DTEND?.value, event.DTEND?.field);
+    const title = decodeIcalText(event.SUMMARY?.value).slice(0, 240);
+    if (!start || !title) return null;
+    let detail = 'All day';
+    if (!start.allDay) {
+      detail = end ? `${start.displayTime} – ${end.displayTime}` : start.displayTime;
+    }
+    const location = decodeIcalText(event.LOCATION?.value).replace(/\n/g, ' ').slice(0, 160);
+    if (location) detail += ` · ${location}`;
+    const key = `${start.dateKey}|${start.date.toISOString()}|${title}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    return { date: start.dateKey, title, detail, all_day: start.allDay, starts_at: start.allDay ? null : start.date.toISOString() };
+  }).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date) || String(a.starts_at || '').localeCompare(String(b.starts_at || '')) || a.title.localeCompare(b.title)).slice(0, 1000);
+}
+
+async function woodcreekCalendarPayload() {
+  const cached = dayboardCache.calendar;
+  if (cached.payload && cached.expiresAt > Date.now()) return cached.payload;
+  try {
+    const response = await fetchWithDeadline(WOODCREEK_CALENDAR_URL, {
+      headers: { Accept: 'text/calendar', 'User-Agent': 'mitch.pro command-center calendar' },
+    }, 8500);
+    if (!response.ok) throw new Error(`calendar upstream ${response.status}`);
+    const events = parseWoodcreekCalendar(await response.text());
+    if (!events.length) throw new Error('calendar response empty');
+    const result = { events, source: 'Woodcreek High School', source_url: 'https://woodcreek.rjuhsd.us/calendar', generated_at: new Date().toISOString(), stale: false };
+    cached.payload = result;
+    cached.expiresAt = Date.now() + 30 * 60 * 1000;
+    return result;
+  } catch (error) {
+    if (cached.payload) return { ...cached.payload, stale: true };
+    throw error;
+  }
+}
+
 function validIpLiteral(value) {
   return typeof value === 'string' && isIP(value.trim()) !== 0;
 }
@@ -6048,6 +6172,21 @@ async function handleRequest(req, server) {
     console.error('[traffic] Failed to update last known IP:', e);
   }
 
+  if ((path === '/api/weather' || path === '/api/school-calendar') && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'authentication required' });
+    try {
+      const payload = path === '/api/weather'
+        ? await rosevilleWeatherPayload()
+        : await woodcreekCalendarPayload();
+      return jsonResp(200, payload);
+    } catch (error) {
+      writeAppLog('warn', 'dayboard', `${path} unavailable`, { error: String(error) });
+      return jsonResp(502, { error: path === '/api/weather' ? 'weather unavailable' : 'school calendar unavailable' });
+    }
+  }
+
   // Enforce admin passphrase for all administrative API actions
   if (path.startsWith('/api/admin/') && path !== '/api/admin/passphrase-status') {
     try {
@@ -6719,7 +6858,7 @@ async function handleRequest(req, server) {
       return jsonResp(400, { error: "invalid listing type" });
     }
     const listingPrice = Number(price);
-    if (isNaN(listingPrice) || listingPrice < 0) {
+    if (!Number.isFinite(listingPrice) || listingPrice <= 0 || listingPrice > 1_000_000_000) {
       return jsonResp(400, { error: "price must be a positive number" });
     }
 
@@ -6859,6 +6998,36 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
       }
       return jsonResp(200, { ok: true, message: "Purchase finalized successfully!" });
     }
+  }
+
+  if (path === "/api/marketplace/cancel" && method === "POST") {
+    if (!await tryParseJson()) return jsonResp(400, { error: "bad json" });
+    const cookies = getCookies(req);
+    const sid = cookies["studentId"] || cookies["id"] || "";
+    if (!validId(sid)) return jsonResp(401, { error: "not logged in" });
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: "email not found" });
+    const listings = loadJson(MARKETPLACE_FILE, []);
+    const listing = listings.find(entry => entry.id === body.listingId);
+    if (!listing) return jsonResp(404, { error: "listing not found" });
+    if (normalizeEmail(listing.seller) !== normalizeEmail(email)) return jsonResp(403, { error: "only the seller can cancel this listing" });
+    if (listing.status !== 'active') return jsonResp(400, { error: "only active listings can be cancelled" });
+    if (listing.type === 'cosmetic' && listing.itemId) {
+      const item = shopItemById(listing.itemId);
+      const cfg = item && SHOP_TYPE_CONFIG[item.costType];
+      if (cfg) {
+        const cosmetics = loadJson(COSMETICS_FILE, {});
+        const norm = normalizeEmail(email);
+        const owned = normalizeCosmetics(cosmetics[norm] || {});
+        if (!owned[cfg.bucket].includes(listing.itemId)) owned[cfg.bucket].push(listing.itemId);
+        cosmetics[norm] = owned;
+        saveJson(COSMETICS_FILE, cosmetics);
+      }
+    }
+    listing.status = 'cancelled';
+    listing.updated_at = Date.now();
+    saveJson(MARKETPLACE_FILE, listings);
+    return jsonResp(200, { ok: true, message: 'Listing cancelled and item returned.' });
   }
 
   if (path === "/api/marketplace/mediate" && method === "POST") {
@@ -9367,14 +9536,29 @@ Mitch.pro Team`;
         if (!pubKeyHex || !encryptedPrivateJwk || !ivHex) {
           return jsonResp(400, { success: false, message: 'Missing fields' });
         }
+        const encryptedKeyHex = String(encryptedPrivateJwk);
+        if (!/^04[0-9a-f]{128}$/i.test(String(pubKeyHex)) || !/^[0-9a-f]{24}$/i.test(String(ivHex)) || !/^[0-9a-f]+$/i.test(encryptedKeyHex) || encryptedKeyHex.length % 2 !== 0 || encryptedKeyHex.length > 16384) {
+          return jsonResp(400, { success: false, message: 'Invalid key payload' });
+        }
         
         const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
         const norm = normalizeEmail(email);
+        const previous = e2eKeysData[norm];
+        const history = Array.isArray(previous?.history) ? previous.history.slice(0, 4) : [];
+        if (previous?.pubKeyHex && previous.pubKeyHex !== pubKeyHex && previous.encryptedPrivateJwk && previous.ivHex) {
+          history.unshift({
+            pubKeyHex: previous.pubKeyHex,
+            encryptedPrivateJwk: previous.encryptedPrivateJwk,
+            ivHex: previous.ivHex,
+            updatedAt: previous.updatedAt,
+          });
+        }
         e2eKeysData[norm] = {
           pubKeyHex,
           encryptedPrivateJwk,
           ivHex,
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
+          history: history.slice(0, 5),
         };
         saveJson(E2E_KEYS_FILE, e2eKeysData);
         
@@ -9404,7 +9588,8 @@ Mitch.pro Team`;
           success: true,
           pubKeyHex: entry.pubKeyHex,
           encryptedPrivateJwk: entry.encryptedPrivateJwk,
-          ivHex: entry.ivHex
+          ivHex: entry.ivHex,
+          keyHistory: Array.isArray(entry.history) ? entry.history.slice(0, 5) : [],
         });
       } catch (e) {
         return jsonResp(500, { success: false, message: String(e) });
@@ -11526,6 +11711,7 @@ function loadAllGamesList() {
       let legacyJwk = null;
       let encryptedPrivateJwk = null;
       let ivHex = null;
+      let keyHistory = [];
       if (email) {
         const legacyKeys = deriveUserE2EKeys(email);
         legacyJwk = legacyKeys.jwk;
@@ -11537,6 +11723,7 @@ function loadAllGamesList() {
           pubKeyHex = entry.pubKeyHex;
           encryptedPrivateJwk = entry.encryptedPrivateJwk;
           ivHex = entry.ivHex;
+          keyHistory = Array.isArray(entry.history) ? entry.history.slice(0, 5) : [];
         } else {
           pubKeyHex = legacyKeys.pubKeyHex;
         }
@@ -11558,6 +11745,7 @@ function loadAllGamesList() {
         pubKeyHex,
         encryptedPrivateJwk,
         ivHex,
+        keyHistory,
         premium_email: stats.premium_email || null,
         happyHour: {
           active: happyHourActive,
@@ -15181,6 +15369,21 @@ function loadAllGamesList() {
       return jsonResp(200, { ok: true, number: num, color: resultColor, won, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
 
+    if (path === '/api/casino/high-low') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const choice = String(body.choice || '').toLowerCase();
+      if (choice !== 'higher' && choice !== 'lower') return jsonResp(400, { error: 'Choose higher or lower.' });
+      const value = 1 + Math.floor(Math.random() * 13);
+      const card = value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' : value === 11 ? 'J' : String(value);
+      const push = value === 7;
+      const won = !push && (choice === 'higher' ? value > 7 : value < 7);
+      const payout = push ? betCheck.bet : won ? betCheck.bet * 2 : 0;
+      const settled = settleCasinoRound('High / Low', betCheck.bet, payout, push ? 'PUSH' : won ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, choice, card, value, push, won, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
     if (path === '/api/casino/blackjack/start') {
       if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
@@ -15693,7 +15896,7 @@ function loadAllGamesList() {
       const top = leaderboard.slice(0, 10);
       for (const entry of leaderboard) delete entry._norm;
       const me = viewerRow && viewerRow.rank > 10 ? viewerRow : null;
-      return jsonResp(200, { top, me });
+      return jsonResp(200, { top, me, players: leaderboard.slice(0, 100), total: leaderboard.length });
     }
 
     if (path === '/api/canvas/heatmap') {
@@ -15905,6 +16108,11 @@ function loadAllGamesList() {
           const ua = req.headers.get('user-agent') || '';
           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
           const isEnrollPage = path === '/enroll' || path === '/enroll/' || path === '/enroll/index.html';
+          const isEmbeddedGameRuntime = path.startsWith('/games/') && path !== '/games/' && path !== '/games/index.html';
+
+          if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/relaunch.css'))) {
+            injectStr += '<link rel="stylesheet" href="/relaunch.css">\n';
+          }
 
           if (loadAnalytics || loadRecaptcha) {
             injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
@@ -15994,7 +16202,7 @@ function loadAllGamesList() {
     const PUBLIC_ASSETS = new Set([
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
-      '/api.js', '/app-shell.js', '/app.css',
+      '/api.js', '/app-shell.js', '/app.css', '/relaunch.css',
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',

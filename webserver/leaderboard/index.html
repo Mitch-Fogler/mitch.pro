@@ -1,222 +1,67 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Leaderboard — mitch.pro</title>
-<script src="/theme.js"></script>
-<link rel="stylesheet" href="/app.css">
-<script src="/api.js"></script>
-<script src="/app-shell.js" defer></script>
-<style>
-  .lb-shell { width: min(52rem, 100%); max-width: 52rem; }
-  .page-head { margin-bottom: 1.15rem; max-width: 40rem; }
-  .page-head h1 {
-    margin: 0;
-    font-size: clamp(1.85rem, 4vw, 2.55rem);
-    letter-spacing: -0.03em;
-  }
-  .page-sub {
-    margin: 0.5rem 0 0;
-    color: var(--t-fg2);
-    font-size: 0.9rem;
-    line-height: 1.55;
-  }
-  .lb-panel { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; min-width: 0; }
-  th {
-    text-align: left;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--t-fg2);
-    padding: 0.7rem 0.6rem;
-    border-bottom: 1px solid var(--t-bd);
-    font-weight: 700;
-  }
-  td {
-    padding: 0.85rem 0.6rem;
-    font-size: 0.88rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--t-bd) 70%, transparent);
-  }
-  tr:last-child td { border-bottom: none; }
-  .rank {
-    font-family: Outfit, system-ui, sans-serif;
-    font-weight: 800;
-    color: var(--t-ac);
-    width: 3rem;
-  }
-  .name { font-weight: 650; color: var(--t-fg); }
-  .name a { color: inherit; text-decoration: none; }
-  .name a:hover { color: var(--t-ac); text-decoration: underline; }
-  .coins { color: #f59e0b; font-weight: 700; }
-  .val { color: var(--t-fg2); }
-  tr.me td { background: color-mix(in srgb, #f59e0b 8%, transparent); }
-  .you-pill {
-    display: inline-block;
-    margin-left: 0.35rem;
-    padding: 0.05rem 0.35rem;
-    border: 1px solid rgba(245,158,11,.55);
-    border-radius: 999px;
-    color: #f59e0b;
-    font-size: 0.62rem;
-    font-weight: 800;
-    vertical-align: middle;
-  }
-  .you-gap td {
-    padding: 0.45rem 0.6rem;
-    color: var(--t-fg2);
-    text-align: center;
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .loading {
-    text-align: center;
-    padding: 2.5rem 1rem;
-    color: var(--t-fg2);
-  }
-  .name.neon_purple a { color: #d946ef !important; text-shadow: 0 0 5px rgba(217,70,239,0.3); }
-  .name.electric_blue a { color: #3b82f6 !important; text-shadow: 0 0 5px rgba(59,130,246,0.3); }
-  .name.mint_flash a { color: #34d399 !important; text-shadow: 0 0 5px rgba(52,211,153,0.3); }
-  .name.rose_spark a { color: #fb7185 !important; text-shadow: 0 0 5px rgba(251,113,133,0.3); }
-  .name.ember_red a { color: #ef4444 !important; text-shadow: 0 0 5px rgba(239,68,68,0.35); }
-  .name.void_white a { color: #f8fafc !important; text-shadow: 0 0 7px rgba(248,250,252,0.3); }
-  .name.gold_glow a { color: #f59e0b !important; text-shadow: 0 0 10px rgba(245,158,11,0.5); }
-  .name.rainbow_name a {
-    background: linear-gradient(90deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #8b00ff);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-size: 200% auto; animation: rainbow_move 3s linear infinite;
-    font-weight: 800;
-  }
-  @keyframes rainbow_move { to { background-position: 200% center; } }
-  .l-badge { font-size: 0.7rem; margin-left: 0.3rem; vertical-align: middle; }
-  .badge-verified { color: #3b82f6; }
-  .badge-og { color: #ef4444; border: 1px solid #ef4444; padding: 0 0.15rem; border-radius: 2px; font-weight: 800; font-size: 0.55rem; }
-  .badge-shop { color: #f59e0b; border: 1px solid rgba(245,158,11,.5); padding: 0 0.15rem; border-radius: 2px; font-weight: 800; font-size: 0.55rem; }
-  @media (max-width: 700px) {
-    th:nth-child(n+5), td:nth-child(n+5) { display: none; }
-    th, td { padding: 0.65rem 0.4rem; font-size: 0.82rem; }
-    .rank { width: 2.1rem; }
-    .name { max-width: 44vw; }
-    .name a {
-      display: inline-block;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      vertical-align: bottom;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .name.rainbow_name a { animation: none; }
-  }
-  .theme-no-motion .name.rainbow_name a { animation: none; }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Leaderboard — mitch.pro</title>
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/api.js"></script>
+  <script src="/app-shell.js" defer></script>
+  <style>
+    .rank-shell{width:min(1220px,100%)}
+    .rank-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.rank-head-copy{max-width:690px}
+    .season-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(83,230,165,.2);border-radius:999px;background:rgba(83,230,165,.07);color:#75efb9;font-size:10px;font-weight:900;letter-spacing:.12em}.season-chip i{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}
+    .rank-overview{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:14px;margin:24px 0 16px}
+    .podium{display:grid;grid-template-columns:repeat(3,1fr);align-items:end;gap:10px;min-height:252px;padding:18px;border:1px solid var(--t-bd);border-radius:24px;background:radial-gradient(circle at 50% 110%,rgba(124,92,255,.21),transparent 22rem),rgba(9,13,23,.74);overflow:hidden}
+    .podium-card{position:relative;display:flex;min-width:0;flex-direction:column;align-items:center;justify-content:flex-end;padding:16px 10px;border:1px solid rgba(157,181,225,.12);border-radius:18px;background:linear-gradient(155deg,rgba(255,255,255,.055),rgba(255,255,255,.015));text-align:center}
+    .podium-card.first{order:2;min-height:210px;border-color:rgba(255,202,105,.26);background:linear-gradient(160deg,rgba(255,202,105,.12),rgba(124,92,255,.05))}.podium-card.second{order:1;min-height:176px}.podium-card.third{order:3;min-height:158px}
+    .podium-rank{position:absolute;top:10px;right:11px;color:#74839d;font:900 10px/1 Outfit,sans-serif}.first .podium-rank{color:#ffcf77}.podium-avatar{display:grid;width:54px;height:54px;place-items:center;margin-bottom:10px;border:1px solid rgba(255,255,255,.12);border-radius:18px;background:var(--t-gr);box-shadow:0 14px 32px rgba(81,57,190,.3);color:#fff;font:900 1.2rem Outfit,sans-serif}.first .podium-avatar{width:68px;height:68px;border-radius:21px;box-shadow:0 0 0 5px rgba(255,202,105,.07),0 18px 40px rgba(81,57,190,.4)}
+    .podium-name{max-width:100%;overflow:hidden;color:#fff;font-size:.88rem;font-weight:800;text-overflow:ellipsis;white-space:nowrap}.podium-score{margin-top:5px;color:#8492aa;font-size:.7rem}.podium-score b{color:#ffca69}
+    .my-rank{display:flex;min-height:252px;flex-direction:column;justify-content:space-between;padding:20px;border:1px solid rgba(124,92,255,.23);border-radius:24px;background:radial-gradient(circle at 100% 0,rgba(255,96,189,.13),transparent 18rem),linear-gradient(145deg,rgba(124,92,255,.11),rgba(10,14,24,.8))}.my-rank small{color:#7c8aa4;font-size:9px;font-weight:900;letter-spacing:.14em}.my-rank strong{display:block;margin-top:8px;font:900 clamp(3rem,7vw,5.4rem)/.9 Outfit,sans-serif;letter-spacing:-.08em}.my-rank h2{margin:10px 0 0;font-size:1.1rem}.my-rank p{margin:5px 0;color:#8e9cb5;font-size:.78rem}.my-rank-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}.my-rank-stats span{padding:10px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.03)}.my-rank-stats b{display:block;font-size:.95rem}.my-rank-stats small{font-size:7px}
+    .rank-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0;padding:10px;border:1px solid var(--t-bd);border-radius:18px;background:rgba(9,13,23,.68)}.metric-tabs{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none}.metric-tabs::-webkit-scrollbar{display:none}.metric-tab{width:auto!important;min-width:max-content;margin:0!important;padding:9px 12px!important;border-color:transparent!important;background:transparent!important;color:#8f9cb4!important;font-size:11px!important}.metric-tab.active{border-color:rgba(124,92,255,.32)!important;background:rgba(124,92,255,.13)!important;color:#fff!important}.rank-search{position:relative;flex:0 1 260px}.rank-search input{min-height:38px!important;padding-left:34px!important}.rank-search span{position:absolute;left:12px;top:50%;color:#6f7d95;transform:translateY(-50%)}
+    .rank-list{padding:8px!important;border-radius:22px!important}.rank-row{display:grid;grid-template-columns:52px minmax(160px,1.4fr) repeat(4,minmax(76px,.55fr));align-items:center;gap:8px;min-height:66px;padding:8px 12px;border-bottom:1px solid rgba(157,181,225,.08);transition:background .18s,transform .18s}.rank-row:last-child{border-bottom:0}.rank-row:hover{border-radius:14px;background:rgba(124,92,255,.055);transform:translateX(3px)}.rank-row.me{border:1px solid rgba(88,229,255,.2);border-radius:14px;background:linear-gradient(90deg,rgba(88,229,255,.08),rgba(124,92,255,.04))}.rank-number{color:#697890;font:900 .82rem Outfit,sans-serif}.rank-number.top{color:#ffca69;font-size:1.05rem}.rank-user{display:flex;min-width:0;align-items:center;gap:10px}.rank-user-avatar{display:grid;width:36px;height:36px;flex:0 0 36px;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:11px;background:linear-gradient(135deg,rgba(88,229,255,.18),rgba(124,92,255,.24));color:#fff;font:900 .8rem Outfit,sans-serif}.rank-user-copy{min-width:0}.rank-user-copy a{display:block;overflow:hidden;color:#eef2fb;font-size:.82rem;font-weight:800;text-overflow:ellipsis;white-space:nowrap}.rank-user-copy small{display:block;margin-top:2px;color:#65748e;font-size:.65rem}.metric{font-variant-numeric:tabular-nums}.metric small{display:block;color:#66758f;font-size:7px;font-weight:900;letter-spacing:.08em}.metric b{display:block;margin-top:3px;color:#aeb9cd;font-size:.76rem}.metric.primary b{color:#ffca69;font-size:.86rem}.rank-empty{padding:54px 20px;color:#71809a;text-align:center}
+    .l-badge{margin-left:5px;font-size:.68rem}.you-pill{margin-left:6px;padding:2px 5px;border:1px solid rgba(88,229,255,.3);border-radius:999px;color:#58e5ff;font-size:7px;text-transform:uppercase}
+    @media(max-width:900px){.rank-overview{grid-template-columns:1fr}.my-rank{min-height:auto}.rank-row{grid-template-columns:44px minmax(140px,1fr) repeat(2,minmax(70px,.5fr))}.rank-row .metric:nth-last-child(-n+2){display:none}}
+    @media(max-width:640px){.rank-head{align-items:flex-start;flex-direction:column}.rank-overview{margin-top:16px}.podium{min-height:218px;padding:10px;gap:5px}.podium-card{padding:12px 5px}.podium-card.first{min-height:185px}.podium-card.second{min-height:158px}.podium-card.third{min-height:144px}.podium-avatar{width:43px;height:43px;border-radius:14px}.first .podium-avatar{width:54px;height:54px}.podium-name{font-size:.7rem}.rank-controls{align-items:stretch;flex-direction:column}.rank-search{flex-basis:auto}.rank-row{grid-template-columns:34px minmax(110px,1fr) 72px;padding:8px 7px}.rank-row .metric{display:none}.rank-row .metric.primary{display:block}.rank-user-avatar{display:none}}
+  </style>
 </head>
 <body>
-<main class="app-main lb-shell">
-  <header class="page-head">
-    <h1>Leaderboard</h1>
-    <p class="page-sub">Site rankings across coins, wins, and game scores.</p>
-  </header>
-
-  <section class="panel lb-panel">
-    <div id="loading" class="loading">Fetching rankings...</div>
-    <table id="table" style="display:none">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>User</th>
-          <th>Coins</th>
-          <th>Wins</th>
-          <th>Puzzles</th>
-          <th>Pixels</th>
-          <th>Clicker</th>
-          <th>Keyboard</th>
-          <th>Logic</th>
-        </tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
-  </section>
-</main>
-
-<script>
-  async function load() {
-    try {
-      const r = await fetch('/api/leaderboard');
-      const d = await r.json();
-      const tbody = document.getElementById('tbody');
-      tbody.innerHTML = '';
-      
-      const badgeLabels = {
-        verified_badge: { text: '✔', cls: 'badge-verified' },
-        og_badge: { text: '📜', cls: 'badge-og' },
-        artist_badge: { text: '🎨', cls: 'badge-shop' },
-        chess_badge: { text: '♟', cls: 'badge-shop' },
-        builder_badge: { text: '🛠', cls: 'badge-shop' },
-        lucky_badge: { text: '🍀', cls: 'badge-shop' },
-        premium_star_badge: { text: '⭐', cls: 'badge-shop' },
-        owner_fan_badge: { text: '👑', cls: 'badge-shop' },
-      };
-
-      function renderRow(u) {
-        const tr = document.createElement('tr');
-        if (u.isMe) tr.classList.add('me');
-        const profileUrl = '/profile.html?u=' + encodeURIComponent(u.email || u.name);
-        
-        const badge = badgeLabels[u.badge];
-        let badgeHtml = badge ? `<span class="l-badge ${badge.cls}">${badge.text}</span>` : '';
-        if (u.isMe) badgeHtml += '<span class="you-pill">You</span>';
-
-        const colorClass = u.color || '';
-
-        tr.innerHTML = `
-          <td class="rank">${u.rank || ''}</td>
-          <td class="name ${colorClass}"><a href="${profileUrl}">${esc(u.name)}${badgeHtml}</a></td>
-          <td class="coins">${Number(u.coins || 0).toFixed(2)}</td>
-          <td class="val">${u.wins}</td>
-          <td class="val">${u.puzzles}</td>
-          <td class="val">${u.pixels}</td>
-          <td class="val">${Fmt(u.clicker_pts)}</td>
-          <td class="val">${u.typing_races}</td>
-          <td class="val">${u.logic_puzzles}</td>
-        `;
-        tbody.appendChild(tr);
-      }
-
-      (d.top || []).forEach(renderRow);
-      if (d.me) {
-        const gap = document.createElement('tr');
-        gap.className = 'you-gap';
-        gap.innerHTML = '<td colspan="9">Your Rank</td>';
-        tbody.appendChild(gap);
-        renderRow(d.me);
-      }
-      
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('table').style.display = 'table';
-    } catch (e) {
-      document.getElementById('loading').innerText = 'Failed to load leaderboard.';
-    }
-  }
-
-  function esc(t) { 
-    return (t||'').replace(/[&<>"']/g, m => ({
-      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
-    }[m])); 
-  }
-  function Fmt(n) {
-    if (n < 1000) return Math.floor(n);
-    const s = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
-    const t = Math.floor(Math.log10(n) / 3);
-    if (t < s.length) return (n / Math.pow(10, t * 3)).toFixed(1) + s[t];
-    return n.toExponential(1);
-  }
-
-  
-  load();
-</script>
-<script src="/cookie-consent.js" defer></script>
+  <main class="app-main rank-shell">
+    <header class="page-head rank-head">
+      <div class="rank-head-copy"><h1>Hall of <span>Legends</span></h1><p class="page-sub">Every coin, win, puzzle, pixel, and high score—ranked live across the community.</p></div>
+      <span class="season-chip"><i></i> LIVE SEASON</span>
+    </header>
+    <section class="rank-overview" aria-label="Leaderboard highlights">
+      <div class="podium" id="podium"><div class="rank-empty">Building the podium…</div></div>
+      <aside class="my-rank" id="my-rank"><div><small>YOUR POSITION</small><strong>--</strong><h2>Loading profile</h2><p>Your live standing appears here.</p></div><div class="my-rank-stats"><span><b>--</b><small>COINS</small></span><span><b>--</b><small>WINS</small></span></div></aside>
+    </section>
+    <section class="rank-controls" aria-label="Leaderboard controls">
+      <div class="metric-tabs" id="metric-tabs"></div>
+      <label class="rank-search"><span>⌕</span><input id="rank-search" type="search" placeholder="Find a player" autocomplete="off"></label>
+    </section>
+    <section class="panel rank-list" id="rank-list"><div class="rank-empty">Fetching live rankings…</div></section>
+  </main>
+  <script>
+  (function(){
+    const metrics=[['coins','Coins'],['wins','Wins'],['puzzles','Puzzles'],['pixels','Pixels'],['clicker_pts','Clicker'],['typing_races','Typing'],['logic_puzzles','Logic']];
+    const badgeLabels={verified_badge:'✓',og_badge:'OG',artist_badge:'◆',chess_badge:'♟',builder_badge:'⌁',lucky_badge:'♣',premium_star_badge:'★',owner_fan_badge:'♛'};
+    let users=[],myUser=null,activeMetric='coins',query='';
+    const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    const fmt=n=>{n=Number(n)||0;if(Math.abs(n)<1000)return Number.isInteger(n)?String(n):n.toFixed(2);const s=['','K','M','B','T','Qa','Qi'];const i=Math.min(s.length-1,Math.floor(Math.log10(Math.abs(n))/3));return (n/10**(i*3)).toFixed(n>=100000?0:1)+s[i]};
+    const initials=n=>String(n||'?').split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();
+    function score(u,key){return Number(u[key])||0}
+    function renderTabs(){document.getElementById('metric-tabs').innerHTML=metrics.map(([key,label])=>`<button type="button" class="metric-tab ${key===activeMetric?'active':''}" data-key="${key}">${label}</button>`).join('');document.querySelectorAll('.metric-tab').forEach(b=>b.onclick=()=>{activeMetric=b.dataset.key;renderTabs();renderAll()})}
+    function podiumCard(u,index){if(!u)return'';const cls=['first','second','third'][index];const rank=[1,2,3][index];return `<article class="podium-card ${cls}"><span class="podium-rank">#${rank}</span><span class="podium-avatar">${esc(initials(u.name))}</span><a class="podium-name" href="/profile/?u=${encodeURIComponent(u.email||u.name)}">${esc(u.name)}</a><span class="podium-score"><b>${fmt(score(u,activeMetric))}</b> ${esc(metrics.find(m=>m[0]===activeMetric)?.[1]||'points')}</span></article>`}
+    function renderPodium(sorted){const top=sorted.slice(0,3);document.getElementById('podium').innerHTML=(top[1]?podiumCard(top[1],1):'')+(top[0]?podiumCard(top[0],0):'')+(top[2]?podiumCard(top[2],2):'')||'<div class="rank-empty">No players ranked yet.</div>'}
+    function renderMine(){const u=myUser||users.find(x=>x.isMe);const box=document.getElementById('my-rank');if(!u){box.innerHTML='<div><small>YOUR POSITION</small><strong>--</strong><h2>Not ranked yet</h2><p>Play a game or earn coins to enter the board.</p></div>';return}box.innerHTML=`<div><small>YOUR POSITION</small><strong>#${esc(u.rank||users.findIndex(x=>x.email===u.email)+1)}</strong><h2>${esc(u.name)}</h2><p>Keep climbing—the board updates live.</p></div><div class="my-rank-stats"><span><b>${fmt(u.coins)}</b><small>COINS</small></span><span><b>${fmt(u.wins)}</b><small>WINS</small></span></div>`}
+    function metricHtml(u,key,label,primary){return `<span class="metric ${primary?'primary':''}"><small>${esc(label.toUpperCase())}</small><b>${fmt(u[key])}</b></span>`}
+    function renderRows(sorted){const visible=sorted.filter(u=>!query||String(u.name||'').toLowerCase().includes(query)||String(u.email||'').toLowerCase().includes(query));const html=visible.map((u,i)=>{const boardRank=i+1;const badge=u.badge?`<span class="l-badge" title="${esc(u.badge.replace(/_/g,' '))}">${esc(badgeLabels[u.badge]||'◆')}</span>`:'';const you=u.isMe?'<span class="you-pill">You</span>':'';const other=metrics.filter(m=>m[0]!==activeMetric).slice(0,3);return `<article class="rank-row ${u.isMe?'me':''}"><span class="rank-number ${boardRank<=3?'top':''}">#${boardRank}</span><span class="rank-user"><span class="rank-user-avatar">${esc(initials(u.name))}</span><span class="rank-user-copy"><a href="/profile/?u=${encodeURIComponent(u.email||u.name)}">${esc(u.name)}${badge}${you}</a><small>${esc(u.email||'community player')}</small></span></span>${metricHtml(u,activeMetric,metrics.find(m=>m[0]===activeMetric)[1],true)}${other.map(m=>metricHtml(u,m[0],m[1],false)).join('')}</article>`}).join('');document.getElementById('rank-list').innerHTML=html||'<div class="rank-empty">No players match that search.</div>'}
+    function renderAll(){const sorted=[...users].sort((a,b)=>score(b,activeMetric)-score(a,activeMetric)||String(a.name).localeCompare(String(b.name)));renderPodium(sorted);renderRows(sorted);renderMine()}
+    async function load(){try{const r=await fetch('/api/leaderboard',{credentials:'include',cache:'no-store'});if(!r.ok)throw Error('rankings unavailable');const d=await r.json();users=[...(d.players||d.top||[])];myUser=d.me||users.find(u=>u.isMe)||null;if(myUser&&!users.some(u=>u.email===myUser.email))users.push(myUser);renderAll()}catch(e){document.getElementById('rank-list').innerHTML='<div class="rank-empty">Rankings are temporarily unavailable. Try refreshing in a moment.</div>'}}
+    document.getElementById('rank-search').addEventListener('input',e=>{query=e.target.value.trim().toLowerCase();renderAll()});renderTabs();load();
+  })();
+  </script>
+  <script src="/cookie-consent.js" defer></script>
 </body>
 </html>

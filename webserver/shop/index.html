@@ -388,7 +388,8 @@
 <main class="app-main">
   <header class="page-head">
     <div>
-      <h1>The Market</h1>
+      <div class="shop-kicker">CURATED DIGITAL GOODS</div>
+      <h1>The <span>Market</span></h1>
       <p class="subline" id="shop-note">Loading the shop catalog...</p>
     </div>
     <div class="panel balance-panel">
@@ -405,6 +406,7 @@
     </div>
   </header>
 
+  <div class="shop-tools"><label><span>⌕</span><input id="shop-search" type="search" placeholder="Search cosmetics, perks, and passes" autocomplete="off"></label><span class="shop-stock"><i></i><b id="shop-stock-count">0</b> items in stock</span></div>
   <div id="tabs" class="tabs"></div>
   <div id="market"></div>
 
@@ -474,6 +476,7 @@
   let items = [];
   let inventory = defaultInventory();
   let premiumDiscountPct = 0;
+  let shopQuery = '';
 
   function defaultInventory() {
     return {
@@ -627,7 +630,9 @@
   function render() {
     renderTabs();
     const market = document.getElementById('market');
-    const filtered = activeTab === 'all' ? items : items.filter(item => slug(item.section) === activeTab);
+    let filtered = activeTab === 'all' ? items : items.filter(item => slug(item.section) === activeTab);
+    if (shopQuery) filtered = filtered.filter(item => [item.name,item.desc,item.perk,item.section,item.tier].some(value => String(value || '').toLowerCase().includes(shopQuery)));
+    document.getElementById('shop-stock-count').textContent = filtered.length;
     if (!filtered.length) {
       market.innerHTML = '<div class="empty">No items in this section yet.</div>';
       return;
@@ -936,6 +941,7 @@
   };
 
   document.getElementById('gift-btn').addEventListener('click', adminGift);
+  document.getElementById('shop-search').addEventListener('input', event => { shopQuery = event.target.value.trim().toLowerCase(); render(); });
   load();
 </script>
 <script src="/cookie-consent.js" defer></script>
