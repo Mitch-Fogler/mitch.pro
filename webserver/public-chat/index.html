@@ -13,7 +13,7 @@
     @media(max-width:700px){.plaza-head{align-items:flex-start;flex-direction:column}.plaza-stats{width:100%}.plaza-stats>span{flex:1;justify-content:center}.channel-head>span{display:none}.chat-box{height:58vh;min-height:320px;padding:10px}.msg{gap:8px;padding:8px 6px}.msg-avatar{width:30px;height:30px;flex-basis:30px;border-radius:10px}.message-tools{opacity:1}.input-wrap{grid-template-columns:1fr}.input-wrap button{width:100%}.char-count{right:25px;bottom:86px}.input-wrap input{padding-right:76px!important}}
   </style>
 </head>
-<body>
+<body class="plaza-page">
 <main class="app-main plaza-main">
   <header class="page-head plaza-head"><div><div class="plaza-kicker"><span></span> COMMUNITY CHANNEL / #GENERAL</div><h1>Public <span>Plaza</span></h1><p class="page-sub">The live pulse of mitch.pro. Drop a message, meet the community, and keep it friendly.</p></div><div class="plaza-stats"><span id="connectionState" class="offline"><i></i> Connecting</span><span><b id="messageCount">0</b> recent</span></div></header>
   <section class="panel chat-shell"><header class="channel-head"><div><small>LIVE CHANNEL</small><strong># public-plaza</strong></div><span>Messages sync in real time</span></header><div id="chatBox" class="chat-box" aria-live="polite"><div class="empty-chat"><div><span>◌</span>Loading the plaza…</div></div></div><form id="chatForm" class="input-wrap"><input id="chatInput" maxlength="1000" autocomplete="off" placeholder="Message the public plaza" required><span class="char-count" id="charCount">0 / 1000</span><button id="sendBtn" type="submit">Send message</button></form></section>

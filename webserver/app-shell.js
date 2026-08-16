@@ -21,12 +21,46 @@
   }
 
   function ensureViewport() {
-    if (document.querySelector('meta[name="viewport"]')) return;
+    var current = document.querySelector('meta[name="viewport"]');
+    if (current) {
+      if (current.content.indexOf('viewport-fit=cover') === -1) current.content += ', viewport-fit=cover';
+      return;
+    }
     var meta = document.createElement('meta');
     meta.name = 'viewport';
-    meta.content = 'width=device-width, initial-scale=1';
+    meta.content = 'width=device-width, initial-scale=1, viewport-fit=cover';
     var head = document.head || document.getElementsByTagName('head')[0];
     if (head) head.insertBefore(meta, head.firstChild);
+  }
+
+  function ensureInstallMetadata() {
+    var metas = {
+      'theme-color': '#05070d',
+      'mobile-web-app-capable': 'yes',
+      'apple-mobile-web-app-capable': 'yes',
+      'apple-mobile-web-app-status-bar-style': 'black-translucent',
+      'apple-mobile-web-app-title': 'mitch.pro'
+    };
+    Object.keys(metas).forEach(function (name) {
+      if (document.querySelector('meta[name="' + name + '"]')) return;
+      var meta = document.createElement('meta');
+      meta.name = name;
+      meta.content = metas[name];
+      document.head.appendChild(meta);
+    });
+    if (!document.querySelector('link[rel="manifest"]')) {
+      var manifest = document.createElement('link');
+      manifest.rel = 'manifest';
+      manifest.href = '/manifest.json';
+      document.head.appendChild(manifest);
+    }
+    if (!document.querySelector('link[rel="apple-touch-icon"]')) {
+      var touchIcon = document.createElement('link');
+      touchIcon.rel = 'apple-touch-icon';
+      touchIcon.sizes = '180x180';
+      touchIcon.href = '/apple-touch-icon.png';
+      document.head.appendChild(touchIcon);
+    }
   }
 
   function ensureFonts() {
@@ -94,6 +128,33 @@
     update();
   }
 
+  function enhanceRelaunchMotion() {
+    if (!document.body) return;
+    document.body.classList.add('relaunch-ready');
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var items = document.querySelectorAll('.page-head, .panel, .card, .category-group, .listing-item, .rank-row, .admin-day-card');
+    if (!('IntersectionObserver' in window)) {
+      for (var fallbackIndex = 0; fallbackIndex < items.length; fallbackIndex++) items[fallbackIndex].classList.add('is-visible');
+      return;
+    }
+    var observer = new IntersectionObserver(function (entries) {
+      for (var i = 0; i < entries.length; i++) {
+        if (!entries[i].isIntersecting) continue;
+        entries[i].target.classList.add('is-visible');
+        window.setTimeout(function (node) {
+          node.classList.remove('relaunch-reveal', 'is-visible');
+          node.style.removeProperty('--reveal-order');
+        }, 1100, entries[i].target);
+        observer.unobserve(entries[i].target);
+      }
+    }, { rootMargin: '0px 0px -5% 0px', threshold: 0.06 });
+    for (var itemIndex = 0; itemIndex < items.length; itemIndex++) {
+      items[itemIndex].classList.add('relaunch-reveal');
+      items[itemIndex].style.setProperty('--reveal-order', String(itemIndex % 8));
+      observer.observe(items[itemIndex]);
+    }
+  }
+
   function shouldInject() {
     var body = document.body;
     if (!body) return false;
@@ -104,8 +165,10 @@
 
   function inject() {
     ensureViewport();
+    ensureInstallMetadata();
     ensureFonts();
     ensureRelaunchStyles();
+    enhanceRelaunchMotion();
     if (!shouldInject()) {
       window.MitchShell = { ready: true, injected: false };
       return;

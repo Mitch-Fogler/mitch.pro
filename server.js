@@ -16366,6 +16366,15 @@ function loadAllGamesList() {
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/relaunch.css'))) {
             injectStr += '<link rel="stylesheet" href="/relaunch.css">\n';
           }
+          if (!isEmbeddedGameRuntime) {
+            if (!raw.includes(Buffer.from('rel="manifest"'))) injectStr += '<link rel="manifest" href="/manifest.json">\n';
+            if (!raw.includes(Buffer.from('rel="apple-touch-icon"'))) injectStr += '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">\n';
+            if (!raw.includes(Buffer.from('name="theme-color"'))) injectStr += '<meta name="theme-color" content="#05070d">\n';
+            if (!raw.includes(Buffer.from('name="mobile-web-app-capable"'))) injectStr += '<meta name="mobile-web-app-capable" content="yes">\n';
+            if (!raw.includes(Buffer.from('name="apple-mobile-web-app-capable"'))) injectStr += '<meta name="apple-mobile-web-app-capable" content="yes">\n';
+            if (!raw.includes(Buffer.from('name="apple-mobile-web-app-status-bar-style"'))) injectStr += '<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n';
+            if (!raw.includes(Buffer.from('name="apple-mobile-web-app-title"'))) injectStr += '<meta name="apple-mobile-web-app-title" content="mitch.pro">\n';
+          }
 
           if (loadAnalytics || loadRecaptcha) {
             injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
@@ -16460,7 +16469,7 @@ function loadAllGamesList() {
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
-      '/favicon.ico', '/icon-192.png', '/icon-512.png',
+      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png',
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');

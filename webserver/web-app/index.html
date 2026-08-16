@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="mitch.pro">
@@ -10,11 +10,12 @@
 <title>Install mitch.pro</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" href="/favicon.ico">
-<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,sans-serif;background:#0a0a12;color:#e0e0f0;
-  min-height:100vh;display:flex;align-items:center;justify-content:center}
+  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
 .card{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);
   border-radius:18px;padding:2.5rem 2rem;max-width:360px;width:100%;text-align:center}
 .icon{width:80px;height:80px;border-radius:20px;margin:0 auto 1.2rem}
@@ -26,16 +27,20 @@ h1{font-size:1.4rem;font-weight:700;margin-bottom:.4rem}
 #install-btn:hover{opacity:.85}
 #install-btn:disabled{opacity:.35;cursor:default}
 .note{font-size:.78rem;color:rgba(200,200,220,.4);line-height:1.5}
+.ios-help{margin:0 0 1rem;padding:1rem;border:1px solid rgba(167,139,250,.22);border-radius:12px;background:rgba(124,58,237,.09);color:#d8d4e7;font-size:.85rem;line-height:1.55;text-align:left}
+.ios-help strong{display:block;margin-bottom:.35rem;color:#fff}.ios-help span{color:#c4b5fd;font-weight:700}
 #status{margin-top:1rem;font-size:.85rem;min-height:1.2em;color:#a78bfa}
+@media(max-width:480px){.card{padding:1.6rem 1.1rem;border-radius:22px}.icon{width:88px;height:88px}#install-btn{min-height:48px;font-size:16px}}
 </style>
 </head>
 <body>
 <div class="card">
-  <img class="icon" src="/favicon.ico" alt="mitch.pro icon">
+  <img class="icon" src="/apple-touch-icon.png" alt="mitch.pro logo">
   <h1>mitch.pro</h1>
-  <p class="sub">Install mitch.pro as an app on your Chromebook for quick access from your launcher.</p>
+  <p class="sub">Add mitch.pro to your phone or computer for a fast, full-screen app experience.</p>
+  <div class="ios-help" id="ios-help" hidden><strong>Install on iPhone or iPad</strong>Tap the <span>Share</span> button in Safari, choose <span>Add to Home Screen</span>, then tap <span>Add</span>. The mitch.pro logo will appear on your Home Screen.</div>
   <button id="install-btn" disabled>Install App</button>
-  <p class="note">If the button is grey, use the install icon (+) in your Chrome address bar instead.</p>
+  <p class="note" id="install-note">If the button is grey, use your browser's install option instead.</p>
   <div id="status"></div>
 </div>
 <script>
@@ -46,6 +51,18 @@ if ('serviceWorker' in navigator) {
 let deferredPrompt = null;
 const btn = document.getElementById('install-btn');
 const status = document.getElementById('status');
+const isIos = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+if (isStandalone) {
+  btn.hidden = true;
+  document.getElementById('install-note').hidden = true;
+  status.textContent = 'mitch.pro is already installed.';
+} else if (isIos) {
+  btn.hidden = true;
+  document.getElementById('ios-help').hidden = false;
+  document.getElementById('install-note').textContent = 'Apple installs web apps from Safari\'s Share menu.';
+}
 
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
@@ -72,56 +89,6 @@ window.addEventListener('appinstalled', () => {
   deferredPrompt = null;
 });
 
-function makeIconDataUrl(color, size) {
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  const r = size * 0.22;
-  ctx.beginPath();
-  ctx.moveTo(r,0); ctx.lineTo(size-r,0); ctx.quadraticCurveTo(size,0,size,r);
-  ctx.lineTo(size,size-r); ctx.quadraticCurveTo(size,size,size-r,size);
-  ctx.lineTo(r,size); ctx.quadraticCurveTo(0,size,0,size-r);
-  ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
-  ctx.closePath(); ctx.fillStyle = color; ctx.fill();
-  return c.toDataURL('image/png');
-}
-
-function applyThemedIcon(color) {
-  const img = document.querySelector('.icon');
-  if (img) img.src = makeIconDataUrl(color, 192);
-
-  const i192 = makeIconDataUrl(color, 192);
-  const i512 = makeIconDataUrl(color, 512);
-  const manifest = {
-    name: 'mitch.pro', short_name: 'mitch.pro', start_url: '/',
-    display: 'standalone', background_color: '#0a0a12', theme_color: color,
-    icons: [
-      {src: i192, sizes: '192x192', type: 'image/png', purpose: 'any maskable'},
-      {src: i512, sizes: '512x512', type: 'image/png', purpose: 'any maskable'},
-    ]
-  };
-  const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
-  const url = URL.createObjectURL(blob);
-  let link = document.querySelector("link[rel='manifest']");
-  if (!link) { link = document.createElement('link'); link.rel = 'manifest'; document.head.appendChild(link); }
-  link.href = url;
-}
-
-(function init() {
-  const color = (window.__theme && window.__theme.themes[window.__theme.get()])
-    ? window.__theme.themes[window.__theme.get()].sw
-    : '#7c3aed';
-  applyThemedIcon(color);
-})();
-
-window.addEventListener('themechange', e => {
-  const themes = window.__theme && window.__theme.themes;
-  const color = themes && themes[e.detail] ? themes[e.detail].sw : '#7c3aed';
-  applyThemedIcon(color);
-  deferredPrompt = null;
-  btn.disabled = true;
-  status.textContent = 'Reload to get install prompt for new theme.';
-});
 </script>
 <script src="/cookie-consent.js" defer></script>
 </body>

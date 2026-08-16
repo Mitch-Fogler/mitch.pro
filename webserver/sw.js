@@ -1,7 +1,11 @@
-const CACHE_NAME = 'mitch-pro-cache-v4';
+const CACHE_NAME = 'mitch-pro-cache-v5';
 const ASSETS = [
   '/favicon.ico',
-  '/manifest.json'
+  '/manifest.json',
+  '/apple-touch-icon.png',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/relaunch.css'
 ];
 
 self.addEventListener('install', (e) => {
@@ -102,7 +106,8 @@ self.addEventListener('push', e => {
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
   e.waitUntil(self.registration.showNotification(data.title, {
     body: data.body,
-    icon: '/favicon.ico',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     data: { url: data.url }
   }));
 });
