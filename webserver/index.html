@@ -2256,9 +2256,9 @@ function initHudTerminal() {
           setConsoleTimeout(function() { appendLine('Mounting virtual block devices (/dev/vda1)...', 'sys-warn'); }, 200);
           setConsoleTimeout(function() { appendLine('Virtual memory mapping complete: 512MB RAM allocated.', 'sys-cmd'); }, 400);
           setConsoleTimeout(function() { 
-            appendLine('Launching client-side Linux Virtual Machine (WebVM) in a new tab...', 'sys-success'); 
+            appendLine('Launching client-side Linux Virtual Machine (WebVM)...', 'sys-success'); 
+            launchConsoleIframe('/webvm/', '>_ WEBVM: BROWSER LINUX');
           }, 700);
-          window.open('/webvm/', '_blank');
           break;
         case 'neofetch':
           var activeTheme = document.documentElement.className || 'void (default)';
@@ -6565,7 +6565,7 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
     <input type="text" id="terminal-input" autocomplete="off" placeholder="...">
   </div>
   <div id="hud-terminal-iframe-container" style="display: none; width: 100%; height: calc(100% - 36px); position: relative;">
-    <iframe id="hud-terminal-iframe" style="width: 100%; height: 100%; border: none; background: #000;" src="about:blank"></iframe>
+    <iframe id="hud-terminal-iframe" style="width: 100%; height: 100%; border: none; background: #000;" src="about:blank" credentialless></iframe>
     <button type="button" onclick="closeTerminalIframe()" style="position: absolute; top: 8px; right: 8px; z-index: 10000; background: #ef4444; color: white; border: none; padding: 4px 10px; border-radius: 4px; font-family: monospace; font-size: 11px; font-weight: bold; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">Exit Session</button>
   </div>
   <div id="hud-terminal-xterm-container" style="display: none; width: 100%; height: calc(100% - 36px); position: relative; padding: 8px; box-sizing: border-box; background: #000;">
