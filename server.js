@@ -5920,10 +5920,10 @@ async function serveStatic(urlPath) {
       headers['Cache-Control'] = 'public, max-age=2592000';
     }
 
-    if (urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
+    if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
       headers['Cross-Origin-Opener-Policy'] = 'same-origin';
-      headers['Cross-Origin-Embedder-Policy'] = 'require-corp';
-      headers['Cross-Origin-Resource-Policy'] = 'same-origin';
+      headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
+      headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
     }
 
     if (contentType.includes('text/html')) {
