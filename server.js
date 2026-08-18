@@ -17142,6 +17142,9 @@ setTimeout(() => {
   setInterval(purgeExpiredVmsWorker, 3600_000); // Check VM soft-deletes hourly
   purgeExpiredVmsWorker(); 
 
+  setInterval(pruneInactiveFreeVmsWorker, 300_000); // Check VM inactive free VMs every 5 mins
+  pruneInactiveFreeVmsWorker(); 
+
   setInterval(happyHourWorker, 60000);
   computedHappyHour = getLeastUsedSchoolHour();
   happyHourWorker();
@@ -17560,7 +17563,7 @@ async function cloneUserVm(email, tier, vmid) {
       body: new URLSearchParams({
         newid: vmid,
         name: `student-${vmid}`,
-        clonemode: 'link',
+        full: 0,
         pool: 'sandboxes'
       }).toString(),
       tls: {
@@ -17696,6 +17699,22 @@ async function purgeExpiredVmsWorker() {
     }
   } catch (err) {
     console.error('[purge-vm] Error in VM purge worker:', err);
+  }
+}
+
+async function pruneInactiveFreeVmsWorker() {
+  try {
+    const now = Date.now();
+    const maxInactiveMs = 30 * 60 * 1000; // 30 minutes of inactivity
+    for (const [email, entry] of activeFreeVms.entries()) {
+      if (now - entry.lastActive > maxInactiveMs) {
+        console.log(`[free-vm] Pruning inactive free VM ${entry.vmid} for ${email}`);
+        await terminateUserVm(entry.vmid);
+        activeFreeVms.delete(email);
+      }
+    }
+  } catch (err) {
+    console.error('[free-vm] Error in inactive VM pruner:', err);
   }
 }
 
