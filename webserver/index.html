@@ -1837,6 +1837,11 @@ function connectVmVnc() {
   launchConsoleIframe(vncUrl, 'noVNC Desktop');
 }
 
+function getCsrfToken() {
+  const match = document.cookie.match(new RegExp('(^| )_csrf=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : '';
+}
+
 function toggleHudTerminal() {
   var term = document.getElementById('hud-terminal-overlay');
   if (!term) return;
