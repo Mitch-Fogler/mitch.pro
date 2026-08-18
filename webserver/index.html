@@ -1708,6 +1708,7 @@ async function initHome() {
 let currentVmStatus = null;
 let currentVmIp = null;
 let currentVmTier = null;
+let currentVmPassword = null;
 let vmStatusInterval = null;
 
 async function initVmWorkspaceDashboard() {
@@ -1743,6 +1744,7 @@ async function pollVmStatus() {
     currentVmStatus = data.vmStatus;
     currentVmIp = data.ip;
     currentVmTier = data.tier;
+    currentVmPassword = data.password;
     
     if (data.status === 'pending') {
       indicator.style.color = '#ffaf3f';
@@ -1827,7 +1829,8 @@ async function controlVmPower() {
 function connectVmSsh() {
   if (!currentVmIp) return;
   const username = (currentVmTier === 'free' || currentVmTier === 'premium') ? 'root' : 'debian';
-  const consoleUrl = `/ssh/index.html?host=${currentVmIp}&username=${username}&port=22&auth=password&connect=true`;
+  const pass = currentVmPassword || 'password';
+  const consoleUrl = `/ssh/index.html?host=${currentVmIp}&username=${username}&port=22&auth=password&password=${pass}&connect=true`;
   launchConsoleIframe(consoleUrl, 'Web Terminal');
 }
 

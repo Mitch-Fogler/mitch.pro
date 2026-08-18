@@ -390,7 +390,7 @@
           `;
           successAlert.style.display = 'block';
           
-          const sshUrl = `/ssh/index.html?host=${data.ip}&username=debian&port=22&auth=password&connect=true`;
+          const sshUrl = `/ssh/index.html?host=${data.ip}&username=root&port=22&auth=password&password=${data.password}&connect=true`;
           window.open(sshUrl, '_blank', 'width=1024,height=768,location=no,toolbar=no,menubar=no');
         }
       } catch (err) {

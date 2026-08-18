@@ -7842,8 +7842,9 @@ Mitch.pro Team`;
       }
 
       const app = data[norm];
+      const securePassword = Math.random().toString(36).slice(-10);
       const result = app.tier === 'premium'
-        ? await createLxcContainer(app.email, app.tier, vmid)
+        ? await createLxcContainer(app.email, app.tier, vmid, securePassword)
         : await cloneUserVm(app.email, app.tier, vmid);
 
       if (!result.success) {
@@ -7852,6 +7853,9 @@ Mitch.pro Team`;
 
       app.status = 'approved';
       app.vmid = vmid;
+      if (app.tier === 'premium') {
+        app.password = securePassword;
+      }
       app.approvedAt = Date.now();
       saveJson(VM_APPS_FILE, data);
 
@@ -12117,13 +12121,15 @@ async function getExistingVmids() {
     }
 
     // Clone template with Free tier specifications (1 core, 1GB RAM)
-    const cloneResult = await createLxcContainer(email, 'free', targetVmid);
+    const securePassword = Math.random().toString(36).slice(-10);
+    const cloneResult = await createLxcContainer(email, 'free', targetVmid, securePassword);
     if (!cloneResult.success) {
       return jsonResp(500, { error: cloneResult.error });
     }
 
     activeFreeVms.set(norm, {
       vmid: targetVmid,
+      password: securePassword,
       startedAt: Date.now(),
       lastActive: Date.now()
     });
@@ -12135,7 +12141,8 @@ async function getExistingVmids() {
     return jsonResp(200, {
       success: true,
       vmid: targetVmid,
-      ip: pveStatus.ip || '10.0.0.64'
+      ip: pveStatus.ip || '10.0.0.64',
+      password: securePassword
     });
   }
 
@@ -12198,6 +12205,7 @@ async function getExistingVmids() {
         tier: 'free',
         vmStatus: pveStatus.success ? pveStatus.status : 'unknown',
         ip: pveStatus.success ? pveStatus.ip : '',
+        password: freeVm.password || 'password',
         isPremium
       });
     }
@@ -12219,6 +12227,7 @@ async function getExistingVmids() {
         tier: app.tier,
         vmStatus: pveStatus.success ? pveStatus.status : 'unknown',
         ip: pveStatus.success ? pveStatus.ip : '',
+        password: app.password || 'password',
         isPremium
       });
     }
@@ -17518,7 +17527,7 @@ async function powerUserVm(vmid, action) {
   }
 }
 
-async function createLxcContainer(email, tier, vmid) {
+async function createLxcContainer(email, tier, vmid, password) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
   
   const cores = tier === 'premium' ? 2 : 1;
@@ -17536,7 +17545,7 @@ async function createLxcContainer(email, tier, vmid) {
       memory: memory,
       swap: 512,
       hostname: `student-lxc-${vmid}`,
-      password: 'password', // root password is 'password'
+      password: password || 'password', // root password is secure password
       rootfs: 'local-lvm:8',
       net0: `name=eth0,bridge=vmbr2,firewall=0,ip=${containerIp}/24,gw=10.0.0.1`,
       nameserver: '1.1.1.1',

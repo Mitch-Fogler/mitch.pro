@@ -764,6 +764,10 @@
       if (portParam) {
         document.getElementById('port').value = portParam;
       }
+      const passParam = urlParams.get('password');
+      if (passParam) {
+        document.getElementById('password').value = passParam;
+      }
       if (authParam) {
         setAuthMethod(authParam);
       }
