@@ -24,6 +24,31 @@ try {
   }
 } catch {}
 
+// Explicitly load .env file from the script directory to be CWD-independent
+try {
+  const envPath = join(import.meta.dir, '.env');
+  if (existsSync(envPath)) {
+    const content = readFileSync(envPath, 'utf8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const parts = trimmed.split('=');
+      if (parts.length >= 2) {
+        const key = parts[0].trim();
+        let val = parts.slice(1).join('=').trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  }
+} catch (e) {
+  console.error('Failed to load .env file:', e);
+}
+
 const BASE = import.meta.dir;
 const WEBROOT = join(BASE, 'webserver');
 const DATA_DIR = process.env.DATA_DIR || join(BASE, 'data');

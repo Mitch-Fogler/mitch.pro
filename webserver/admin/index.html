@@ -2179,7 +2179,14 @@
     async function loadVmRequests() {
       setStatus('vm-requests-global-status', 'Loading VM requests...', '');
       try {
-        const res = await fetch('/api/admin/vm-requests');
+        const headers = {};
+        const pass = sessionStorage.getItem('admin_passphrase');
+        if (pass) {
+          headers['X-Admin-Passphrase'] = pass;
+        }
+        const res = await fetch('/api/admin/vm-requests', {
+          headers: headers
+        });
         const d = await res.json();
         if (d.error) throw new Error(d.error);
         
