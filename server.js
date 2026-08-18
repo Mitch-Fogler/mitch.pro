@@ -17378,7 +17378,11 @@ async function initializeWebVM() {
       });
     });
   } catch (e) {
-    console.error('[webvm] Initialization error:', e);
+    if (e.code === 'ENOENT') {
+      console.warn('[webvm] "npm" is not installed in this environment. Skipping dynamic WebVM build compilation.');
+    } else {
+      console.error('[webvm] Initialization error:', e);
+    }
   }
 }
 
