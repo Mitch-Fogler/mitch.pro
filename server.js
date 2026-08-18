@@ -12025,6 +12025,35 @@ function loadAllGamesList() {
     return jsonResp(200, { ok: true, message: 'Request submitted.' });
   }
 
+async function getExistingVmids() {
+  const ids = new Set();
+  try {
+    const lxcRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc`, {
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    if (lxcRes.ok) {
+      const data = await lxcRes.json();
+      if (data.data) {
+        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
+      }
+    }
+    const qemuRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/qemu`, {
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    if (qemuRes.ok) {
+      const data = await qemuRes.json();
+      if (data.data) {
+        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
+      }
+    }
+  } catch (err) {
+    console.error('[proxmox] Failed to fetch cluster VMIDs:', err);
+  }
+  return ids;
+}
+
   // POST /api/vm/free/launch — launch or connect to the ephemeral free VM
   if (path === '/api/vm/free/launch' && method === 'POST') {
     const cookies = getCookies(req);
@@ -12046,33 +12075,45 @@ function loadAllGamesList() {
       return jsonResp(200, { success: true, ip: pveStatus.ip || '10.0.0.64', vmid: entry.vmid });
     }
 
-    // Check pool capacity (Max 10)
-    if (activeFreeVms.size >= MAX_FREE_VMS) {
-      let oldestUser = null;
-      let oldestTime = Infinity;
-      for (const [user, data] of activeFreeVms.entries()) {
-        if (data.lastActive < oldestTime) {
-          oldestTime = data.lastActive;
-          oldestUser = user;
-        }
-      }
-
-      if (oldestUser) {
-        console.log(`[free-vm] Kicking off oldest free VM for user ${oldestUser} to free up slot.`);
-        const data = activeFreeVms.get(oldestUser);
-        await terminateUserVm(data.vmid);
-        activeFreeVms.delete(oldestUser);
-      }
-    }
-
-    // Find an unused VMID between 200 and 209
-    const usedVmids = new Set(Array.from(activeFreeVms.values()).map(v => v.vmid));
-    let targetVmid = 200;
+    // Check pool capacity (Max 10) by querying Proxmox directly
+    const existingIds = await getExistingVmids();
+    let targetVmid = null;
     for (let id = 200; id < 210; id++) {
-      if (!usedVmids.has(id)) {
+      if (!existingIds.has(id)) {
         targetVmid = id;
         break;
       }
+    }
+
+    if (targetVmid === null) {
+      // All 10 slots are occupied on Proxmox. Evict an orphan or the oldest container.
+      let oldestId = 200;
+      const activeVmids = new Set(Array.from(activeFreeVms.values()).map(v => v.vmid));
+      for (let id = 200; id < 210; id++) {
+        if (existingIds.has(id) && !activeVmids.has(id)) {
+          oldestId = id;
+          break;
+        }
+      }
+
+      if (activeVmids.has(oldestId)) {
+        let oldestUser = null;
+        let oldestTime = Infinity;
+        for (const [user, data] of activeFreeVms.entries()) {
+          if (data.lastActive < oldestTime) {
+            oldestTime = data.lastActive;
+            oldestUser = user;
+          }
+        }
+        if (oldestUser) {
+          oldestId = activeFreeVms.get(oldestUser).vmid;
+          activeFreeVms.delete(oldestUser);
+        }
+      }
+
+      console.log(`[free-vm] Evicting VMID ${oldestId} to free up slot.`);
+      await terminateUserVm(oldestId);
+      targetVmid = oldestId;
     }
 
     // Clone template with Free tier specifications (1 core, 1GB RAM)
