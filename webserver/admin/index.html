@@ -612,6 +612,7 @@
         <a href="#economy-tools">Economy</a>
         <a href="#moderation-tools">Safety</a>
         <a href="#casino-tools">Casino</a>
+        <a href="#vm-tools">VM Cloud</a>
         <a href="#logs-tools">System Logs</a>
         <a href="#content-tools">Content</a>
         <a href="#shop-tools">Shop Catalog</a>
@@ -659,6 +660,8 @@
         <div id="revoke-status" class="form-status"></div>
       </form>
 
+      <!-- Removed deprecated approve/terminate VM forms -->
+
       <form class="action-card" onsubmit="sendNotification(event)">
         <h2>Send Notification</h2>
         <p>Stored like encrypted chat delivery: POST, server validation, immediate local status.</p>
@@ -693,7 +696,40 @@
         </form>
         <div id="blog-contributor-status" class="form-status"></div>
       </div>
-    </div>
+    </section>
+
+    <section class="tool-group" id="vm-tools">
+      <div class="section-head">
+        <h2>VM Cloud Manager</h2>
+        <span class="tag">kvm vms, lxc containers, approvals</span>
+      </div>
+      <div class="actions-panel" style="display: grid; grid-template-columns: 1fr; gap: 14px;">
+        <!-- VM Requests & Soft-Delete Restore Actions -->
+        <div class="action-card" style="width: 100%;">
+          <h2>Active & Pending VM Requests</h2>
+          <p>Shows student subscriptions, VMs, and their operational statuses. Deleted VMs can be restored up to 7 days after soft-deletion.</p>
+          
+          <div style="overflow-x: auto; margin-top: 15px;">
+            <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.82rem;">
+              <thead>
+                <tr style="border-bottom: 2px solid var(--t-bd); color: var(--t-fg2);">
+                  <th style="padding: 10px 8px;">User / Email</th>
+                  <th style="padding: 10px 8px;">Workspace Tier</th>
+                  <th style="padding: 10px 8px;">Reason / Notes</th>
+                  <th style="padding: 10px 8px;">Status / Info</th>
+                  <th style="padding: 10px 8px; text-align: right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="vm-requests-table-body">
+                <tr>
+                  <td colspan="5" style="padding: 20px; text-align: center; color: var(--t-fg2);">Loading workspace requests...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="vm-requests-global-status" class="form-status" style="margin-top: 10px;"></div>
+        </div>
+      </div>
     </section>
 
     <section class="tool-group" id="economy-tools">
@@ -2140,6 +2176,156 @@
       }
     }
 
+    async function loadVmRequests() {
+      setStatus('vm-requests-global-status', 'Loading VM requests...', '');
+      try {
+        const res = await fetch('/api/admin/vm-requests');
+        const d = await res.json();
+        if (d.error) throw new Error(d.error);
+        
+        const tbody = document.getElementById('vm-requests-table-body');
+        tbody.innerHTML = '';
+        
+        const requests = d.requests || {};
+        const entries = Object.entries(requests);
+        
+        if (entries.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--t-fg2);">No VM workspace requests found.</td></tr>`;
+          setStatus('vm-requests-global-status', '', '');
+          return;
+        }
+        
+        entries.sort((a, b) => {
+          const statusOrder = { pending: 1, approved: 2, deleted: 3, denied: 4 };
+          const sA = statusOrder[a[1].status] || 5;
+          const sB = statusOrder[b[1].status] || 5;
+          return sA - sB;
+        });
+
+        for (const [normEmail, app] of entries) {
+          const row = document.createElement('tr');
+          row.style.borderBottom = '1px solid var(--t-bd)';
+          
+          const dateStr = app.appliedAt ? new Date(app.appliedAt).toLocaleString() : 'N/A';
+          
+          let statusBadge = '';
+          if (app.status === 'pending') {
+            statusBadge = `<span style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.72rem;">Pending</span>`;
+          } else if (app.status === 'approved') {
+            statusBadge = `<span style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.72rem;">Approved (VMID: ${app.vmid})</span>`;
+          } else if (app.status === 'denied') {
+            statusBadge = `<span style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.72rem;">Denied</span>`;
+          } else if (app.status === 'deleted') {
+            const timeRemaining = 7 - (Date.now() - app.deletedAt) / (24 * 3600 * 1000);
+            const daysLeft = Math.max(0, timeRemaining.toFixed(1));
+            statusBadge = `<span style="background: rgba(249, 115, 22, 0.15); color: #f97316; border: 1px solid rgba(249,115,22,0.3); padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.72rem; display: inline-block;">Deleted (${daysLeft}d left to restore)</span>`;
+          } else {
+            statusBadge = `<span style="background: rgba(107, 114, 128, 0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.3); padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.72rem;">${app.status}</span>`;
+          }
+          
+          let actionsHtml = '';
+          const safeEmail = app.email;
+          if (app.status === 'pending') {
+            const randomVmid = Math.floor(Math.random() * 50) + 105;
+            const inputId = 'vmid-' + normEmail.replace(/[^a-z0-9]/g, '');
+            actionsHtml = `
+              <div style="display:flex; align-items:center; gap:5px; justify-content:flex-end;">
+                <input id="${inputId}" type="number" min="100" placeholder="VMID" value="${randomVmid}" style="width:70px; padding:3px 6px; font-size:0.75rem; text-align:center;">
+                <button onclick="approveVmRequest('${safeEmail}', '${inputId}')" class="mini" style="background:#10b981; color:#fff; border-color:#10b981;">Approve</button>
+                <button onclick="denyVmRequest('${safeEmail}')" class="mini" style="background:#ef4444; color:#fff; border-color:#ef4444;">Deny</button>
+              </div>
+            `;
+          } else if (app.status === 'approved') {
+            actionsHtml = `
+              <div style="text-align:right;">
+                <button onclick="terminateVmRequest('${safeEmail}')" class="mini" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border-color:rgba(239,68,68,0.2);">Delete VM</button>
+              </div>
+            `;
+          } else if (app.status === 'deleted') {
+            const isRestorable = (Date.now() - app.deletedAt) < (7 * 24 * 3600 * 1000);
+            if (isRestorable) {
+              actionsHtml = `
+                <div style="text-align:right;">
+                  <button onclick="restoreVmRequest('${safeEmail}')" class="mini" style="background:rgba(16, 185, 129, 0.15); color:#10b981; border-color:rgba(16,185,129,0.3);">Undo Delete</button>
+                </div>
+              `;
+            } else {
+              actionsHtml = `<span style="font-size:0.75rem; color:var(--t-fg2);">Expired</span>`;
+            }
+          } else {
+            actionsHtml = `&mdash;`;
+          }
+          
+          row.innerHTML = `
+            <td style="padding: 10px 8px; font-weight:700;">
+              ${app.email}
+              <div style="font-size:0.7rem; color:var(--t-fg2); font-weight:normal;">Applied: ${dateStr}</div>
+            </td>
+            <td style="padding: 10px 8px; text-transform: capitalize;">${app.tier === 'paid' ? 'Dedicated VM' : 'Premium Container'}</td>
+            <td style="padding: 10px 8px; max-width: 320px; white-space: normal; overflow-wrap: break-word;">${app.note || 'None'}</td>
+            <td style="padding: 10px 8px;">${statusBadge}</td>
+            <td style="padding: 10px 8px; text-align:right;">${actionsHtml}</td>
+          `;
+          tbody.appendChild(row);
+        }
+        
+        setStatus('vm-requests-global-status', '', '');
+      } catch (err) {
+        setStatus('vm-requests-global-status', 'Failed to load requests: ' + err.message, 'err');
+      }
+    }
+
+    async function approveVmRequest(email, inputId) {
+      const vmidVal = parseInt(document.getElementById(inputId).value, 10);
+      if (isNaN(vmidVal) || vmidVal < 100) {
+        alert('Please enter a valid VMID >= 100');
+        return;
+      }
+      setStatus('vm-requests-global-status', 'Approve command sent. Cloning VM template...', '');
+      try {
+        const d = await postAdmin('/api/admin/approve-vm', { email, vmid: vmidVal });
+        setStatus('vm-requests-global-status', d.message || 'VM approved successfully.', 'ok');
+        loadVmRequests();
+      } catch (err) {
+        setStatus('vm-requests-global-status', err.message, 'err');
+      }
+    }
+
+    async function denyVmRequest(email) {
+      if (!confirm('Are you sure you want to deny this VM request?')) return;
+      setStatus('vm-requests-global-status', 'Denying request...', '');
+      try {
+        const d = await postAdmin('/api/admin/deny-vm', { email });
+        setStatus('vm-requests-global-status', d.message || 'Request denied.', 'ok');
+        loadVmRequests();
+      } catch (err) {
+        setStatus('vm-requests-global-status', err.message, 'err');
+      }
+    }
+
+    async function terminateVmRequest(email) {
+      if (!confirm('Are you sure you want to stop and soft-delete this student\'s VM? It can be restored within 7 days.')) return;
+      setStatus('vm-requests-global-status', 'Stopping VM & marking as deleted...', '');
+      try {
+        const d = await postAdmin('/api/admin/terminate-vm', { email });
+        setStatus('vm-requests-global-status', d.message || 'VM soft-deleted.', 'ok');
+        loadVmRequests();
+      } catch (err) {
+        setStatus('vm-requests-global-status', err.message, 'err');
+      }
+    }
+
+    async function restoreVmRequest(email) {
+      setStatus('vm-requests-global-status', 'Restoring VM & booting...', '');
+      try {
+        const d = await postAdmin('/api/admin/restore-vm', { email });
+        setStatus('vm-requests-global-status', d.message || 'VM restored.', 'ok');
+        loadVmRequests();
+      } catch (err) {
+        setStatus('vm-requests-global-status', err.message, 'err');
+      }
+    }
+
     function syncNotifMode() {
       const all = document.getElementById('notif-all').checked;
       const email = document.getElementById('notif-email');
@@ -2668,6 +2854,9 @@
         if (currentUser && currentUser.isAdmin && output && !output.dataset.loaded) {
           loadAppLogs();
         }
+      }
+      if (target === 'vm-tools') {
+        loadVmRequests();
       }
       if (target === 'content-tools') {
         const list = document.getElementById('blog-delete-log');

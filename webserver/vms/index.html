@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>mitch.pro VM Cloud | Apply for Virtual Workspaces</title>
+  <link rel="stylesheet" href="/relaunch.css">
+  <link rel="stylesheet" href="/app.css">
+  <style>
+    .vms-page {
+      background-color: var(--t-bg) !important;
+      background-image: var(--t-bgr) !important;
+      color: var(--t-fg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .vms-container {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: clamp(2rem, 5vh, 4rem) clamp(1rem, 4vw, 1.5rem);
+      flex: 1;
+    }
+    .vms-header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+    .vms-header h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(2.2rem, 6vw, 3.8rem);
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      margin: 0 0 0.5rem;
+    }
+    .vms-header h1 span {
+      background: var(--t-gr);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+    .vms-header p {
+      color: var(--t-fg2);
+      font-size: 1.05rem;
+      max-width: 50ch;
+      margin: 0 auto;
+      line-height: 1.5;
+    }
+    .vms-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 30px;
+      margin-bottom: 3rem;
+    }
+    @media (min-width: 768px) {
+      .vms-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+    }
+    .deal-card {
+      border: 1px solid var(--edge);
+      border-radius: 20px;
+      background: var(--surface);
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+      position: relative;
+      overflow: hidden;
+    }
+    .deal-card::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      z-index: 0;
+      border: 1px solid transparent;
+      border-radius: inherit;
+      background: linear-gradient(125deg, rgba(88, 229, 255, 0.4), transparent 30%, transparent 70%, rgba(255, 96, 189, 0.3)) border-box;
+      -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+      mask-composite: exclude;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .deal-card:hover {
+      transform: translateY(-4px);
+      border-color: rgba(124, 92, 255, 0.3);
+      box-shadow: 0 15px 35px rgba(0,0,0,0.3);
+    }
+    .deal-card:hover::before {
+      opacity: 1;
+    }
+    .deal-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin: 0 0 8px;
+    }
+    .deal-price {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--cyan);
+      margin-bottom: 20px;
+    }
+    .deal-price small {
+      font-size: 0.9rem;
+      color: var(--t-fg2);
+      font-weight: 500;
+    }
+    .deal-features {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 30px;
+    }
+    .deal-features li {
+      margin-bottom: 12px;
+      font-size: 0.92rem;
+      color: var(--t-fg2);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .deal-features li::before {
+      content: '✦';
+      color: var(--cyan);
+      font-weight: 800;
+    }
+    .apply-section {
+      border: 1px solid var(--edge);
+      border-radius: 24px;
+      background: radial-gradient(circle at 100% 0%, rgba(124, 92, 255, 0.08), transparent 40%), var(--surface-strong);
+      padding: 40px;
+      box-shadow: var(--shadow-xl);
+    }
+    .apply-section h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.7rem;
+      font-weight: 800;
+      margin: 0 0 10px;
+      text-align: center;
+    }
+    .apply-section p.desc {
+      text-align: center;
+      color: var(--t-fg2);
+      font-size: 0.95rem;
+      max-width: 48ch;
+      margin: 0 auto 30px;
+      line-height: 1.5;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: var(--t-fg2);
+    }
+    .form-control {
+      width: 100%;
+      min-height: 46px;
+      padding: 10px 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(4,7,14,0.6);
+      border-radius: 12px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.95rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-control:focus {
+      border-color: rgba(88,229,255,0.7);
+      box-shadow: 0 0 0 4px rgba(88,229,255,0.1);
+      outline: none;
+    }
+    .submit-btn {
+      width: 100%;
+      min-height: 48px;
+      border-radius: 12px;
+      font-weight: 800;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .alert {
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 25px;
+      font-size: 0.9rem;
+      line-height: 1.5;
+      display: none;
+    }
+    .alert-success {
+      background: rgba(83, 230, 165, 0.1);
+      border: 1px solid rgba(83, 230, 165, 0.25);
+      color: #53e6a5;
+    }
+    .alert-error {
+      background: rgba(255, 111, 133, 0.1);
+      border: 1px solid rgba(255, 111, 133, 0.25);
+      color: #ff6f85;
+    }
+    .unauth-message {
+      text-align: center;
+      padding: 20px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--edge);
+      border-radius: 16px;
+      font-size: 0.95rem;
+      color: var(--t-fg2);
+    }
+    .unauth-message a {
+      color: var(--cyan);
+      font-weight: 700;
+    }
+  </style>
+</head>
+<body class="vms-page">
+  <header class="sales-top">
+    <a class="brand" href="/">mitch.pro</a>
+    <a class="btn-ghost" href="/enroll/">Portal Entry</a>
+  </header>
+
+  <main class="vms-container">
+    <div class="vms-header">
+      <h1>mitch.pro <span>VM Cloud</span></h1>
+      <p>Provision your own private root-access development environment on high-speed school server hardware.</p>
+    </div>
+
+    <!-- Pricing Grid -->
+    <div class="vms-grid">
+      <!-- Free Sandbox LXC -->
+      <div class="deal-card">
+        <div style="display: flex; flex-direction: column; height: 100%; justify-content: space-between;">
+          <div>
+            <div class="deal-title">Free Sandbox</div>
+            <div class="deal-price">$0.00 <small>/ forever</small></div>
+            <ul class="deal-features">
+              <li>Temporary / Ephemeral LXC shell container</li>
+              <li>1 CPU core & 1 GB RAM allocation</li>
+              <li>Full root/sudo administrator access</li>
+              <li>Shared pool limits (reclaims oldest session)</li>
+              <li>Instant connection via web console (no approval)</li>
+            </ul>
+          </div>
+          <button onclick="launchFreeVm()" class="btn-primary" style="margin-top: 20px; width: 100%; min-height: 42px; font-weight: 800; border-radius: 8px; cursor: pointer; background: linear-gradient(135deg, #3b82f6, #1d4ed8); border: none;">Launch Free VM</button>
+        </div>
+      </div>
+
+      <!-- Premium LXC -->
+      <div class="deal-card">
+        <div style="display: flex; flex-direction: column; height: 100%; justify-content: space-between;">
+          <div>
+            <div class="deal-title">Premium Container</div>
+            <div class="deal-price" id="premium-price-display">$2.00 <small>/ week</small></div>
+            <ul class="deal-features">
+              <li>Dedicated LXC sandbox (no shared install)</li>
+              <li>2 CPU cores & 4 GB RAM allocation</li>
+              <li>Full root/sudo administrator privileges</li>
+              <li>Persistent SSD storage space for project files</li>
+              <li>Perfect for running Node/Python bots & compilers</li>
+            </ul>
+          </div>
+          <a href="#vm-apply-form" class="btn-ghost" style="text-decoration: none; display: flex; align-items: center; justify-content: center; margin-top: 20px; width: 100%; min-height: 42px; font-weight: 700; border-radius: 8px;">Request Access</a>
+        </div>
+      </div>
+
+      <!-- Paid KVM VM -->
+      <div class="deal-card">
+        <div style="display: flex; flex-direction: column; height: 100%; justify-content: space-between;">
+          <div>
+            <div class="deal-title">Dedicated VM</div>
+            <div class="deal-price">$5.00 <small>/ week</small></div>
+            <ul class="deal-features">
+              <li>Dedicated KVM Hardware Hypervisor VM</li>
+              <li>4 CPU cores & 8 GB RAM (Dynamic Ballooning)</li>
+              <li>Dedicated Ubuntu Linux Server / Desktop environment</li>
+              <li>Independent OS kernel (run nested Docker/K3s)</li>
+              <li>High-speed SSH & Web-based VNC/xRDP remote desktop</li>
+            </ul>
+          </div>
+          <a href="#vm-apply-form" class="btn-ghost" style="text-decoration: none; display: flex; align-items: center; justify-content: center; margin-top: 20px; width: 100%; min-height: 42px; font-weight: 700; border-radius: 8px;">Request Access</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Application Form -->
+    <section class="apply-section">
+      <h2>Apply For Workspace</h2>
+      <p class="desc">Submit your configuration request below. Once submitted, contact Mitchell to verify and activate your VM.</p>
+      
+      <div id="vm-alert-success" class="alert alert-success"></div>
+      <div id="vm-alert-error" class="alert alert-error"></div>
+
+      <div id="auth-check-container">
+        <!-- Will show form if logged in, otherwise show login helper -->
+        <form id="vm-apply-form" onsubmit="submitVmApplication(event)">
+          <div class="form-group">
+            <label for="vm-tier">Select VM Tier</label>
+            <select id="vm-tier" class="form-control" required>
+              <option value="premium" id="option-premium-text">Premium Shell (LXC container - $2/wk or $5/mo)</option>
+              <option value="paid">Dedicated VM (Ubuntu Linux VM - $5/wk or $15/mo)</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="vm-note">Intended Usage & Specifications</label>
+            <textarea id="vm-note" class="form-control" rows="4" placeholder="Describe what you plan to host or run on your VM. Specify if you have custom network/port forwarding requests." required></textarea>
+          </div>
+
+          <button type="submit" class="btn-primary submit-btn">Submit Application</button>
+        </form>
+      </div>
+
+      <div style="text-align: center; margin-top: 30px; font-size: 0.85rem; color: var(--t-fg2);">
+        Questions? Contact Mitchell directly at <a href="mailto:mitchell.fogler@student.rjuhsd.us" style="color: var(--cyan); font-weight:700;">mitchell.fogler@student.rjuhsd.us</a>.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Simple check to ensure student is authenticated
+    const hasSessionCookie = document.cookie.includes('studentId') || document.cookie.includes('id');
+    const authContainer = document.getElementById('auth-check-container');
+
+    if (!hasSessionCookie) {
+      authContainer.innerHTML = `
+        <div class="unauth-message">
+          You must have an active student session to request a VM. <br>
+          Please <a href="/enroll/">log in or request portal entry</a> first.
+        </div>
+      `;
+    } else {
+      fetch('/api/vm/status')
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.isPremium) {
+            const display = document.getElementById('premium-price-display');
+            if (display) display.innerHTML = 'FREE <small>(Included with Premium)</small>';
+            
+            const opt = document.getElementById('option-premium-text');
+            if (opt) opt.textContent = 'Premium Shell (LXC container - FREE for Premium!)';
+          }
+        })
+        .catch(err => console.error('Failed to load user premium status:', err));
+    }
+
+    async function launchFreeVm() {
+      if (!hasSessionCookie) {
+        alert('You must log in to launch a Free VM.');
+        return;
+      }
+      
+      const successAlert = document.getElementById('vm-alert-success');
+      const errorAlert = document.getElementById('vm-alert-error');
+      const headerText = document.querySelector('.vms-header p');
+      const oldText = headerText.textContent;
+      
+      successAlert.style.display = 'none';
+      errorAlert.style.display = 'none';
+
+      headerText.innerHTML = `<span style="color:var(--cyan); font-weight:800; animation: pulse 1.5s infinite; font-size:1.1rem; display:inline-block; margin-top:10px;">⚙️ Cloning template & booting your ephemeral Free VM (takes ~6 seconds)...</span>`;
+
+      try {
+        const res = await fetch('/api/vm/free/launch', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mitch-Requested-With': '1',
+            'X-CSRF-Token': getCsrfToken()
+          }
+        });
+        const data = await res.json();
+        headerText.textContent = oldText;
+        
+        if (data.error) {
+          errorAlert.textContent = data.error;
+          errorAlert.style.display = 'block';
+        } else {
+          successAlert.innerHTML = `
+            <strong>Free VM Ready!</strong><br>
+            IP Allocation: <strong>${data.ip}</strong><br>
+            Connecting to your SSH session...
+          `;
+          successAlert.style.display = 'block';
+          
+          const sshUrl = `/ssh/index.html?host=${data.ip}&username=debian&port=22&auth=password&connect=true`;
+          window.open(sshUrl, '_blank', 'width=1024,height=768,location=no,toolbar=no,menubar=no');
+        }
+      } catch (err) {
+        headerText.textContent = oldText;
+        errorAlert.textContent = 'Failed to launch Free VM: ' + err.message;
+        errorAlert.style.display = 'block';
+      }
+    }
+
+    async function submitVmApplication(e) {
+      e.preventDefault();
+      
+      const tier = document.getElementById('vm-tier').value;
+      const note = document.getElementById('vm-note').value;
+      
+      const successAlert = document.getElementById('vm-alert-success');
+      const errorAlert = document.getElementById('vm-alert-error');
+      
+      successAlert.style.display = 'none';
+      errorAlert.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/vm/apply', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Mitch-Requested-With': '1',
+            'X-CSRF-Token': getCsrfToken()
+          },
+          body: JSON.stringify({ tier, note })
+        });
+        
+        const data = await res.json();
+        
+        if (data.error) {
+          errorAlert.textContent = data.error;
+          errorAlert.style.display = 'block';
+        } else {
+          successAlert.innerHTML = `
+            <strong>Application Submitted!</strong><br>
+            Please email Mitchell at <a href="mailto:mitchell.fogler@student.rjuhsd.us" style="color:inherit; font-weight:bold; text-decoration:underline;">mitchell.fogler@student.rjuhsd.us</a> to finalize approval and receive your access keys.
+          `;
+          successAlert.style.display = 'block';
+          document.getElementById('vm-apply-form').reset();
+        }
+      } catch (err) {
+        errorAlert.textContent = 'Network error: Failed to submit application. Please try again.';
+        errorAlert.style.display = 'block';
+      }
+    }
+
+    function getCsrfToken() {
+      const match = document.cookie.match(new RegExp('(^| )_csrf=([^;]+)'));
+      return match ? decodeURIComponent(match[2]) : '';
+    }
+  </script>
+</body>
+</html>

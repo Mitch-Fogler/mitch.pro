@@ -13,7 +13,7 @@ newsletter_people_password.txt
 .agents/
 .codex/
 security_best_practices_report.md
-
+caddy/Caddyfile
 # Local State & Databases (mapped via Docker volumes)
 data/*
 !data/sites

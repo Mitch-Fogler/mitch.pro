@@ -34,7 +34,13 @@ try {
   const env = readFileSync(join(BASE, '.env'), 'utf8');
   for (const line of env.split('\n')) {
     const m = line.match(/^\s*(?:export\s+)?([A-Z_]+)\s*=\s*"?([^"]*)"?\s*$/);
-    if (m) process.env[m[1]] = m[2];
+    if (m) {
+      const key = m[1];
+      const val = m[2];
+      if (process.env[key] === undefined) {
+        process.env[key] = val;
+      }
+    }
   }
 } catch {}
 
@@ -141,6 +147,7 @@ const PUBLIC_CHAT_FILE       = join(DATA_DIR, 'public_chat.json');
 const MARKETPLACE_FILE       = join(DATA_DIR, 'marketplace.json');
 const COSMETICS_FILE         = join(DATA_DIR, 'cosmetics.json');
 const EMOJIS_FILE            = join(DATA_DIR, 'emojis.json');
+const VM_APPS_FILE           = join(DATA_DIR, 'vm_applications.json');
 const SEARCH_INTENT_LOG_FILE = join(DATA_DIR, 'search_intent.json');
 const DM_CLEARED_FILE        = join(DATA_DIR, 'dm_cleared.json');
 const CHAT_REPORTS_FILE      = join(DATA_DIR, 'chat_reports.json');
@@ -7208,6 +7215,35 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
     if (success) return;
   }
 
+  // Handle VNC / noVNC Proxy WebSocket
+  if (path === "/vnc/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) {
+      return jsonResp(401, { error: 'auth required' });
+    }
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'auth required' });
+
+    const targetIp = url.searchParams.get('host') || '';
+    const targetPort = parseInt(url.searchParams.get('port') || '5900', 10);
+
+    // Only allow connection to the customer subnet 10.0.0.0/24 for security
+    if (!targetIp.startsWith('10.0.0.')) {
+      return jsonResp(403, { error: 'Access denied: Target IP must be in the customer subnet.' });
+    }
+
+    const success = server.upgrade(req, {
+      data: {
+        isVNC: true,
+        targetIp,
+        targetPort,
+        email
+      }
+    });
+    if (success) return;
+  }
+
   // Handle Blooket Bot Control WebSocket (Premium Only)
   if (path === "/api/blooket-bot/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
     const cookies = getCookies(req);
@@ -7758,6 +7794,143 @@ Mitch.pro Team`;
 
       await sendDailySummaryNotification();
       return jsonResp(200, { success: true, message: 'Daily traffic summary notification triggered successfully.' });
+    }
+
+    if (path === '/api/admin/approve-vm' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
+
+      const targetEmail = String(body.email || '').toLowerCase().trim();
+      const vmid = parseInt(body.vmid, 10);
+
+      if (!targetEmail || isNaN(vmid) || vmid < 100) {
+        return jsonResp(400, { error: 'Valid email and VMID (>= 100) are required.' });
+      }
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(targetEmail);
+      if (!data[norm]) {
+        return jsonResp(400, { error: 'No VM application found for this user.' });
+      }
+
+      const app = data[norm];
+      const result = app.tier === 'premium'
+        ? await createLxcContainer(app.email, app.tier, vmid)
+        : await cloneUserVm(app.email, app.tier, vmid);
+
+      if (!result.success) {
+        return jsonResp(500, { error: result.error });
+      }
+
+      app.status = 'approved';
+      app.vmid = vmid;
+      app.approvedAt = Date.now();
+      saveJson(VM_APPS_FILE, data);
+
+      return jsonResp(200, { success: true, message: `VM ${vmid} provisioned and started successfully for ${targetEmail}.` });
+    }
+
+    if (path === '/api/admin/vm-requests' && method === 'GET') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
+
+      const data = loadJson(VM_APPS_FILE, {});
+      return jsonResp(200, { success: true, requests: data });
+    }
+
+    if (path === '/api/admin/deny-vm' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
+
+      const targetEmail = String(body.email || '').toLowerCase().trim();
+      if (!targetEmail) return jsonResp(400, { error: 'Valid email required.' });
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(targetEmail);
+      if (!data[norm]) return jsonResp(400, { error: 'No VM application found.' });
+
+      data[norm].status = 'denied';
+      data[norm].deniedAt = Date.now();
+      saveJson(VM_APPS_FILE, data);
+
+      return jsonResp(200, { success: true, message: `VM request for ${targetEmail} denied.` });
+    }
+
+    if (path === '/api/admin/terminate-vm' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
+
+      const targetEmail = String(body.email || '').toLowerCase().trim();
+      if (!targetEmail) {
+        return jsonResp(400, { error: 'Valid email required.' });
+      }
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(targetEmail);
+      if (!data[norm] || !data[norm].vmid) {
+        return jsonResp(400, { error: 'No active/approved VM found for this user.' });
+      }
+
+      const app = data[norm];
+      // Soft delete: power off VM and mark status as 'deleted'. Background worker will purge after 7 days.
+      const result = await stopUserVm(app.vmid);
+
+      if (!result.success) {
+        return jsonResp(500, { error: result.error || 'Failed to stop VM on Proxmox.' });
+      }
+
+      app.status = 'deleted';
+      app.deletedAt = Date.now();
+      saveJson(VM_APPS_FILE, data);
+
+      return jsonResp(200, { success: true, message: 'VM stopped and marked as deleted. It will be purged after 7 days, during which you can restore it.' });
+    }
+
+    if (path === '/api/admin/restore-vm' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
+
+      const targetEmail = String(body.email || '').toLowerCase().trim();
+      if (!targetEmail) return jsonResp(400, { error: 'Valid email required.' });
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(targetEmail);
+      if (!data[norm] || data[norm].status !== 'deleted' || !data[norm].vmid) {
+        return jsonResp(400, { error: 'No restorable VM found for this user.' });
+      }
+
+      const app = data[norm];
+      const now = Date.now();
+      const restoreLimit = 7 * 24 * 3600 * 1000;
+      if (now - app.deletedAt >= restoreLimit) {
+        return jsonResp(400, { error: 'Restore period of 7 days has expired. VM has been purged.' });
+      }
+
+      // Restore: power back on and mark as approved
+      const result = await powerUserVm(app.vmid, 'start');
+      if (!result.success) {
+        return jsonResp(500, { error: result.error || 'Failed to start VM on Proxmox.' });
+      }
+
+      app.status = 'approved';
+      delete app.deletedAt;
+      saveJson(VM_APPS_FILE, data);
+
+      return jsonResp(200, { success: true, message: `VM ${app.vmid} successfully restored and powered on.` });
     }
 
     if (path === '/api/admin/grant-premium' && method === 'POST') {
@@ -11827,6 +12000,202 @@ function loadAllGamesList() {
     return jsonResp(200, { ok: true, message: 'Request submitted.' });
   }
 
+  // POST /api/vm/free/launch — launch or connect to the ephemeral free VM
+  if (path === '/api/vm/free/launch' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'auth required' });
+
+    const norm = normalizeEmail(email);
+
+    // Check if user already has an active free VM
+    if (activeFreeVms.has(norm)) {
+      const entry = activeFreeVms.get(norm);
+      entry.lastActive = Date.now();
+      const pveStatus = await getUserVmStatus(entry.vmid);
+      if (pveStatus.success && pveStatus.status === 'stopped') {
+        await powerUserVm(entry.vmid, 'start');
+      }
+      return jsonResp(200, { success: true, ip: pveStatus.ip || '10.0.0.64', vmid: entry.vmid });
+    }
+
+    // Check pool capacity (Max 10)
+    if (activeFreeVms.size >= MAX_FREE_VMS) {
+      let oldestUser = null;
+      let oldestTime = Infinity;
+      for (const [user, data] of activeFreeVms.entries()) {
+        if (data.lastActive < oldestTime) {
+          oldestTime = data.lastActive;
+          oldestUser = user;
+        }
+      }
+
+      if (oldestUser) {
+        console.log(`[free-vm] Kicking off oldest free VM for user ${oldestUser} to free up slot.`);
+        const data = activeFreeVms.get(oldestUser);
+        await terminateUserVm(data.vmid);
+        activeFreeVms.delete(oldestUser);
+      }
+    }
+
+    // Find an unused VMID between 200 and 209
+    const usedVmids = new Set(Array.from(activeFreeVms.values()).map(v => v.vmid));
+    let targetVmid = 200;
+    for (let id = 200; id < 210; id++) {
+      if (!usedVmids.has(id)) {
+        targetVmid = id;
+        break;
+      }
+    }
+
+    // Clone template with Free tier specifications (1 core, 1GB RAM)
+    const cloneResult = await createLxcContainer(email, 'free', targetVmid);
+    if (!cloneResult.success) {
+      return jsonResp(500, { error: cloneResult.error });
+    }
+
+    activeFreeVms.set(norm, {
+      vmid: targetVmid,
+      startedAt: Date.now(),
+      lastActive: Date.now()
+    });
+
+    // Wait a moment for DHCP / boot
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    const pveStatus = await getUserVmStatus(targetVmid);
+
+    return jsonResp(200, {
+      success: true,
+      vmid: targetVmid,
+      ip: pveStatus.ip || '10.0.0.64'
+    });
+  }
+
+  // /api/vm/apply — apply for a Premium LXC or Paid KVM VM
+  if (path === '/api/vm/apply' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'auth required' });
+
+    try {
+      const body = await req.json();
+      const tier = String(body.tier || '').trim().toLowerCase(); // 'premium' or 'paid'
+      const note = String(body.note || '').trim().slice(0, 1000);
+
+      if (!['premium', 'paid'].includes(tier)) {
+        return jsonResp(400, { error: 'Invalid tier requested' });
+      }
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(email);
+
+      data[norm] = {
+        email: email,
+        tier: tier,
+        os: 'linux',
+        note: note,
+        status: 'pending',
+        appliedAt: Date.now()
+      };
+
+      saveJson(VM_APPS_FILE, data);
+      return jsonResp(200, { success: true, message: 'Application submitted successfully. Please contact Mitchell to complete approval.' });
+    } catch (err) {
+      return jsonResp(400, { error: 'Invalid JSON payload' });
+    }
+  }
+
+  // GET /api/vm/status — check VM status and connection details
+  if (path === '/api/vm/status' && method === 'GET') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'auth required' });
+
+    const isPremium = isPremiumEmail(email);
+    const data = loadJson(VM_APPS_FILE, {});
+    const norm = normalizeEmail(email);
+
+    // If user has an ephemeral running free VM, return it
+    if (activeFreeVms.has(norm)) {
+      const freeVm = activeFreeVms.get(norm);
+      freeVm.lastActive = Date.now();
+      const pveStatus = await getUserVmStatus(freeVm.vmid);
+      return jsonResp(200, {
+        status: 'approved',
+        vmid: freeVm.vmid,
+        tier: 'free',
+        vmStatus: pveStatus.success ? pveStatus.status : 'unknown',
+        ip: pveStatus.success ? pveStatus.ip : '',
+        isPremium
+      });
+    }
+
+    if (!data[norm]) {
+      return jsonResp(200, { status: 'none', isPremium });
+    }
+
+    const app = data[norm];
+    if (app.status === 'pending') {
+      return jsonResp(200, { status: 'pending', tier: app.tier, isPremium });
+    }
+
+    if (app.status === 'approved' && app.vmid) {
+      const pveStatus = await getUserVmStatus(app.vmid);
+      return jsonResp(200, {
+        status: 'approved',
+        vmid: app.vmid,
+        tier: app.tier,
+        vmStatus: pveStatus.success ? pveStatus.status : 'unknown',
+        ip: pveStatus.success ? pveStatus.ip : '',
+        isPremium
+      });
+    }
+
+    return jsonResp(200, { status: 'none', isPremium });
+  }
+
+  // POST /api/vm/power — start, stop, or reboot the student's VM
+  if (path === '/api/vm/power' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'auth required' });
+
+    try {
+      const body = await req.json();
+      const action = String(body.action || '').trim().toLowerCase(); // 'start', 'stop', 'reboot'
+
+      if (!['start', 'stop', 'reboot'].includes(action)) {
+        return jsonResp(400, { error: 'Invalid power action' });
+      }
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(email);
+
+      if (!data[norm] || data[norm].status !== 'approved' || !data[norm].vmid) {
+        return jsonResp(400, { error: 'No approved VM workspace found' });
+      }
+
+      const app = data[norm];
+      const result = await powerUserVm(app.vmid, action);
+
+      if (!result.success) {
+        return jsonResp(500, { error: result.error });
+      }
+
+      return jsonResp(200, { success: true, message: `VM ${action} command sent successfully.` });
+    } catch (err) {
+      return jsonResp(400, { error: 'Invalid JSON payload' });
+    }
+  }
+
   // ── GET routes ──────────────────────────────────────────────────────────────
   if (method === 'GET') {
 
@@ -12395,6 +12764,7 @@ function loadAllGamesList() {
       }
       return jsonResp(200, { members });
     }
+
 
     // /api/admin-members — public list of site administrators
     if (path === '/api/admin-members') {
@@ -16551,6 +16921,32 @@ Bun.serve({
           ws.close();
         };
       }
+      if (ws.data && ws.data.isVNC) {
+        console.log(`[vnc-proxy] Opening VNC bridge to ${ws.data.targetIp}:${ws.data.targetPort}`);
+        try {
+          const socket = await Bun.connect({
+            hostname: ws.data.targetIp,
+            port: ws.data.targetPort,
+            socket: {
+              data(socket, data) {
+                if (ws.readyState === 1) ws.send(data);
+              },
+              close(socket) {
+                console.log(`[vnc-proxy] TCP connection closed for ${ws.data.targetIp}`);
+                ws.close();
+              },
+              error(socket, err) {
+                console.error(`[vnc-proxy] TCP error for ${ws.data.targetIp}:`, err);
+                ws.close();
+              }
+            }
+          });
+          ws.data.tcpSocket = socket;
+        } catch (err) {
+          console.error(`[vnc-proxy] Failed to connect to VNC target:`, err);
+          ws.close();
+        }
+      }
     },
     async message(ws, msg) {
       if (ws.data && ws.data.isBlooketBot) {
@@ -16581,6 +16977,12 @@ Bun.serve({
         if (ws.data.upstream && ws.data.upstream.readyState === 1) {
           ws.data.upstream.send(msg);
         }
+      }
+      if (ws.data && ws.data.isVNC) {
+        if (ws.data.tcpSocket) {
+          ws.data.tcpSocket.write(msg);
+        }
+        return;
       }
       if (ws.data && ws.data.isSSH) {
         try {
@@ -16694,6 +17096,9 @@ Bun.serve({
           try { ws.data.sshGateway.close(); } catch (e) {}
         }
       }
+      if (ws.data && ws.data.isVNC && ws.data.tcpSocket) {
+        try { ws.data.tcpSocket.end(); } catch (e) {}
+      }
     }
   }
 });
@@ -16708,6 +17113,9 @@ setTimeout(() => {
   setInterval(premiumMaintenanceWorker, 6 * 3600 * 1000); 
   premiumMaintenanceWorker(); 
   setInterval(nudgeWorker, 600_000); 
+
+  setInterval(purgeExpiredVmsWorker, 3600_000); // Check VM soft-deletes hourly
+  purgeExpiredVmsWorker(); 
 
   setInterval(happyHourWorker, 60000);
   computedHappyHour = getLeastUsedSchoolHour();
@@ -16946,6 +17354,319 @@ async function initializeWebVM() {
     });
   } catch (e) {
     console.error('[webvm] Initialization error:', e);
+  }
+}
+
+// Ephemeral Free VM Pool registry
+const activeFreeVms = new Map();
+const MAX_FREE_VMS = 10;
+
+// Proxmox integration configurations
+const PVE_URL = process.env.PVE_URL || 'https://192.168.1.10:8006/api2/json';
+const PVE_TOKEN = process.env.PVE_TOKEN || ''; // Format: "PVEAPIToken=api-helper@pve!token-id=xxxx-xxxx-xxxx"
+const PVE_NODE = process.env.PVE_NODE || 'pve';
+const PVE_TEMPLATE_LINUX = parseInt(process.env.PVE_TEMPLATE_LINUX || '9000', 10);
+
+async function getUserVmStatus(vmid) {
+  if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
+  const isLxc = vmid >= 200 && vmid < 400;
+  const type = isLxc ? 'lxc' : 'qemu';
+  try {
+    const statusUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}/status/current`;
+    const res = await fetch(statusUrl, {
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    if (!res.ok) return { success: false, error: `Failed to fetch status: ${res.status}` };
+    const data = await res.json();
+
+    let ip = '';
+    if (data.data && data.data.status === 'running') {
+      if (isLxc) {
+        const ipSuffix = vmid >= 300 ? (vmid - 200) : vmid;
+        ip = `10.0.0.${ipSuffix}`;
+      } else {
+        // Try to get IP address from QEMU Guest Agent
+        const agentUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/agent/network-get-interfaces`;
+        const agentRes = await fetch(agentUrl, {
+          headers: { 'Authorization': PVE_TOKEN },
+          tls: { rejectUnauthorized: false }
+        });
+        if (agentRes.ok) {
+          const agentData = await agentRes.json();
+          if (agentData.data && agentData.data.result) {
+            for (const iface of agentData.data.result) {
+              if (iface['ip-addresses']) {
+                for (const addr of iface['ip-addresses']) {
+                  if (addr['ip-address-type'] === 'ipv4' && addr['ip-address'].startsWith('10.0.0.')) {
+                    ip = addr['ip-address'];
+                    break;
+                  }
+                }
+              }
+              if (ip) break;
+            }
+          }
+        }
+      }
+    }
+
+    return {
+      success: true,
+      status: data.data ? data.data.status : 'unknown',
+      ip: ip || '10.0.0.64'
+    };
+  } catch (err) {
+    console.error(`[proxmox] Error getting ${type} status:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function powerUserVm(vmid, action) {
+  if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
+  if (!['start', 'stop', 'reboot'].includes(action)) {
+    return { success: false, error: 'Invalid power action.' };
+  }
+  const type = (vmid >= 200 && vmid < 400) ? 'lxc' : 'qemu';
+  try {
+    const powerUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}/status/${action}`;
+    const res = await fetch(powerUrl, {
+      method: 'POST',
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    if (!res.ok) {
+      return { success: false, error: `Failed to set power state: ${res.status}` };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error(`[proxmox] Power state control error for ${type}:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function createLxcContainer(email, tier, vmid) {
+  if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
+  
+  const cores = tier === 'premium' ? 2 : 1;
+  const memory = tier === 'premium' ? 4096 : 1024;
+  
+  const ipSuffix = vmid >= 300 ? (vmid - 200) : vmid;
+  const containerIp = `10.0.0.${ipSuffix}`;
+  
+  try {
+    const createUrl = `${PVE_URL}/nodes/${PVE_NODE}/lxc`;
+    const bodyParams = new URLSearchParams({
+      vmid: vmid,
+      ostemplate: 'local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst',
+      cores: cores,
+      memory: memory,
+      swap: 512,
+      hostname: `student-lxc-${vmid}`,
+      password: 'password', // root password is 'password'
+      rootfs: 'local-lvm:8',
+      net0: `name=eth0,bridge=vmbr2,firewall=0,ip=${containerIp}/24,gw=10.0.0.1`,
+      nameserver: '1.1.1.1',
+      unprivileged: 1,
+      start: 1,
+      pool: 'sandboxes'
+    });
+
+    const res = await fetch(createUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': PVE_TOKEN,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: bodyParams.toString(),
+      tls: { rejectUnauthorized: false }
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error('[proxmox] LXC creation failed:', res.status, data);
+      return { success: false, error: data.errors ? JSON.stringify(data.errors) : (data.message || 'LXC creation failed') };
+    }
+
+    // Wait a brief moment for LXC to boot, then configure SSH root login
+    setTimeout(() => {
+      try {
+        const { spawn } = require('child_process');
+        spawn('ssh', [
+          '-p', '39222',
+          '-o', 'StrictHostKeyChecking=no',
+          'root@mitch.pro',
+          `pct exec ${vmid} -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && pct exec ${vmid} -- systemctl restart ssh`
+        ]);
+        console.log(`[proxmox] Enabled SSH root password login on LXC ${vmid}`);
+      } catch (err) {
+        console.error('[proxmox] Failed to run post-create config:', err);
+      }
+    }, 5000);
+
+    return { success: true, vmid };
+  } catch (err) {
+    console.error('[proxmox] Error creating LXC container:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function cloneUserVm(email, tier, vmid) {
+  if (!PVE_TOKEN) {
+    console.error('[proxmox] API token is not configured in environment.');
+    return { success: false, error: 'Proxmox token not configured.' };
+  }
+
+  const templateId = PVE_TEMPLATE_LINUX;
+
+  try {
+    // 1. Clone Template (Linked Clone)
+    const cloneUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${templateId}/clone`;
+    const cloneRes = await fetch(cloneUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': PVE_TOKEN,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        newid: vmid,
+        name: `student-${vmid}`,
+        clonemode: 'link',
+        pool: 'sandboxes'
+      }).toString(),
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    const cloneData = await cloneRes.json();
+    if (!cloneRes.ok || !cloneData.data) {
+      console.error('[proxmox] Clone request failed:', cloneRes.status, cloneData);
+      const errMsg = typeof cloneData.errors === 'object' ? JSON.stringify(cloneData.errors) : (cloneData.errors || cloneData.message || 'Proxmox clone failed.');
+      return { success: false, error: errMsg };
+    }
+
+    // 2. Configure VM settings (Memory Ballooning & CPU Cores)
+    const memMax = tier === 'paid' ? 8192 : (tier === 'premium' ? 4096 : 1024);
+    const memMin = tier === 'paid' ? 3072 : (tier === 'premium' ? 2048 : 512);
+    const cores = tier === 'paid' ? 4 : (tier === 'premium' ? 2 : 1);
+
+    const configUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/config`;
+    const configRes = await fetch(configUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': PVE_TOKEN,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        memory: memMax,
+        balloon: memMin,
+        cores: cores,
+        sockets: 1
+      }).toString(),
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    if (!configRes.ok) {
+      console.warn(`[proxmox] Warning: Configuration update returned status ${configRes.status}`);
+    }
+
+    // 3. Start VM
+    const startUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/status/start`;
+    const startRes = await fetch(startUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': PVE_TOKEN
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    if (!startRes.ok) {
+      console.warn(`[proxmox] Warning: VM start returned status ${startRes.status}`);
+    }
+
+    return { success: true, vmid };
+  } catch (err) {
+    console.error('[proxmox] Error during VM provisioning:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function stopUserVm(vmid) {
+  if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
+  const type = (vmid >= 200 && vmid < 400) ? 'lxc' : 'qemu';
+  try {
+    const stopUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}/status/stop`;
+    const res = await fetch(stopUrl, {
+      method: 'POST',
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    return { success: res.ok };
+  } catch (err) {
+    console.error(`[proxmox] Error stopping ${type}:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function destroyUserVm(vmid) {
+  if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
+  const type = (vmid >= 200 && vmid < 400) ? 'lxc' : 'qemu';
+  try {
+    const destroyUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}`;
+    const destroyRes = await fetch(destroyUrl, {
+      method: 'DELETE',
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    const destroyData = await destroyRes.json();
+    if (!destroyRes.ok) {
+      return { success: false, error: destroyData.errors || `Proxmox ${type} deletion failed.` };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error(`[proxmox] Error destroying ${type}:`, err);
+    return { success: false, error: err.message };
+  }
+}
+
+async function terminateUserVm(vmid) {
+  const stop = await stopUserVm(vmid);
+  if (!stop.success) return stop;
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  return await destroyUserVm(vmid);
+}
+
+async function purgeExpiredVmsWorker() {
+  try {
+    const data = loadJson(VM_APPS_FILE, {});
+    let changed = false;
+    const now = Date.now();
+    const oneWeekMs = 7 * 24 * 3600 * 1000;
+
+    for (const [email, app] of Object.entries(data)) {
+      if (app.status === 'deleted' && app.deletedAt) {
+        const timePassed = now - app.deletedAt;
+        if (timePassed >= oneWeekMs) {
+          console.log(`[purge-vm] Restoring period expired for VM ${app.vmid} (${email}). Purging from Proxmox...`);
+          if (app.vmid) {
+            await destroyUserVm(app.vmid);
+          }
+          delete data[email];
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      saveJson(VM_APPS_FILE, data);
+    }
+  } catch (err) {
+    console.error('[purge-vm] Error in VM purge worker:', err);
   }
 }
 
