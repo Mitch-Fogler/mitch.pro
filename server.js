@@ -7869,7 +7869,7 @@ Mitch.pro Team`;
       const securePassword = Math.random().toString(36).slice(-10);
       const result = app.tier === 'premium'
         ? await createLxcContainer(app.email, app.tier, vmid, securePassword)
-        : await cloneUserVm(app.email, app.tier, vmid);
+        : await cloneUserVm(app.email, app.tier, vmid, securePassword);
 
       if (!result.success) {
         return jsonResp(500, { error: result.error });
@@ -7877,9 +7877,7 @@ Mitch.pro Team`;
 
       app.status = 'approved';
       app.vmid = vmid;
-      if (app.tier === 'premium') {
-        app.password = securePassword;
-      }
+      app.password = securePassword;
       app.approvedAt = Date.now();
       saveJson(VM_APPS_FILE, data);
 
@@ -17742,7 +17740,7 @@ async function createLxcContainer(email, tier, vmid, password) {
   }
 }
 
-async function cloneUserVm(email, tier, vmid) {
+async function cloneUserVm(email, tier, vmid, password) {
   if (!PVE_TOKEN) {
     console.error('[proxmox] API token is not configured in environment.');
     return { success: false, error: 'Proxmox token not configured.' };
@@ -17777,7 +17775,7 @@ async function cloneUserVm(email, tier, vmid) {
       return { success: false, error: errMsg };
     }
 
-    // 2. Configure VM settings (Memory Ballooning & CPU Cores)
+    // 2. Configure VM settings (Memory Ballooning, CPU Cores, and Cloud-Init Password)
     const memMax = tier === 'paid' ? 8192 : (tier === 'premium' ? 4096 : 1024);
     const memMin = tier === 'paid' ? 3072 : (tier === 'premium' ? 2048 : 512);
     const cores = tier === 'paid' ? 4 : (tier === 'premium' ? 2 : 1);
@@ -17793,7 +17791,9 @@ async function cloneUserVm(email, tier, vmid) {
         memory: memMax,
         balloon: memMin,
         cores: cores,
-        sockets: 1
+        sockets: 1,
+        cipassword: password || 'password',
+        ciuser: 'debian'
       }).toString(),
       tls: {
         rejectUnauthorized: false
