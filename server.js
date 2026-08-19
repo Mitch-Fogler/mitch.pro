@@ -17628,17 +17628,27 @@ async function createLxcContainer(email, tier, vmid, password) {
       return { success: false, error: data.errors ? JSON.stringify(data.errors) : (data.message || 'LXC creation failed') };
     }
 
-    // Wait a brief moment for LXC to boot, then configure SSH root login
-    setTimeout(() => {
+    // Wait a brief moment for LXC to boot, then configure SSH root login via Proxmox Exec API
+    setTimeout(async () => {
       try {
-        const { spawn } = require('child_process');
-        spawn('ssh', [
-          '-p', '39222',
-          '-o', 'StrictHostKeyChecking=no',
-          'root@mitch.pro',
-          `pct exec ${vmid} -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && pct exec ${vmid} -- systemctl restart ssh`
-        ]);
-        console.log(`[proxmox] Enabled SSH root password login on LXC ${vmid}`);
+        const execUrl = `${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/exec`;
+        const execRes = await fetch(execUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': PVE_TOKEN,
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: new URLSearchParams({
+            command: "bash -c \"sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && systemctl restart ssh\""
+          }).toString(),
+          tls: { rejectUnauthorized: false }
+        });
+        if (execRes.ok) {
+          console.log(`[proxmox] Successfully configured SSH root login on LXC ${vmid} via API`);
+        } else {
+          const bodyErr = await execRes.text().catch(() => '');
+          console.error(`[proxmox] Failed to configure SSH root login on LXC ${vmid} via API: Status ${execRes.status} ${bodyErr}`);
+        }
       } catch (err) {
         console.error('[proxmox] Failed to run post-create config:', err);
       }
@@ -17775,9 +17785,10 @@ async function destroyUserVm(vmid) {
 }
 
 async function terminateUserVm(vmid) {
-  const stop = await stopUserVm(vmid);
-  if (!stop.success) return stop;
+  // Attempt to stop the container, ignoring error state if already stopped
+  await stopUserVm(vmid);
   await new Promise(resolve => setTimeout(resolve, 3000));
+  // Destroy the container
   return await destroyUserVm(vmid);
 }
 
