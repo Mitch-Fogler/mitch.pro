@@ -17560,6 +17560,7 @@ const PVE_URL = process.env.PVE_URL || 'https://192.168.1.10:8006/api2/json';
 const PVE_TOKEN = process.env.PVE_TOKEN || ''; // Format: "PVEAPIToken=api-helper@pve!token-id=xxxx-xxxx-xxxx"
 const PVE_NODE = process.env.PVE_NODE || 'pve';
 const PVE_TEMPLATE_LINUX = parseInt(process.env.PVE_TEMPLATE_LINUX || '9000', 10);
+const PVE_LXC_TEMPLATE = process.env.PVE_LXC_TEMPLATE || 'local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst';
 
 async function getExistingVmids() {
   const ids = new Map();
@@ -17679,7 +17680,7 @@ async function createLxcContainer(email, tier, vmid, password) {
     const createUrl = `${PVE_URL}/nodes/${PVE_NODE}/lxc`;
     const bodyParams = new URLSearchParams({
       vmid: vmid,
-      ostemplate: 'local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst',
+      ostemplate: PVE_LXC_TEMPLATE,
       cores: cores,
       memory: memory,
       swap: 512,
@@ -17708,32 +17709,6 @@ async function createLxcContainer(email, tier, vmid, password) {
       console.error('[proxmox] LXC creation failed:', res.status, data);
       return { success: false, error: data.errors ? JSON.stringify(data.errors) : (data.message || 'LXC creation failed') };
     }
-
-    // Wait a brief moment for LXC to boot, then configure SSH root login via Proxmox Exec API
-    setTimeout(async () => {
-      try {
-        const execUrl = `${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/exec`;
-        const execRes = await fetch(execUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': PVE_TOKEN,
-            'Content-Type': 'application/x-www-form-urlencoded'
-          },
-          body: new URLSearchParams({
-            command: "bash -c \"sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && systemctl restart ssh\""
-          }).toString(),
-          tls: { rejectUnauthorized: false }
-        });
-        if (execRes.ok) {
-          console.log(`[proxmox] Successfully configured SSH root login on LXC ${vmid} via API`);
-        } else {
-          const bodyErr = await execRes.text().catch(() => '');
-          console.error(`[proxmox] Failed to configure SSH root login on LXC ${vmid} via API: Status ${execRes.status} ${bodyErr}`);
-        }
-      } catch (err) {
-        console.error('[proxmox] Failed to run post-create config:', err);
-      }
-    }, 5000);
 
     return { success: true, vmid };
   } catch (err) {
