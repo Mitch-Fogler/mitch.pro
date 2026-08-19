@@ -17481,7 +17481,7 @@ const PVE_NODE = process.env.PVE_NODE || 'pve';
 const PVE_TEMPLATE_LINUX = parseInt(process.env.PVE_TEMPLATE_LINUX || '9000', 10);
 
 async function getExistingVmids() {
-  const ids = new Set();
+  const ids = new Map();
   try {
     const lxcRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc`, {
       headers: { 'Authorization': PVE_TOKEN },
@@ -17490,7 +17490,7 @@ async function getExistingVmids() {
     if (lxcRes.ok) {
       const data = await lxcRes.json();
       if (data.data) {
-        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
+        for (const vm of data.data) ids.set(parseInt(vm.vmid, 10), vm.name || '');
       }
     }
     const qemuRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/qemu`, {
@@ -17500,7 +17500,7 @@ async function getExistingVmids() {
     if (qemuRes.ok) {
       const data = await qemuRes.json();
       if (data.data) {
-        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
+        for (const vm of data.data) ids.set(parseInt(vm.vmid, 10), vm.name || '');
       }
     }
   } catch (err) {
@@ -17602,7 +17602,7 @@ async function createLxcContainer(email, tier, vmid, password) {
       cores: cores,
       memory: memory,
       swap: 512,
-      hostname: `student-lxc-${vmid}`,
+      hostname: tier === 'premium' ? `premium-lxc-${vmid}` : `student-lxc-${vmid}`,
       password: password || 'password', // root password is secure password
       rootfs: 'local-lvm:8',
       net0: `name=eth0,bridge=vmbr2,firewall=0,ip=${containerIp}/24,gw=10.0.0.1`,
