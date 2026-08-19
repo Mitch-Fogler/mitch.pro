@@ -12231,6 +12231,87 @@ function loadAllGamesList() {
     return jsonResp(200, { status: 'none', isPremium });
   }
 
+  // POST /api/vm/free/reset — delete current free VM and boot a fresh one
+  if (path === '/api/vm/free/reset' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+    const email = emailFromSid(sid);
+    if (!email) return jsonResp(401, { error: 'auth required' });
+
+    const norm = normalizeEmail(email);
+
+    // 1. Destroy old VM if exists
+    if (activeFreeVms.has(norm)) {
+      const oldVm = activeFreeVms.get(norm);
+      console.log(`[free-vm] User ${email} requested reset. Wiping old VMID ${oldVm.vmid}`);
+      await terminateUserVm(oldVm.vmid);
+      activeFreeVms.delete(norm);
+    }
+
+    // 2. Launch fresh VM
+    const existingIds = await getExistingVmids();
+    let targetVmid = null;
+    for (let id = 200; id < 210; id++) {
+      if (!existingIds.has(id)) {
+        targetVmid = id;
+        break;
+      }
+    }
+
+    if (targetVmid === null) {
+      // Find and evict an orphan or oldest active
+      let oldestId = 200;
+      const activeVmids = new Set(Array.from(activeFreeVms.values()).map(v => v.vmid));
+      for (let id = 200; id < 210; id++) {
+        if (existingIds.has(id) && !activeVmids.has(id)) {
+          oldestId = id;
+          break;
+        }
+      }
+      if (activeVmids.has(oldestId)) {
+        let oldestUser = null;
+        let oldestTime = Infinity;
+        for (const [user, data] of activeFreeVms.entries()) {
+          if (data.lastActive < oldestTime) {
+            oldestTime = data.lastActive;
+            oldestUser = user;
+          }
+        }
+        if (oldestUser) {
+          oldestId = activeFreeVms.get(oldestUser).vmid;
+          activeFreeVms.delete(oldestUser);
+        }
+      }
+      console.log(`[free-vm] Reset eviction: wiping VMID ${oldestId}`);
+      await terminateUserVm(oldestId);
+      targetVmid = oldestId;
+    }
+
+    const securePassword = Math.random().toString(36).slice(-10);
+    const cloneResult = await createLxcContainer(email, 'free', targetVmid, securePassword);
+    if (!cloneResult.success) {
+      return jsonResp(500, { error: cloneResult.error });
+    }
+
+    activeFreeVms.set(norm, {
+      vmid: targetVmid,
+      password: securePassword,
+      startedAt: Date.now(),
+      lastActive: Date.now()
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    const pveStatus = await getUserVmStatus(targetVmid);
+
+    return jsonResp(200, {
+      success: true,
+      vmid: targetVmid,
+      ip: pveStatus.ip || '10.0.0.64',
+      password: securePassword
+    });
+  }
+
   // POST /api/vm/power — start, stop, or reboot the student's VM
   if (path === '/api/vm/power' && method === 'POST') {
     const cookies = getCookies(req);

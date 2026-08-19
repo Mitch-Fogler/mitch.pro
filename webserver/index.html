@@ -1740,6 +1740,7 @@ async function pollVmStatus() {
     const powerBtn = document.getElementById('vm-power-btn');
     const sshBtn = document.getElementById('vm-ssh-btn');
     const vncBtn = document.getElementById('vm-vnc-btn');
+    const resetBtn = document.getElementById('vm-reset-btn');
     
     currentVmStatus = data.vmStatus;
     currentVmIp = data.ip;
@@ -1754,6 +1755,7 @@ async function pollVmStatus() {
       powerBtn.style.display = 'none';
       sshBtn.style.display = 'none';
       vncBtn.style.display = 'none';
+      if (resetBtn) resetBtn.style.display = 'none';
       return;
     }
     
@@ -1782,6 +1784,9 @@ async function pollVmStatus() {
         sshBtn.style.display = 'none';
         vncBtn.style.display = 'none';
       }
+      if (resetBtn) {
+        resetBtn.style.display = (data.tier === 'free') ? 'inline-block' : 'none';
+      }
     } else {
       indicator.style.color = '#EF4444';
       dot.style.background = '#EF4444';
@@ -1795,6 +1800,9 @@ async function pollVmStatus() {
       powerBtn.style.display = 'inline-block';
       sshBtn.style.display = 'none';
       vncBtn.style.display = 'none';
+      if (resetBtn) {
+        resetBtn.style.display = (data.tier === 'free') ? 'inline-block' : 'none';
+      }
     }
   } catch (err) {
     console.error('Failed to poll VM status:', err);
@@ -1827,6 +1835,42 @@ async function controlVmPower() {
     alert('Power command failed: ' + err.message);
   } finally {
     btn.disabled = false;
+  }
+}
+
+async function resetFreeVm() {
+  const btn = document.getElementById('vm-reset-btn');
+  if (!btn) return;
+  if (!confirm('Are you sure you want to reset your sandbox? This will delete your current container and files, and create a fresh one immediately.')) {
+    return;
+  }
+  
+  btn.disabled = true;
+  const originalText = btn.textContent;
+  btn.textContent = 'Resetting Sandbox...';
+  
+  try {
+    const res = await fetch('/api/vm/free/reset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Mitch-Requested-With': '1',
+        'X-CSRF-Token': getCsrfToken()
+      }
+    });
+    const data = await res.json();
+    if (data.error) {
+      alert('Reset failed: ' + data.error);
+    } else {
+      alert('Sandbox reset successfully! Booting up your new terminal...');
+      await pollVmStatus();
+      connectVmSsh();
+    }
+  } catch (err) {
+    alert('Reset error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = originalText;
   }
 }
 
@@ -6647,6 +6691,7 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
             <button id="vm-power-btn" onclick="controlVmPower()" class="btn-ghost" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none;">Power On</button>
             <button id="vm-ssh-btn" onclick="connectVmSsh()" class="btn-primary" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none;">Terminal Console</button>
             <button id="vm-vnc-btn" onclick="connectVmVnc()" class="btn-primary" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none; background: linear-gradient(135deg, #10B981, #059669); border: none;">VNC Desktop</button>
+            <button id="vm-reset-btn" onclick="resetFreeVm()" class="btn-primary" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none; background: linear-gradient(135deg, #f59e0b, #d97706); border: none; color: white;">Reset Sandbox</button>
           </div>
         </div>
       </section>
