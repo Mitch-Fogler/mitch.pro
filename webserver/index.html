@@ -1826,18 +1826,27 @@ async function controlVmPower() {
   }
 }
 
+function openVmConsole(url) {
+  const ab = document.getElementById('abToggle');
+  if (ab && ab.checked) {
+    openAboutBlank(url);
+  } else {
+    openInNewTab(url);
+  }
+}
+
 function connectVmSsh() {
   if (!currentVmIp) return;
   const username = (currentVmTier === 'free' || currentVmTier === 'premium') ? 'root' : 'debian';
   const pass = currentVmPassword || 'password';
   const consoleUrl = `/ssh/index.html?host=${currentVmIp}&username=${username}&port=22&auth=password&password=${pass}&connect=true`;
-  launchConsoleIframe(consoleUrl, 'Web Terminal');
+  openVmConsole(consoleUrl);
 }
 
 function connectVmVnc() {
   if (!currentVmIp) return;
   const vncUrl = `/novnc/vnc_lite.html?path=vnc/ws?host=${currentVmIp}&port=5900`;
-  launchConsoleIframe(vncUrl, 'noVNC Desktop');
+  openVmConsole(vncUrl);
 }
 
 function getCsrfToken() {
