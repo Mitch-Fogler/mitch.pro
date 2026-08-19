@@ -17520,12 +17520,11 @@ async function getUserVmStatus(vmid) {
     const data = await res.json();
 
     let ip = '';
-    if (data.data && data.data.status === 'running') {
-      if (isLxc) {
-        const ipSuffix = vmid >= 300 ? (vmid - 200) : vmid;
-        ip = `10.0.0.${ipSuffix}`;
-      } else {
-        // Try to get IP address from QEMU Guest Agent
+    if (isLxc) {
+      const ipSuffix = vmid >= 300 ? (vmid - 200) : vmid;
+      ip = `10.0.0.${ipSuffix}`;
+    } else if (data.data && data.data.status === 'running') {
+      // Try to get IP address from QEMU Guest Agent
         const agentUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/agent/network-get-interfaces`;
         const agentRes = await fetch(agentUrl, {
           headers: { 'Authorization': PVE_TOKEN },

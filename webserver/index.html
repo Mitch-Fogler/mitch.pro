@@ -1773,7 +1773,11 @@ async function pollVmStatus() {
       
       if (data.ip) {
         sshBtn.style.display = 'inline-block';
-        vncBtn.style.display = 'inline-block';
+        if (data.tier === 'paid') {
+          vncBtn.style.display = 'inline-block';
+        } else {
+          vncBtn.style.display = 'none';
+        }
       } else {
         sshBtn.style.display = 'none';
         vncBtn.style.display = 'none';
