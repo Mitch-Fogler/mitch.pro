@@ -12072,7 +12072,8 @@ function loadAllGamesList() {
       if (pveStatus.success && pveStatus.status === 'stopped') {
         await powerUserVm(entry.vmid, 'start');
       }
-      return jsonResp(200, { success: true, ip: pveStatus.ip || '10.0.0.64', vmid: entry.vmid });
+      const fallbackIp = `10.0.0.${entry.vmid >= 300 ? (entry.vmid - 200) : entry.vmid}`;
+      return jsonResp(200, { success: true, ip: pveStatus.ip || fallbackIp, vmid: entry.vmid });
     }
 
     // Check pool capacity (Max 10) by querying Proxmox directly
@@ -12134,10 +12135,11 @@ function loadAllGamesList() {
     await new Promise(resolve => setTimeout(resolve, 4000));
     const pveStatus = await getUserVmStatus(targetVmid);
 
+    const fallbackIp = `10.0.0.${targetVmid >= 300 ? (targetVmid - 200) : targetVmid}`;
     return jsonResp(200, {
       success: true,
       vmid: targetVmid,
-      ip: pveStatus.ip || '10.0.0.64',
+      ip: pveStatus.ip || fallbackIp,
       password: securePassword
     });
   }
@@ -12304,10 +12306,11 @@ function loadAllGamesList() {
     await new Promise(resolve => setTimeout(resolve, 4000));
     const pveStatus = await getUserVmStatus(targetVmid);
 
+    const fallbackIp = `10.0.0.${targetVmid >= 300 ? (targetVmid - 200) : targetVmid}`;
     return jsonResp(200, {
       success: true,
       vmid: targetVmid,
-      ip: pveStatus.ip || '10.0.0.64',
+      ip: pveStatus.ip || fallbackIp,
       password: securePassword
     });
   }
@@ -17591,10 +17594,29 @@ async function getExistingVmids() {
   return ids;
 }
 
+function getVmTypeByVmid(vmid) {
+  // 1. Check in activeFreeVms
+  for (const entry of activeFreeVms.values()) {
+    if (entry.vmid === vmid) return 'lxc';
+  }
+  // 2. Check in vm_applications.json
+  try {
+    const appsData = loadJson(VM_APPS_FILE, {});
+    for (const app of Object.values(appsData)) {
+      if (app.vmid === vmid) {
+        return app.tier === 'premium' ? 'lxc' : 'qemu';
+      }
+    }
+  } catch (e) {
+    console.error('[proxmox] Error loading applications database in type lookup:', e);
+  }
+  // Fallback to range checks if not found in db
+  return (vmid >= 200 && vmid < 400) ? 'lxc' : 'qemu';
+}
+
 async function getUserVmStatus(vmid) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
-  const isLxc = vmid >= 200 && vmid < 400;
-  const type = isLxc ? 'lxc' : 'qemu';
+  const type = getVmTypeByVmid(vmid);
   try {
     const statusUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}/status/current`;
     const res = await fetch(statusUrl, {
@@ -17605,38 +17627,41 @@ async function getUserVmStatus(vmid) {
     const data = await res.json();
 
     let ip = '';
-    if (isLxc) {
+    if (type === 'lxc') {
       const ipSuffix = vmid >= 300 ? (vmid - 200) : vmid;
       ip = `10.0.0.${ipSuffix}`;
     } else if (data.data && data.data.status === 'running') {
       // Try to get IP address from QEMU Guest Agent
-        const agentUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/agent/network-get-interfaces`;
-        const agentRes = await fetch(agentUrl, {
-          headers: { 'Authorization': PVE_TOKEN },
-          tls: { rejectUnauthorized: false }
-        });
-        if (agentRes.ok) {
-          const agentData = await agentRes.json();
-          if (agentData.data && agentData.data.result) {
-            for (const iface of agentData.data.result) {
-              if (iface['ip-addresses']) {
-                for (const addr of iface['ip-addresses']) {
-                  if (addr['ip-address-type'] === 'ipv4' && addr['ip-address'].startsWith('10.0.0.')) {
-                    ip = addr['ip-address'];
-                    break;
-                  }
+      const agentUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/agent/network-get-interfaces`;
+      const agentRes = await fetch(agentUrl, {
+        headers: { 'Authorization': PVE_TOKEN },
+        tls: { rejectUnauthorized: false }
+      });
+      if (agentRes.ok) {
+        const agentData = await agentRes.json();
+        if (agentData.data && agentData.data.result) {
+          for (const iface of agentData.data.result) {
+            if (iface['ip-addresses']) {
+              for (const addr of iface['ip-addresses']) {
+                if (addr['ip-address-type'] === 'ipv4' && addr['ip-address'].startsWith('10.0.0.')) {
+                  ip = addr['ip-address'];
+                  break;
                 }
               }
-              if (ip) break;
             }
+            if (ip) break;
           }
         }
       }
+    }
+
+    const ipSuffix = vmid >= 300 ? (vmid - 200) : vmid;
+    const fallbackIp = `10.0.0.${ipSuffix}`;
 
     return {
       success: true,
       status: data.data ? data.data.status : 'unknown',
-      ip: ip || '10.0.0.64'
+      ip: ip || fallbackIp
     };
   } catch (err) {
     console.error(`[proxmox] Error getting ${type} status:`, err);
