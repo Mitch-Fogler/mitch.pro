@@ -12053,34 +12053,6 @@ function loadAllGamesList() {
     return jsonResp(200, { ok: true, message: 'Request submitted.' });
   }
 
-async function getExistingVmids() {
-  const ids = new Set();
-  try {
-    const lxcRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc`, {
-      headers: { 'Authorization': PVE_TOKEN },
-      tls: { rejectUnauthorized: false }
-    });
-    if (lxcRes.ok) {
-      const data = await lxcRes.json();
-      if (data.data) {
-        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
-      }
-    }
-    const qemuRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/qemu`, {
-      headers: { 'Authorization': PVE_TOKEN },
-      tls: { rejectUnauthorized: false }
-    });
-    if (qemuRes.ok) {
-      const data = await qemuRes.json();
-      if (data.data) {
-        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
-      }
-    }
-  } catch (err) {
-    console.error('[proxmox] Failed to fetch cluster VMIDs:', err);
-  }
-  return ids;
-}
 
   // POST /api/vm/free/launch — launch or connect to the ephemeral free VM
   if (path === '/api/vm/free/launch' && method === 'POST') {
@@ -17252,6 +17224,8 @@ setTimeout(() => {
   setInterval(pruneInactiveFreeVmsWorker, 300_000); // Check VM inactive free VMs every 5 mins
   pruneInactiveFreeVmsWorker(); 
 
+  cleanupAllEphemeralVms();
+
   setInterval(happyHourWorker, 60000);
   computedHappyHour = getLeastUsedSchoolHour();
   happyHourWorker();
@@ -17506,6 +17480,35 @@ const PVE_TOKEN = process.env.PVE_TOKEN || ''; // Format: "PVEAPIToken=api-helpe
 const PVE_NODE = process.env.PVE_NODE || 'pve';
 const PVE_TEMPLATE_LINUX = parseInt(process.env.PVE_TEMPLATE_LINUX || '9000', 10);
 
+async function getExistingVmids() {
+  const ids = new Set();
+  try {
+    const lxcRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc`, {
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    if (lxcRes.ok) {
+      const data = await lxcRes.json();
+      if (data.data) {
+        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
+      }
+    }
+    const qemuRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/qemu`, {
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    if (qemuRes.ok) {
+      const data = await qemuRes.json();
+      if (data.data) {
+        for (const vm of data.data) ids.add(parseInt(vm.vmid, 10));
+      }
+    }
+  } catch (err) {
+    console.error('[proxmox] Failed to fetch cluster VMIDs:', err);
+  }
+  return ids;
+}
+
 async function getUserVmStatus(vmid) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
   const isLxc = vmid >= 200 && vmid < 400;
@@ -17547,7 +17550,6 @@ async function getUserVmStatus(vmid) {
           }
         }
       }
-    }
 
     return {
       success: true,
@@ -17824,6 +17826,25 @@ async function pruneInactiveFreeVmsWorker() {
     }
   } catch (err) {
     console.error('[free-vm] Error in inactive VM pruner:', err);
+  }
+}
+
+async function cleanupAllEphemeralVms() {
+  console.log('[startup] Checking for leftover ephemeral containers on Proxmox...');
+  try {
+    const existingIds = await getExistingVmids();
+    for (let id = 200; id < 210; id++) {
+      if (existingIds.has(id)) {
+        console.log(`[startup] Leftover ephemeral VMID ${id} detected. Wiping...`);
+        // Trigger stopping and destroying asynchronously to keep startup fast
+        terminateUserVm(id).catch(err => {
+          console.error(`[startup] Error wiping leftover VMID ${id}:`, err);
+        });
+      }
+    }
+    console.log('[startup] Leftover ephemeral containers cleanup sequence completed.');
+  } catch (err) {
+    console.error('[startup] Ephemeral container startup check failed:', err);
   }
 }
 
