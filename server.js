@@ -7258,6 +7258,30 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
       return jsonResp(403, { error: 'Access denied: Target IP must be in the customer subnet.' });
     }
 
+    // Security Check: Verify user owns this target IP
+    const emailNorm = normalizeEmail(email);
+    const isUserAdmin = isAnyAdminId(sid) || emailNorm === 'admin@mitch.pro';
+    if (!isUserAdmin) {
+      let allowedIp = '';
+      if (activeFreeVms.has(emailNorm)) {
+        const freeVm = activeFreeVms.get(emailNorm);
+        const ipSuffix = freeVm.vmid >= 300 ? (freeVm.vmid - 200) : freeVm.vmid;
+        allowedIp = `10.0.0.${ipSuffix}`;
+      }
+      if (targetIp !== allowedIp) {
+        const appsData = loadJson(VM_APPS_FILE, {});
+        const userApp = appsData[emailNorm];
+        if (userApp && userApp.status === 'approved' && userApp.vmid) {
+          const ipSuffix = userApp.vmid >= 300 ? (userApp.vmid - 200) : userApp.vmid;
+          allowedIp = `10.0.0.${ipSuffix}`;
+        }
+      }
+      if (targetIp !== allowedIp) {
+        console.warn(`[vnc-security] Blocked VNC connection attempt by ${email} to unauthorized host ${targetIp}`);
+        return jsonResp(403, { error: 'Access Denied: You can only connect to your own VM.' });
+      }
+    }
+
     const success = server.upgrade(req, {
       data: {
         isVNC: true,
@@ -17105,6 +17129,39 @@ Bun.serve({
           };
 
           if (payload.type === 'init' || payload.type === 'connect') {
+            const hostIp = (payload.host || '').trim();
+            const emailNorm = normalizeEmail(ws.data.email);
+            const isUserAdmin = isAnyAdminId(ws.data.sid) || emailNorm === 'admin@mitch.pro';
+            
+            if (!isUserAdmin) {
+              let allowedIp = '';
+              // 1. Check if it's the user's active Free VM
+              if (activeFreeVms.has(emailNorm)) {
+                const freeVm = activeFreeVms.get(emailNorm);
+                const ipSuffix = freeVm.vmid >= 300 ? (freeVm.vmid - 200) : freeVm.vmid;
+                allowedIp = `10.0.0.${ipSuffix}`;
+              }
+              
+              // 2. Check if it's the user's approved Premium VM
+              if (hostIp !== allowedIp) {
+                const appsData = loadJson(VM_APPS_FILE, {});
+                const userApp = appsData[emailNorm];
+                if (userApp && userApp.status === 'approved' && userApp.vmid) {
+                  const ipSuffix = userApp.vmid >= 300 ? (userApp.vmid - 200) : userApp.vmid;
+                  allowedIp = `10.0.0.${ipSuffix}`;
+                }
+              }
+              
+              if (hostIp !== allowedIp) {
+                console.warn(`[ssh-security] Blocked SSH connection attempt by ${ws.data.email} to unauthorized host ${hostIp}`);
+                if (ws.readyState === 1) {
+                  ws.send(JSON.stringify({ type: 'error', message: 'Access Denied: You can only connect to your own VM.' }));
+                }
+                ws.close();
+                return;
+              }
+            }
+
             console.log(`[ssh] ${ws.data.email} -> ${(payload.host || '').trim()}:${payload.port || 22}`);
             if (!(await ensureGateway())) return;
             const forward = {
@@ -17755,10 +17812,13 @@ async function purgeExpiredVmsWorker() {
 async function pruneInactiveFreeVmsWorker() {
   try {
     const now = Date.now();
-    const maxInactiveMs = 30 * 60 * 1000; // 30 minutes of inactivity
+    const maxInactiveMs = 15 * 60 * 1000; // 15 minutes of inactivity (no dashboard polling)
+    const maxLifespanMs = 60 * 60 * 1000; // 1 hour max duration
     for (const [email, entry] of activeFreeVms.entries()) {
-      if (now - entry.lastActive > maxInactiveMs) {
-        console.log(`[free-vm] Pruning inactive free VM ${entry.vmid} for ${email}`);
+      const isInactive = (now - entry.lastActive) > maxInactiveMs;
+      const isExpired = (now - entry.startedAt) > maxLifespanMs;
+      if (isInactive || isExpired) {
+        console.log(`[free-vm] Pruning free VM ${entry.vmid} for ${email} (inactive: ${isInactive}, expired: ${isExpired})`);
         await terminateUserVm(entry.vmid);
         activeFreeVms.delete(email);
       }

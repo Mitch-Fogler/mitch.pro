@@ -1869,6 +1869,7 @@ function launchConsoleIframe(url, title) {
   
   if (term && body && inputContainer && iframeContainer && iframe && titleEl) {
     term.classList.add('expanded');
+    term.classList.add('visible'); // Make overlay visible
     body.style.display = 'none';
     inputContainer.style.display = 'none';
     iframeContainer.style.display = 'block';
@@ -1900,6 +1901,7 @@ function closeTerminalIframe(quiet) {
     if (!wasExpanded) return;
 
     term.classList.remove('expanded');
+    term.classList.remove('visible'); // Close overlay panel
     iframeContainer.style.display = 'none';
     iframe.src = 'about:blank';
     body.style.display = 'block';
