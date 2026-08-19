@@ -17837,6 +17837,9 @@ async function stopUserVm(vmid) {
       headers: { 'Authorization': PVE_TOKEN },
       tls: { rejectUnauthorized: false }
     });
+    if (res.status === 404) {
+      return { success: true };
+    }
     return { success: res.ok };
   } catch (err) {
     console.error(`[proxmox] Error stopping ${type}:`, err);
@@ -17854,6 +17857,10 @@ async function destroyUserVm(vmid) {
       headers: { 'Authorization': PVE_TOKEN },
       tls: { rejectUnauthorized: false }
     });
+    if (destroyRes.status === 404) {
+      console.log(`[proxmox] ${type} VMID ${vmid} already deleted (404). Treating as successful destruction.`);
+      return { success: true };
+    }
     const destroyData = await destroyRes.json();
     if (!destroyRes.ok) {
       return { success: false, error: destroyData.errors || `Proxmox ${type} deletion failed.` };
