@@ -57,6 +57,8 @@ services:
       - PVE_TOKEN
       - PVE_NODE
       - PVE_TEMPLATE_LINUX
+      - PVE_LXC_TEMPLATE
+      - HIDE_VM_FEATURES
       - NODE_TLS_REJECT_UNAUTHORIZED=0
 
   # Production Slot B: Green Webserver
@@ -104,6 +106,8 @@ services:
       - PVE_TOKEN
       - PVE_NODE
       - PVE_TEMPLATE_LINUX
+      - PVE_LXC_TEMPLATE
+      - HIDE_VM_FEATURES
       - NODE_TLS_REJECT_UNAUTHORIZED=0
 
   # SSH Gateway sidecar (internal only — admin SSH via WebSocket)

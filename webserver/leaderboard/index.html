@@ -9,6 +9,57 @@
   <script src="/api.js"></script>
   <script src="/app-shell.js" defer></script>
   <style>
+    .rank-shell{width:min(1180px,100%)}
+    .rank-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}
+    .rank-head-copy{max-width:690px}
+    .season-chip{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border:2px solid var(--t-ac);background:transparent;color:var(--t-ac);font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;border-radius:0}
+    .season-chip i{width:7px;height:7px;background:currentColor}
+    .rank-overview{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,.65fr);gap:14px;margin:24px 0 16px}
+    .podium{display:grid;grid-template-columns:repeat(3,1fr);align-items:end;gap:10px;min-height:252px;padding:0;border:0;border-radius:0;background:transparent;overflow:hidden}
+    .podium-card{position:relative;display:flex;min-width:0;flex-direction:column;align-items:flex-start;justify-content:flex-end;padding:16px;border:1px solid var(--t-bd);border-radius:10px;background:var(--t-bg2);text-align:left}
+    .podium-card.first{order:2;min-height:210px;border-color:var(--t-ac);background:var(--t-bg2);color:var(--t-fg)}
+    .podium-card.second{order:1;min-height:176px}.podium-card.third{order:3;min-height:158px}
+    .podium-card.first .podium-name,.podium-card.first .podium-score,.podium-card.first .podium-rank{color:var(--t-fg)}
+    .podium-rank{position:absolute;top:10px;right:11px;color:var(--t-fg2);font:800 11px/1 inherit}
+    .first .podium-rank{color:var(--t-ac)}
+    .podium-avatar{display:grid;width:48px;height:48px;place-items:center;margin-bottom:10px;border:2px solid currentColor;border-radius:0;background:transparent;color:inherit;font:800 1.1rem var(--t-display,Fraunces,serif)}
+    .first .podium-avatar{width:58px;height:58px}
+    .podium-name{max-width:100%;overflow:hidden;color:var(--t-fg);font-size:.92rem;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+    .podium-score{margin-top:5px;color:var(--t-fg2);font-size:.72rem}.podium-score b{color:var(--t-ac)}.first .podium-score b{color:var(--t-ac)}
+    .my-rank{display:flex;min-height:252px;flex-direction:column;justify-content:space-between;padding:20px;border:1px solid var(--t-bd);border-radius:10px;background:var(--t-bg2)}
+    .my-rank small{color:var(--t-ac);font-size:10px;font-weight:800;letter-spacing:.14em}
+    .my-rank strong{display:block;margin-top:8px;font:700 clamp(2.2rem,5vw,3.4rem)/.95 inherit;font-style:normal;letter-spacing:-.04em}
+    .my-rank h2{margin:10px 0 0;font-size:1.1rem}.my-rank p{margin:5px 0;color:var(--t-fg2);font-size:.78rem}
+    .my-rank-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .my-rank-stats span{padding:10px;border:2px solid var(--t-bd);border-radius:0;background:transparent}
+    .my-rank-stats b{display:block;font-size:.95rem}.my-rank-stats small{font-size:8px}
+    .rank-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0;padding:0;border:0;border-bottom:2px solid var(--t-ac);border-radius:0;background:transparent;padding-bottom:10px}
+    .metric-tabs{display:flex;gap:0;overflow-x:auto;scrollbar-width:none}
+    .metric-tabs::-webkit-scrollbar{display:none}
+    .metric-tab{width:auto!important;min-width:max-content;margin:0!important;padding:9px 12px!important;border:2px solid transparent!important;background:transparent!important;color:var(--t-fg2)!important;font-size:11px!important;text-transform:uppercase;letter-spacing:.06em;border-radius:0!important}
+    .metric-tab.active{border-color:var(--t-bd)!important;background:var(--t-bg2)!important;color:var(--t-fg)!important}
+    .rank-search{position:relative;flex:0 1 260px}
+    .rank-search input{min-height:38px!important;padding-left:34px!important;border-radius:0!important}
+    .rank-search span{position:absolute;left:12px;top:50%;color:var(--t-fg2);transform:translateY(-50%)}
+    .rank-list{padding:0!important;border-radius:0!important;border-width:2px!important}
+    .rank-row{display:grid;grid-template-columns:52px minmax(160px,1.4fr) repeat(4,minmax(76px,.55fr));align-items:center;gap:8px;min-height:60px;padding:8px 12px;border-bottom:1px solid var(--t-bd);transition:background .15s}
+    .rank-row:last-child{border-bottom:0}
+    .rank-row:hover{background:color-mix(in srgb,var(--t-ac) 8%,transparent);transform:none}
+    .rank-row.me{border:2px solid var(--t-ac);background:color-mix(in srgb,var(--t-ac) 10%,transparent)}
+    .rank-number{color:var(--t-fg2);font:800 .82rem inherit}.rank-number.top{color:var(--t-ac);font-size:1.05rem}
+    .rank-user{display:flex;min-width:0;align-items:center;gap:10px}
+    .rank-user-avatar{display:grid;width:34px;height:34px;flex:0 0 34px;place-items:center;border:2px solid var(--t-ac);border-radius:0;background:transparent;color:var(--t-ac);font:800 .75rem inherit}
+    .rank-user-copy{min-width:0}.rank-user-copy a{display:block;overflow:hidden;color:var(--t-fg);font-size:.82rem;font-weight:800;text-overflow:ellipsis;white-space:nowrap}
+    .rank-user-copy small{display:block;margin-top:2px;color:var(--t-fg2);font-size:.65rem}
+    .metric{font-variant-numeric:tabular-nums}.metric small{display:block;color:var(--t-fg2);font-size:7px;font-weight:800;letter-spacing:.08em}
+    .metric b{display:block;margin-top:3px;color:var(--t-fg);font-size:.76rem}
+    .metric.primary b{color:var(--t-ac);font-size:.86rem}
+    .rank-empty{padding:54px 20px;color:var(--t-fg2);text-align:center}
+    .l-badge{margin-left:5px;font-size:.68rem}
+    .you-pill{margin-left:6px;padding:2px 5px;border:1px solid var(--t-ac);color:var(--t-ac);font-size:7px;text-transform:uppercase}
+    @media(max-width:900px){.rank-overview{grid-template-columns:1fr}.my-rank{min-height:auto}.rank-row{grid-template-columns:44px minmax(140px,1fr) repeat(2,minmax(70px,.5fr))}.rank-row .metric:nth-last-child(-n+2){display:none}}
+    @media(max-width:640px){.rank-head{align-items:flex-start;flex-direction:column}.rank-controls{align-items:stretch;flex-direction:column}.rank-search{flex-basis:auto}.rank-row{grid-template-columns:34px minmax(110px,1fr) 72px}.rank-row .metric{display:none}.rank-row .metric.primary{display:block}.rank-user-avatar{display:none}}
+  </style>
     .rank-shell{width:min(1220px,100%)}
     .rank-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px}.rank-head-copy{max-width:690px}
     .season-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid rgba(83,230,165,.2);border-radius:999px;background:rgba(83,230,165,.07);color:#75efb9;font-size:10px;font-weight:900;letter-spacing:.12em}.season-chip i{width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 12px currentColor}

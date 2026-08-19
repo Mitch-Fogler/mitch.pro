@@ -7,16 +7,16 @@
 
   var T = {
     void: {
-      name: 'Editorial',
-      bg: '#0c0d10', bg2: '#14161c', bg3: '#1b1e26',
-      fg: '#eef0f4', fg2: '#9aa3b2',
-      ac: '#c8a45a', ac2: '#d4b56e', ac3: '#e8d5a3',
-      bd: 'rgba(255,255,255,0.08)', bda: 'rgba(200,164,90,0.45)',
-      gl: 'rgba(200,164,90,0.42)', gls: 'rgba(200,164,90,0.14)',
-      gr: 'linear-gradient(135deg,#e8d5a3,#c8a45a,#8f7340)',
-      bgr: 'radial-gradient(ellipse at 50% -10%,rgba(200,164,90,.10) 0%,transparent 55%),radial-gradient(ellipse at 100% 100%,rgba(255,255,255,.03) 0%,transparent 45%),linear-gradient(160deg,#0c0d10,#101218 55%,#0a0b0e)',
+      name: 'Ink',
+      bg: '#10140c', bg2: '#181e12', bg3: '#232b18',
+      fg: '#f3f0e4', fg2: '#9aa186',
+      ac: '#d6ff4a', ac2: '#eeff9a', ac3: '#b8e03a',
+      bd: 'rgba(255,255,255,0.1)', bda: 'rgba(214,255,74,0.4)',
+      gl: 'rgba(214,255,74,0.28)', gls: 'rgba(214,255,74,0.1)',
+      gr: 'linear-gradient(90deg,#d6ff4a,#eeff9a)',
+      bgr: 'none',
       bgImg: '',
-      sw: '#c8a45a',
+      sw: '#d6ff4a',
     },
     cyber: {
       name: 'Cyber',
@@ -336,7 +336,7 @@
     r.setProperty('--t-gl',  t.gl);
     r.setProperty('--t-gls', t.gls);
     r.setProperty('--t-gr',  t.gr);
-    r.setProperty('--t-bgr', t.bgr);
+    r.setProperty('--t-display', "'Figtree', system-ui, sans-serif");
     applyCustomizationPrefs();
     applyBgImg(getEffectiveBgImg(name));
     var btn = document.getElementById('theme-btn');
@@ -359,10 +359,10 @@
     'input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);' +
       'padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}' +
     'input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}' +
-    'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn){background:var(--t-bg2);color:var(--t-ac);' +
+    'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn){background:var(--t-bg2);color:var(--t-ac);' +
       'border:1px solid var(--t-bda);padding:7px 16px;border-radius:var(--t-radius,8px);cursor:pointer;' +
       'font-family:inherit;font-size:.88rem;font-weight:500;transition:all var(--t-motion,.15s)}' +
-    'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}' +
+    'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}' +
     '.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}' +
     'hr{border:none;border-top:1px solid var(--t-bd)}' +
     'a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}' +

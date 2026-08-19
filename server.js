@@ -12172,7 +12172,7 @@ function loadAllGamesList() {
       };
 
       saveJson(VM_APPS_FILE, data);
-      return jsonResp(200, { success: true, message: 'Application submitted successfully. Please contact Mitchell to complete approval.' });
+      return jsonResp(200, { success: true, message: 'Application submitted successfully. Please contact Mitch to complete approval.' });
     } catch (err) {
       return jsonResp(400, { error: 'Invalid JSON payload' });
     }

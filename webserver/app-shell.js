@@ -35,7 +35,7 @@
 
   function ensureInstallMetadata() {
     var metas = {
-      'theme-color': '#0c0d10',
+      'theme-color': '#10140c',
       'mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-status-bar-style': 'black-translucent',
@@ -65,11 +65,11 @@
 
   function ensureFonts() {
     if (document.getElementById('app-fonts')) return;
-    if (document.querySelector('link[href*="fonts.googleapis.com"][href*="Outfit"]')) return;
+    if (document.querySelector('link[href*="fonts.googleapis.com"][href*="Figtree"]')) return;
     var link = document.createElement('link');
     link.id = 'app-fonts';
     link.rel = 'stylesheet';
-    link.href = 'https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';
+    link.href = 'https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap';
     var head = document.head || document.getElementsByTagName('head')[0];
     if (head) head.appendChild(link);
   }
@@ -92,7 +92,7 @@
     var brand = document.createElement('a');
     brand.className = 'app-brand';
     brand.href = '/';
-    brand.textContent = 'mitch.pro';
+    brand.innerHTML = 'mitch<span>.pro</span>';
     brand.setAttribute('aria-label', 'mitch.pro home');
 
     var nav = document.createElement('nav');

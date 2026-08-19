@@ -72,22 +72,27 @@
     s.id = 'sw-notif-styles';
     s.textContent = 
       /* shared top-right toolbar */
-      '#site-topbar { position: fixed; top: 10px; right: 12px; z-index: 1000001; display: flex; align-items: center; gap: 6px; }' +
-      '#sw-notif-wrap { position: relative; display: inline-flex; align-items: center; }' +
+      '#site-topbar { position: fixed; top: 10px; right: 12px; z-index: 1000001; display: flex; align-items: center; gap: 6px; overflow: visible; }' +
+      '#sw-notif-wrap { position: relative; display: inline-flex; align-items: center; overflow: visible; isolation: isolate; }' +
       '#sw-notif-btn {' +
-      '  width: 36px; height: 36px; border-radius: 50%;' +
-      '  display: flex; align-items: center; justify-content: center;' +
+      '  width: 36px !important; height: 36px !important; min-width: 36px !important; min-height: 36px !important;' +
+      '  padding: 0 !important; margin: 0; border-radius: 50% !important;' +
+      '  display: flex !important; align-items: center; justify-content: center;' +
       '  background: rgba(30,30,34,0.85); color: #7c3aed; border: 1px solid rgba(124,58,237,0.4);' +
       '  cursor: pointer; box-shadow: 0 8px 28px rgba(0,0,0,0.35);' +
-      '  font-size: 15px; position: relative; backdrop-filter: blur(10px);' +
+      '  font-size: 15px; line-height: 1; position: relative; overflow: visible !important;' +
+      '  backdrop-filter: blur(10px); flex-shrink: 0; box-sizing: border-box;' +
       '}' +
       '#sw-notif-count {' +
-      '  display: none; position: absolute; top: -5px; right: -5px;' +
-      '  min-width: 17px; height: 17px; padding: 0 4px;' +
-      '  border-radius: 99px; background: #ef4444; color: #fff;' +
+      '  display: none !important; position: absolute !important; top: -2px !important; right: -2px !important;' +
+      '  z-index: 2; min-width: 16px !important; width: auto; height: 16px !important; padding: 0 4px !important;' +
+      '  margin: 0 !important; border: 2px solid var(--t-bg, #10140c); border-radius: 99px !important;' +
+      '  background: #ef4444 !important; color: #fff !important;' +
       '  align-items: center; justify-content: center;' +
-      '  font-size: 9px; font-weight: 800; line-height: 1;' +
+      '  font-size: 9px !important; font-weight: 800 !important; line-height: 1 !important;' +
+      '  pointer-events: none; box-sizing: border-box; overflow: visible;' +
       '}' +
+      '#sw-notif-count.is-visible { display: inline-flex !important; }' +
       '#sw-notif-panel {' +
       '  display: none; position: absolute; top: 44px; right: 0;' +
       '  width: min(340px, calc(100vw - 24px)); max-height: min(430px, calc(100vh - 70px));' +
@@ -138,7 +143,7 @@
     var wrap = document.createElement('div');
     wrap.id = 'sw-notif-wrap';
     wrap.innerHTML = 
-      '<button id="sw-notif-btn" type="button" title="Notifications">&#128276;<span id="sw-notif-count" style="display: none;">0</span></button>' +
+      '<button id="sw-notif-btn" type="button" title="Notifications">&#128276;<span id="sw-notif-count">0</span></button>' +
       '<div id="sw-notif-panel">' +
       '  <div class="sw-notif-head">' +
       '    <span>Notifications</span>' +
@@ -167,7 +172,7 @@
     var list = document.getElementById('sw-notif-list');
     if (!badge || !list) return;
     badge.textContent = count > 99 ? '99+' : String(count);
-    badge.style.display = count ? 'inline-flex' : 'none';
+    badge.classList.toggle('is-visible', count > 0);
     if (!count) {
       list.innerHTML = '<div class="sw-notif-empty">No unread notifications</div>';
       return;

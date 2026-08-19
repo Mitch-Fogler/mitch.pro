@@ -1,28 +1,28 @@
-/* mitch.pro shared page chrome — uses theme.js tokens (--t-*)
-   Default palette (Void) is editorial dark: graphite + sparse gold accent. */
+/* mitch.pro shared chrome — ink print look, lime accent. Tokens from theme.js. */
 
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --t-bg: #0c0d10;
-  --t-bg2: #14161c;
-  --t-bg3: #1b1e26;
-  --t-fg: #eef0f4;
-  --t-fg2: #9aa3b2;
-  --t-ac: #c8a45a;
-  --t-ac2: #d4b56e;
-  --t-ac3: #e8d5a3;
-  --t-bd: rgba(255, 255, 255, 0.08);
-  --t-bda: rgba(200, 164, 90, 0.45);
-  --t-gl: rgba(200, 164, 90, 0.42);
-  --t-gls: rgba(200, 164, 90, 0.14);
-  --t-gr: linear-gradient(135deg, #e8d5a3, #c8a45a, #8f7340);
-  --t-bgr: radial-gradient(ellipse at 50% -10%, rgba(200, 164, 90, 0.1) 0%, transparent 55%),
-    radial-gradient(ellipse at 100% 100%, rgba(255, 255, 255, 0.03) 0%, transparent 45%),
-    linear-gradient(160deg, #0c0d10, #101218 55%, #0a0b0e);
+  --t-bg: #10140c;
+  --t-bg2: #181e12;
+  --t-bg3: #232b18;
+  --t-fg: #f3f0e4;
+  --t-fg2: #9aa186;
+  --t-ac: #d6ff4a;
+  --t-ac2: #eeff9a;
+  --t-ac3: #b8e03a;
+  --t-bd: rgba(255, 255, 255, 0.1);
+  --t-bda: rgba(214, 255, 74, 0.4);
+  --t-gl: rgba(214, 255, 74, 0.28);
+  --t-gls: rgba(214, 255, 74, 0.1);
+  --t-gr: linear-gradient(90deg, #d6ff4a, #eeff9a);
+  --t-bgr: none;
   --t-radius: 8px;
   --t-motion: 0.15s;
+  --t-display: 'Figtree', system-ui, -apple-system, sans-serif;
+  --t-font: 'Figtree', system-ui, -apple-system, sans-serif;
   --sheet-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ink-shadow: none;
 }
 
 *,
@@ -44,7 +44,7 @@ body {
   background-color: var(--t-bg);
   background-image: var(--t-bgr, none);
   background-attachment: fixed;
-  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  font-family: var(--t-font);
   font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -70,10 +70,10 @@ a:hover {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Outfit', system-ui, sans-serif;
+  font-family: var(--t-font);
   font-weight: 700;
   line-height: 1.15;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.03em;
   color: var(--t-fg);
 }
 
@@ -88,13 +88,7 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .app-shell::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: var(--t-bgr, none);
-  opacity: 0.85;
+  content: none;
 }
 
 .app-topbar {
@@ -102,85 +96,89 @@ h1, h2, h3, h4, h5, h6 {
   top: 0;
   z-index: 400;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: space-between;
   gap: 1rem;
   min-height: 3.25rem;
-  padding: 0.55rem clamp(0.85rem, 2.5vw, 1.75rem);
+  width: 100%;
+  margin: 0;
+  padding: 0 clamp(0.85rem, 2.5vw, 2rem);
+  border: 0;
   border-bottom: 1px solid var(--t-bd);
-  background: color-mix(in srgb, var(--t-bg) 94%, var(--t-bg2));
-  transform: translateY(0);
-  transition:
-    background-color var(--t-motion, 0.18s) ease,
-    border-color var(--t-motion, 0.18s) ease,
-    box-shadow var(--t-motion, 0.22s) ease;
-  animation: app-fade-in 0.45s ease both;
+  border-radius: 0;
+  background: var(--t-bg);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .app-topbar.is-scrolled {
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
-  border-bottom-color: color-mix(in srgb, var(--t-bd) 80%, var(--t-ac) 20%);
+  box-shadow: none;
+  background: var(--t-bg);
 }
 
 .app-brand {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.15rem;
-  font-family: 'Outfit', system-ui, sans-serif;
+  align-items: center;
+  gap: 0;
+  font-family: var(--t-font);
   font-size: 1.05rem;
-  font-weight: 800;
+  font-weight: 700;
+  font-style: normal;
   letter-spacing: -0.03em;
   color: var(--t-fg);
   white-space: nowrap;
-  transition: opacity var(--t-motion, 0.15s) ease, transform var(--t-motion, 0.15s) ease;
+}
+
+.app-brand span {
+  color: var(--t-fg2);
+  font-style: normal;
 }
 
 .app-brand:hover {
   color: var(--t-fg);
-  opacity: 0.88;
+  opacity: 1;
 }
 
 .app-brand:active {
-  transform: scale(0.97);
+  transform: none;
 }
 
 .app-nav {
   display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
 .app-nav a {
   display: inline-flex;
   align-items: center;
-  min-height: 2rem;
-  padding: 0.35rem 0.7rem;
-  border-radius: calc(var(--t-radius, 8px) - 2px);
+  min-height: 3.25rem;
+  padding: 0 0.7rem;
+  border-radius: 0;
   color: var(--t-fg2);
-  font-size: 0.84rem;
+  font-size: 0.86rem;
   font-weight: 600;
-  letter-spacing: 0.01em;
-  transition:
-    color var(--t-motion, 0.15s) ease,
-    background-color var(--t-motion, 0.15s) ease,
-    transform var(--t-motion, 0.12s) ease;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: none;
 }
 
 .app-nav a:hover {
   color: var(--t-fg);
-  background: var(--t-bg2);
+  background: transparent;
 }
 
 .app-nav a:active {
-  transform: scale(0.96);
+  transform: none;
 }
 
 .app-nav a[aria-current="page"] {
   color: var(--t-fg);
-  background: color-mix(in srgb, var(--t-ac) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t-ac) 35%, transparent);
+  background: transparent;
+  box-shadow: inset 0 -2px 0 var(--t-ac);
 }
 
 .app-main {
@@ -197,8 +195,8 @@ h1, h2, h3, h4, h5, h6 {
 
 .page-head h1 {
   margin: 0;
-  font-size: clamp(1.9rem, 4.5vw, 3rem);
-  letter-spacing: -0.04em;
+  font-size: clamp(1.7rem, 3.5vw, 2.2rem);
+  letter-spacing: -0.03em;
 }
 
 .page-sub,
@@ -240,7 +238,7 @@ h1, h2, h3, h4, h5, h6 {
   gap: 0.4rem;
   min-height: 2.4rem;
   padding: 0.55rem 1.05rem;
-  border-radius: var(--t-radius, 8px);
+    border-radius: var(--t-radius, 2px);
   border: 1px solid transparent;
   font-family: inherit;
   font-size: 0.88rem;
@@ -275,16 +273,17 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .btn-primary {
-  background: color-mix(in srgb, var(--t-ac) 88%, #000 12%);
-  color: #fff;
-  border-color: var(--t-bda);
-  box-shadow: 0 1px 0 color-mix(in srgb, #fff 18%, transparent) inset;
+  background: var(--t-ac);
+  color: #10140c;
+  border-color: var(--t-ac);
+  box-shadow: none;
+  font-weight: 700;
 }
 
 .btn-primary:hover {
-  background: var(--t-ac);
-  color: #fff;
-  box-shadow: 0 0 0 3px var(--t-gls), 0 8px 22px color-mix(in srgb, var(--t-ac) 28%, transparent);
+  background: var(--t-ac2);
+  color: #10140c;
+  box-shadow: none;
 }
 
 .btn-ghost {
@@ -327,7 +326,7 @@ h1, h2, h3, h4, h5, h6 {
   min-height: 2.5rem;
   padding: 0.55rem 0.8rem;
   border: 1px solid var(--t-bd);
-  border-radius: var(--t-radius, 8px);
+    border-radius: var(--t-radius, 2px);
   background: var(--t-bg2);
   color: var(--t-fg);
   font-family: inherit;
@@ -372,9 +371,9 @@ h1, h2, h3, h4, h5, h6 {
 .panel {
   padding: 1rem 1.1rem;
   border: 1px solid var(--t-bd);
-  border-radius: calc(var(--t-radius, 8px) + 4px);
+  border-radius: var(--t-radius, 8px);
   background: var(--t-bg2);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  box-shadow: none;
 }
 
 .panel-title {
