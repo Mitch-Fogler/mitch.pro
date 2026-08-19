@@ -191,6 +191,34 @@ h1, h2, h3, h4, h5, h6 {
   animation: app-fade-in 0.5s ease 0.05s both;
 }
 
+.page-head {
+  margin-bottom: 1.35rem;
+}
+
+.page-head h1 {
+  margin: 0;
+  font-size: clamp(1.9rem, 4.5vw, 3rem);
+  letter-spacing: -0.04em;
+}
+
+.page-sub,
+.subline {
+  margin: 0.55rem 0 0;
+  max-width: 42rem;
+  color: var(--t-fg2);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.empty-state {
+  padding: 2rem 1.25rem;
+  text-align: center;
+  color: var(--t-fg2);
+  border: 1px dashed var(--t-bd);
+  border-radius: calc(var(--t-radius, 8px) + 4px);
+  background: color-mix(in srgb, var(--t-bg2) 60%, transparent);
+}
+
 .app-footer {
   margin-top: auto;
   padding: 1.25rem clamp(0.85rem, 2.5vw, 1.75rem) 1.75rem;

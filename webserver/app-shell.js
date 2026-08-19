@@ -35,7 +35,7 @@
 
   function ensureInstallMetadata() {
     var metas = {
-      'theme-color': '#05070d',
+      'theme-color': '#0c0d10',
       'mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-status-bar-style': 'black-translucent',

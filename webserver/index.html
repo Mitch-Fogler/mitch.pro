@@ -4,7 +4,7 @@
 <meta http-equiv="content-type" content="text/html; charset=windows-1252">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#05070d">
+<meta name="theme-color" content="#0c0d10">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -6614,22 +6614,22 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
   <!-- Top Command Header Bar -->
   <header class="hud-topbar">
     <div class="hud-logo-area">
-      <span class="hud-kicker">STUDENT PORTAL</span>
-      <h1 class="hud-brand" id="home-brand">mitch.pro</h1>
+      <span class="hud-kicker">mitch.pro</span>
+      <h1 class="hud-brand" id="home-brand">Home</h1>
     </div>
     
     <div class="hud-search-area">
       <div class="home-search-box">
         <span aria-hidden="true" class="search-icon">⌕</span>
-        <input id="home-search" type="search" placeholder="Execute command or search pages..." autocomplete="off">
-        <button id="home-search-clear" type="button">Reset</button>
+        <input id="home-search" type="search" placeholder="Search pages…" autocomplete="off">
+        <button id="home-search-clear" type="button">Clear</button>
       </div>
     </div>
 
     <div class="hud-system-status">
       <span id="greeting-clock">6:44 PM</span>
-      <button type="button" class="hud-terminal-toggle-btn" onclick="toggleHudTerminal()" title="Toggle system console terminal">
-        <span>CONSOLE [ ` ]</span>
+      <button type="button" class="hud-terminal-toggle-btn" onclick="toggleHudTerminal()" title="Toggle console (`)">
+        <span>Console</span>
       </button>
       <div class="status-pill">
         <span class="status-indicator-dot"></span>
@@ -6650,27 +6650,26 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
           <div class="hero-text-group">
             <span id="greeting-text">Welcome back,</span>
             <h2 id="greeting-email">mitch@mitch.pro</h2>
-            <p class="hero-subtitle">Your student workspace is fully operational. Access games, pages, and preferences from this secure hub.</p>
+            <p class="hero-subtitle">Games, chat, market, and tools — pick a destination below.</p>
           </div>
-          <!-- Quick actions inside hero -->
           <nav class="home-actions" aria-label="Quick actions">
-            <a class="hub-action hub-action-primary" href="/games/" onclick="openHomeHref(event, '/games/');">Launch Games</a>
-            <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');">Marketplace</a>
-            <a class="hub-action" href="/vms/" onclick="openHomeHref(event, '/vms/');">VM Cloud</a>
-            <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)">Friends List</button>
-            <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily Claims</button>
+            <a class="hub-action hub-action-primary" href="/games/" onclick="openHomeHref(event, '/games/');">Games</a>
+            <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');">Shop</a>
+            <a class="hub-action" href="/vms/" onclick="openHomeHref(event, '/vms/');">VMs</a>
+            <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)">Friends</button>
+            <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily claim</button>
           </nav>
         </div>
       </section>
 
-      <!-- Cloud VM Sales Promo Banner -->
-      <section class="site-advert-banner" style="background: var(--surface); border: 1px solid var(--t-bd); border-radius: 16px; padding: 18px 24px; margin-bottom: 20px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.065), 0 10px 25px rgba(0,0,0,0.15);">
-        <div style="flex: 1; min-width: 250px;">
-          <span style="background: #ef4444; color: #fff; padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; margin-bottom: 6px;">🔥 NEW TIER</span>
-          <h3 style="font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.15rem; margin: 0 0 4px; color: #fff;">Get a Private Virtual Machine (Root Access)</h3>
-          <p style="margin: 0; font-size: 0.88rem; color: var(--t-fg2); line-height: 1.45;">Host servers, run background bots, compile large projects, and get complete root/admin control with a private VM starting at $2/week.</p>
+      <!-- Cloud VM promo -->
+      <section class="site-advert-banner" style="background: var(--t-bg2); border: 1px solid var(--t-bd); border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 1.15rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
+        <div style="flex: 1; min-width: 240px;">
+          <p style="margin: 0 0 0.35rem; color: var(--t-ac); font-size: 0.7rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase;">Private VMs</p>
+          <h3 style="font-family: 'Outfit', sans-serif; font-weight: 750; font-size: 1.1rem; margin: 0 0 0.3rem; color: var(--t-fg);">Root access from $2/week</h3>
+          <p style="margin: 0; font-size: 0.88rem; color: var(--t-fg2); line-height: 1.45;">Run servers, bots, and builds on your own Linux workspace.</p>
         </div>
-        <a href="/vms/" class="btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px;">View Deals & Apply</a>
+        <a href="/vms/" class="btn-primary" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 1rem; font-size: 0.88rem;">View plans</a>
       </section>
 
       <!-- Cloud VM Active Workspace Dashboard -->
@@ -6712,13 +6711,13 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
       <!-- Catalog Directory -->
       <section class="home-links-panel home-links-full">
         <div class="panel-heading links-heading">
-          <h3>ALL ACTIVE MODULES</h3>
-          <p>Grouped by purpose & frequency</p>
+          <h3>Pages</h3>
+          <p>Grouped by what they’re for</p>
         </div>
         <div id="links">
-          <div class="quick-empty">Initializing modules...</div>
+          <div class="quick-empty">Loading pages…</div>
         </div>
-        <div id="links-empty" style="display: none;">No matching modules discovered.</div>
+        <div id="links-empty" style="display: none;">No matching pages.</div>
       </section>
     </main>
 
@@ -6757,10 +6756,10 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
         <div id="top-games-list"></div>
       </div>
 
-      <!-- Quick Preferences Console -->
+      <!-- Quick Preferences -->
       <div class="hud-preferences-widget hud-widget-card">
         <div class="widget-heading">
-          <span class="widget-title">Console Controls</span>
+          <span class="widget-title">Controls</span>
         </div>
         <div class="home-toolbar">
           <div id="abToggleBar">
@@ -6770,9 +6769,9 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
             </label>
             <span>about:blank</span>
           </div>
-          <a id="preferences-card" data-task5-old="https://mitch.dnswish.com/" href="/preferences.html">
-            <span>⚙ Settings</span>
-            <small>Personalize client console</small>
+          <a id="preferences-card" href="/preferences/">
+            <span>Settings</span>
+            <small>Themes, display, privacy</small>
           </a>
           <div id="stats-bar"></div>
         </div>
@@ -6781,10 +6780,10 @@ body.home-editorial .hud-terminal-toggle-btn:hover {
       <!-- Popular Items Sidebar -->
       <section id="popular-hub" class="hud-widget-card popular-hub" aria-label="Popular and frequent">
         <div class="popular-hub-head">
-          <span class="widget-title">POPULAR PLACES</span>
+          <span class="widget-title">Popular</span>
         </div>
         <div id="popular-strip" class="popular-strip">
-          <p class="popular-empty">Loading recommendations...</p>
+          <p class="popular-empty">Loading…</p>
         </div>
       </section>
     </aside>
