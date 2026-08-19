@@ -16899,6 +16899,11 @@ function loadAllGamesList() {
             if (!raw.includes(Buffer.from('name="apple-mobile-web-app-title"'))) injectStr += '<meta name="apple-mobile-web-app-title" content="mitch.pro">\n';
           }
 
+          const hideVm = process.env.HIDE_VM_FEATURES === '1' || process.env.DISABLE_VM_FEATURES === '1' || process.env.DISABLE_VM_FEATURES === 'true';
+          if (hideVm && !isEmbeddedGameRuntime) {
+            injectStr += '<style>a[href="/vms/"], .site-advert-banner, #vm-workspace-panel, #cloud-vms { display: none !important; }</style>\n';
+          }
+
           if (loadAnalytics || loadRecaptcha) {
             injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
             if (loadRecaptcha) {
