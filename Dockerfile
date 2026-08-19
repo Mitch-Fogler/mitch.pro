@@ -1,7 +1,7 @@
 FROM oven/bun:1.3.13-alpine
 
-# Install Node.js for spawned background child processes
-RUN apk add --no-cache nodejs
+# Install Node.js and SSH client for spawned background child processes
+RUN apk add --no-cache nodejs openssh-client
 
 # Set working directory
 WORKDIR /app

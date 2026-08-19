@@ -17306,6 +17306,7 @@ setTimeout(() => {
   setInterval(pruneInactiveFreeVmsWorker, 300_000); // Check VM inactive free VMs every 5 mins
   pruneInactiveFreeVmsWorker(); 
 
+  initPortalSshKey();
   cleanupAllEphemeralVms();
 
   setInterval(happyHourWorker, 60000);
@@ -17733,6 +17734,24 @@ async function createLxcContainer(email, tier, vmid, password) {
       return { success: false, error: data.errors ? JSON.stringify(data.errors) : (data.message || 'LXC creation failed') };
     }
 
+    // Wait a brief moment for LXC to boot, then configure SSH root login via portal SSH key
+    setTimeout(() => {
+      try {
+        const { spawn } = require('child_process');
+        spawn('ssh', [
+          '-i', join(DATA_DIR, 'portal_id_rsa'),
+          '-p', '39222',
+          '-o', 'StrictHostKeyChecking=no',
+          '-o', 'UserKnownHostsFile=/dev/null',
+          'root@mitch.pro',
+          `pct exec ${vmid} -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && pct exec ${vmid} -- systemctl restart ssh`
+        ]);
+        console.log(`[proxmox] Spawned SSH config task to enable root login on LXC ${vmid}`);
+      } catch (err) {
+        console.error('[proxmox] Failed to run post-create config:', err);
+      }
+    }, 5000);
+
     return { success: true, vmid };
   } catch (err) {
     console.error('[proxmox] Error creating LXC container:', err);
@@ -17925,6 +17944,34 @@ async function pruneInactiveFreeVmsWorker() {
     }
   } catch (err) {
     console.error('[free-vm] Error in inactive VM pruner:', err);
+  }
+}
+
+function initPortalSshKey() {
+  const privateKeyPath = join(DATA_DIR, 'portal_id_rsa');
+  const publicKeyPath = join(DATA_DIR, 'portal_id_rsa.pub');
+  if (!existsSync(privateKeyPath)) {
+    console.log('[ssh-init] Generating dedicated portal SSH key pair...');
+    try {
+      const { execSync } = require('child_process');
+      execSync(`ssh-keygen -t rsa -b 2048 -N "" -f "${privateKeyPath}"`);
+      console.log('[ssh-init] Portal SSH key pair generated successfully.');
+    } catch (err) {
+      console.error('[ssh-init] Failed to generate portal SSH key pair:', err);
+      return;
+    }
+  }
+  try {
+    const fs = require('fs');
+    const pubKey = fs.readFileSync(publicKeyPath, 'utf8').trim();
+    console.log('\n========================================================================');
+    console.log('[SSH GATEWAY SECURITY KEY]');
+    console.log('To allow the web application to automatically configure new containers,');
+    console.log('please add the following public key to your Proxmox host /root/.ssh/authorized_keys file:');
+    console.log('\n' + pubKey + '\n');
+    console.log('========================================================================\n');
+  } catch (err) {
+    console.error('[ssh-init] Failed to read portal public SSH key:', err);
   }
 }
 
