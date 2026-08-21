@@ -175,6 +175,7 @@ const EMOJIS_FILE            = join(DATA_DIR, 'emojis.json');
 const VM_APPS_FILE           = join(DATA_DIR, 'vm_applications.json');
 const SEARCH_INTENT_LOG_FILE = join(DATA_DIR, 'search_intent.json');
 const DM_CLEARED_FILE        = join(DATA_DIR, 'dm_cleared.json');
+const CHAT_RESET_FILE        = join(DATA_DIR, 'chat_reset_state.json');
 const CHAT_REPORTS_FILE      = join(DATA_DIR, 'chat_reports.json');
 const PUSH_SUBS_FILE         = join(DATA_DIR, 'push_subs.json');
 const NUDGE_FILE             = join(DATA_DIR, 'nudge_sent.json');
@@ -1325,6 +1326,21 @@ function saveJsonSync(file, data) {
   } catch (e) {
     console.error(`[saveJsonSync] error writing ${file}: ${e.message}`);
   }
+}
+
+// One-time reset requested for the messaging-app relaunch. The marker lives in
+// the persistent data directory, so later restarts cannot erase new messages.
+const CHAT_RESET_VERSION = 'messaging-app-v2-2026-08-21';
+try {
+  const resetState = loadJson(CHAT_RESET_FILE, {});
+  if (resetState.version !== CHAT_RESET_VERSION) {
+    saveJsonSync(DMS_FILE, []);
+    saveJsonSync(DM_CLEARED_FILE, {});
+    saveJsonSync(CHAT_RESET_FILE, { version: CHAT_RESET_VERSION, resetAt: Date.now() });
+    console.log('[chat] Existing direct and group message history cleared for messaging-app relaunch.');
+  }
+} catch (error) {
+  console.error('[chat] Unable to apply requested message-history reset:', error);
 }
 
 function site() {
@@ -10675,7 +10691,8 @@ function loadAllGamesList() {
           contents = bi >= 0 ? contents.slice(0, bi) + syncTag + contents.slice(bi) : contents + syncTag;
         }
         const asstTag = '<script src="/assistant.js" defer><\/script>';
-        if (!contents.includes('<script src="/assistant.js" defer><\/script>')) {
+        const isSecureChatPage = reqPath === 'encrypt/' || reqPath === 'encrypt' || reqPath === 'encrypt/index.html';
+        if (!isSecureChatPage && !contents.includes('<script src="/assistant.js" defer><\/script>')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
@@ -13055,7 +13072,10 @@ function loadAllGamesList() {
         
         const e2eLegacy = deriveUserE2EKeys(email);
         const e2eEntry = e2eKeysData[norm];
-        const pubKey = e2eEntry ? e2eEntry.pubKeyHex : e2eLegacy.pubKeyHex;
+        // Prefer the key advertised by the user's currently connected chat
+        // session so a newly opened device can receive messages immediately.
+        const liveE2eKey = e2eUsers[norm]?.pub_key;
+        const pubKey = liveE2eKey || (e2eEntry ? e2eEntry.pubKeyHex : e2eLegacy.pubKeyHex);
         const legacyPubKey = e2eLegacy.pubKeyHex;
         
         const processed = processMemberFields(email, profile, viewerEmail);
@@ -13412,10 +13432,10 @@ function loadAllGamesList() {
       }
       const subs = VAPID_PUBLIC ? loadPushSubscriptions() : {};
       let msg;
-      const requestedExpiry = Number(body.expiry) || 0;
-      const expiry = [30000, 60000, 300000, 3600000].includes(requestedExpiry)
-        ? requestedExpiry
-        : 0;
+      // Secure Chat now keeps messages until a user deliberately clears them.
+      // Ignore expiry values from older cached clients so messages cannot seem
+      // to vanish without an explicit action.
+      const expiry = 0;
       const getNotificationBody = (t, img) => encryptedEnvelope
         ? '[Secure Message]'
         : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));

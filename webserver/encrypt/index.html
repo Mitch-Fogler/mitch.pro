@@ -710,7 +710,7 @@ button {
   transition: none !important;
 }
 </style>
-<link rel="stylesheet" href="/encrypt-galaxy.css?v=3">
+<link rel="stylesheet" href="/encrypt-galaxy.css?v=4">
 </head>
 <body class="encrypt-page">
 
@@ -749,11 +749,16 @@ button {
       </div>
       <div class="encryption-status"><i></i><span>END-TO-END<br>ENCRYPTED</span></div>
       <div class="header-tools">
-        <input id="msgSearch" placeholder="search this chat..." autocomplete="off">
-        <button id="expiry-btn" class="tool-btn" type="button" title="Set auto-delete for new messages in this session">Auto-delete: off</button>
-        <button id="clear-chat-btn" class="tool-btn" type="button">Clear chat</button>
-        <button id="export-chat-btn" class="tool-btn" type="button">Export</button>
-        <button id="leave-group-btn" class="tool-btn" type="button" style="display:none">Leave</button>
+        <button id="chat-search-toggle" class="tool-btn chat-icon-btn" type="button" aria-expanded="false" aria-controls="chat-tools-menu">Search</button>
+        <button id="chat-more-btn" class="tool-btn chat-icon-btn" type="button" aria-expanded="false" aria-controls="chat-tools-menu" aria-label="Conversation options">•••</button>
+        <div id="chat-tools-menu" role="menu">
+          <input id="msgSearch" placeholder="Search this conversation" autocomplete="off">
+          <div class="chat-menu-actions">
+            <button id="clear-chat-btn" class="tool-btn" type="button">Clear chat</button>
+            <button id="export-chat-btn" class="tool-btn" type="button">Export</button>
+            <button id="leave-group-btn" class="tool-btn" type="button" style="display:none">Leave group</button>
+          </div>
+        </div>
       </div>
     </header>
     <div id="no-chat">
@@ -839,12 +844,12 @@ let livePollBusy = false;
 let hasMoreMessages = true;
 let isLoadingMore = false;
 let activeChatLoadSeq = 0;
+const conversationCache = new Map();
+const conversationRequests = new Map();
 
-const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
-const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
-let msgExpiry = 0;
-// Auto-delete is deliberately session-only. A stale saved value previously
-// made normal messages disappear after a reload with no obvious cause.
+const msgExpiry = 0;
+// Messages are permanent by default. Remove the obsolete saved auto-delete
+// preference that previously made messages seem to disappear at random.
 try { localStorage.removeItem('_chatExpiry'); } catch {}
 
 const h2b = h => {
@@ -1288,13 +1293,18 @@ async function init() {
           ['deriveKey', 'deriveBits']
         );
         myLegacyKP = { publicKey: legacyPub, privateKey: legacyPriv };
+        // The account-scoped fallback key is supplied with the authenticated
+        // session, so Secure Chat opens immediately without a second password
+        // prompt. A matching device key below still takes precedence when one
+        // is already available.
+        myKP = myLegacyKP;
       } catch (err) {
         console.error("Failed to load legacy keypair:", err);
       }
     }
 
     // 2. Check if we already have a valid password-derived key in localStorage
-    let hasValidLocalKey = false;
+    let hasValidLocalKey = Boolean(myKP);
     const privateKeyStorageKey = e2eStorageKey('private_jwk');
     const scopedLocalJwkStr = localStorage.getItem(privateKeyStorageKey);
     const legacyLocalJwkStr = localStorage.getItem('_e2e_private_jwk');
@@ -1615,8 +1625,6 @@ async function init() {
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').classList.add('ready');
   document.getElementById('my-identity').innerHTML = '&gt; ' + (myDisplayName ? `${myDisplayName} (${esc(myEmail)})` : esc(myEmail));
-  syncExpiryButton();
-
   await refreshEverything();
   setInterval(loadMembers, 7000);
   setInterval(loadGroups, 8000);
@@ -1647,7 +1655,8 @@ function bindEvents() {
   document.getElementById('clear-chat-btn').onclick = clearCurrentChat;
   document.getElementById('export-chat-btn').onclick = exportCurrentChat;
   document.getElementById('leave-group-btn').onclick = leaveCurrentGroup;
-  document.getElementById('expiry-btn').onclick = cycleExpiry;
+  document.getElementById('chat-search-toggle').onclick = () => toggleChatTools(true);
+  document.getElementById('chat-more-btn').onclick = () => toggleChatTools();
   document.getElementById('attachBtn').onclick = () => document.getElementById('imageInput').click();
   document.getElementById('imageInput').onchange = handleImagePick;
   document.getElementById('image-clear-btn').onclick = clearImage;
@@ -1660,6 +1669,16 @@ function bindEvents() {
     }
   });
   document.getElementById('msgInput').addEventListener('input', syncComposer);
+  const userList = document.getElementById('user-list');
+  const warmConversation = event => {
+    const entry = event.target.closest('[data-email], [data-group]');
+    if (!entry) return;
+    if (entry.dataset.email) prefetchConversation({ type:'dm', id:entry.dataset.email });
+    if (entry.dataset.group) prefetchConversation({ type:'group', id:entry.dataset.group });
+  };
+  userList.addEventListener('pointerover', warmConversation);
+  userList.addEventListener('focusin', warmConversation);
+  userList.addEventListener('pointerdown', warmConversation);
   const msgsEl = document.getElementById('msgs');
   msgsEl.addEventListener('click', onMessageAction);
   msgsEl.addEventListener('scroll', () => {
@@ -1682,6 +1701,9 @@ function bindEvents() {
     loadGroups();
   });
   document.getElementById('chat-back-btn').onclick = deselectChat;
+  document.addEventListener('click', event => {
+    if (!event.target.closest('.header-tools')) closeChatTools();
+  });
 }
 
 function startLivePolling() {
@@ -1689,7 +1711,7 @@ function startLivePolling() {
   livePollTimer = setInterval(() => {
     if (document.visibilityState !== 'visible') return;
     pollNewDMs();
-  }, 5000);
+  }, 2000);
   pollNewDMs();
 }
 
@@ -1903,8 +1925,10 @@ async function selectDm(email) {
   document.getElementById('chat-subtitle').textContent = (member && member.online ? 'online' : 'offline') + ' - ' + email;
   document.getElementById('leave-group-btn').style.display = 'none';
   showChatShell();
+  closeChatTools();
+  showConversationImmediately(activeChat);
   renderList();
-  await reloadActiveChat();
+  void reloadActiveChat();
   markActiveRead();
 }
 
@@ -1917,8 +1941,10 @@ async function selectGroup(groupId) {
   document.getElementById('chat-subtitle').textContent = (group.members || []).map(displayNameFor).join(', ');
   document.getElementById('leave-group-btn').style.display = '';
   showChatShell();
+  closeChatTools();
+  showConversationImmediately(activeChat);
   setView('groups');
-  await reloadActiveChat();
+  void reloadActiveChat();
   markActiveRead();
 }
 
@@ -2177,21 +2203,73 @@ function showChatShell() {
   syncComposer();
 }
 
+function toggleChatTools(focusSearch = false) {
+  const menu = document.getElementById('chat-tools-menu');
+  const nextOpen = focusSearch || !menu.classList.contains('open');
+  menu.classList.toggle('open', nextOpen);
+  document.getElementById('chat-more-btn').setAttribute('aria-expanded', String(nextOpen));
+  document.getElementById('chat-search-toggle').setAttribute('aria-expanded', String(nextOpen));
+  if (nextOpen && focusSearch) requestAnimationFrame(() => document.getElementById('msgSearch').focus());
+}
+
+function closeChatTools() {
+  const menu = document.getElementById('chat-tools-menu');
+  menu.classList.remove('open');
+  document.getElementById('chat-more-btn').setAttribute('aria-expanded', 'false');
+  document.getElementById('chat-search-toggle').setAttribute('aria-expanded', 'false');
+}
+
+function chatCacheKey(chat) {
+  return chat ? `${chat.type}:${chat.type === 'dm' ? normEmail(chat.id) : String(chat.id)}` : '';
+}
+
+async function fetchConversation(chat, limit = 20) {
+  const key = chatCacheKey(chat);
+  if (conversationRequests.has(key)) return conversationRequests.get(key);
+  const url = chat.type === 'group'
+    ? `/api/dm/inbox?group=${encodeURIComponent(chat.id)}&limit=${limit}`
+    : `/api/dm/inbox?with=${encodeURIComponent(chat.id)}&limit=${limit}`;
+  const request = (async () => {
+    const response = await fetch(url, { credentials:'include', cache:'no-store' });
+    if (!response.ok) throw new Error('Conversation request failed');
+    const data = await response.json();
+    const messages = (data.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    await Promise.all(messages.map(decryptMessageContent));
+    conversationCache.set(key, messages);
+    return messages;
+  })().finally(() => conversationRequests.delete(key));
+  conversationRequests.set(key, request);
+  return request;
+}
+
+function showConversationImmediately(chat) {
+  const cached = conversationCache.get(chatCacheKey(chat));
+  currentMessages = cached ? [...cached] : [];
+  renderMessages();
+  if (!cached) {
+    document.getElementById('msgs').innerHTML = '<div class="conversation-loading"><i></i><span>Opening conversation</span></div>';
+  }
+}
+
+function prefetchConversation(chat) {
+  const key = chatCacheKey(chat);
+  if (!key || conversationCache.has(key) || conversationRequests.has(key)) return;
+  fetchConversation(chat).catch(() => {});
+}
+
+function cacheConversationMessages(chat = activeChat, messages = currentMessages) {
+  const key = chatCacheKey(chat);
+  if (key) conversationCache.set(key, [...messages]);
+}
+
 async function reloadActiveChat() {
   if (!activeChat) return;
   const chatAtStart = { ...activeChat };
   const loadSeq = ++activeChatLoadSeq;
   hasMoreMessages = true;
   isLoadingMore = false;
-  const url = chatAtStart.type === 'group'
-    ? `/api/dm/inbox?group=${encodeURIComponent(chatAtStart.id)}&limit=20`
-    : `/api/dm/inbox?with=${encodeURIComponent(chatAtStart.id)}&limit=20`;
   try {
-    const r = await fetch(url, { credentials:'include' });
-    const d = await r.json();
-    const msgs = (d.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
-    // Important: Decrypt messages before rendering in the active chat view
-    await Promise.all(msgs.map(decryptMessageContent));
+    const msgs = await fetchConversation(chatAtStart);
     if (loadSeq !== activeChatLoadSeq || !sameChat(activeChat, chatAtStart)) return;
     const pending = currentMessages.filter(m => m.isPending && isMessageForChat(m, chatAtStart));
     const merged = new Map();
@@ -2199,13 +2277,18 @@ async function reloadActiveChat() {
     // stored server copy with the same clientId confirm/replace the pending one.
     for (const message of [...pending, ...msgs]) merged.set(msgId(message), message);
     currentMessages = [...merged.values()].sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    conversationCache.set(chatCacheKey(chatAtStart), [...currentMessages]);
     renderMessages();
     const el = document.getElementById('msgs');
     el.scrollTop = el.scrollHeight;
     if (msgs.length < 20) {
       hasMoreMessages = false;
     }
-  } catch {}
+  } catch {
+    if (loadSeq === activeChatLoadSeq && sameChat(activeChat, chatAtStart) && !currentMessages.length) {
+      document.getElementById('msgs').innerHTML = '<div class="empty">Could not open this conversation. Try again.</div>';
+    }
+  }
 }
 
 async function loadMoreMessages() {
@@ -2233,6 +2316,7 @@ async function loadMoreMessages() {
     await Promise.all(msgs.map(decryptMessageContent));
 
     currentMessages = [...msgs, ...currentMessages];
+    cacheConversationMessages();
 
     const el = document.getElementById('msgs');
     const oldScrollHeight = el.scrollHeight;
@@ -2333,6 +2417,7 @@ function filterCurrentMessages() {
 function appendOrRerender(m) {
   currentMessages.push(m);
   currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+  cacheConversationMessages();
   renderMessages();
   const el = document.getElementById('msgs');
   el.scrollTop = el.scrollHeight;
@@ -2377,6 +2462,7 @@ async function send() {
   if (isMessageForChat(pendingMsg, activeChat)) {
     currentMessages.push(pendingMsg);
     currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+    cacheConversationMessages(activeChat);
     renderMessages();
     const el = document.getElementById('msgs');
     if (el) el.scrollTop = el.scrollHeight;
@@ -2552,6 +2638,7 @@ async function send() {
     if (sameChat(activeChat, chatAtSend) && isMessageForChat(msg, chatAtSend)) {
       currentMessages.push(msg);
       currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+      cacheConversationMessages(chatAtSend);
     }
     renderMessages();
     renderList();
@@ -2636,6 +2723,7 @@ async function pollNewDMs() {
     }
     if (activeAdded) {
       currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+      cacheConversationMessages();
       const el = document.getElementById('msgs');
       const bottom = atBottom(el);
       renderMessages();
@@ -2674,6 +2762,7 @@ async function clearCurrentChat() {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.success) return toast(d.error || 'Could not clear chat.');
+    conversationCache.delete(chatCacheKey(activeChat));
     currentMessages = [];
     allMessages = allMessages.filter(m => !isActiveMessage(m));
     renderMessages();
@@ -2699,6 +2788,7 @@ async function clearAllChats() {
     currentMessages = [];
     unreadDm = {};
     unreadGroup = {};
+    conversationCache.clear();
     renderMessages();
     renderList();
     toast('All chats cleared from your view.');
@@ -2879,23 +2969,6 @@ function handleImagePick() {
     syncComposer();
   };
   reader.readAsDataURL(file);
-}
-
-function cycleExpiry() {
-  const cur = EXPIRY_OPTIONS.indexOf(msgExpiry);
-  const next = EXPIRY_OPTIONS[(cur + 1) % EXPIRY_OPTIONS.length];
-  if (msgExpiry === 0 && next > 0 && !confirm('Auto-delete permanently removes new messages for everyone after the selected time. Turn it on?')) {
-    return;
-  }
-  msgExpiry = next;
-  syncExpiryButton();
-}
-
-function syncExpiryButton() {
-  const idx = Math.max(0, EXPIRY_OPTIONS.indexOf(msgExpiry));
-  const button = document.getElementById('expiry-btn');
-  button.textContent = 'Auto-delete: ' + EXPIRY_LABELS[idx];
-  button.classList.toggle('on', msgExpiry > 0);
 }
 
 function openGroupModal() {
