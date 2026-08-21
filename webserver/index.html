@@ -314,40 +314,10 @@ function parseSites(text) {
     '/public-chat/', '/public-chat',
     '/marketplace/', '/marketplace'
   ];
-  var visits = {};
-  try { visits = JSON.parse(localStorage.getItem('_prefVisits') || '{}'); } catch(e) {}
-
-  function getPopularityScore(entry) {
-    var href = entry.href;
-    var normHref = href.endsWith('/') ? href : href + '/';
-    var normHref2 = href.endsWith('/') ? href.slice(0, -1) : href;
-
-    var localVisits = visits[normHref] || visits[normHref2] || visits[href] || 0;
-    var globalVisits = _gameVisits(href) || _gameVisits(normHref) || _gameVisits(normHref2) || 0;
-    var isDefaultPopular = popularHrefs.includes(normHref) || popularHrefs.includes(normHref2) || popularHrefs.includes(href);
-
-    return (localVisits * 10) + globalVisits + (isDefaultPopular ? 50 : 0);
-  }
-
-  var candidateEntries = entries.filter(function(e) {
-    if (e.isAdmin) return false;
-    return getPopularityScore(e) > 0;
-  });
-
-  candidateEntries.sort(function(a, b) {
-    return getPopularityScore(b) - getPopularityScore(a);
-  });
-
-  var topPopular = candidateEntries;
-  if (topPopular.length > 0) {
-    categories['Popular & Frequent'] = topPopular.map(function(e) {
-      return makeSiteLink(e.type, e.href, e.label, 'popular-site-link');
-    });
-  }
-
   updateHomeCounts(entries, categories);
   renderQuickActions(entries);
-  renderPopularStrip(candidateEntries);
+  window.cachedEntries = entries;
+  updatePopularLaunches();
 
   var sortedCats = Object.keys(categories).sort(function(a, b) {
     if (a === 'Popular & Frequent') return -1;
@@ -389,7 +359,7 @@ function renderPopularStrip(entries) {
   var wrap = document.getElementById('popular-hub');
   if (!strip) return;
   strip.innerHTML = '';
-  var list = (entries || []).slice(0, 12);
+  var list = (entries || []).slice(0, 30);
   if (!list.length) {
     strip.innerHTML = '<p class="popular-empty">Your frequent pages will show up here.</p>';
     if (wrap) wrap.hidden = false;
@@ -671,17 +641,89 @@ document.addEventListener('keydown', function(e) {
 
 var _topEntries = [], _topStats = {}, _featuredGame = '';
 
+function updatePopularLaunches() {
+  var visits = {};
+  try { visits = JSON.parse(localStorage.getItem('_prefVisits') || '{}'); } catch(e) {}
+  var _homePref = {};
+  try { _homePref = JSON.parse(localStorage.getItem('_prefHomepage') || '{}'); } catch(e) {}
+  var _pinned = new Set(_homePref.pinnedGames || []);
+
+  var popularHrefs = [
+    '/chat/', '/chat',
+    '/blooket-bot/', '/blooket-bot',
+    '/preferences/', '/preferences',
+    '/inventory/', '/inventory',
+    '/blog/', '/blog',
+    '/members/', '/members',
+    '/feedback/', '/feedback',
+    '/friends/', '/friends',
+    '/leaderboard/', '/leaderboard',
+    '/games/jeopardy-battle/', '/games/jeopardy-battle',
+    '/games/battleship/', '/games/battleship',
+    '/casino/', '/casino',
+    '/canvas/', '/canvas',
+    '/encrypt/', '/encrypt',
+    '/shop/', '/shop',
+    '/public-chat/', '/public-chat',
+    '/marketplace/', '/marketplace',
+    '/tabs/', '/tabs',
+    '/bell/', '/bell',
+    '/games/adrian-clicker/', '/games/adrian-clicker',
+    '/games/kodys-keyboard/', '/games/kodys-keyboard',
+    '/games/lillians-logic/', '/games/lillians-logic',
+    '/games/richards-riches/', '/games/richards-riches',
+    '/games/pennys-piano-keys/', '/games/pennys-piano-keys'
+  ];
+
+  var allEntries = [];
+  var seenHrefs = new Set();
+  function addEntry(e) {
+    if (!e || !e.href) return;
+    var norm = e.href.replace(/\/$/, '');
+    if (seenHrefs.has(norm)) return;
+    seenHrefs.add(norm);
+    allEntries.push(e);
+  }
+
+  (window.cachedEntries || []).forEach(addEntry);
+  (_topEntries || []).forEach(addEntry);
+
+  function getScore(entry) {
+    var href = entry.href;
+    var normHref = href.endsWith('/') ? href : href + '/';
+    var normHref2 = href.endsWith('/') ? href.slice(0, -1) : href;
+    var rawHref = href.replace(/^\/games\//, '').replace(/\/$/, '');
+
+    var isPinned = _pinned.has(href) || _pinned.has(normHref) || _pinned.has(normHref2) || _pinned.has(rawHref);
+    if (isPinned) return 10000000;
+
+    var localVisits = visits[normHref] || visits[normHref2] || visits[href] || visits[rawHref] || 0;
+    var globalVisits = _gameVisits(href) || _gameVisits(normHref) || _gameVisits(normHref2) || _gameVisits(rawHref) || 0;
+    var isDefaultPopular = popularHrefs.includes(normHref) || popularHrefs.includes(normHref2) || popularHrefs.includes(href);
+
+    return (localVisits * 20) + globalVisits + (isDefaultPopular ? 100 : 0);
+  }
+
+  var candidates = allEntries.filter(function(e) {
+    if (e.isAdmin) return false;
+    return getScore(e) > 0;
+  }).sort(function(a, b) {
+    return getScore(b) - getScore(a);
+  });
+
+  renderPopularStrip(candidates);
+}
+
 async function loadTopGames() {
   var c = new URLSearchParams(document.cookie.replaceAll('; ', '&'));
   var hash = c.get('studentId') || c.get('password');
   var [gamesRes, statsRes] = await Promise.all([
-    fetch('/api/games', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({hash})}).catch(()=>null),
+    fetch('/api/games', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({hash, limit: 100})}).catch(()=>null),
     fetch('/api/game-stats').catch(()=>null),
   ]);
   if (statsRes && statsRes.ok) _topStats = ((await statsRes.json().catch(()=>({}))).stats) || {};
   if (gamesRes && gamesRes.ok) {
     var gameData = await gamesRes.json().catch(()=>({}));
-    _featuredGame = gameData.featured || '';
     var text = gameData.content || '';
     _topEntries = [];
     text.split('\n').forEach(function(line) {
@@ -692,10 +734,10 @@ async function loadTopGames() {
       var type = parts[0], href = parts[1];
       var label = parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim();
       if (!label || href === '/report-game.html') return;
-      _topEntries.push({type, href, label});
+      _topEntries.push({type: type, href: _gameHref(href), label: label, isAdmin: false, category: 'MitchCoin Games'});
     });
   }
-  renderTopGames();
+  updatePopularLaunches();
 }
 
 function _gameVisits(href) {
@@ -707,89 +749,7 @@ function _gameHref(href) {
   return '/games/' + href;
 }
 
-function _makeGameLink(entry, label, rankText) {
-  var fullHref = _gameHref(entry.href);
-  var a = document.createElement('a');
-  a.href = fullHref || '#';
-  if (entry.type === 'tab' || entry.type === 'newtab') {
-    a.target = '_blank';
-    a.rel = 'noopener';
-  }
-  a.className = 'site-link';
-  a.style.cssText = 'display:flex;align-items:center;gap:.45rem;';
-  var rank = document.createElement('span');
-  rank.style.cssText = 'font-size:.68rem;font-weight:700;color:var(--t-fg2);opacity:.4;width:16px;flex-shrink:0;text-align:right;';
-  rank.textContent = rankText;
-  a.appendChild(rank);
-  var name = document.createElement('span');
-  name.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-  name.textContent = label || entry.label;
-  a.appendChild(name);
-  (function(t, h) {
-    a.onclick = function(ev) {
-      ev.preventDefault();
-      try {
-        var visits = JSON.parse(localStorage.getItem('_prefVisits') || '{}');
-        visits[h] = (visits[h] || 0) + 1;
-        localStorage.setItem('_prefVisits', JSON.stringify(visits));
-      } catch(err) {}
-      try {
-        var abEl = document.getElementById('abToggle');
-        if (abEl && abEl.checked) { openAboutBlank(h); return; }
-        if (t === 'iframe') { showIframe(h, false); }
-        else if (t === 'eframe') { showIframe(h, true); }
-        else if (t === 'popup') { showPopup(h); }
-        else if (t === 'tab' || t === 'newtab') { openInNewTab(h); }
-        else { window.location.href = h; }
-      } catch (err) {
-        window.location.href = h;
-      }
-    };
-  })(entry.type, fullHref);
-  return a;
-}
-
 function renderTopGames() {
-  var _homePref = {};
-  try { _homePref = JSON.parse(localStorage.getItem('_prefHomepage') || '{}'); } catch(e) {}
-  var _topCount = _homePref.topCount != null ? _homePref.topCount : 5;
-  var _pinned = new Set(_homePref.pinnedGames || []);
-  var pinnedEntries = _topEntries.filter(function(e) { return _pinned.has(e.href); });
-  var top = _topEntries.slice()
-    .filter(function(e) { return !_pinned.has(e.href); })
-    .sort(function(a, b) { return _gameVisits(b.href) - _gameVisits(a.href); })
-    .filter(function(e) { return _gameVisits(e.href) > 0; })
-    .slice(0, _topCount);
-  var section = document.getElementById('top-games');
-  var featuredEntry = _featuredGame ? _topEntries.find(function(e) { return e.href === _featuredGame; }) : null;
-  var list = document.getElementById('top-games-list');
-  if (!section || !list) return;
-  list.innerHTML = '';
-  if (!featuredEntry && !pinnedEntries.length && !top.length) { section.style.display = 'none'; return; }
-  section.style.display = 'block';
-  if (featuredEntry) {
-    var featLabel = document.createElement('div');
-    featLabel.style.cssText = 'font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--t-ac);font-weight:800;margin-bottom:.3rem;padding-left:2px;';
-    featLabel.textContent = 'Game of the Week';
-    list.appendChild(featLabel);
-    list.appendChild(_makeGameLink(featuredEntry, featuredEntry.label, 'Top'));
-  }
-  if (pinnedEntries.length) {
-    var pinLabel = document.createElement('div');
-    pinLabel.style.cssText = 'font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--t-fg2);font-weight:700;opacity:.5;margin-bottom:.3rem;padding-left:2px;';
-    pinLabel.textContent = 'Pinned';
-    list.appendChild(pinLabel);
-    pinnedEntries.forEach(function(entry) { list.appendChild(_makeGameLink(entry, entry.label, '&#128204;')); });
-    if (top.length) {
-      var playedLabel = document.createElement('div');
-      playedLabel.style.cssText = 'font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:var(--t-fg2);font-weight:700;opacity:.5;margin-top:.55rem;margin-bottom:.3rem;padding-left:2px;';
-      playedLabel.textContent = 'Most Played';
-      list.appendChild(playedLabel);
-    }
-  }
-  top.forEach(function(entry, i) {
-    list.appendChild(_makeGameLink(entry, entry.label, '#' + (i + 1)));
-  });
 }
 
 function applyWidgetOrder() {
@@ -814,11 +774,6 @@ function applyHomepagePrefs() {
   if (quick) quick.style.display = homePref.showQuickActions === false ? 'none' : '';
   document.body.classList.toggle('home-no-quick', homePref.showQuickActions === false);
   
-  var topGames = document.getElementById('top-games');
-  if (topGames) {
-    if (privPref.noHistory) topGames.style.display = 'none';
-  }
-
   var ab = document.getElementById('abToggle');
   if (ab) ab.checked = !!displayPref.abAutoLaunch;
   if (homePref.focusSearch) {
@@ -3847,7 +3802,7 @@ if (document.readyState === 'loading') {
     opacity: .62;
   }
 
-  #quick-actions-list, #top-games-list {
+  #quick-actions-list {
     display: flex;
     flex-direction: column;
     gap: 7px;
@@ -3951,13 +3906,6 @@ if (document.readyState === 'loading') {
     font-size: 0.68rem;
     color: var(--t-fg2);
     opacity: 0.8;
-  }
-
-  #top-games {
-    display: none;
-    margin-top: 16px;
-    padding-top: 14px;
-    border-top: 1px solid var(--t-bd);
   }
 
   #links {
@@ -6062,24 +6010,57 @@ body.home-editorial .hud-preferences-widget .home-toolbar > *:hover {
   border-color: var(--t-ac) !important;
 }
 
-body.home-editorial .popular-strip { display: flex; flex-direction: column; gap: 0; }
+body.home-editorial .popular-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 480px;
+  min-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--t-ac) rgba(255, 255, 255, 0.05);
+}
+
+body.home-editorial .popular-strip::-webkit-scrollbar {
+  width: 6px;
+}
+body.home-editorial .popular-strip::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 99px;
+}
+body.home-editorial .popular-strip::-webkit-scrollbar-thumb {
+  background: var(--t-ac, #d6ff4a);
+  border-radius: 99px;
+}
 
 body.home-editorial .popular-strip a.site-link.hub-popular-link {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  min-height: 2.5rem !important;
-  padding: 0.4rem 0 !important;
-  border: 0 !important;
-  border-bottom: 1px solid var(--t-bd) !important;
-  border-radius: 0 !important;
-  background: transparent !important;
+  gap: 0.85rem;
+  min-height: 3.2rem !important;
+  padding: 0.6rem 0.8rem !important;
+  border: 1px solid var(--t-bd) !important;
+  border-radius: var(--t-radius, 8px) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
   box-shadow: none !important;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
 }
 
 body.home-editorial .popular-strip a.site-link.hub-popular-link:hover {
-  padding-left: 0.4rem !important;
-  color: var(--t-ac);
+  transform: translateX(4px);
+  padding-left: 0.8rem !important;
+  border-color: var(--t-ac) !important;
+  background: color-mix(in srgb, var(--t-ac) 12%, transparent) !important;
+  color: var(--t-fg);
+}
+
+body.home-editorial .popular-strip a.site-link.hub-popular-link .lbl {
+  font-size: 0.92rem;
+  font-weight: 700;
 }
 
 body.home-editorial .home-links-panel {
@@ -6581,15 +6562,6 @@ html.theme-glass body.home-editorial .hud-widget-card {
           </div>
         </div>
         <button id="daily-login-btn" class="daily-login-claim-btn" disabled>Claim</button>
-      </div>
-
-      <!-- Personalized Top Games -->
-      <div id="top-games" class="hud-widget-card" style="display: none;">
-        <div class="panel-heading">
-          <span class="widget-title">Frequent Launch</span>
-          <small>Personalized</small>
-        </div>
-        <div id="top-games-list"></div>
       </div>
 
       <!-- Quick Preferences -->
