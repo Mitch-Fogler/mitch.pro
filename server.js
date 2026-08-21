@@ -6056,7 +6056,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js" defer></script>';
+  const tag = '<script src="/broadcast.js?v=3" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -9319,6 +9319,7 @@ Mitch.pro Team`;
       const markAll = !!body.all;
       const coinGiftIds = new Set(Array.isArray(body.coinGiftIds) ? body.coinGiftIds.map(String) : []);
       const dmFroms = new Set(Array.isArray(body.dmFroms) ? body.dmFroms.map(v => normalizeEmail(v)) : []);
+      const groupIds = new Set(Array.isArray(body.groupIds) ? body.groupIds.map(String) : []);
 
       const gifts = loadJson(COIN_GIFTS_FILE, {});
       const mineGifts = Array.isArray(gifts[norm]) ? gifts[norm] : [];
@@ -9335,10 +9336,20 @@ Mitch.pro Team`;
       }
 
       const dms = loadJson(DMS_FILE, []);
+      const readableGroupIds = new Set(loadJson(GROUPS_FILE, [])
+        .filter(group => Array.isArray(group.members) && group.members.some(member => normalizeEmail(member) === norm))
+        .map(group => String(group.id || '')));
       let dmsChanged = false;
       for (const m of dms) {
-        if (normalizeEmail(m.to || '') !== norm || m.read) continue;
-        if (markAll || dmFroms.has(normalizeEmail(m.from || ''))) {
+        if (m.kind === 'group') {
+          if (readableGroupIds.has(String(m.groupId || '')) &&
+              (markAll || groupIds.has(String(m.groupId || ''))) &&
+              !(m.readBy || []).some(reader => normalizeEmail(reader) === norm)) {
+            m.readBy = [...(m.readBy || []), email];
+            dmsChanged = true;
+          }
+        } else if (normalizeEmail(m.to || '') === norm && !m.read &&
+                   (markAll || dmFroms.has(normalizeEmail(m.from || '')))) {
           m.read = true;
           dmsChanged = true;
         }
@@ -10668,8 +10679,8 @@ function loadAllGamesList() {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js" defer><\/script>';
-        if (!contents.includes(bcastTag)) {
+        const bcastTag = '<script src="/broadcast.js?v=3" defer><\/script>';
+        if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
         }
@@ -12871,8 +12882,11 @@ function loadAllGamesList() {
         });
       }
 
+      const notificationDms = loadJson(DMS_FILE, []);
       const dmBySender = {};
-      for (const m of loadJson(DMS_FILE, [])) {
+      const now = Date.now();
+      for (const m of notificationDms) {
+        if (m.expiresAt && now > m.expiresAt) continue;
         if (normalizeEmail(m.to || '') !== norm || m.read) continue;
         const from = normalizeEmail(m.from || '');
         if (!from) continue;
@@ -12899,7 +12913,34 @@ function loadAllGamesList() {
           body: `From ${maskEmail(from)}`,
           detail: info.latestText ? `Latest: ${info.latestText}` : '',
           ts: info.latestTs,
-          url: notificationUrl('/encrypt.html'),
+          url: notificationUrl('/encrypt/'),
+        });
+      }
+
+      const myGroupIds = new Set(loadJson(GROUPS_FILE, [])
+        .filter(group => Array.isArray(group.members) && group.members.some(member => normalizeEmail(member) === norm))
+        .map(group => String(group.id || '')));
+      const groupById = {};
+      for (const m of notificationDms) {
+        if (m.kind !== 'group' || !myGroupIds.has(String(m.groupId || ''))) continue;
+        if (m.expiresAt && now > m.expiresAt) continue;
+        if (normalizeEmail(m.from || '') === norm) continue;
+        if ((m.readBy || []).some(reader => normalizeEmail(reader) === norm)) continue;
+        const groupId = String(m.groupId || '');
+        if (!groupById[groupId]) groupById[groupId] = { count: 0, latestTs: 0, name: m.groupName || 'Group chat' };
+        groupById[groupId].count++;
+        if ((m.ts || 0) >= groupById[groupId].latestTs) groupById[groupId].latestTs = m.ts || 0;
+      }
+      for (const [groupId, info] of Object.entries(groupById)) {
+        notices.push({
+          type: 'group_dm',
+          id: 'group:' + groupId,
+          groupId,
+          title: `${info.count} message${info.count === 1 ? '' : 's'} in ${info.name}`,
+          body: 'Encrypted group chat',
+          detail: 'Open Secure Chat to read the conversation.',
+          ts: info.latestTs,
+          url: notificationUrl('/encrypt/'),
         });
       }
       notices.sort((a, b) => (b.ts || 0) - (a.ts || 0));
@@ -13399,7 +13440,10 @@ function loadAllGamesList() {
             const recActive = (memberNorm in e2eUsers) && (Date.now() - e2eUsers[memberNorm].last_seen < 30000);
             if (!recActive && subs[memberNorm]) {
               webpush.sendNotification(subs[memberNorm], JSON.stringify({
-                title: `${maskEmail(senderEmail)} in ${group.name}`, body: notifyBody, url: notificationUrl('/encrypt.html'),
+                title: `${maskEmail(senderEmail)} in ${group.name}`,
+                body: notifyBody,
+                url: notificationUrl('/encrypt/'),
+                tag: `group-${groupId}-${msg.ts}`,
               })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[memberNorm]; savePushSubscriptions(subs); } });
             }
           }
@@ -13417,7 +13461,8 @@ function loadAllGamesList() {
           webpush.sendNotification(subs[to], JSON.stringify({
             title: `Message from ${maskEmail(senderEmail)}`,
             body:  getNotificationBody(text, safeImage),
-            url:   notificationUrl('/encrypt.html'),
+            url:   notificationUrl('/encrypt/'),
+            tag:   `dm-${msg.ts}`,
           })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[to]; savePushSubscriptions(subs); } });
         }
         }
@@ -17136,7 +17181,7 @@ function loadAllGamesList() {
           const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=3" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }

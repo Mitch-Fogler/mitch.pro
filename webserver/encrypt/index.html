@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="/site-galaxy.css">
 <script src="/api.js"></script>
 <script src="/app-shell.js" defer></script>
-<script src="/broadcast.js"></script>
+<script src="/broadcast.js?v=3"></script>
 <style>
 /* Encrypt chrome — tokens from theme.js; fonts from app.css. Crypto/E2E logic untouched. */
 .encrypt-page {
@@ -710,7 +710,7 @@ button {
   transition: none !important;
 }
 </style>
-<link rel="stylesheet" href="/encrypt-galaxy.css?v=2">
+<link rel="stylesheet" href="/encrypt-galaxy.css?v=3">
 </head>
 <body class="encrypt-page">
 
@@ -722,7 +722,6 @@ button {
       <span class="chat-brand-mark" aria-hidden="true"></span>
       <span id="sidebar-title"><b>Encrypted</b><small>mitch.pro communications</small></span>
       <button id="new-group-btn" class="small-btn icon-btn" type="button"><span aria-hidden="true">＋</span><em>Group</em></button>
-      <button id="notif-btn" class="small-btn icon-btn" type="button" title="Push notifications"><span aria-hidden="true">◉</span><em>Alerts</em></button>
     </div>
     <div id="my-identity"></div>
     <div id="search-wrap">
@@ -831,7 +830,6 @@ let activeView = 'direct';
 let activeChat = null;
 let unreadDm = {}, unreadGroup = {};
 let dmSince = 0;
-let pushSub = null;
 let pendingImage = null;
 let replyTo = null;
 let selectedGroupMembers = new Set();
@@ -1624,7 +1622,6 @@ async function init() {
   setInterval(loadGroups, 8000);
   startLivePolling();
   setInterval(heartbeat, 10000);
-  checkNotifStatus();
 }
 
 function bindEvents() {
@@ -1651,7 +1648,6 @@ function bindEvents() {
   document.getElementById('export-chat-btn').onclick = exportCurrentChat;
   document.getElementById('leave-group-btn').onclick = leaveCurrentGroup;
   document.getElementById('expiry-btn').onclick = cycleExpiry;
-  document.getElementById('notif-btn').onclick = toggleNotif;
   document.getElementById('attachBtn').onclick = () => document.getElementById('imageInput').click();
   document.getElementById('imageInput').onchange = handleImagePick;
   document.getElementById('image-clear-btn').onclick = clearImage;
@@ -2989,56 +2985,6 @@ function heartbeat() {
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ nickname: myNick })
   }).catch(()=>{});
-}
-
-async function checkNotifStatus() {
-  if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
-  if (Notification.permission === 'granted') {
-    const reg = await navigator.serviceWorker.getRegistration().catch(()=>null);
-    if (reg) {
-      pushSub = await reg.pushManager.getSubscription().catch(()=>null);
-      if (pushSub) document.getElementById('notif-btn').classList.add('on');
-    }
-  }
-}
-
-function b64ToUint8(b64) {
-  const pad = '='.repeat((4 - b64.length % 4) % 4);
-  const raw = atob((b64 + pad).replace(/-/g,'+').replace(/_/g,'/'));
-  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
-}
-
-async function toggleNotif() {
-  const btn = document.getElementById('notif-btn');
-  if (pushSub) {
-    await pushSub.unsubscribe().catch(()=>{});
-    await fetch('/api/push/unsubscribe', { method:'POST', credentials:'include' }).catch(()=>{});
-    pushSub = null;
-    btn.classList.remove('on');
-    return;
-  }
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
-    alert('Push notifications not supported in this browser.');
-    return;
-  }
-  const perm = await Notification.requestPermission();
-  if (perm !== 'granted') return;
-  try {
-    const { publicKey } = await fetch('/api/push/vapid-key').then(r=>r.json());
-    let reg = await navigator.serviceWorker.getRegistration('/');
-    if (!reg) reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    await navigator.serviceWorker.ready;
-    pushSub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToUint8(publicKey) });
-    await fetch('/api/push/subscribe', {
-      method:'POST',
-      credentials:'include',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(pushSub)
-    });
-    btn.classList.add('on');
-  } catch(e) {
-    alert('Could not enable notifications: ' + e.message);
-  }
 }
 
 function showNotif(from, text) {

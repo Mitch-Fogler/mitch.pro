@@ -515,3 +515,236 @@
   @keyframes chat-orbit { to { transform: rotate(408deg) scaleX(1.45); } }
   @keyframes chat-pulse { 50% { opacity:.45; box-shadow:0 0 5px #c15fff; } }
 }
+
+/* v3: calmer, roomier communication layout. */
+.encrypt-page #app-topbar,
+#app.ready {
+  max-width: 1560px;
+}
+
+#sidebar {
+  width: clamp(280px, 22vw, 320px);
+  min-width: clamp(280px, 22vw, 320px);
+}
+
+#sidebar-top {
+  gap: 10px;
+  padding: 13px 15px;
+}
+
+#user-list {
+  padding: 10px;
+}
+
+.user-entry {
+  min-height: 62px;
+  margin: 4px 0;
+  padding: 9px 11px;
+}
+
+#chat-header {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 20px;
+}
+
+#chat-back-btn {
+  grid-column: 1;
+}
+
+#chat-back-btn[style*="inline"] + .chat-title-wrap {
+  grid-column: 2;
+}
+
+.header-tools {
+  min-width: 0;
+  padding-right: 0;
+  flex-wrap: nowrap;
+}
+
+#msgs {
+  width: 100%;
+  max-width: 1050px;
+  margin: 0 auto;
+  box-sizing: border-box;
+  padding: 28px clamp(20px, 4vw, 58px) 34px;
+}
+
+.msg {
+  margin: 16px 0;
+  max-width: min(720px, 76%);
+}
+
+#input-row,
+#reply-preview,
+#image-preview {
+  width: min(1020px, calc(100% - 32px));
+  box-sizing: border-box;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+#reply-preview,
+#image-preview {
+  border: 1px solid rgba(224, 195, 255, .14);
+  border-bottom: 0;
+  border-radius: 15px 15px 0 0;
+}
+
+@media (max-width: 1280px) and (min-width: 861px) {
+  #chat-header {
+    grid-template-columns: minmax(180px, 1fr) auto;
+  }
+
+  #chat-header .chat-title-wrap { grid-column: 1; }
+  #chat-header .encryption-status { grid-column: 2; }
+  #chat-header .header-tools {
+    grid-column: 1 / -1;
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) repeat(4, auto);
+  }
+
+  #msgSearch {
+    width: 100%;
+  }
+}
+
+@media (max-width: 860px) {
+  .encrypt-page {
+    padding: 0 6px 6px;
+  }
+
+  #app.ready {
+    border-radius: 19px;
+  }
+
+  #sidebar {
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+
+  #chat-header {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 9px;
+    padding: 10px 11px;
+  }
+
+  #chat-back-btn {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  #chat-header .chat-title-wrap {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  #chat-header .encryption-status {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  #chat-header .header-tools {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    display: flex;
+    gap: 6px;
+    padding: 2px 0 1px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+
+  #chat-header .header-tools::-webkit-scrollbar { display: none; }
+  #chat-header .header-tools > * { flex: 0 0 auto; }
+  #chat-header #msgSearch { width: min(52vw, 230px); }
+
+  #msgs {
+    padding: 20px 14px 26px;
+  }
+
+  .msg {
+    max-width: 88%;
+    margin: 14px 0;
+  }
+
+  #input-row,
+  #reply-preview,
+  #image-preview {
+    width: calc(100% - 16px);
+  }
+}
+
+@media (max-width: 520px) {
+  .encrypt-page #app-topbar {
+    width: 100%;
+    border-radius: 18px;
+  }
+
+  #app.ready {
+    width: 100%;
+    border-radius: 17px;
+  }
+
+  #sidebar-top {
+    min-height: 64px;
+    padding: 10px 11px;
+  }
+
+  .chat-brand-mark {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+  }
+
+  #chat-header .encryption-status {
+    padding: 6px 7px;
+  }
+
+  #chat-header .encryption-status span {
+    font-size: 0;
+  }
+
+  #chat-header .encryption-status span::after {
+    content: 'E2E';
+    font-size: .5rem;
+  }
+
+  .header-tools .tool-btn:not(#expiry-btn) {
+    width: auto;
+    min-width: max-content;
+    padding: 0 10px;
+    font-size: .68rem;
+  }
+
+  #clear-chat-btn::after,
+  #export-chat-btn::after,
+  #leave-group-btn::after {
+    content: none;
+  }
+
+  #msgs {
+    padding: 16px 10px 22px;
+  }
+
+  .msg {
+    max-width: 92%;
+  }
+
+  #input-row {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  #msgInput {
+    padding-left: 3px;
+    padding-right: 3px;
+  }
+}

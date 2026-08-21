@@ -24,6 +24,10 @@
             if (typeof window.__refreshNotifications === 'function') {
               window.__refreshNotifications();
             }
+          } else if (data.type === 'new_dm') {
+            if (typeof window.__handleIncomingDm === 'function') {
+              window.__handleIncomingDm(data.message || null);
+            }
           }
           window.dispatchEvent(new CustomEvent('ws-broadcast-message', { detail: data }));
         } catch(ex) {}
@@ -85,6 +89,158 @@
   }
 
   var _notifications = [];
+  var _identityPromise = null;
+
+  function loadIdentity() {
+    if (!_identityPromise) {
+      _identityPromise = fetch('/api/me', { credentials: 'include', cache: 'no-store' })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .catch(function() { return null; });
+    }
+    return _identityPromise;
+  }
+
+  function b64ToUint8(b64) {
+    var pad = '='.repeat((4 - b64.length % 4) % 4);
+    var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(Array.prototype.map.call(raw, function(c) { return c.charCodeAt(0); }));
+  }
+
+  async function ensurePushSubscription(askPermission) {
+    if (!window.isSecureContext || !('Notification' in window) ||
+        !('serviceWorker' in navigator) || !('PushManager' in window)) return false;
+    var permission = Notification.permission;
+    if (permission === 'default' && askPermission) permission = await Notification.requestPermission();
+    if (permission !== 'granted') return false;
+
+    var keyResponse = await fetch('/api/push/vapid-key', { credentials: 'include', cache: 'no-store' });
+    if (!keyResponse.ok) throw new Error('Notification service unavailable');
+    var keyData = await keyResponse.json();
+    if (!keyData.publicKey) throw new Error('Notification service is not configured');
+
+    var registration = await navigator.serviceWorker.getRegistration('/');
+    if (!registration) registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+    var subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: b64ToUint8(keyData.publicKey)
+      });
+    }
+    var saveResponse = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+      body: JSON.stringify(subscription)
+    });
+    if (!saveResponse.ok) throw new Error('Could not save notification settings');
+    var bell = document.getElementById('sw-notif-btn');
+    if (bell) {
+      bell.classList.add('push-enabled');
+      bell.title = 'Notifications enabled';
+      bell.setAttribute('aria-label', 'Notifications enabled');
+    }
+    return true;
+  }
+
+  function removePushPrompt() {
+    var prompt = document.getElementById('sw-push-prompt');
+    if (!prompt) return;
+    prompt.classList.remove('show');
+    setTimeout(function() { if (prompt.parentNode) prompt.remove(); }, 230);
+  }
+
+  function showPushPrompt() {
+    if (document.getElementById('sw-push-prompt')) return;
+    var prompt = document.createElement('div');
+    prompt.id = 'sw-push-prompt';
+    prompt.setAttribute('role', 'dialog');
+    prompt.setAttribute('aria-label', 'Enable Mitch.pro notifications');
+    prompt.innerHTML =
+      '<span class="sw-push-mark" aria-hidden="true">&#128276;</span>' +
+      '<span class="sw-push-copy"><b>Stay in the loop</b><span>Enable alerts for encrypted messages, friends, rewards, and site updates.</span></span>' +
+      '<span class="sw-push-actions"><button id="sw-push-later" type="button">Not now</button><button id="sw-push-enable" type="button">Enable alerts</button></span>';
+    document.body.appendChild(prompt);
+    requestAnimationFrame(function() { prompt.classList.add('show'); });
+    document.getElementById('sw-push-later').onclick = function() {
+      try { sessionStorage.setItem('_mitchPushPromptLater', '1'); } catch(e) {}
+      removePushPrompt();
+    };
+    document.getElementById('sw-push-enable').onclick = async function() {
+      var button = this;
+      button.disabled = true;
+      button.textContent = 'Enabling...';
+      try {
+        var enabled = await ensurePushSubscription(true);
+        if (enabled) removePushPrompt();
+        else {
+          button.textContent = Notification.permission === 'denied' ? 'Blocked in browser' : 'Try again';
+          button.disabled = Notification.permission === 'denied';
+        }
+      } catch(e) {
+        button.disabled = false;
+        button.textContent = 'Try again';
+        var copy = prompt.querySelector('.sw-push-copy span');
+        if (copy) copy.textContent = e.message || 'Could not enable alerts. Please try again.';
+      }
+    };
+  }
+
+  async function setupPushEnrollment() {
+    if (!window.isSecureContext || !('Notification' in window) ||
+        !('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    var identity = await loadIdentity();
+    if (!identity || !identity.email) return;
+    if (Notification.permission === 'granted') {
+      ensurePushSubscription(false).catch(function(){});
+      return;
+    }
+    if (Notification.permission !== 'default') return;
+    try { if (sessionStorage.getItem('_mitchPushPromptLater') === '1') return; } catch(e) {}
+    setTimeout(showPushPrompt, 900);
+  }
+
+  function showMessageToast(message) {
+    if (!message || location.pathname.startsWith('/encrypt')) return;
+    removePushPrompt();
+    var stack = document.getElementById('sw-message-toasts');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'sw-message-toasts';
+      stack.setAttribute('aria-live', 'polite');
+      document.body.appendChild(stack);
+    }
+    var sender = message.from || 'Someone';
+    var title = message.kind === 'group' && message.groupName
+      ? sender + ' in ' + message.groupName
+      : 'Message from ' + sender;
+    var toast = document.createElement('div');
+    toast.className = 'sw-message-toast';
+    toast.innerHTML = '<span class="sw-message-toast-icon" aria-hidden="true">&#10022;</span>' +
+      '<span class="sw-message-toast-copy"><b>' + escText(title) + '</b><span>New encrypted message</span></span>' +
+      '<a href="/encrypt/">Open</a>';
+    stack.prepend(toast);
+    while (stack.children.length > 3) stack.lastElementChild.remove();
+    setTimeout(function() { if (toast.parentNode) toast.remove(); }, 9000);
+    var originalTitle = document.title.replace(/^\u2022\s*/, '');
+    document.title = '\u2022 ' + originalTitle;
+    setTimeout(function() { if (document.title === '\u2022 ' + originalTitle) document.title = originalTitle; }, 9000);
+  }
+
+  window.__handleIncomingDm = async function(message) {
+    loadNotifications();
+    if (!message) return;
+    var identity = await loadIdentity();
+    var mine = String(identity && identity.email || '').toLowerCase();
+    var sender = String(message.from || '').toLowerCase();
+    if (!mine || !sender || sender === mine) return;
+    showMessageToast(message);
+  };
+
+  window.__enableSiteNotifications = function() {
+    return ensurePushSubscription(true);
+  };
 
   function injectNotifCSS() {
     if (document.getElementById('sw-notif-styles')) return;
@@ -96,10 +252,10 @@
       '#sw-notif-wrap { position: relative; display: inline-flex; align-items: center; overflow: visible; isolation: isolate; }' +
       '#sw-notif-btn {' +
       '  width: 36px !important; height: 36px !important; min-width: 36px !important; min-height: 36px !important;' +
-      '  padding: 0 !important; margin: 0; border-radius: 50% !important;' +
+      '  padding: 0 !important; margin: 0; border-radius: 13px !important;' +
       '  display: flex !important; align-items: center; justify-content: center;' +
-      '  background: rgba(30,30,34,0.85); color: #7c3aed; border: 1px solid rgba(124,58,237,0.4);' +
-      '  cursor: pointer; box-shadow: 0 8px 28px rgba(0,0,0,0.35);' +
+      '  background: linear-gradient(145deg,rgba(157,82,246,.28),rgba(22,12,47,.9)); color: #e2b4ff; border: 1px solid rgba(205,143,255,.38);' +
+      '  cursor: pointer; box-shadow: inset 0 1px rgba(255,255,255,.13),0 8px 28px rgba(0,0,0,0.35);' +
       '  font-size: 15px; line-height: 1; position: relative; overflow: visible !important;' +
       '  backdrop-filter: blur(10px); flex-shrink: 0; box-sizing: border-box;' +
       '}' +
@@ -115,9 +271,9 @@
       '#sw-notif-count.is-visible { display: inline-flex !important; }' +
       '#sw-notif-panel {' +
       '  display: none; position: absolute; top: 44px; right: 0;' +
-      '  width: min(340px, calc(100vw - 24px)); max-height: min(430px, calc(100vh - 70px));' +
-      '  background: rgba(10,10,14,0.96); border: 1px solid rgba(255,255,255,0.1);' +
-      '  border-radius: 12px; box-shadow: 0 18px 60px rgba(0,0,0,0.65);' +
+      '  width: min(370px, calc(100vw - 24px)); max-height: min(470px, calc(100vh - 70px));' +
+      '  background: radial-gradient(circle at 90% 0,rgba(183,83,255,.2),transparent 36%),rgba(10,7,25,.97); border: 1px solid rgba(214,173,255,.2);' +
+      '  border-radius: 18px; box-shadow: 0 22px 70px rgba(0,0,0,0.65),inset 0 1px rgba(255,255,255,.09);' +
       '  overflow: hidden; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);' +
       '}' +
       '#sw-notif-panel.show { display: block; }' +
@@ -136,7 +292,7 @@
       '.sw-notif-empty { padding: 18px 10px; text-align: center; color: rgba(255,255,255,0.5); font-size: .8rem; opacity: .65; }' +
       '.sw-notif-item {' +
       '  padding: 9px 10px; border: 1px solid rgba(255,255,255,0.08);' +
-      '  border-radius: 9px; background: rgba(255,255,255,0.03); margin-bottom: 7px;' +
+      '  border-radius: 13px; background: linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); margin-bottom: 7px;' +
       '}' +
       '.sw-notif-title { color: #fff; font-size: .82rem; font-weight: 800; margin-bottom: 3px; }' +
       '.sw-notif-body { color: rgba(255,255,255,0.7); font-size: .78rem; line-height: 1.35; }' +
@@ -145,9 +301,43 @@
       '.sw-notif-actions button, .sw-notif-open {' +
       '  flex: 1; text-align: center; text-decoration: none;' +
       '  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);' +
-      '  color: #7c3aed; border-radius: 7px; padding: 4px 8px;' +
+      '  color: #dda4ff; border-radius: 9px; padding: 6px 8px;' +
       '  font-size: .72rem; cursor: pointer;' +
-      '}';
+      '}' +
+      '#sw-push-prompt {' +
+      '  position: fixed; left: 50%; bottom: max(18px, env(safe-area-inset-bottom)); z-index: 2147483000;' +
+      '  width: min(520px, calc(100vw - 24px)); box-sizing: border-box; padding: 14px;' +
+      '  display: grid; grid-template-columns: 42px minmax(0,1fr) auto; align-items: center; gap: 12px;' +
+      '  border: 1px solid rgba(218,178,255,.26); border-radius: 18px;' +
+      '  color: #fff; background: linear-gradient(145deg,rgba(34,18,66,.94),rgba(10,7,27,.96));' +
+      '  box-shadow: 0 24px 70px rgba(0,0,0,.55), inset 0 1px rgba(255,255,255,.12);' +
+      '  backdrop-filter: blur(24px) saturate(145%); -webkit-backdrop-filter: blur(24px) saturate(145%);' +
+      '  transform: translate(-50%, 18px); opacity: 0; transition: opacity .22s ease, transform .22s ease;' +
+      '}' +
+      '#sw-push-prompt.show { opacity: 1; transform: translate(-50%, 0); }' +
+      '.sw-push-mark { width:42px; height:42px; display:grid; place-items:center; border-radius:14px;' +
+      '  background:linear-gradient(145deg,#985cff,#ef58bd); box-shadow:0 9px 25px rgba(184,75,241,.35); font-size:19px; }' +
+      '.sw-push-copy { min-width:0; }' +
+      '.sw-push-copy b { display:block; margin-bottom:3px; font:800 .84rem/1.2 system-ui,sans-serif; }' +
+      '.sw-push-copy span { display:block; color:rgba(240,230,255,.68); font:500 .73rem/1.35 system-ui,sans-serif; }' +
+      '.sw-push-actions { display:flex; gap:7px; }' +
+      '.sw-push-actions button { min-height:34px; padding:0 11px !important; border-radius:10px !important;' +
+      '  border:1px solid rgba(255,255,255,.15) !important; color:#fff !important; font:700 .7rem/1 system-ui,sans-serif !important; }' +
+      '#sw-push-enable { background:linear-gradient(135deg,#8b5cf6,#d946ef) !important; }' +
+      '#sw-push-later { background:rgba(255,255,255,.055) !important; }' +
+      '#sw-message-toasts { position:fixed; right:14px; bottom:14px; z-index:2147482999; display:grid; gap:8px;' +
+      '  width:min(360px,calc(100vw - 28px)); pointer-events:none; }' +
+      '.sw-message-toast { pointer-events:auto; display:grid; grid-template-columns:38px minmax(0,1fr) auto; gap:10px; align-items:center;' +
+      '  padding:11px; border:1px solid rgba(219,181,255,.24); border-radius:16px; color:#fff;' +
+      '  background:linear-gradient(145deg,rgba(35,18,69,.95),rgba(9,6,25,.96)); box-shadow:0 18px 52px rgba(0,0,0,.5);' +
+      '  backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px); animation:swToastIn .22s ease both; }' +
+      '.sw-message-toast-icon { width:38px;height:38px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(145deg,#d946ef,#7657ff);font-size:17px; }' +
+      '.sw-message-toast-copy { min-width:0; } .sw-message-toast-copy b,.sw-message-toast-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }' +
+      '.sw-message-toast-copy b { font:800 .8rem/1.2 system-ui,sans-serif; } .sw-message-toast-copy span { margin-top:3px;color:rgba(237,225,255,.68);font:500 .71rem/1.2 system-ui,sans-serif; }' +
+      '.sw-message-toast a { padding:8px 10px;border-radius:10px;color:#fff;background:rgba(170,91,255,.18);border:1px solid rgba(210,157,255,.22);text-decoration:none;font:750 .68rem/1 system-ui,sans-serif; }' +
+      '@keyframes swToastIn { from { opacity:0; transform:translateY(10px); } }' +
+      '@media(max-width:620px){#sw-push-prompt{grid-template-columns:38px minmax(0,1fr);padding:12px;gap:9px}.sw-push-mark{width:38px;height:38px}.sw-push-actions{grid-column:1/-1}.sw-push-actions button{flex:1}#sw-message-toasts{left:10px;right:10px;bottom:10px;width:auto}.sw-message-toast{grid-template-columns:36px minmax(0,1fr) auto}}' +
+      '@media(prefers-reduced-motion:reduce){#sw-push-prompt,.sw-message-toast{transition:none;animation:none}}';
     document.head.appendChild(s);
   }
 
@@ -177,7 +367,6 @@
 
   async function loadNotifications() {
     try {
-      if (!/(?:^|;\s*)(studentId|id)=/.test(document.cookie || '')) return;
       var r = await fetch('/api/me/notifications', { credentials: 'include' });
       if (!r.ok) return;
       var d = await r.json();
@@ -219,6 +408,8 @@
     if (!n) return;
     var body = (n.type === 'coin_gift' || n.type === 'admin_notice')
       ? { coinGiftIds: [n.id] }
+      : n.type === 'group_dm'
+        ? { groupIds: [n.groupId] }
       : n.type === 'dm'
         ? { dmFroms: [n.from] }
         : {};
@@ -227,7 +418,7 @@
     await fetch('/api/me/notifications/read', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
       body: JSON.stringify(body),
     }).catch(function(){});
     loadNotifications();
@@ -240,7 +431,7 @@
     await fetch('/api/me/notifications/read', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
       body: JSON.stringify({ all: true }),
     }).catch(function(){});
   }
@@ -291,6 +482,7 @@
     panel.onclick = function(e) { e.stopPropagation(); };
     document.addEventListener('click', function() { panel.classList.remove('show'); });
     loadNotifications();
+    setupPushEnrollment();
     window.__refreshNotifications = loadNotifications;
     setInterval(loadNotifications, 30000);
   }

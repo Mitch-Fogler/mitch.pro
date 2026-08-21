@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v7';
+const CACHE_NAME = 'mitch-pro-cache-v8';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -108,6 +108,9 @@ self.addEventListener('push', e => {
     body: data.body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
+    tag: data.tag || undefined,
+    renotify: Boolean(data.tag),
+    vibrate: [90, 45, 90],
     data: { url: data.url }
   }));
 });
@@ -115,9 +118,12 @@ self.addEventListener('push', e => {
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = e.notification.data?.url || 'https://mitch.pro/encrypt/';
-  e.waitUntil(clients.matchAll({ type: 'window' }).then(cs => {
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async cs => {
     for (const c of cs) {
-      if ((c.url.includes('/encrypt/') || c.url.includes('/encrypt.html')) && 'focus' in c) return c.focus();
+      if (!c.url.startsWith(self.location.origin) || !('focus' in c)) continue;
+      await c.focus();
+      if ('navigate' in c) return c.navigate(url);
+      return c;
     }
     return clients.openWindow(url);
   }));

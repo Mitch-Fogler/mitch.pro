@@ -631,6 +631,131 @@
   }
 }
 
+/* Responsive command deck. The legacy stylesheet turned this into one long,
+   clipped column at tablet widths; this owns its layout at every breakpoint. */
+body.home-galaxy .hud-workspace {
+  align-items: start !important;
+}
+
+body.home-galaxy .hud-pane-main,
+body.home-galaxy .hud-pane-aside,
+body.home-galaxy .hud-pane-aside > * {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+body.home-galaxy .hud-pane-aside {
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: calc(100dvh - 116px) !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain !important;
+}
+
+body.home-galaxy .command-deck-heading > span:nth-child(2) {
+  min-width: 0 !important;
+}
+
+body.home-galaxy .command-deck-heading b,
+body.home-galaxy .command-deck-heading small {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+body.home-galaxy .hud-pane-aside .popular-strip {
+  min-width: 0 !important;
+}
+
+body.home-galaxy .hud-pane-aside .popular-strip a.site-link.hub-popular-link {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 1180px) {
+  body.home-galaxy .hud-workspace {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 18px !important;
+  }
+
+  body.home-galaxy .hud-pane-aside {
+    position: static !important;
+    order: -1 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: start !important;
+    gap: 10px !important;
+    max-height: none !important;
+    padding: 10px !important;
+    overflow: visible !important;
+    border-radius: 24px !important;
+  }
+
+  body.home-galaxy .command-deck-heading {
+    grid-column: 1 / -1 !important;
+    padding: 4px 5px 8px !important;
+  }
+
+  body.home-galaxy #daily-login-widget,
+  body.home-galaxy .hud-preferences-widget,
+  body.home-galaxy #top-games,
+  body.home-galaxy #popular-hub {
+    height: 100% !important;
+    margin: 0 !important;
+  }
+
+  body.home-galaxy #popular-hub .popular-strip {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    max-height: 190px !important;
+    overflow-y: auto !important;
+  }
+}
+
+@media (max-width: 700px) {
+  body.home-galaxy .hud-pane-aside {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding: 8px !important;
+    border-radius: 20px !important;
+  }
+
+  body.home-galaxy .command-deck-heading,
+  body.home-galaxy #daily-login-widget,
+  body.home-galaxy .hud-preferences-widget,
+  body.home-galaxy #top-games,
+  body.home-galaxy #popular-hub {
+    grid-column: 1 !important;
+  }
+
+  body.home-galaxy .command-deck-heading {
+    grid-template-columns: 36px minmax(0, 1fr) auto !important;
+    gap: 8px !important;
+  }
+
+  body.home-galaxy .deck-orbit {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  body.home-galaxy .deck-orbit i {
+    left: 14px !important;
+    top: 14px !important;
+  }
+
+  body.home-galaxy #popular-hub .popular-strip {
+    grid-template-columns: minmax(0, 1fr) !important;
+    max-height: 176px !important;
+  }
+
+  body.home-galaxy .hud-pane-aside .hud-widget-card {
+    padding: 12px !important;
+    border-radius: 16px !important;
+  }
+}
+
 /* Canonical members + friends drawer. This file loads after the legacy homepage rules. */
 body.home-galaxy #member-side-rail {
   position: fixed !important;
