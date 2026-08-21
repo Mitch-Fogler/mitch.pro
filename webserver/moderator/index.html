@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Moderator Panel</title>
   <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/site-galaxy.css">
   <style>
     * { box-sizing: border-box; }
     body {
@@ -37,18 +39,25 @@
     }
     .links a:hover { border-color: var(--t-bda); }
   </style>
+  <link rel="stylesheet" href="/staff-galaxy.css?v=1">
 </head>
-<body>
+<body class="moderator-page">
   <main>
     <div class="topbar">
       <a class="back" href="/">Back</a>
-      <div>
-        <h1>Moderator Panel</h1>
-        <p class="sub">Configured by admins and owners.</p>
+      <img class="staff-logo" src="/icon-192.png" alt="mitch.pro">
+      <div class="staff-heading">
+        <span class="staff-eyebrow">mitch.pro / trust &amp; safety</span>
+        <h1>Moderator Workspace</h1>
+        <p class="sub">Fast access to the tools your role is allowed to use.</p>
       </div>
+      <span class="staff-role-badge"><i></i> Moderator</span>
+    </div>
+    <div class="moderator-intro" aria-hidden="true">
+      <span>01</span><p>Review</p><i></i><span>02</span><p>Resolve</p><i></i><span>03</span><p>Document</p>
     </div>
     <section class="panel" id="panel">
-      <div class="empty">No moderator tools are enabled right now.</div>
+      <div class="empty"><span class="loading-orbit" aria-hidden="true"></span>Loading your moderator tools...</div>
     </section>
   </main>
   <script>
@@ -56,6 +65,11 @@
       const d = document.createElement('div');
       d.textContent = v == null ? '' : String(v);
       return d.innerHTML;
+    }
+    function safeHref(v) {
+      const value = String(v == null ? '' : v).trim();
+      if (/^(?:\/|https?:\/\/)/i.test(value)) return esc(value);
+      return '#';
     }
     async function loadPanel() {
       const r = await fetch('/api/moderator-panel', { credentials: 'include' });
@@ -67,13 +81,13 @@
       const links = d.links || [];
       let html = '';
       if (!links.length) {
-        html = '<div class="empty" style="margin-bottom:16px;">No custom moderator panel links are configured by the admin right now.</div>';
+        html = '<div class="empty empty-note">No custom shortcuts are configured. Your direct safety workspace is still available below.</div>';
       }
       html += '<div class="links">';
-      html += '<a href="/admin/" style="border-color:var(--t-ac); background:rgba(235, 94, 40, 0.1);">🛡️ Staff Command Center (Direct Safety Tools)<span>→</span></a>';
+      html += '<a class="primary-staff-link" href="/admin/"><span class="link-icon">&#128737;</span><span class="link-copy"><b>Staff Command Center</b><small>Direct safety tools</small></span><span class="link-arrow">&rarr;</span></a>';
       if (links.length) {
         html += links.map(link =>
-          '<a href="' + esc(link.href) + '">' + esc(link.label) + '<span>→</span></a>'
+          '<a href="' + safeHref(link.href) + '"><span class="link-icon">&#10022;</span><span class="link-copy"><b>' + esc(link.label) + '</b><small>Moderator shortcut</small></span><span class="link-arrow">&rarr;</span></a>'
         ).join('');
       }
       html += '</div>';

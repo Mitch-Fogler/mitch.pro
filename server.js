@@ -256,6 +256,14 @@ writeAppLog('info', 'startup', 'Application log capture initialized');
 
 const MAX_JSON_BODY_BYTES = Number(process.env.MAX_JSON_BODY_BYTES || 256 * 1024);
 const MAX_TEXT_BODY_BYTES = Number(process.env.MAX_TEXT_BODY_BYTES || 128 * 1024);
+// E2E envelopes are hex encoded, so encrypted image payloads can be a little
+// over twice the size of their plaintext data URL. Keep the larger allowance
+// local to chat instead of raising the limit for every JSON endpoint.
+const MAX_CHAT_JSON_BODY_BYTES = Math.min(
+  4 * 1024 * 1024,
+  Math.max(MAX_JSON_BODY_BYTES, Number(process.env.MAX_CHAT_JSON_BODY_BYTES || 2300 * 1024))
+);
+const MAX_E2E_ENVELOPE_BYTES = Math.min(MAX_CHAT_JSON_BODY_BYTES - 4096, 2200 * 1024);
 const MAX_PROXY_HTML_BYTES = Number(process.env.MAX_PROXY_HTML_BYTES || 1024 * 1024);
 const PROXY_FETCH_TIMEOUT_MS = Number(process.env.PROXY_FETCH_TIMEOUT_MS || 10000);
 const TRUSTED_CLIENT_IP_HEADER = 'X-Mitch-Client-IP';
@@ -851,13 +859,52 @@ setInterval(() => {
 
 
 const userPresence = {}; // normalizedEmail -> { lastSeen: ms, playing: string }
+const PRESENCE_FALLBACK_TTL_MS = 45_000;
+const presenceOfflineTimers = new Map();
+
+function hasAuthenticatedBroadcastSocket(email) {
+  const norm = normalizeEmail(email);
+  if (!norm) return false;
+  for (const ws of allSockets) {
+    if (ws.data?.isBroadcast && normalizeEmail(ws.data.email) === norm && ws.readyState === 1) return true;
+  }
+  return false;
+}
+
+function isUserPresent(email, now = Date.now()) {
+  const norm = normalizeEmail(email);
+  if (!norm) return false;
+  if (hasAuthenticatedBroadcastSocket(norm)) return true;
+  const presence = userPresence[norm];
+  return !!presence && now - Number(presence.lastSeen || 0) < PRESENCE_FALLBACK_TTL_MS;
+}
+
+function broadcastPresenceChanged(email, online, playing = '') {
+  const norm = normalizeEmail(email);
+  if (!norm) return;
+  const friends = loadJson(FRIENDS_FILE, {});
+  const recipients = new Set((friends[norm] || []).map(normalizeEmail));
+  recipients.add(norm);
+  const payload = JSON.stringify({
+    type: 'presence_changed',
+    email: maskEmail(norm),
+    online: !!online,
+    playing: online ? String(playing || '').trim() : '',
+    ts: Date.now(),
+  });
+  for (const ws of allSockets) {
+    if (ws.data?.isBroadcast && recipients.has(normalizeEmail(ws.data.email))) {
+      try { ws.send(payload); } catch {}
+    }
+  }
+}
 
 function touchUserPresence(email, playing = '') {
   if (!email) return;
   const norm = normalizeEmail(email);
   const now = Date.now();
-  const prev = userPresence[norm];
-  const wasOffline = !prev || (now - prev.lastSeen > 120000);
+  const wasOffline = !isUserPresent(norm, now);
+  const previousPlaying = String(userPresence[norm]?.playing || '');
 
   userPresence[norm] = {
     lastSeen: now,
@@ -870,7 +917,20 @@ function touchUserPresence(email, playing = '') {
   if (wasOffline) {
     notifyFriendsOnline(email);
   }
+  if (wasOffline || previousPlaying !== userPresence[norm].playing) {
+    broadcastPresenceChanged(norm, true, userPresence[norm].playing);
+  }
 }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, presence] of Object.entries(userPresence)) {
+    if (!hasAuthenticatedBroadcastSocket(email) && now - Number(presence.lastSeen || 0) >= PRESENCE_FALLBACK_TTL_MS) {
+      delete userPresence[email];
+      broadcastPresenceChanged(email, false, '');
+    }
+  }
+}, 10_000);
 
 function notifyFriendsOnline(email) {
   try {
@@ -878,7 +938,7 @@ function notifyFriendsOnline(email) {
     const friends = loadJson(FRIENDS_FILE, {});
     const myList = friends[norm] || [];
     const senderName = maskEmail(email);
-    const subs = loadJson(PUSH_SUBS_FILE, {});
+    const subs = loadPushSubscriptions();
 
     for (const friend of myList) {
       const friendNorm = normalizeEmail(friend);
@@ -892,7 +952,7 @@ function notifyFriendsOnline(email) {
           if (e.statusCode === 410 || e.statusCode === 404) {
             delete subs[friend];
             delete subs[friendNorm];
-            saveJson(PUSH_SUBS_FILE, subs);
+            savePushSubscriptions(subs);
           }
         });
       }
@@ -1424,6 +1484,86 @@ function normalizeEmail(email) {
   return local + '@' + domain;
 }
 
+function loadPushSubscriptions() {
+  const stored = loadJson(PUSH_SUBS_FILE, {});
+  const normalized = {};
+  for (const [email, subscription] of Object.entries(stored)) {
+    const key = normalizeEmail(email);
+    if (key && subscription && typeof subscription === 'object') normalized[key] = subscription;
+  }
+  return normalized;
+}
+
+function savePushSubscriptions(subscriptions) {
+  const normalized = {};
+  for (const [email, subscription] of Object.entries(subscriptions || {})) {
+    const key = normalizeEmail(email);
+    if (key && subscription && typeof subscription === 'object') normalized[key] = subscription;
+  }
+  saveJson(PUSH_SUBS_FILE, normalized);
+}
+
+function validPushSubscription(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const endpoint = String(value.endpoint || '');
+  const p256dh = String(value.keys?.p256dh || '');
+  const auth = String(value.keys?.auth || '');
+  try {
+    const parsed = new URL(endpoint);
+    if (parsed.protocol !== 'https:') return false;
+  } catch { return false; }
+  return endpoint.length <= 2048 && p256dh.length >= 40 && p256dh.length <= 256 && auth.length >= 8 && auth.length <= 128;
+}
+
+function isHex(value, exactLength = 0) {
+  const text = String(value || '');
+  return (!exactLength || text.length === exactLength) && text.length > 0 && text.length % 2 === 0 && /^[0-9a-f]+$/i.test(text);
+}
+
+function validateE2eEnvelope(rawText, groupExpected) {
+  const byteLength = Buffer.byteLength(rawText, 'utf8');
+  if (byteLength > MAX_E2E_ENVELOPE_BYTES) return { error: 'encrypted message too large', status: 413 };
+
+  let envelope;
+  try { envelope = JSON.parse(rawText); }
+  catch { return { error: 'invalid encrypted message', status: 400 }; }
+  if (!envelope || typeof envelope !== 'object' || Array.isArray(envelope) || envelope.e2e !== true) {
+    return { error: 'invalid encrypted message', status: 400 };
+  }
+  const version = Number(envelope.version || 1);
+  if (!Number.isInteger(version) || version < 1 || version > 3) {
+    return { error: 'unsupported encrypted message version', status: 400 };
+  }
+  if (!isHex(envelope.senderPubKey, 130) || !String(envelope.senderPubKey).startsWith('04')) {
+    return { error: 'invalid encrypted sender key', status: 400 };
+  }
+
+  const isGroup = envelope.group === true;
+  if (isGroup !== !!groupExpected) return { error: 'encrypted message target mismatch', status: 400 };
+  const validCipherPayload = (payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+    if (!isHex(payload.iv, 24) || !isHex(payload.ciphertext)) return false;
+    if (payload.recipientPubKey !== undefined && (!isHex(payload.recipientPubKey, 130) || !String(payload.recipientPubKey).startsWith('04'))) return false;
+    return true;
+  };
+
+  if (isGroup) {
+    if (!envelope.payloads || typeof envelope.payloads !== 'object' || Array.isArray(envelope.payloads)) {
+      return { error: 'invalid encrypted group payload', status: 400 };
+    }
+    const entries = Object.entries(envelope.payloads);
+    if (!entries.length || entries.length > 64) return { error: 'invalid encrypted group payload', status: 400 };
+    for (const [recipient, payload] of entries) {
+      if (!normalizeEmail(recipient) || !validCipherPayload(payload)) {
+        return { error: 'invalid encrypted group payload', status: 400 };
+      }
+    }
+  } else if (!validCipherPayload(envelope)) {
+    return { error: 'invalid encrypted message payload', status: 400 };
+  }
+  return { envelope };
+}
+
 function normalizeUsername(username) {
   return String(username || '').toLowerCase().trim();
 }
@@ -1783,12 +1923,24 @@ function saveAppeals(a)   { saveJson(APPEALS_FILE, a); }
 
 const AUTH_COOKIE = 'mitch_session';
 const AUTH_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const DEV_TEST_EMAIL = 'admin@mitch.pro';
+function devTestAccessEnabled() {
+  return process.env.NODE_ENV !== 'production' && process.env.DEV_TEST_ACCESS === '1';
+}
+function devTestRequestAllowed(req) {
+  if (!devTestAccessEnabled()) return false;
+  try {
+    const hostname = new URL(req.url).hostname.toLowerCase();
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || isPrivateIp(hostname);
+  } catch { return false; }
+}
 const PUBLIC_API_PATHS = new Set([
   '/api/signup',
   '/api/bad-passwords',
   '/api/verify-signup',
   '/api/claim-token',
   '/api/login',
+  '/api/dev/test-access',
   '/api/verify-2fa',
   '/api/request-access',
   '/api/newid',
@@ -1844,7 +1996,7 @@ function currentSessionGeneration(normEmail) {
   return (rec && typeof rec === 'object') ? (rec.gen || 0) : (rec || 0);
 }
 
-function createAuthSession(normEmail, originalEmail = normEmail, req = null) {
+function createAuthSession(normEmail, originalEmail = normEmail, req = null, options = {}) {
   const norm = normalizeEmail(normEmail);
   const email = originalEmail || norm;
   const gen = currentSessionGeneration(norm);
@@ -1863,6 +2015,7 @@ function createAuthSession(normEmail, originalEmail = normEmail, req = null) {
     expiresAt: now + AUTH_SESSION_TTL_MS,
     userAgent: String(req?.headers.get('User-Agent') || '').slice(0, 240),
     ip: req ? getRealIp(req) : '',
+    devSuperuser: options.devSuperuser === true && devTestAccessEnabled(),
   };
   saveAuthSessions(sessions);
   return { token, sid, email, normEmail: norm, gen };
@@ -1928,8 +2081,8 @@ function rotateSessionGeneration(normEmail) {
   return nextGen;
 }
 
-function authSuccessResponse(req, payload, normEmail, originalEmail = normEmail) {
-  const session = createAuthSession(normEmail, originalEmail, req);
+function authSuccessResponse(req, payload, normEmail, originalEmail = normEmail, options = {}) {
+  const session = createAuthSession(normEmail, originalEmail, req, options);
   const headers = new Headers({ 'Content-Type': 'application/json' });
   headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
   headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
@@ -2206,7 +2359,7 @@ function addAdminNotification(targetEmail, title, message, adminEmail, batchId =
 
 function pushAdminNotification(targetEmail, title, message) {
   if (!VAPID_PUBLIC) return;
-  const subs = loadJson(PUSH_SUBS_FILE, {});
+  const subs = loadPushSubscriptions();
   const norm = normalizeEmail(targetEmail);
   const sub = subs[targetEmail] || subs[norm];
   if (!sub) return;
@@ -2218,7 +2371,7 @@ function pushAdminNotification(targetEmail, title, message) {
     if (e.statusCode === 410 || e.statusCode === 404) {
       delete subs[targetEmail];
       delete subs[norm];
-      saveJson(PUSH_SUBS_FILE, subs);
+      savePushSubscriptions(subs);
     }
   });
 }
@@ -4474,6 +4627,7 @@ function checkPasswordCookie(req, providedSid = null) {
 
   const passwords = loadPasswords();
   const norm = normalizeEmail(email);
+  if (cookies._authSession?.devSuperuser === true && devTestAccessEnabled() && norm === DEV_TEST_EMAIL) return true;
   if (process.env.NODE_ENV === 'test') return true;
   if (!passwords[norm]) {
     if (APP_DEBUG_LOGS) {
@@ -4745,6 +4899,7 @@ function moderatorEmails() {
 function isModeratorEmail(email) {
   if (!email) return false;
   const norm = normalizeEmail(email);
+  if (devTestAccessEnabled() && norm === DEV_TEST_EMAIL) return true;
   return moderatorEmails().some(modEmail => normalizeEmail(modEmail) === norm);
 }
 
@@ -4807,6 +4962,7 @@ function siteAdminEmails() {
 function isAdminEmail(email) {
   if (!email) return false;
   const norm = normalizeEmail(email);
+  if (devTestAccessEnabled() && norm === DEV_TEST_EMAIL) return true;
   return siteAdminEmails().some(adminEmail => normalizeEmail(adminEmail) === norm);
 }
 
@@ -5903,7 +6059,11 @@ function injectBroadcast(html) {
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
 
-async function serveStatic(urlPath) {
+function stripBroadcast(html) {
+  return String(html || '').replace(/<script\b[^>]*\bsrc=["']\/broadcast\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, '');
+}
+
+async function serveStatic(urlPath, req = null) {
   // Normalise path
   let filePath = safeWebrootPath(urlPath);
   if (!filePath) return errResp(403, null, null);
@@ -5960,7 +6120,17 @@ async function serveStatic(urlPath) {
 
     if (contentType.includes('text/html')) {
       const text = await file.text();
-      const html = injectBroadcast(injectReadability(text, urlPath));
+      let html = injectReadability(text, urlPath);
+      if (req) {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        const isEmbeddedGameRuntime = urlPath.startsWith('/games/') && urlPath !== '/games/' && urlPath !== '/games/index.html';
+        if (!isEmbeddedGameRuntime && sid && validId(sid) && !isRevoked(sid) && checkPasswordCookie(req, sid)) {
+          html = injectBroadcast(html);
+        } else {
+          html = stripBroadcast(html);
+        }
+      }
       return new Response(html, { headers });
     }
     return new Response(file, { headers });
@@ -6238,16 +6408,39 @@ async function handleRequest(req, server) {
     }
   }
 
+  // Temporary local/LAN superuser session for pre-deploy testing.
+  // This route is unavailable unless explicitly enabled outside production.
+  if (path === '/api/dev/test-access') {
+    if (!devTestRequestAllowed(req)) return errResp(404, null, null);
+    if (method === 'GET') {
+      return jsonResp(200, { enabled: true, label: 'Test Mitch.pro' });
+    }
+    if (method === 'POST') {
+      ensureProfileDefaults(DEV_TEST_EMAIL, DEV_TEST_EMAIL);
+      writeAppLog('warn', 'dev-access', 'Local test superuser session issued', {
+        ip,
+        host: req.headers.get('host') || '',
+      });
+      return authSuccessResponse(req, {
+        success: true,
+        devTest: true,
+        roles: ['owner', 'admin', 'moderator', 'premium'],
+      }, DEV_TEST_EMAIL, DEV_TEST_EMAIL, { devSuperuser: true });
+    }
+    return errResp(405, null, null);
+  }
+
   // Enforce admin passphrase for all administrative API actions
   if (path.startsWith('/api/admin/') && path !== '/api/admin/passphrase-status') {
     try {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
+      const isDevSuperuser = cookies._authSession?.devSuperuser === true && devTestRequestAllowed(req);
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
 
       // Passphrase enforcement applies to all full administrators
-      if (isAdminId(sid)) {
+      if (isAdminId(sid) && !isDevSuperuser) {
         const email = emailFromSid(sid) || 'admin';
         const norm = normalizeEmail(email);
         const data = loadAdminPassphrase();
@@ -6373,11 +6566,11 @@ async function handleRequest(req, server) {
   }
   let body = {};
   let parsedJsonBody = false;
-  async function tryParseJson() {
+  async function tryParseJson(maxBytes = MAX_JSON_BODY_BYTES) {
     if (parsedJsonBody) return true;
     parsedJsonBody = true;
     try {
-      const raw = await readRequestTextLimited(req, MAX_JSON_BODY_BYTES);
+      const raw = await readRequestTextLimited(req, maxBytes);
       body = raw ? JSON.parse(raw) : {};
       return true;
     } catch {
@@ -7215,12 +7408,17 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
 
   // Handle Global Broadcast WebSocket
   if (path === "/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    if (!sameOriginRequest(req)) return jsonResp(403, { error: 'websocket origin rejected' });
     const cookies = getCookies(req);
     const sid = cookies['studentId'] || cookies['id'] || '';
-    const names = loadJson(NAMES_FILE, {});
-    const myEmail = (names[sid] || '').toLowerCase();
-    const success = server.upgrade(req, { data: { isBroadcast: true, email: myEmail } });
+    if (!sid || !validId(sid) || isRevoked(sid) || !checkPasswordCookie(req, sid)) {
+      return jsonResp(401, { error: 'authentication required' });
+    }
+    const myEmail = normalizeEmail(emailFromSid(sid) || '');
+    if (!myEmail) return jsonResp(401, { error: 'authentication required' });
+    const success = server.upgrade(req, { data: { isBroadcast: true, email: myEmail, sid } });
     if (success) return;
+    return jsonResp(400, { error: 'websocket upgrade failed' });
   }
 
   // Handle SSH Terminal Proxy WebSocket
@@ -8881,6 +9079,36 @@ Mitch.pro Team`;
       return jsonResp(200, { ok: true, targetEmail: emailRaw });
     }
 
+  // /api/e2e/get-key is a read route and must stay outside the POST-only
+  // section below. Keeping it here also makes key recovery work after a
+  // reload or on a second signed-in device.
+  if (path === '/api/e2e/get-key' && method === 'GET') {
+    try {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
+      const names = loadJson(NAMES_FILE, {});
+      const email = (names[sid] || '').toLowerCase().trim();
+      if (!email) return jsonResp(403, { success: false, message: 'Email not found' });
+
+      const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
+      const norm = normalizeEmail(email);
+      const entry = e2eKeysData[norm];
+      if (!entry) {
+        return jsonResp(404, { success: false, message: 'Not found' });
+      }
+      return jsonResp(200, {
+        success: true,
+        pubKeyHex: entry.pubKeyHex,
+        encryptedPrivateJwk: entry.encryptedPrivateJwk,
+        ivHex: entry.ivHex,
+        keyHistory: Array.isArray(entry.history) ? entry.history.slice(0, 5) : [],
+      });
+    } catch (e) {
+      return jsonResp(500, { success: false, message: String(e) });
+    }
+  }
+
   if (method === 'POST') {
 
     // POST /api/admin/maintenance-toggle
@@ -9968,28 +10196,38 @@ Mitch.pro Team`;
     // /api/e2e/join
     if (path === '/api/e2e/join') {
       try {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
+        const email = normalizeEmail(emailFromSid(sid) || '');
+        if (!email) return jsonResp(401, { success: false, message: 'Auth required' });
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         const nick   = (body.nickname || '').replace(/[^a-zA-Z0-9_@._-]/g, '').slice(0, 50);
-        const pubKey = body.pubKey || '';
-        const cookies = getCookies(req);
-        const sid    = cookies['studentId'] || '';
-        const names  = loadJson(NAMES_FILE, {});
-        const email  = (sid && names[sid] ? names[sid] : '').toLowerCase();
+        const canonicalNick = normalizeEmail(nick);
+        const pubKey = String(body.pubKey || '');
         for (const s of BAD_NICS) { if (nick.toLowerCase().includes(s)) return jsonResp(400, { success: false, message: 'Bad Name' }); }
-        if (!nick || !pubKey) return jsonResp(400, { success: false, message: 'Invalid' });
+        if (!nick || canonicalNick !== email || !isHex(pubKey, 130) || !pubKey.startsWith('04')) {
+          return jsonResp(400, { success: false, message: 'Invalid identity or key' });
+        }
         const { priv, pubHex } = await genServerKeypair();
-        e2eUsers[nick] = { pub_key: pubKey, priv_key: priv, server_pub_hex: pubHex,
+        e2eUsers[canonicalNick] = { pub_key: pubKey, priv_key: priv, server_pub_hex: pubHex,
                            last_seen: Date.now(), email };
-        return jsonResp(200, { success: true, nickname: nick, serverPubKey: pubHex });
+        return jsonResp(200, { success: true, nickname: maskEmail(email), serverPubKey: pubHex });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
     // /api/e2e/heartbeat
     if (path === '/api/e2e/heartbeat') {
       try {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
+        const email = normalizeEmail(emailFromSid(sid) || '');
+        if (!email) return jsonResp(401, { success: false, message: 'Auth required' });
         if (!await tryParseJson()) return jsonResp(200, { success: true });
-        const nick = body.nickname || '';
-        if (nick in e2eUsers) e2eUsers[nick].last_seen = Date.now();
+        const nick = normalizeEmail(body.nickname || '');
+        if (nick !== email) return jsonResp(403, { success: false, message: 'Identity mismatch' });
+        if (nick in e2eUsers && normalizeEmail(e2eUsers[nick].email) === email) e2eUsers[nick].last_seen = Date.now();
       } catch {}
       return jsonResp(200, { success: true });
     }
@@ -10036,34 +10274,6 @@ Mitch.pro Team`;
         saveJson(E2E_KEYS_FILE, e2eKeysData);
         
         return jsonResp(200, { success: true });
-      } catch (e) {
-        return jsonResp(500, { success: false, message: String(e) });
-      }
-    }
-
-    // /api/e2e/get-key
-    if (path === '/api/e2e/get-key' && method === 'GET') {
-      try {
-        const cookies = getCookies(req);
-        const sid = cookies['studentId'] || cookies['id'] || '';
-        if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
-        const names = loadJson(NAMES_FILE, {});
-        const email = (names[sid] || '').toLowerCase().trim();
-        if (!email) return jsonResp(403, { success: false, message: 'Email not found' });
-        
-        const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
-        const norm = normalizeEmail(email);
-        const entry = e2eKeysData[norm];
-        if (!entry) {
-          return jsonResp(404, { success: false, message: 'Not found' });
-        }
-        return jsonResp(200, {
-          success: true,
-          pubKeyHex: entry.pubKeyHex,
-          encryptedPrivateJwk: entry.encryptedPrivateJwk,
-          ivHex: entry.ivHex,
-          keyHistory: Array.isArray(entry.history) ? entry.history.slice(0, 5) : [],
-        });
       } catch (e) {
         return jsonResp(500, { success: false, message: String(e) });
       }
@@ -10477,14 +10687,23 @@ function loadAllGamesList() {
     // /api/e2e/send
     if (path === '/api/e2e/send') {
       try {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { success: false, message: 'Auth required' });
+        const email = normalizeEmail(emailFromSid(sid) || '');
+        if (!email) return jsonResp(401, { success: false, message: 'Auth required' });
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         const { from: frm = '', to = '', data: msgData = '', iv = '' } = body;
         if (!frm || !to || !msgData || !iv)
           return jsonResp(400, { success: false, message: 'Missing fields' });
-        if (!(frm in e2eUsers)) return jsonResp(401, { success: false, message: 'Not registered' });
-        const entry = { from: frm, to, data: msgData, iv, timestamp: Date.now() };
+        const fromNorm = normalizeEmail(frm);
+        const toNorm = normalizeEmail(to);
+        if (fromNorm !== email) return jsonResp(403, { success: false, message: 'Identity mismatch' });
+        if (!(fromNorm in e2eUsers) || normalizeEmail(e2eUsers[fromNorm].email) !== email) return jsonResp(401, { success: false, message: 'Not registered' });
+        if (!toNorm || String(msgData).length > 256000 || !isHex(iv, 24)) return jsonResp(400, { success: false, message: 'Invalid message' });
+        const entry = { from: fromNorm, to: toNorm, data: String(msgData), iv: String(iv), timestamp: Date.now() };
         
-        const k = e2eKey(frm, to);
+        const k = e2eKey(fromNorm, toNorm);
         if (!e2eMessages[k]) e2eMessages[k] = [];
         e2eMessages[k].push(entry);
         if (e2eMessages[k].length > 500) e2eMessages[k] = e2eMessages[k].slice(-500);
@@ -10769,7 +10988,7 @@ function loadAllGamesList() {
         saveJson(FRIENDS_FILE, friends);
 
         // Send push notification to the other user
-        const subs = loadJson(PUSH_SUBS_FILE, {});
+        const subs = loadPushSubscriptions();
         const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
         if (sub && VAPID_PUBLIC) {
           webpush.sendNotification(sub, JSON.stringify({
@@ -10797,7 +11016,7 @@ function loadAllGamesList() {
       saveJson(FRIEND_REQUESTS_FILE, requests);
 
       // Notify the recipient via Web Push!
-      const subs = loadJson(PUSH_SUBS_FILE, {});
+      const subs = loadPushSubscriptions();
       const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
       if (sub && VAPID_PUBLIC) {
         webpush.sendNotification(sub, JSON.stringify({
@@ -10875,7 +11094,7 @@ function loadAllGamesList() {
         saveJson(FRIENDS_FILE, friends);
 
         // Notify the requester
-        const subs = loadJson(PUSH_SUBS_FILE, {});
+        const subs = loadPushSubscriptions();
         const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
         if (sub && VAPID_PUBLIC) {
           webpush.sendNotification(sub, JSON.stringify({
@@ -12761,18 +12980,8 @@ function loadAllGamesList() {
       const now = Date.now();
       const viewerEmail = emailFromSid(sid);
       touchActiveEmail(viewerEmail, now);
-      const stats = loadUserStats();
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
-      const onlineEmails = new Set();
-      for (const [email, info] of Object.entries(stats)) {
-        if (info && info.last_active_at && now - info.last_active_at < 2 * 60 * 1000) {
-          onlineEmails.add(normalizeEmail(email));
-        }
-      }
-      for (const u of Object.values(e2eUsers)) {
-        if (u.email && now - u.last_seen < 60000) onlineEmails.add(normalizeEmail(u.email));
-      }
       
       const dms = loadJson(DMS_FILE, []);
       const cleared = loadJson(DM_CLEARED_FILE, {});
@@ -12851,7 +13060,7 @@ function loadAllGamesList() {
           handle: username,
           profileUrl: `/profile/#${encodeURIComponent(username)}`,
           pfp: sanitizeProfileImageUrl(profile.pfp || '', { allowData: true, maxDataBytes: 120000 }),
-          online: onlineEmails.has(normalizeEmail(email)), 
+          online: isUserPresent(email, now),
           role,
           displayName: processed.displayName,
           bio: String(profile.bio || '').slice(0, 160),
@@ -13098,12 +13307,14 @@ function loadAllGamesList() {
       const names = loadJson(NAMES_FILE, {});
       const senderEmail = (names[sid] || '').toLowerCase();
       if (!senderEmail) return jsonResp(403, { error: 'email not found' });
-      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const declaredChatBytes = Number(req.headers.get('Content-Length') || 0);
+      if (declaredChatBytes > MAX_CHAT_JSON_BODY_BYTES) return jsonResp(413, { error: 'message request too large' });
+      if (!await tryParseJson(MAX_CHAT_JSON_BODY_BYTES)) return jsonResp(400, { error: 'bad json' });
       if (!await verifyRecaptcha(body.recaptcha_token || '', ip, sid)) {
         return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
       }
       const groupId = body.groupId ? String(body.groupId) : '';
-      const to   = groupId ? '' : (body.to || '').toLowerCase().trim();
+      const to   = groupId ? '' : normalizeEmail(body.to || '');
       const rawText = String(body.text || '').trim();
       const image = body.image && typeof body.image === 'object' ? body.image : null;
       let safeImage = null;
@@ -13116,7 +13327,16 @@ function loadAllGamesList() {
         if (Buffer.byteLength(data, 'utf8') > 900_000) return jsonResp(413, { error: 'image too large' });
         safeImage = { data, mime, name };
       }
-      const text = rawText.slice(0, safeImage ? 500 : 2000);
+      let encryptedEnvelope = null;
+      try {
+        const candidate = JSON.parse(rawText);
+        if (candidate && typeof candidate === 'object' && candidate.e2e === true) encryptedEnvelope = candidate;
+      } catch {}
+      if (encryptedEnvelope) {
+        const validation = validateE2eEnvelope(rawText, !!groupId);
+        if (validation.error) return jsonResp(validation.status, { error: validation.error });
+      }
+      const text = encryptedEnvelope ? rawText : rawText.slice(0, safeImage ? 500 : 2000);
       if (!groupId && !to) return jsonResp(400, { error: 'missing fields' });
       if (!text && !safeImage) return jsonResp(400, { error: 'missing fields' });
       const clientId = String(body.clientId || '').replace(/[^a-zA-Z0-9._:-]/g, '').slice(0, 120);
@@ -13127,9 +13347,12 @@ function loadAllGamesList() {
         ts: Number(body.replyTo.ts) || 0,
       } : null;
       const dms = loadJson(DMS_FILE, []);
-      const subs = VAPID_PUBLIC ? loadJson(PUSH_SUBS_FILE, {}) : {};
+      const subs = VAPID_PUBLIC ? loadPushSubscriptions() : {};
       let msg;
       const expiry = Number(body.expiry) || 0;
+      const getNotificationBody = (t, img) => encryptedEnvelope
+        ? '[Secure Message]'
+        : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));
       if (groupId) {
         const groups = loadJson(GROUPS_FILE, []);
         const group = groups.find(g => g.id === groupId);
@@ -13143,25 +13366,16 @@ function loadAllGamesList() {
         }
         dms.push(msg);
         saveJson(DMS_FILE, pruneDms(dms));
-        const getNotificationBody = (t, img) => {
-          try {
-            const parsed = JSON.parse(t);
-            if (parsed && parsed.e2e) {
-              return img ? '[Secure Image]' : '[Secure Message]';
-            }
-          } catch (e) {}
-          return img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120);
-        };
-
         if (VAPID_PUBLIC) {
           const notifyBody = getNotificationBody(text, safeImage);
           for (const member of group.members) {
-            if (normalizeEmail(member) === normalizeEmail(senderEmail)) continue;
-            const recActive = (member in e2eUsers) && (Date.now() - e2eUsers[member].last_seen < 30000);
-            if (!recActive && subs[member]) {
-              webpush.sendNotification(subs[member], JSON.stringify({
+            const memberNorm = normalizeEmail(member);
+            if (memberNorm === normalizeEmail(senderEmail)) continue;
+            const recActive = (memberNorm in e2eUsers) && (Date.now() - e2eUsers[memberNorm].last_seen < 30000);
+            if (!recActive && subs[memberNorm]) {
+              webpush.sendNotification(subs[memberNorm], JSON.stringify({
                 title: `${maskEmail(senderEmail)} in ${group.name}`, body: notifyBody, url: notificationUrl('/encrypt.html'),
-              })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[member]; saveJson(PUSH_SUBS_FILE, subs); } });
+              })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[memberNorm]; savePushSubscriptions(subs); } });
             }
           }
         }
@@ -13179,7 +13393,7 @@ function loadAllGamesList() {
             title: `Message from ${maskEmail(senderEmail)}`,
             body:  getNotificationBody(text, safeImage),
             url:   notificationUrl('/encrypt.html'),
-          })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[to]; saveJson(PUSH_SUBS_FILE, subs); } });
+          })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[to]; savePushSubscriptions(subs); } });
         }
         }
         addCoins(senderEmail, 2.0);
@@ -13478,9 +13692,10 @@ function loadAllGamesList() {
       const myEmail = (names[sid] || '').toLowerCase();
       if (!myEmail) return jsonResp(403, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const subs = loadJson(PUSH_SUBS_FILE, {});
-      subs[myEmail] = body;
-      saveJson(PUSH_SUBS_FILE, subs);
+      if (!validPushSubscription(body)) return jsonResp(400, { error: 'invalid push subscription' });
+      const subs = loadPushSubscriptions();
+      subs[normalizeEmail(myEmail)] = body;
+      savePushSubscriptions(subs);
       return jsonResp(200, { success: true });
     }
 
@@ -13488,12 +13703,12 @@ function loadAllGamesList() {
     if (path === '/api/push/unsubscribe') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!sid || !validId(sid)) return jsonResp(401, { error: 'auth required' });
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
       const names = loadJson(NAMES_FILE, {});
       const myEmail = (names[sid] || '').toLowerCase();
-      const subs = loadJson(PUSH_SUBS_FILE, {});
-      delete subs[myEmail];
-      saveJson(PUSH_SUBS_FILE, subs);
+      const subs = loadPushSubscriptions();
+      delete subs[normalizeEmail(myEmail)];
+      savePushSubscriptions(subs);
       return jsonResp(200, { success: true });
     }
 
@@ -13503,18 +13718,26 @@ function loadAllGamesList() {
     }
 
     if (path === '/api/e2e/users') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
       const now   = Date.now();
       const users = Object.entries(e2eUsers)
         .filter(([, u]) => now - u.last_seen < 60000)
-        .map(([n, u]) => ({ nickname: n, pubKey: u.pub_key }));
+        .map(([n, u]) => ({ nickname: maskEmail(n), pubKey: u.pub_key }));
       return jsonResp(200, { users });
     }
 
     if (path === '/api/e2e/messages') {
-      const me       = qs.get('me') || '';
-      const withUser = qs.get('with') || '';
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const email = normalizeEmail(emailFromSid(sid) || '');
+      const me       = normalizeEmail(qs.get('me') || '');
+      const withUser = normalizeEmail(qs.get('with') || '');
       const since    = parseInt(qs.get('since') || '0') || 0;
       if (!me || !withUser) return jsonResp(400, { error: 'Missing params' });
+      if (!email || me !== email) return jsonResp(403, { error: 'identity mismatch' });
       const k    = e2eKey(me, withUser);
       const msgs = (e2eMessages[k] || []).filter(m => m.timestamp > since)
         .map(m => ({ from: m.from, to: m.to, data: m.data, iv: m.iv, timestamp: m.timestamp }));
@@ -16690,11 +16913,9 @@ function loadAllGamesList() {
       const friends = loadJson(FRIENDS_FILE, {});
       const myList = friends[norm] || [];
       const now = Date.now();
-      const online = Object.entries(cvOnline).filter(([, t]) => now - t < 120000).map(([e]) => e);
-      const onlineSet = new Set(online.map(normalizeEmail));
       const res = myList.map(f => {
         const fNorm = normalizeEmail(f);
-        const isOnline = onlineSet.has(fNorm);
+        const isOnline = isUserPresent(fNorm, now);
         const presence = userPresence[fNorm];
         return {
           email: f,
@@ -16885,11 +17106,38 @@ function loadAllGamesList() {
           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
           const isEnrollPage = path === '/enroll' || path === '/enroll/' || path === '/enroll/index.html';
           const isEmbeddedGameRuntime = path.startsWith('/games/') && path !== '/games/' && path !== '/games/index.html';
+          const pageCookies = getCookies(req);
+          const pageSid = pageCookies['studentId'] || pageCookies['id'] || '';
+          const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
+
+          if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
+            injectStr += '<script src="/broadcast.js" defer></script>\n';
+          } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
+            raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
+          }
 
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/relaunch.css'))) {
             injectStr += '<link rel="stylesheet" href="/relaunch.css">\n';
           }
+          if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/site-galaxy.css'))) {
+            injectStr += '<link rel="stylesheet" href="/site-galaxy.css">\n';
+          }
+          const galaxyShellPages = new Set([
+            '/additions', '/additions/', '/appeal', '/appeal/', '/casino-guide', '/casino-guide/',
+            '/cookies', '/cookies/', '/download-information', '/download-information/', '/faq', '/faq/',
+            '/moderator', '/moderator/', '/newsletter', '/newsletter/', '/premium-apply', '/premium-apply/',
+            '/premium-email', '/premium-email/', '/privacy', '/privacy/', '/profile', '/profile/',
+            '/report-game', '/report-game/', '/unsubscribe', '/unsubscribe/', '/use-agreement', '/use-agreement/'
+          ]);
+          if (galaxyShellPages.has(path) && !raw.includes(Buffer.from('/app-shell.js'))) {
+            injectStr += '<script src="/app-shell.js" defer></script>\n';
+          }
+          // Page-specific galaxy layers must come after the legacy relaunch layer.
+          if (!isEmbeddedGameRuntime && (path === '/encrypt' || path === '/encrypt/' || path === '/encrypt/index.html') && !raw.includes(Buffer.from('/encrypt-galaxy.css'))) {
+            injectStr += '<link rel="stylesheet" href="/encrypt-galaxy.css">\n';
+          }
           if (!isEmbeddedGameRuntime) {
+            if (!raw.includes(Buffer.from('name="viewport"'))) injectStr += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n';
             if (!raw.includes(Buffer.from('rel="manifest"'))) injectStr += '<link rel="manifest" href="/manifest.json">\n';
             if (!raw.includes(Buffer.from('rel="apple-touch-icon"'))) injectStr += '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">\n';
             if (!raw.includes(Buffer.from('name="theme-color"'))) injectStr += '<meta name="theme-color" content="#05070d">\n';
@@ -16992,12 +17240,12 @@ function loadAllGamesList() {
     const PUBLIC_ASSETS = new Set([
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
-      '/api.js', '/app-shell.js', '/app.css', '/relaunch.css',
+      '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
-      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png',
+      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/auth-mitch-pro-night.png', '/home-galaxy-background.jpg',
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
@@ -17011,7 +17259,7 @@ function loadAllGamesList() {
 
 
 
-    return serveStatic(path);
+    return serveStatic(path, req);
   }
 
   return errResp(405, null, null);
@@ -17053,7 +17301,18 @@ Bun.serve({
   fetch: handleRequest,
   websocket: {
     async open(ws) {
+      const presenceEmail = ws.data?.isBroadcast ? normalizeEmail(ws.data.email) : '';
+      const wasPresent = presenceEmail ? isUserPresent(presenceEmail) : false;
       allSockets.add(ws);
+      if (presenceEmail) {
+        const pendingOffline = presenceOfflineTimers.get(presenceEmail);
+        if (pendingOffline) clearTimeout(pendingOffline);
+        presenceOfflineTimers.delete(presenceEmail);
+        const playing = String(userPresence[presenceEmail]?.playing || '');
+        userPresence[presenceEmail] = { lastSeen: Date.now(), playing };
+        if (!wasPresent) notifyFriendsOnline(presenceEmail);
+        broadcastPresenceChanged(presenceEmail, true, playing);
+      }
       if (ws.data && ws.data.isBlooketBot) {
         console.log(`[blooket-bot-ws] Client socket opened for ${ws.data.email}`);
         blooketQueue.push({
@@ -17107,6 +17366,22 @@ Bun.serve({
       }
     },
     async message(ws, msg) {
+      if (ws.data?.isBroadcast) {
+        try {
+          const payload = JSON.parse(String(msg));
+          if (payload.type === 'presence_ping') {
+            const sid = ws.data.sid || '';
+            const email = normalizeEmail(emailFromSid(sid) || '');
+            if (!sid || !validId(sid) || isRevoked(sid) || !email || email !== normalizeEmail(ws.data.email)) {
+              ws.close(1008, 'Session expired');
+              return;
+            }
+            const playing = String(userPresence[email]?.playing || '');
+            userPresence[email] = { lastSeen: Date.now(), playing };
+            return;
+          }
+        } catch {}
+      }
       if (ws.data && ws.data.isBlooketBot) {
         try {
           const payload = JSON.parse(msg);
@@ -17267,6 +17542,23 @@ Bun.serve({
     },
     async close(ws) {
       allSockets.delete(ws);
+      if (ws.data?.isBroadcast && ws.data.email) {
+        const presenceEmail = normalizeEmail(ws.data.email);
+        if (presenceEmail && !hasAuthenticatedBroadcastSocket(presenceEmail)) {
+          const playing = String(userPresence[presenceEmail]?.playing || '');
+          userPresence[presenceEmail] = { lastSeen: Date.now(), playing };
+          const previousTimer = presenceOfflineTimers.get(presenceEmail);
+          if (previousTimer) clearTimeout(previousTimer);
+          const timer = setTimeout(() => {
+            presenceOfflineTimers.delete(presenceEmail);
+            if (!hasAuthenticatedBroadcastSocket(presenceEmail)) {
+              delete userPresence[presenceEmail];
+              broadcastPresenceChanged(presenceEmail, false, '');
+            }
+          }, 3000);
+          presenceOfflineTimers.set(presenceEmail, timer);
+        }
+      }
       if (ws.data && ws.data.isBlooketBot) {
         console.log(`[blooket-bot-ws] Client socket closed for ${ws.data.email}`);
         const qIdx = blooketQueue.findIndex(q => q.email === ws.data.email);

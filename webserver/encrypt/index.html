@@ -11,9 +11,10 @@
   }
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Secure Chat — mitch.pro</title>
+<title>Encrypted Chat — mitch.pro</title>
 <script src="/theme.js"></script>
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/site-galaxy.css">
 <script src="/api.js"></script>
 <script src="/app-shell.js" defer></script>
 <script src="/broadcast.js"></script>
@@ -262,7 +263,7 @@ button {
 
 .role-tag.owner { color: #facc15; border-color: rgba(250,204,21,.45); }
 .role-tag.admin { color: #f87171; border-color: rgba(248,113,113,.45); }
-.role-tag.moderator { color: #10b981; border-color: rgba(16,185,129,.45); }
+.role-tag.moderator { color: #8b5cf6; border-color: rgba(139,92,246,.45); }
 .role-tag.premium { color: #f59e0b; border-color: rgba(245,158,11,.45); }
 
 .unread {
@@ -631,7 +632,7 @@ button {
 
 .entry-name.neon_purple { color: #d946ef !important; text-shadow: 0 0 5px rgba(217,70,239,0.3); }
 .entry-name.electric_blue { color: #3b82f6 !important; text-shadow: 0 0 5px rgba(59,130,246,0.3); }
-.entry-name.mint_flash { color: #34d399 !important; text-shadow: 0 0 5px rgba(52,211,153,0.3); }
+.entry-name.mint_flash { color: #c084fc !important; text-shadow: 0 0 5px rgba(192,132,252,0.3); }
 .entry-name.rose_spark { color: #fb7185 !important; text-shadow: 0 0 5px rgba(251,113,133,0.3); }
 .entry-name.ember_red { color: #ef4444 !important; text-shadow: 0 0 5px rgba(239,68,68,0.35); }
 .entry-name.void_white { color: #f8fafc !important; text-shadow: 0 0 7px rgba(248,250,252,0.3); }
@@ -709,6 +710,7 @@ button {
   transition: none !important;
 }
 </style>
+<link rel="stylesheet" href="/encrypt-galaxy.css">
 </head>
 <body class="encrypt-page">
 
@@ -717,34 +719,36 @@ button {
 <div id="app">
   <aside id="sidebar">
     <div id="sidebar-top">
-      <span id="sidebar-title">Secure Chat</span>
-      <button id="new-group-btn" class="small-btn" type="button">New group</button>
-      <button id="notif-btn" class="small-btn" type="button" title="Push notifications">Push</button>
+      <span class="chat-brand-mark" aria-hidden="true"></span>
+      <span id="sidebar-title"><b>Encrypted</b><small>mitch.pro communications</small></span>
+      <button id="new-group-btn" class="small-btn icon-btn" type="button"><span aria-hidden="true">＋</span><em>Group</em></button>
+      <button id="notif-btn" class="small-btn icon-btn" type="button" title="Push notifications"><span aria-hidden="true">◉</span><em>Alerts</em></button>
     </div>
     <div id="my-identity"></div>
     <div id="search-wrap">
       <div class="tabs">
-        <button class="tab active" id="direct-tab" type="button">Direct</button>
-        <button class="tab" id="groups-tab" type="button">Groups</button>
-        <button class="tab" id="reports-tab" type="button" style="display:none">Reports</button>
+        <button class="tab active" id="direct-tab" type="button"><span>✦</span> Direct</button>
+        <button class="tab" id="groups-tab" type="button"><span>◈</span> Groups</button>
+        <button class="tab" id="reports-tab" type="button" style="display:none"><span>◇</span> Reports</button>
       </div>
       <input id="searchInput" placeholder="search people or groups..." autocomplete="off">
     </div>
     <div id="user-list"></div>
     <div class="sidebar-foot">
-      <button class="small-btn" id="refresh-btn" type="button">Refresh</button>
-      <button class="small-btn" id="clear-all-btn" type="button">Clear all</button>
-      <a class="small-btn" id="profile-btn" href="/profile.html">My profile</a>
+      <button class="small-btn" id="refresh-btn" type="button">↻ Refresh</button>
+      <button class="small-btn" id="clear-all-btn" type="button">Clear</button>
+      <a class="small-btn" id="profile-btn" href="/profile.html">Profile ↗</a>
     </div>
   </aside>
 
   <main id="chat-main">
     <header id="chat-header">
-      <button id="chat-back-btn" class="tool-btn" type="button" style="display:none; padding: 6px 12px; margin-right: 8px;">← Back</button>
+      <button id="chat-back-btn" class="tool-btn" type="button" style="display:none;">←</button>
       <div class="chat-title-wrap">
         <div id="chat-title">No chat selected</div>
         <div id="chat-subtitle">Choose a direct message or group chat.</div>
       </div>
+      <div class="encryption-status"><i></i><span>END-TO-END<br>ENCRYPTED</span></div>
       <div class="header-tools">
         <input id="msgSearch" placeholder="search this chat..." autocomplete="off">
         <button id="expiry-btn" class="tool-btn" type="button" title="Hide messages locally after a short time">Expire: off</button>
@@ -753,7 +757,11 @@ button {
         <button id="leave-group-btn" class="tool-btn" type="button" style="display:none">Leave</button>
       </div>
     </header>
-    <div id="no-chat">select a conversation to start chatting</div>
+    <div id="no-chat">
+      <div class="empty-orbit" aria-hidden="true"><span></span></div>
+      <strong>Your private universe.</strong>
+      <p>Select a person or group to start an encrypted conversation.</p>
+    </div>
     <div id="msgs"></div>
     <div id="reply-preview">
       <span id="reply-preview-text"></span>
@@ -766,12 +774,12 @@ button {
     </div>
     <div id="input-row">
       <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
-      <button id="sendBtn" type="button">Send</button>
-      <button id="attachBtn" type="button">Image</button>
+      <button id="attachBtn" type="button" title="Attach an image" aria-label="Attach an image">＋</button>
       <input type="text" id="msgInput" placeholder="type a message..." autocomplete="off">
+      <button id="sendBtn" type="button" disabled><span>Send</span><b aria-hidden="true">↗</b></button>
     </div>
     <div id="report-actions-row" style="display:none; padding:10px 14px; gap:8px; border-top:1px solid var(--t-bd); align-items:center; background:rgba(0,0,0,0.15); font-family:inherit;">
-      <button id="resolve-report-btn" class="small-btn" type="button" style="background:#10b981; color:#fff; border-color:#10b981;">Resolve Report</button>
+      <button id="resolve-report-btn" class="small-btn" type="button" style="background:#8b5cf6; color:#fff; border-color:#8b5cf6;">Resolve Report</button>
       <button id="delete-report-btn" class="small-btn" type="button" style="background:#ef4444; color:#fff; border-color:#ef4444;">Delete Report</button>
     </div>
   </main>
@@ -800,7 +808,7 @@ button {
       <strong id="e2e-modal-title">Unlock Secure Chat</strong>
     </div>
     <div style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 8px;" id="e2e-modal-desc">
-      Secure Chat is end-to-end encrypted. Enter your password to unlock or generate your encryption keys on this device.
+      Enter your login password to unlock encrypted chat on this device.
     </div>
     <input type="password" id="e2e-password" placeholder="Enter your login password" style="padding: 8px; border-radius: 4px; border: 1px solid var(--t-bd); background: var(--t-bg); color: var(--t-fg); margin-bottom: 8px;">
     <div id="e2e-error" style="color: #ff5f5f; font-size: 0.8rem; display: none; margin-bottom: 8px;"></div>
@@ -815,6 +823,7 @@ button {
 
 <script>
 let myEmail = null, myDisplayName = null, myNick = null, myKP = null, myLegacyKP = null;
+let isFullAdmin = false;
 let myHistoricalKPs = [];
 let members = [], groups = [], allMessages = [], currentMessages = [];
 let myNickPubKey = null;
@@ -898,7 +907,7 @@ async function importKeypairJwk(jwk) {
 async function loadHistoricalKeypairs() {
   myHistoricalKPs = [];
   try {
-    const saved = JSON.parse(localStorage.getItem('_e2e_key_history_v2') || '[]');
+    const saved = JSON.parse(localStorage.getItem(e2eStorageKey('key_history')) || '[]');
     for (const item of Array.isArray(saved) ? saved.slice(0, 5) : []) {
       try { myHistoricalKPs.push(await importKeypairJwk(item.jwk || item)); } catch {}
     }
@@ -910,10 +919,10 @@ async function archiveCurrentKeypair() {
   try {
     const jwk = await crypto.subtle.exportKey('jwk', myKP.privateKey);
     const pub = await exportPub(myKP);
-    let saved = JSON.parse(localStorage.getItem('_e2e_key_history_v2') || '[]');
+    let saved = JSON.parse(localStorage.getItem(e2eStorageKey('key_history')) || '[]');
     if (!Array.isArray(saved)) saved = [];
     saved = [{ pub, jwk, archivedAt:Date.now() }, ...saved.filter(item => item.pub !== pub)].slice(0, 5);
-    localStorage.setItem('_e2e_key_history_v2', JSON.stringify(saved));
+    localStorage.setItem(e2eStorageKey('key_history'), JSON.stringify(saved));
     await loadHistoricalKeypairs();
   } catch (err) {
     console.warn('Unable to archive prior chat key', err);
@@ -930,6 +939,9 @@ function normEmail(email) {
   return local + '@' + domain;
 }
 function sameEmail(a, b) { return normEmail(a) && normEmail(a) === normEmail(b); }
+function e2eStorageKey(name) {
+  return `_e2e_${name}_v3:${encodeURIComponent(normEmail(myEmail))}`;
+}
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
 function fmtTime(ts) { return new Date(ts || Date.now()).toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' }); }
 function fmtDay(ts) { return new Date(ts || Date.now()).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }); }
@@ -948,6 +960,11 @@ function displayNameFor(email) {
   if (sameEmail(email, myEmail)) return myDisplayName || myEmail;
   const m = members.find(x => sameEmail(x.email, email));
   return (m && m.displayName) || String(email || '').split('@')[0] || 'member';
+}
+
+function initialsFor(value) {
+  const words = String(value || '?').replace(/@.*$/, '').trim().split(/[\s._-]+/).filter(Boolean);
+  return (words.slice(0, 2).map(word => word[0]).join('') || '?').toUpperCase();
 }
 
 function memberFor(email) {
@@ -1010,6 +1027,78 @@ async function deriveSharedKey(peerPubKeyHex, kp = myKP, keyId = 'current') {
   return sharedKey;
 }
 
+function buildSecureMessageContent(text, image, quotedReply) {
+  const safeImage = image && typeof image === 'object' &&
+    /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(image.data || ''))
+    ? {
+        data: String(image.data),
+        mime: String(image.mime || '').slice(0, 80),
+        name: String(image.name || 'image').slice(0, 180)
+      }
+    : null;
+  const safeReply = quotedReply && typeof quotedReply === 'object'
+    ? {
+        id: String(quotedReply.id || '').slice(0, 180),
+        from: String(quotedReply.from || '').slice(0, 320),
+        text: String(quotedReply.text || '').slice(0, 180),
+        ts: Number(quotedReply.ts) || 0
+      }
+    : null;
+  return JSON.stringify({
+    text: String(text || '').slice(0, 2000),
+    image: safeImage,
+    replyTo: safeReply
+  });
+}
+
+function applyDecryptedMessageContent(message, decryptedText, version) {
+  if (Number(version) < 3) {
+    message.text = decryptedText;
+    return;
+  }
+
+  let content;
+  try {
+    content = JSON.parse(decryptedText);
+  } catch {
+    throw new Error('Invalid secure message content');
+  }
+  if (!content || typeof content !== 'object' || Array.isArray(content)) {
+    throw new Error('Invalid secure message content');
+  }
+
+  message.text = typeof content.text === 'string' ? content.text.slice(0, 2000) : '';
+  message.image = content.image && typeof content.image === 'object' &&
+    /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(content.image.data || ''))
+    ? {
+        data: String(content.image.data),
+        mime: String(content.image.mime || '').slice(0, 80),
+        name: String(content.image.name || 'image').slice(0, 180)
+      }
+    : null;
+  message.replyTo = content.replyTo && typeof content.replyTo === 'object'
+    ? {
+        id: String(content.replyTo.id || '').slice(0, 180),
+        from: String(content.replyTo.from || '').slice(0, 320),
+        text: String(content.replyTo.text || '').slice(0, 180),
+        ts: Number(content.replyTo.ts) || 0
+      }
+    : null;
+}
+
+async function getOptionalCaptchaToken(action) {
+  if (typeof window.getCaptchaToken !== 'function') return '';
+  for (let i = 0; i < 50 && !window.grecaptcha; i++) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  try {
+    return await window.getCaptchaToken(action) || '';
+  } catch (err) {
+    console.warn('Captcha token unavailable:', err);
+    return '';
+  }
+}
+
 async function decryptMessageContent(m) {
   if (!m) return m;
   if (m.decrypted === true) return m;
@@ -1024,16 +1113,22 @@ async function decryptMessageContent(m) {
         return m;
       }
       
-      const peerEmail = payload.group ? m.from : (sameEmail(m.from, myEmail) ? m.to : m.from);
+      const sentByMe = sameEmail(m.from, myEmail);
+      const peerEmail = payload.group ? m.from : (sentByMe ? m.to : m.from);
       const peer = memberFor(peerEmail);
-      if (!peer && !payload.senderPubKey) {
+      if (!peer && !payload.senderPubKey && !payload.recipientPubKey) {
         m.text = "[Decryption Error: Peer not found]";
         return m;
       }
       
       // Gather all possible public keys of the peer
       const peerPubKeys = [];
-      if (payload.senderPubKey) peerPubKeys.push(payload.senderPubKey);
+      // Outbound v3 messages retain the exact recipient key used during send, so
+      // they remain readable after the recipient rotates their current key.
+      if (!payload.group && sentByMe && payload.recipientPubKey) peerPubKeys.push(payload.recipientPubKey);
+      if ((!sentByMe || payload.group) && payload.senderPubKey && !peerPubKeys.includes(payload.senderPubKey)) {
+        peerPubKeys.push(payload.senderPubKey);
+      }
       if (peer && peer.pubKey && !peerPubKeys.includes(peer.pubKey)) peerPubKeys.push(peer.pubKey);
       if (peer && peer.legacyPubKey && peer.legacyPubKey !== peer.pubKey) {
         peerPubKeys.push(peer.legacyPubKey);
@@ -1050,6 +1145,9 @@ async function decryptMessageContent(m) {
       if (payload.group) {
         if (payload.payloads && payload.payloads[normEmail(myEmail)]) {
           const innerPayload = payload.payloads[normEmail(myEmail)];
+          if (sentByMe && innerPayload.recipientPubKey && !peerPubKeys.includes(innerPayload.recipientPubKey)) {
+            peerPubKeys.unshift(innerPayload.recipientPubKey);
+          }
           
           outerLoop:
           for (const ourKp of ourKeypairs) {
@@ -1070,8 +1168,13 @@ async function decryptMessageContent(m) {
           }
           
           if (decryptedText !== null) {
-            m.text = decryptedText;
-            m.decrypted = true;
+            try {
+              applyDecryptedMessageContent(m, decryptedText, payload.version);
+              m.decrypted = true;
+            } catch {
+              m.text = "This secure message has invalid content.";
+              m.decryptFailed = true;
+            }
           } else {
             m.text = "This older message could not be unlocked on this device.";
             m.decryptFailed = true;
@@ -1100,8 +1203,13 @@ async function decryptMessageContent(m) {
         }
         
         if (decryptedText !== null) {
-          m.text = decryptedText;
-          m.decrypted = true;
+          try {
+            applyDecryptedMessageContent(m, decryptedText, payload.version);
+            m.decrypted = true;
+          } catch {
+            m.text = "This secure message has invalid content.";
+            m.decryptFailed = true;
+          }
         } else {
           m.text = "This older message could not be unlocked on this device.";
           m.decryptFailed = true;
@@ -1124,6 +1232,7 @@ async function init() {
     const r = await fetch('/api/me', { credentials:'include', cache:'no-store' });
     fetchedData = await r.json();
     myEmail = (fetchedData.email || '').toLowerCase();
+    isFullAdmin = !!fetchedData.isAdmin;
     if (fetchedData.isAdmin || fetchedData.isModerator) {
       document.getElementById('reports-tab').style.display = 'block';
       document.querySelector('.tabs').style.gridTemplateColumns = '1fr 1fr 1fr';
@@ -1136,12 +1245,19 @@ async function init() {
     return;
   }
 
+  if (!window.isSecureContext || !window.crypto || !window.crypto.subtle) {
+    const loading = document.getElementById('loading');
+    loading.textContent = 'Encrypted chat requires HTTPS. Open the official HTTPS site (or localhost for development); browser encryption is blocked on plain LAN HTTP.';
+    loading.style.maxWidth = '42rem';
+    loading.style.lineHeight = '1.5';
+    return;
+  }
+
   try {
     const pref = JSON.parse(localStorage.getItem('_prefHomepage') || '{}');
     myDisplayName = pref.greetingName || null;
   } catch {}
   myNick = myEmail;
-  await loadHistoricalKeypairs();
 
   try {
     // 1. Load legacy key as fallback
@@ -1170,7 +1286,11 @@ async function init() {
 
     // 2. Check if we already have a valid password-derived key in localStorage
     let hasValidLocalKey = false;
-    const localJwkStr = localStorage.getItem('_e2e_private_jwk');
+    const privateKeyStorageKey = e2eStorageKey('private_jwk');
+    const scopedLocalJwkStr = localStorage.getItem(privateKeyStorageKey);
+    const legacyLocalJwkStr = localStorage.getItem('_e2e_private_jwk');
+    const localJwkStr = scopedLocalJwkStr || legacyLocalJwkStr;
+    const isLegacyLocalKey = !scopedLocalJwkStr && Boolean(legacyLocalJwkStr);
     if (localJwkStr && fetchedData && fetchedData.pubKeyHex) {
       try {
         const localJwk = JSON.parse(localJwkStr);
@@ -1193,6 +1313,17 @@ async function init() {
           );
           myKP = { publicKey: pubKey, privateKey };
           hasValidLocalKey = true;
+          // Migrate the former origin-global keys only after the public key
+          // proves that they belong to the signed-in account.
+          localStorage.setItem(privateKeyStorageKey, JSON.stringify(localJwk));
+          if (isLegacyLocalKey && !localStorage.getItem(e2eStorageKey('key_history'))) {
+            const oldHistory = localStorage.getItem('_e2e_key_history_v2');
+            if (oldHistory) localStorage.setItem(e2eStorageKey('key_history'), oldHistory);
+          }
+          if (isLegacyLocalKey) {
+            localStorage.removeItem('_e2e_private_jwk');
+            localStorage.removeItem('_e2e_key_history_v2');
+          }
         } else {
           console.log("Local E2E key does not match server registered key. Needs unlock.");
         }
@@ -1201,14 +1332,16 @@ async function init() {
       }
     }
 
-    // 3. If no valid password-derived key, prompt the user via the modal
+    // 3. Unlock the account key, or create it from the login password on first
+    // use. The server backup must use the same password-derived wrapping key so
+    // it can actually be recovered on another device.
     if (!hasValidLocalKey) {
       const isSetup = !fetchedData.encryptedPrivateJwk;
-      const title = isSetup ? "Setup Secure Chat Keys" : "Unlock Secure Chat Keys";
-      const desc = isSetup 
-        ? "Secure Chat is end-to-end encrypted. Enter your login password to generate secure keys. They will be encrypted with your password client-side before storing on the server."
-        : "Your secure chat keys are encrypted. Enter your login password to decrypt and load them on this device.";
-      const submitText = isSetup ? "Setup Keys" : "Unlock Keys";
+
+      if (!hasValidLocalKey) {
+        const title = "Unlock Encrypted Chat";
+        const desc = "Enter your login password to unlock encrypted chat on this device.";
+        const submitText = "Unlock";
       
       document.getElementById('e2e-modal-title').textContent = title;
       document.getElementById('e2e-modal-desc').textContent = desc;
@@ -1221,11 +1354,7 @@ async function init() {
         const pwdInput = document.getElementById('e2e-password');
         const errDiv = document.getElementById('e2e-error');
         
-        if (!isSetup) {
-          resetBtn.style.display = 'block';
-        } else {
-          resetBtn.style.display = 'none';
-        }
+        resetBtn.style.display = isSetup ? 'none' : 'block';
         
         const onSubmit = async () => {
           const password = pwdInput.value;
@@ -1260,7 +1389,7 @@ async function init() {
           
           try {
             const aesKey = await deriveEncryptionKeyFromPassword(password, myEmail);
-            
+
             if (isSetup) {
               const kp = await genKP();
               const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
@@ -1271,23 +1400,22 @@ async function init() {
                 aesKey,
                 privateJwkBytes
               );
-              
-              const pubHex = await exportPub(kp);
-              const encryptedPrivateJwk = b2h(ciphertext);
-              const ivHex = b2h(iv);
-              
-              const res = await fetch('/api/e2e/register-key', {
+              const pubKeyHex = await exportPub(kp);
+              const registerRes = await fetch('/api/e2e/register-key', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pubKeyHex: pubHex, encryptedPrivateJwk, ivHex })
+                body: JSON.stringify({
+                  pubKeyHex,
+                  encryptedPrivateJwk: b2h(ciphertext),
+                  ivHex: b2h(iv)
+                })
               });
-              const d = await res.json();
-              if (!d.success) {
-                throw new Error(d.message || "Failed to register keys.");
+              const registerData = await registerRes.json();
+              if (!registerRes.ok || !registerData.success) {
+                throw new Error(registerData.message || 'Could not initialize encrypted chat.');
               }
-              
-              localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+              localStorage.setItem(privateKeyStorageKey, JSON.stringify(privateJwk));
               myKP = kp;
             } else {
               const encryptedPrivateJwk = fetchedData.encryptedPrivateJwk;
@@ -1321,7 +1449,7 @@ async function init() {
                 ['deriveKey', 'deriveBits']
               );
               
-              localStorage.setItem('_e2e_private_jwk', JSON.stringify(decryptedJwk));
+              localStorage.setItem(privateKeyStorageKey, JSON.stringify(decryptedJwk));
               myKP = { publicKey: pubKey, privateKey };
 
               // Recover prior rotated keys that were encrypted with the same login password.
@@ -1340,10 +1468,10 @@ async function init() {
               }
               if (recovered.length) {
                 let localHistory = [];
-                try { localHistory = JSON.parse(localStorage.getItem('_e2e_key_history_v2') || '[]'); } catch {}
+                try { localHistory = JSON.parse(localStorage.getItem(e2eStorageKey('key_history')) || '[]'); } catch {}
                 const merged = [...recovered, ...(Array.isArray(localHistory) ? localHistory : [])];
                 const unique = merged.filter((item, index) => item.pub && merged.findIndex(other => other.pub === item.pub) === index).slice(0, 5);
-                localStorage.setItem('_e2e_key_history_v2', JSON.stringify(unique));
+                localStorage.setItem(e2eStorageKey('key_history'), JSON.stringify(unique));
                 await loadHistoricalKeypairs();
               }
             }
@@ -1427,7 +1555,7 @@ async function init() {
               throw new Error(d.message || "Failed to register new keys.");
             }
             
-            localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+            localStorage.setItem(privateKeyStorageKey, JSON.stringify(privateJwk));
             myKP = kp;
             derivedKeysCache = {};
             
@@ -1454,7 +1582,10 @@ async function init() {
           if (e.key === 'Enter') onSubmit();
         };
       });
+      }
     }
+
+    await loadHistoricalKeypairs();
 
     if (myKP) {
       const pubHex = await exportPub(myKP);
@@ -1518,6 +1649,7 @@ function bindEvents() {
   document.getElementById('msgInput').addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) send();
   });
+  document.getElementById('msgInput').addEventListener('input', syncComposer);
   const msgsEl = document.getElementById('msgs');
   msgsEl.addEventListener('click', onMessageAction);
   msgsEl.addEventListener('scroll', () => {
@@ -1547,7 +1679,7 @@ function startLivePolling() {
   livePollTimer = setInterval(() => {
     if (document.visibilityState !== 'visible') return;
     pollNewDMs();
-  }, 1000);
+  }, 5000);
   pollNewDMs();
 }
 
@@ -1663,7 +1795,7 @@ function renderList() {
       const statusClass = r.status === 'Needs review' ? 'unread' : 'role-tag';
       const reporter = r.reportedBy || r.reporter || r.email || 'Unknown reporter';
       return `<button class="user-entry ${activeChat && activeChat.type === 'report' && activeChat.id === idx ? 'active' : ''}" data-report-index="${idx}">
-        <span class="dot ${r.status === 'Needs review' ? 'on' : ''}"></span>
+        <span class="dot ${r.status === 'Needs review' ? 'on' : ''}" data-initials="!"></span>
         <span class="entry-main">
           <span class="entry-name">${esc(r.reason || 'Chat Report')}</span>
           <span class="entry-sub">By: ${esc(reporter)} | ${timeStr}</span>
@@ -1692,7 +1824,7 @@ function renderList() {
         previewText = g.lastMessage.text || (g.lastMessage.image ? 'Sent an image' : '');
       }
       return `<button class="user-entry ${activeChat && activeChat.type === 'group' && activeChat.id === g.id ? 'active' : ''}" data-group="${esc(g.id)}">
-        <span class="dot on"></span>
+        <span class="dot on" data-initials="${esc(initialsFor(g.name || 'Group'))}"></span>
         <span class="entry-main">
           <span class="entry-name">${esc(g.name || 'Group chat')}</span>
           <span class="entry-sub">${esc(previewText)}</span>
@@ -1740,7 +1872,7 @@ function renderList() {
     const badge = badgeLabels[m.badge] || '';
     const sub = last ? (sameEmail(last.from, myEmail) ? 'You: ' : '') + (last.text || (last.image ? 'Sent an image' : '')) : m.email;
     return `<button class="user-entry ${activeChat && activeChat.type === 'dm' && sameEmail(activeChat.id, m.email) ? 'active' : ''}" data-email="${esc(m.email)}">
-      <span class="dot ${m.online ? 'on' : ''}"></span>
+      <span class="dot ${m.online ? 'on' : ''}" data-initials="${esc(initialsFor(name))}"></span>
       <span class="entry-main">
         <span class="entry-name ${colorClass}">${esc(name)}${badge ? ' <span style="font-size:.62rem;opacity:.55">' + esc(badge) + '</span>' : ''}</span>
         <span class="entry-sub">${esc(sub).slice(0, 140)}</span>
@@ -1782,6 +1914,30 @@ async function selectGroup(groupId) {
 
 let reportedChats = [];
 
+function encryptedChatAdminHeaders(extra = {}) {
+  const headers = { ...extra };
+  const passphrase = sessionStorage.getItem('admin_passphrase');
+  if (passphrase) headers['X-Admin-Passphrase'] = passphrase;
+  return headers;
+}
+
+async function fetchEncryptedChatAdmin(url, options = {}, allowPrompt = true) {
+  const request = { ...options, credentials:'include' };
+  request.headers = encryptedChatAdminHeaders(options.headers || {});
+  let response = await fetch(url, request);
+  if (response.status !== 403 || !isFullAdmin || !allowPrompt) return response;
+
+  const details = await response.clone().json().catch(() => ({}));
+  if (!['invalid_passphrase', 'passphrase_not_configured'].includes(String(details.error || ''))) return response;
+  const passphrase = prompt('Enter your admin passphrase to open encrypted-chat reports:');
+  if (!passphrase) return response;
+  sessionStorage.setItem('admin_passphrase', passphrase);
+  request.headers = encryptedChatAdminHeaders(options.headers || {});
+  response = await fetch(url, request);
+  if (response.status === 403) sessionStorage.removeItem('admin_passphrase');
+  return response;
+}
+
 async function selectReportsTab() {
   setView('reports');
   await loadReports();
@@ -1789,13 +1945,18 @@ async function selectReportsTab() {
 
 async function loadReports() {
   try {
-    const r = await fetch('/api/admin/advanced-data');
+    const r = await fetchEncryptedChatAdmin('/api/admin/advanced-data');
     if (r.ok) {
       const data = await r.json();
       reportedChats = data.chatReports || [];
       renderList();
+    } else {
+      const data = await r.json().catch(() => ({}));
+      toast(data.error === 'invalid_passphrase' ? 'Admin reports are locked.' : 'Could not load reports.');
     }
-  } catch(e) {}
+  } catch(e) {
+    toast('Could not load reports.');
+  }
 }
 
 async function selectReport(index) {
@@ -1839,9 +2000,9 @@ function renderReportContext(report) {
     const modActions = `
       <div class="msg-tools" style="display:flex; gap:6px; margin-top:8px;">
         <button class="small-btn mod-warn-btn" data-email="${esc(m.from)}" type="button">Warn</button>
-        <button class="small-btn mod-timeout-btn" data-email="${esc(m.from)}" type="button">Timeout</button>
+        <button class="small-btn mod-timeout-btn" data-email="${esc(m.from)}" type="button">Timeout Public Chats</button>
         <button class="small-btn mod-ban-btn" data-email="${esc(m.from)}" type="button">Ban (Public/Prem)</button>
-        <button class="small-btn mod-delete-all-btn" data-email="${esc(m.from)}" type="button">Delete All Messages</button>
+        <button class="small-btn mod-delete-all-btn" data-email="${esc(m.from)}" type="button">Delete Public Chat Messages</button>
       </div>
     `;
 
@@ -1928,7 +2089,7 @@ async function handleResolveReport() {
   if (activeChat && activeChat.type === 'report') {
     const report = reportedChats[activeChat.id];
     if (!report) return;
-    const r = await fetch('/api/admin/chat-reports/resolve', {
+    const r = await fetchEncryptedChatAdmin('/api/admin/chat-reports/resolve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ts: report.ts, action: 'resolve' })
@@ -1953,7 +2114,7 @@ async function handleDeleteReport() {
     const report = reportedChats[activeChat.id];
     if (!report) return;
     if (!confirm("Are you sure you want to permanently delete this report?")) return;
-    const r = await fetch('/api/admin/chat-reports/resolve', {
+    const r = await fetchEncryptedChatAdmin('/api/admin/chat-reports/resolve', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ts: report.ts, action: 'delete' })
@@ -2002,6 +2163,7 @@ function showChatShell() {
   clearReply();
   clearImage();
   document.getElementById('app').classList.add('chat-active');
+  syncComposer();
 }
 
 async function reloadActiveChat() {
@@ -2109,14 +2271,16 @@ function messageHtml(m) {
     : '';
   const bodyText = esc(text || (m.image ? 'sent an image' : ''));
   const expiry = m.expiresAt ? ` data-expire="${m.expiresAt}"` : (msgExpiry > 0 ? ` data-expire="${Date.now() + msgExpiry}"` : '');
-  return `<div class="msg" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
-    ${reply}
-    <div class="msg-line">
-      <span class="ts">${fmtTime(m.ts)}</span>
+  return `<div class="msg ${mine ? 'mine' : 'theirs'}" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
+    <div class="msg-meta">
       <span class="who ${mine ? 'me' : 'them'}">${mine ? name : esc(name)}</span>
-      ${safeText}
+      <span class="ts">${fmtTime(m.ts)}</span>
     </div>
-    ${imageHtml}
+    ${reply}
+    <div class="msg-line msg-bubble">
+      ${safeText}
+      ${imageHtml}
+    </div>
     <div class="msg-tools">
       <button class="msg-action" data-act="reply" data-id="${id}" type="button">reply</button>
       <button class="msg-action" data-act="copy" data-id="${id}" type="button">copy</button>
@@ -2163,7 +2327,8 @@ async function send() {
 
   const pendingMsgId = 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   const imageToSend = pendingImage;
-  const textToSendRaw = text;
+  const replyToSend = replyTo ? { ...replyTo } : null;
+  const secureContent = buildSecureMessageContent(text, imageToSend, replyToSend);
   
   // Construct optimistic pending message
   const pendingMsg = {
@@ -2174,6 +2339,7 @@ async function send() {
     to: activeChat.type === 'dm' ? activeChat.id : '',
     text: text, // Display immediately as plain text
     image: imageToSend,
+    replyTo: replyToSend,
     ts: Date.now(),
     read: false,
     readBy: [myEmail],
@@ -2198,7 +2364,7 @@ async function send() {
 
   let textToSend = text;
 
-  if (text) {
+  {
     if (activeChat.type === 'group') {
       const group = groups.find(g => String(g.id) === String(activeChat.id));
       if (group && group.members) {
@@ -2217,13 +2383,14 @@ async function send() {
             try {
               const sharedSecret = await deriveSharedKey(member.pubKey);
               const iv = crypto.getRandomValues(new Uint8Array(12));
-              const encText = new TextEncoder().encode(text);
+              const encText = new TextEncoder().encode(secureContent);
               const ciphertext = await crypto.subtle.encrypt(
                 { name: 'AES-GCM', iv },
                 sharedSecret,
                 encText
               );
               payloads[normEmail(memberEmail)] = {
+                recipientPubKey: member.pubKey,
                 iv: b2h(iv),
                 ciphertext: b2h(ciphertext)
               };
@@ -2234,7 +2401,7 @@ async function send() {
         }
         textToSend = JSON.stringify({
           e2e: true,
-          version: 2,
+          version: 3,
           group: true,
           senderPubKey: await exportPub(myKP),
           payloads
@@ -2247,7 +2414,7 @@ async function send() {
         try {
           const sharedSecret = await deriveSharedKey(peer.pubKey);
           const iv = crypto.getRandomValues(new Uint8Array(12));
-          const encText = new TextEncoder().encode(text);
+          const encText = new TextEncoder().encode(secureContent);
           const ciphertext = await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv },
             sharedSecret,
@@ -2255,8 +2422,9 @@ async function send() {
           );
           textToSend = JSON.stringify({
             e2e: true,
-            version: 2,
+            version: 3,
             senderPubKey: await exportPub(myKP),
+            recipientPubKey: peer.pubKey,
             iv: b2h(iv),
             ciphertext: b2h(ciphertext)
           });
@@ -2280,18 +2448,22 @@ async function send() {
     }
   }
 
-  let recaptcha_token = '';
-  for (let i = 0; i < 50; i++) {
-    if (window.getCaptchaToken && window.grecaptcha) break;
-    await new Promise(r => setTimeout(r, 100));
-  }
-  if (window.getCaptchaToken) {
-    recaptcha_token = await window.getCaptchaToken('dm_send') || '';
+  // Leave headroom below the server's 2.2 MiB E2E envelope limit. Group
+  // messages contain one encrypted copy per recipient, so image messages may
+  // need to be sent to a smaller group or with a smaller image.
+  if (new TextEncoder().encode(textToSend).byteLength > 2100 * 1024) {
+    allMessages = allMessages.filter(x => x.id !== pendingMsgId);
+    currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
+    renderMessages();
+    toast('This encrypted message is too large. Use a smaller image or group.');
+    return;
   }
 
+  const recaptcha_token = await getOptionalCaptchaToken('dm_send');
+
   const body = activeChat.type === 'group'
-    ? { groupId: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token }
-    : { to: activeChat.id, text: textToSend, image: imageToSend, replyTo, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token };
+    ? { groupId: activeChat.id, text: textToSend, image: null, replyTo: null, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token }
+    : { to: activeChat.id, text: textToSend, image: null, replyTo: null, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token };
 
   try {
     const r = await fetch('/api/dm/send', {
@@ -2324,6 +2496,8 @@ async function send() {
       readBy: [myEmail]
     };
     msg.text = text;
+    msg.image = imageToSend;
+    msg.replyTo = replyToSend;
     if (msg.clientId === pendingMsgId) {
       msg.from = myEmail;
       if (activeChat.type === 'dm') msg.to = activeChat.id;
@@ -2587,14 +2761,7 @@ async function reportMessage(m) {
     reported: msgId(msg) === msgId(m)
   }));
 
-  let recaptcha_token = '';
-  for (let i = 0; i < 50; i++) {
-    if (window.getCaptchaToken && window.grecaptcha) break;
-    await new Promise(r => setTimeout(r, 100));
-  }
-  if (window.getCaptchaToken) {
-    recaptcha_token = await window.getCaptchaToken('report_message') || '';
-  }
+  const recaptcha_token = await getOptionalCaptchaToken('report_message');
 
   try {
     const r = await fetch('/api/dm/report', {
@@ -2625,6 +2792,14 @@ function clearImage() {
   preview.classList.remove('on');
   document.getElementById('image-preview-img').src = '';
   document.getElementById('image-preview-name').textContent = '';
+  syncComposer();
+}
+
+function syncComposer() {
+  const input = document.getElementById('msgInput');
+  const sendButton = document.getElementById('sendBtn');
+  if (!input || !sendButton) return;
+  sendButton.disabled = !activeChat || (!input.value.trim() && !pendingImage);
 }
 
 function handleImagePick() {
@@ -2644,6 +2819,7 @@ function handleImagePick() {
     document.getElementById('image-preview-img').src = pendingImage.data;
     document.getElementById('image-preview-name').textContent = file.name;
     document.getElementById('image-preview').classList.add('on');
+    syncComposer();
   };
   reader.readAsDataURL(file);
 }
@@ -2876,6 +3052,10 @@ window.addEventListener('ws-broadcast-message', async function(e) {
     
     renderList();
   }
+});
+
+window.addEventListener('ws-broadcast-status', function(e) {
+  document.body.classList.toggle('chat-live', Boolean(e.detail && e.detail.connected));
 });
 
 init();

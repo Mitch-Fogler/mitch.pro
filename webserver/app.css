@@ -1,23 +1,23 @@
-/* mitch.pro shared chrome — ink print look, lime accent. Tokens from theme.js. */
+/* mitch.pro shared chrome — purple galaxy glass. Tokens from theme.js. */
 
 @import url('https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --t-bg: #10140c;
-  --t-bg2: #181e12;
-  --t-bg3: #232b18;
-  --t-fg: #f3f0e4;
-  --t-fg2: #9aa186;
-  --t-ac: #d6ff4a;
-  --t-ac2: #eeff9a;
-  --t-ac3: #b8e03a;
-  --t-bd: rgba(255, 255, 255, 0.1);
-  --t-bda: rgba(214, 255, 74, 0.4);
-  --t-gl: rgba(214, 255, 74, 0.28);
-  --t-gls: rgba(214, 255, 74, 0.1);
-  --t-gr: linear-gradient(90deg, #d6ff4a, #eeff9a);
-  --t-bgr: none;
-  --t-radius: 8px;
+  --t-bg: #070510;
+  --t-bg2: rgba(22, 13, 44, 0.7);
+  --t-bg3: rgba(42, 23, 76, 0.74);
+  --t-fg: #faf7ff;
+  --t-fg2: #b4a9c9;
+  --t-ac: #b86cff;
+  --t-ac2: #e47cff;
+  --t-ac3: #8257ff;
+  --t-bd: rgba(224, 198, 255, 0.16);
+  --t-bda: rgba(194, 126, 255, 0.48);
+  --t-gl: rgba(180, 94, 255, 0.35);
+  --t-gls: rgba(180, 94, 255, 0.14);
+  --t-gr: linear-gradient(135deg, #7957f1, #ca57f5 56%, #ff5fa7);
+  --t-bgr: radial-gradient(circle at 20% 10%, rgba(164,74,255,.2), transparent 34%);
+  --t-radius: 15px;
   --t-motion: 0.15s;
   --t-display: 'Figtree', system-ui, -apple-system, sans-serif;
   --t-font: 'Figtree', system-ui, -apple-system, sans-serif;

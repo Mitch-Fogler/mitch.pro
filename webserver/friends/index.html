@@ -135,8 +135,8 @@
     display: inline-block;
   }
 
-  .online .status-dot { background-color: #4ade80; box-shadow: 0 0 8px rgba(74, 222, 128, 0.45); }
-  .online { color: #4ade80; }
+  .online .status-dot { background-color: #d8b4fe; box-shadow: 0 0 8px rgba(74, 222, 128, 0.45); }
+  .online { color: #d8b4fe; }
   .offline .status-dot { background-color: color-mix(in srgb, var(--t-fg2) 55%, transparent); }
   .offline { color: var(--t-fg2); }
 
@@ -202,7 +202,7 @@
     cursor: pointer;
   }
 
-  .btn-accept { background: #22c55e; color: white; }
+  .btn-accept { background: #a855f7; color: white; }
   .btn-accept:hover { background: #16a34a; }
   .btn-deny { background: #ef4444; color: white; margin-left: 0.25rem; }
   .btn-deny:hover { background: #dc2626; }
@@ -570,7 +570,7 @@ async function sendRequest() {
     });
     const d = await r.json();
     if (r.ok) {
-      msg.style.color = '#4ade80';
+      msg.style.color = '#d8b4fe';
       msg.innerText = d.status === 'accepted' ? 'Friend request accepted (already mutual)!' : 'Friend request sent!';
       input.value = '';
       loadFriends();

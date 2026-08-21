@@ -1,5 +1,15 @@
 (function setupBroadcast() {
     var ws;
+    var presenceTimer;
+    function stopPresencePing() {
+      if (presenceTimer) clearInterval(presenceTimer);
+      presenceTimer = null;
+    }
+    function sendPresencePing() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        try { ws.send(JSON.stringify({ type: 'presence_ping' })); } catch(ex) {}
+      }
+    }
     function connect() {
       var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       ws = new WebSocket(protocol + '//' + location.host + '/ws');
@@ -18,7 +28,17 @@
           window.dispatchEvent(new CustomEvent('ws-broadcast-message', { detail: data }));
         } catch(ex) {}
       };
-      ws.onclose = function() { setTimeout(connect, 5000); };
+      ws.onopen = function() {
+        stopPresencePing();
+        sendPresencePing();
+        presenceTimer = setInterval(sendPresencePing, 20000);
+        window.dispatchEvent(new CustomEvent('ws-broadcast-status', { detail: { connected: true } }));
+      };
+      ws.onclose = function() {
+        stopPresencePing();
+        window.dispatchEvent(new CustomEvent('ws-broadcast-status', { detail: { connected: false } }));
+        setTimeout(connect, 1800);
+      };
     }
     function showJumpscare(msg) {
       var el = document.createElement('div');

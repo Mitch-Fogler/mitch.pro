@@ -272,8 +272,8 @@
     }
     .adm-btn.red   { color: #f87171; border-color: #ef4444; }
     .adm-btn.red:hover { background: rgba(239,68,68,0.15); }
-    .adm-btn.green { color: #4ade80; border-color: #22c55e; }
-    .adm-btn.green:hover { background: rgba(34,197,94,0.15); }
+    .adm-btn.green { color: #d8b4fe; border-color: #a855f7; }
+    .adm-btn.green:hover { background: rgba(168,85,247,0.15); }
     .adm-btn.gray  { color: #9ca3af; border-color: #4b5563; }
     .adm-btn.gray:hover { background: rgba(75,85,99,0.2); }
     #admin-bans-wrap {
@@ -290,7 +290,7 @@
     .ban-entry { border-top: 1px solid var(--t-bd); padding: 6px 0; display: flex; flex-direction: column; gap: 3px; }
     .ban-entry .ban-id { color: var(--t-ac); font-size: 10px; }
     .ban-entry .ban-reason { color: var(--t-fg2); font-size: 10px; }
-    .ban-entry .ban-unban { color: #4ade80; border-color: #22c55e; margin-top: 3px; }
+    .ban-entry .ban-unban { color: #d8b4fe; border-color: #a855f7; margin-top: 3px; }
     .mod-entry { border-top: 1px solid var(--t-bd); padding: 7px 0; display: flex; flex-direction: column; gap: 4px; }
     .mod-entry .mod-title { color: #fbbf24; font-size: 10px; font-weight: 800; }
     .mod-entry .mod-meta { color: var(--t-fg2); font-size: 10px; line-height: 1.4; }
@@ -1997,7 +1997,7 @@ function renderBookmarksList(query = '') {
     let statusText = '';
     if (!b.isPublic) statusText = '<span style="color:#94a3b8">Private</span>';
     else if (!b.approved) statusText = '<span style="color:#f87171">Pending Approval</span>';
-    else statusText = '<span style="color:#4ade80">Public</span>';
+    else statusText = '<span style="color:#d8b4fe">Public</span>';
     
     div.innerHTML = `
       <div class="bm-entry-header">

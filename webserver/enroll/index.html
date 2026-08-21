@@ -16,6 +16,10 @@
 <meta property="og:image" content="https://mitch.pro/icon-512.png" />
 
 <link rel="stylesheet" href="/app.css">
+<link rel="stylesheet" href="/site-galaxy.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&amp;family=DM+Sans:opsz,wght@9..40,400..700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
 <script src="/theme.js"></script>
 <script src="/api.js"></script>
 
@@ -452,14 +456,33 @@
     transition: none !important;
   }
 </style>
+<link rel="stylesheet" href="/auth-liquid.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/zxcvbn/4.4.2/zxcvbn.js" defer></script>
 </head>
 <body class="app-shell enroll-page">
+  <div class="auth-aurora" aria-hidden="true">
+    <span class="auth-orb one"></span>
+    <span class="auth-orb two"></span>
+  </div>
+  <div class="dev-test-access" id="dev-test-access" hidden>
+    <button id="dev-test-btn" type="button" onclick="activateDevTestAccess()">
+      <span class="dev-test-dot" aria-hidden="true"></span>
+      <span>Test Mitch.pro</span>
+      <small>Full access</small>
+    </button>
+    <div id="dev-test-msg" role="status" aria-live="polite"></div>
+  </div>
   <main class="enroll-main">
     <header class="enroll-hero">
-      <a class="enroll-brand" href="/">mitch.pro</a>
-      <h1>Sign in to continue</h1>
-      <p>Log in, create an account, or reset your password — reviewed invites keep the portal private.</p>
+      <a class="enroll-brand" href="/" aria-label="mitch.pro home"><img src="/icon-192.png" alt="mitch.pro"></a>
+      <span class="auth-eyebrow">Woodcreek // private network</span>
+      <h1>The <span class="auth-gradient-text">ULTIMATE</span> game website.</h1>
+      <p>A members-only corner of the internet for games, campus tools, and the people you already know.</p>
+      <div class="auth-benefits" aria-label="Platform highlights">
+        <div class="auth-benefit"><strong>01 / PLAY</strong><span>Hundreds of games</span></div>
+        <div class="auth-benefit"><strong>02 / TALK</strong><span>Your people, in one place</span></div>
+        <div class="auth-benefit"><strong>03 / BUILD</strong><span>Tools made by students</span></div>
+      </div>
       <nav class="enroll-links" aria-label="Help links">
         <a href="/faq.html">FAQ</a>
         <a href="/use-agreement.html">Use Agreement</a>
@@ -469,9 +492,9 @@
 
     <section class="panel auth-panel" aria-label="Account access">
       <div class="auth-tabs" role="tablist">
-        <button class="auth-tab-btn active" id="tab-login" onclick="switchTab('login')" role="tab" aria-selected="true" aria-controls="pane-login" type="button">Log In</button>
-        <button class="auth-tab-btn" id="tab-invite" onclick="switchTab('invite')" role="tab" aria-selected="false" aria-controls="pane-invite" type="button">Sign Up</button>
-        <button class="auth-tab-btn" id="tab-reset" onclick="switchTab('reset')" role="tab" aria-selected="false" aria-controls="pane-reset" type="button">Reset</button>
+        <button class="auth-tab-btn active" id="tab-login" onclick="switchTab('login')" role="tab" aria-selected="true" aria-controls="pane-login" type="button"><span>01</span> Sign in</button>
+        <button class="auth-tab-btn" id="tab-invite" onclick="switchTab('invite')" role="tab" aria-selected="false" aria-controls="pane-invite" type="button"><span>02</span> Join</button>
+        <button class="auth-tab-btn" id="tab-reset" onclick="switchTab('reset')" role="tab" aria-selected="false" aria-controls="pane-reset" type="button"><span>03</span> Reset</button>
       </div>
 
       <!-- Tab Pane: Log In -->
@@ -1249,6 +1272,39 @@ document.addEventListener('keydown', function (e) {
     }
   }
 });
+</script>
+<script>
+(async function initializeDevTestAccess() {
+  try {
+    const response = await fetch('/api/dev/test-access', { credentials: 'include' });
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.enabled) document.getElementById('dev-test-access').hidden = false;
+  } catch (_) {}
+})();
+
+async function activateDevTestAccess() {
+  const button = document.getElementById('dev-test-btn');
+  const message = document.getElementById('dev-test-msg');
+  button.disabled = true;
+  button.classList.add('is-loading');
+  message.textContent = 'Preparing test workspace…';
+  try {
+    const response = await fetch('/api/dev/test-access', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-Mitch-Requested-With': '1' }
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.message || data.error || 'Test access unavailable');
+    message.textContent = 'Full test access enabled';
+    window.location.href = '/';
+  } catch (error) {
+    button.disabled = false;
+    button.classList.remove('is-loading');
+    message.textContent = error.message || 'Unable to enable test access';
+  }
+}
 </script>
 <script src="/cookie-consent.js" defer></script>
 <script src="/sync.js" defer></script><script src="/assistant.js" defer></script><script src="/broadcast.js" defer></script><div id="_agree_footer" style="position:fixed;bottom:5px;left:0;right:0;text-align:center;pointer-events:none;z-index:2147483647;font-size:.65rem;color:rgba(255,255,255,.15);font-family:system-ui,sans-serif;letter-spacing:.01em;">By using mitch.pro you agree to the <a href="/use-agreement.html" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">use agreement</a> and <a href="/privacy/" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">privacy policy</a>.</div></body>

@@ -20,7 +20,7 @@ function onSignIn(response) {
   const email = payload.email;
   const status = document.getElementById('status');
   if (email.endsWith('@student.mitch.pro')) {
-    status.style.color = 'green';
+    status.style.color = '#c084fc';
     status.textContent = '✓ Signed in as ' + email;
   } else {
     status.style.color = 'red';

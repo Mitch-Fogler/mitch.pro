@@ -1,0 +1,1353 @@
+/* Shared authentication experience for /enroll and /claim. */
+:root {
+  --auth-ink: #f8f9ff;
+  --auth-muted: rgba(229, 232, 255, 0.68);
+  --auth-faint: rgba(229, 232, 255, 0.45);
+  --auth-line: rgba(255, 255, 255, 0.13);
+  --auth-glass: rgba(15, 19, 52, 0.58);
+  --auth-glass-strong: rgba(10, 13, 38, 0.78);
+  --auth-blue: #5ee7ff;
+  --auth-violet: #9b7bff;
+  --auth-pink: #ff6fb5;
+  --auth-error: #ff8e9e;
+  --auth-success: #61e6c3;
+  --auth-radius: 30px;
+}
+
+html { background: #07091c; }
+
+body.enroll-page,
+body.auth-claim-page {
+  min-height: 100svh;
+  margin: 0;
+  color: var(--auth-ink);
+  background:
+    radial-gradient(circle at 14% 18%, rgba(66, 102, 255, 0.3), transparent 34rem),
+    radial-gradient(circle at 88% 12%, rgba(255, 82, 172, 0.2), transparent 30rem),
+    radial-gradient(circle at 68% 88%, rgba(54, 220, 255, 0.17), transparent 32rem),
+    linear-gradient(145deg, #07091c 0%, #10143d 48%, #08091b 100%) !important;
+  background-attachment: fixed !important;
+  font-family: "Manrope", ui-sans-serif, system-ui, sans-serif !important;
+  overflow-x: clip;
+  position: relative;
+  isolation: isolate;
+}
+
+body.enroll-page::before,
+body.auth-claim-page::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -3;
+  pointer-events: none;
+  opacity: 0.55;
+  background-image:
+    linear-gradient(rgba(255,255,255,.026) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.026) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: linear-gradient(to bottom, black, transparent 88%);
+}
+
+.auth-aurora { position: fixed; inset: 0; overflow: hidden; pointer-events: none; z-index: -2; }
+.auth-orb {
+  position: absolute;
+  width: clamp(18rem, 37vw, 34rem);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(3px);
+  opacity: .5;
+  animation: auth-drift 15s ease-in-out infinite alternate;
+}
+.auth-orb::after {
+  content: "";
+  position: absolute;
+  inset: 17%;
+  border-radius: inherit;
+  border: 1px solid rgba(255,255,255,.24);
+  box-shadow: inset 18px 12px 45px rgba(255,255,255,.12);
+}
+.auth-orb.one {
+  top: -12rem;
+  right: -6rem;
+  background: radial-gradient(circle at 32% 30%, #ffc4ec 0, #8b5cff 34%, rgba(57, 30, 162, .06) 72%);
+}
+.auth-orb.two {
+  left: -14rem;
+  bottom: -15rem;
+  background: radial-gradient(circle at 62% 35%, #9af3ff 0, #2169ff 35%, rgba(24, 33, 150, .05) 73%);
+  animation-delay: -6s;
+}
+@keyframes auth-drift {
+  from { transform: translate3d(-1.5rem, -1rem, 0) scale(.96) rotate(-4deg); }
+  to { transform: translate3d(2rem, 2.5rem, 0) scale(1.06) rotate(8deg); }
+}
+
+.enroll-main,
+.claim-layout {
+  width: min(1180px, calc(100% - 40px)) !important;
+  min-height: calc(100svh - 80px);
+  margin: 0 auto !important;
+  padding: clamp(1.25rem, 4vw, 3.5rem) 0 2.5rem !important;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.08fr) minmax(340px, .82fr) !important;
+  gap: clamp(2.5rem, 7vw, 7rem) !important;
+  align-items: center !important;
+}
+
+.enroll-hero,
+.claim-hero {
+  position: relative !important;
+  top: auto !important;
+  text-align: left;
+  animation: auth-rise .7s cubic-bezier(.2,.8,.2,1) both;
+}
+.enroll-brand,
+.claim-brand {
+  display: inline-flex !important;
+  align-items: center;
+  gap: .75rem;
+  margin: 0 0 clamp(2.4rem, 8vh, 5.5rem) !important;
+  color: white !important;
+  font-family: "Space Grotesk", sans-serif !important;
+  font-size: 1.08rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -.035em !important;
+  text-decoration: none;
+}
+.enroll-brand::before,
+.claim-brand::before {
+  content: "m";
+  display: grid;
+  place-items: center;
+  width: 2.65rem;
+  height: 2.65rem;
+  border-radius: 14px;
+  color: #0a0d29;
+  font-size: 1.25rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #baf7ff 0%, #7f8cff 48%, #ff92ce 100%);
+  box-shadow: 0 12px 38px rgba(93, 128, 255, .38), inset 0 1px rgba(255,255,255,.8);
+}
+
+.auth-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  margin-bottom: 1.15rem;
+  padding: .48rem .78rem;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 999px;
+  color: rgba(239,242,255,.78);
+  background: rgba(255,255,255,.065);
+  box-shadow: inset 0 1px rgba(255,255,255,.1);
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  backdrop-filter: blur(18px) saturate(145%);
+}
+.auth-eyebrow::before {
+  content: "";
+  width: .48rem;
+  height: .48rem;
+  border-radius: 50%;
+  background: var(--auth-blue);
+  box-shadow: 0 0 0 4px rgba(94,231,255,.12), 0 0 18px rgba(94,231,255,.8);
+}
+.enroll-hero h1,
+.claim-hero h1 {
+  max-width: 10ch;
+  margin: 0 0 1.25rem !important;
+  font-family: "Space Grotesk", sans-serif !important;
+  font-size: clamp(3.5rem, 7vw, 6.7rem) !important;
+  font-weight: 650 !important;
+  letter-spacing: -.075em !important;
+  line-height: .88 !important;
+  color: white !important;
+}
+.auth-gradient-text {
+  color: transparent;
+  background: linear-gradient(95deg, var(--auth-blue), #a7a0ff 45%, var(--auth-pink));
+  background-clip: text;
+  -webkit-background-clip: text;
+}
+.enroll-hero > p,
+.claim-hero > p {
+  max-width: 48ch !important;
+  margin: 0 !important;
+  color: var(--auth-muted) !important;
+  font-size: clamp(.98rem, 1.5vw, 1.12rem) !important;
+  line-height: 1.75 !important;
+}
+
+.auth-benefits {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .7rem;
+  max-width: 35rem;
+  margin: 2.3rem 0 0;
+}
+.auth-benefit {
+  padding: .9rem .95rem;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255,255,255,.08), rgba(255,255,255,.025));
+  box-shadow: inset 0 1px rgba(255,255,255,.09);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+.auth-benefit strong {
+  display: block;
+  margin-bottom: .2rem;
+  color: white;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: .8rem;
+}
+.auth-benefit span { color: var(--auth-faint); font-size: .68rem; line-height: 1.35; }
+.enroll-links { justify-content: flex-start !important; gap: .45rem !important; margin-top: 1.35rem !important; }
+.enroll-links a,
+.claim-help-links a {
+  min-height: auto !important;
+  padding: .38rem .68rem !important;
+  border: 1px solid transparent;
+  border-radius: 999px !important;
+  color: var(--auth-faint) !important;
+  font-size: .72rem !important;
+  text-decoration: none;
+}
+.enroll-links a:hover,
+.claim-help-links a:hover {
+  color: white !important;
+  border-color: rgba(255,255,255,.12);
+  background: rgba(255,255,255,.07) !important;
+}
+
+.auth-panel,
+.claim-card {
+  position: relative;
+  width: 100% !important;
+  box-sizing: border-box;
+  padding: clamp(1.25rem, 3vw, 2rem) !important;
+  border: 1px solid rgba(255,255,255,.16) !important;
+  border-radius: var(--auth-radius) !important;
+  background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.025) 38%), var(--auth-glass) !important;
+  box-shadow: 0 35px 90px rgba(0,0,0,.42), inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 0 rgba(255,255,255,.04) !important;
+  backdrop-filter: blur(34px) saturate(155%) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(155%) !important;
+  animation: auth-rise .72s cubic-bezier(.2,.8,.2,1) .08s both !important;
+}
+.auth-panel::before,
+.claim-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle at 14% 0%, rgba(255,255,255,.18), transparent 34%);
+  mask-image: linear-gradient(black, transparent 70%);
+}
+@keyframes auth-rise {
+  from { opacity: 0; transform: translateY(22px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.auth-tabs {
+  position: relative;
+  z-index: 1;
+  gap: .35rem !important;
+  margin-bottom: 1.8rem !important;
+  padding: .36rem !important;
+  border: 1px solid rgba(255,255,255,.1) !important;
+  border-radius: 18px !important;
+  background: rgba(2,5,22,.35) !important;
+  box-shadow: inset 0 1px 8px rgba(0,0,0,.22);
+}
+.auth-tab-btn {
+  min-height: 2.8rem !important;
+  border-radius: 13px !important;
+  color: var(--auth-faint) !important;
+  font-family: "Manrope", sans-serif !important;
+  font-size: .76rem !important;
+  letter-spacing: .01em;
+  transition: color .2s, background .2s, box-shadow .2s, transform .2s !important;
+}
+.auth-tab-btn:hover { color: white !important; transform: translateY(-1px); }
+.auth-tab-btn.active {
+  color: white !important;
+  background: linear-gradient(135deg, rgba(94,231,255,.18), rgba(155,123,255,.22), rgba(255,111,181,.13)) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 8px 22px rgba(33,26,105,.24) !important;
+}
+.tab-pane { position: relative; z-index: 1; }
+.tab-pane.active { animation: auth-pane .32s ease both !important; }
+@keyframes auth-pane { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:none; } }
+.panel-head { margin-bottom: 1.45rem !important; }
+.panel-head h2,
+.claim-card h2,
+#claim-title {
+  margin: 0 !important;
+  color: white !important;
+  font-family: "Space Grotesk", sans-serif !important;
+  font-size: clamp(1.65rem, 4vw, 2.05rem) !important;
+  font-weight: 650 !important;
+  letter-spacing: -.045em !important;
+}
+.panel-head p,
+.claim-card .auth-card-copy,
+#claim-desc {
+  margin: .48rem 0 0 !important;
+  color: var(--auth-muted) !important;
+  font-size: .82rem !important;
+  line-height: 1.55 !important;
+}
+
+.auth-panel .field-label,
+.claim-card .field-label {
+  display: block;
+  margin: 0 0 .48rem;
+  color: rgba(235,238,255,.7) !important;
+  font-size: .67rem !important;
+  font-weight: 800 !important;
+  letter-spacing: .075em !important;
+  text-transform: uppercase;
+}
+.auth-panel input:not([type="checkbox"]),
+.auth-panel select,
+.auth-panel textarea,
+.claim-card input:not([type="checkbox"]) {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 3.25rem !important;
+  margin: 0 0 1.05rem !important;
+  padding: .82rem 1rem !important;
+  border: 1px solid rgba(255,255,255,.12) !important;
+  border-radius: 15px !important;
+  outline: none !important;
+  color: white !important;
+  background: rgba(3,6,27,.4) !important;
+  box-shadow: inset 0 1px 5px rgba(0,0,0,.17), 0 1px rgba(255,255,255,.04) !important;
+  font-family: "Manrope", sans-serif !important;
+  font-size: .89rem !important;
+  transition: border-color .2s, box-shadow .2s, background .2s, transform .2s !important;
+}
+.auth-panel input::placeholder,
+.auth-panel textarea::placeholder,
+.claim-card input::placeholder { color: rgba(220,225,255,.29) !important; }
+.auth-panel input:not([type="checkbox"]):focus,
+.auth-panel select:focus,
+.auth-panel textarea:focus,
+.claim-card input:not([type="checkbox"]):focus {
+  border-color: rgba(94,231,255,.68) !important;
+  background: rgba(6,10,37,.68) !important;
+  box-shadow: 0 0 0 4px rgba(94,231,255,.1), 0 12px 30px rgba(15,31,100,.2) !important;
+}
+.auth-panel select option { color: #12152f; background: #eef0ff; }
+
+.auth-panel .btn,
+.auth-panel .btn-primary,
+.auth-panel .btn-ghost,
+.claim-card .btn-primary,
+.claim-card .claim-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100% !important;
+  min-height: 3.25rem !important;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,.24) !important;
+  border-radius: 15px !important;
+  color: #090c25 !important;
+  background: linear-gradient(105deg, #76ecff 0%, #9197ff 48%, #ff8bc8 100%) !important;
+  box-shadow: 0 14px 32px rgba(60,82,210,.3), inset 0 1px rgba(255,255,255,.75) !important;
+  font-family: "Space Grotesk", sans-serif !important;
+  font-size: .88rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -.01em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .2s, filter .2s, box-shadow .2s !important;
+}
+.auth-panel .btn:hover,
+.auth-panel .btn-primary:hover,
+.claim-card .claim-action:hover {
+  filter: brightness(1.08) saturate(1.06);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 38px rgba(70,86,220,.38), inset 0 1px rgba(255,255,255,.8) !important;
+}
+.auth-panel button:disabled,
+.claim-card button:disabled { opacity: .5; cursor: not-allowed; transform: none !important; }
+.forgot-link { color: #8cecff !important; font-weight: 700 !important; }
+.agree-row,
+.warning-alert,
+#no-email-form {
+  border: 1px solid rgba(255,255,255,.11) !important;
+  border-radius: 16px !important;
+  background: rgba(255,255,255,.05) !important;
+}
+.warning-alert {
+  color: #ffc3d0 !important;
+  border-color: rgba(255,122,153,.23) !important;
+  background: rgba(255,97,145,.07) !important;
+}
+.agree-row label,
+.warning-alert span,
+#no-email-form p { color: var(--auth-muted) !important; }
+.agree-row a,
+#no-email-link,
+#support-actions a { color: #8cecff !important; }
+.pw-strength { margin: -.48rem 0 1.05rem !important; }
+.pw-strength-bars { gap: 5px !important; background: transparent !important; }
+.pw-strength-bars > div { border-radius: 999px; background: rgba(255,255,255,.08); }
+#login-msg, #msg, #tmsg, #rtmsg, #claim-msg {
+  min-height: 1.4rem;
+  margin-top: .8rem;
+  color: var(--auth-muted);
+  font-size: .77rem;
+  font-weight: 700;
+  text-align: center;
+}
+.ok { color: var(--auth-success) !important; }
+.err { color: var(--auth-error) !important; }
+
+.enroll-foot,
+.claim-footer {
+  position: relative;
+  z-index: 2;
+  width: min(1180px, calc(100% - 40px));
+  margin: -2rem auto 0 !important;
+  padding: 0 0 1.4rem !important;
+  border: 0 !important;
+  color: rgba(224,228,255,.36) !important;
+  font-size: .68rem !important;
+  text-align: left !important;
+}
+.enroll-foot a,
+.claim-footer a { color: rgba(190,231,255,.62) !important; }
+
+.claim-card-head { margin-bottom: 1.5rem; }
+.claim-card-icon {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1.2rem;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(94,231,255,.2), rgba(155,123,255,.24));
+  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 12px 32px rgba(44,50,180,.2);
+  color: #b9f5ff;
+}
+.claim-warning {
+  display: flex;
+  gap: .75rem;
+  margin: 0 0 1.25rem;
+  padding: .9rem;
+  border: 1px solid rgba(255,130,156,.2);
+  border-radius: 16px;
+  color: var(--auth-muted);
+  background: rgba(255,91,135,.065);
+  font-size: .74rem;
+  line-height: 1.55;
+}
+.claim-warning svg { flex: 0 0 auto; color: #ff9caf; margin-top: .1rem; }
+.claim-warning strong { color: #ffc1cd; }
+.claim-help-links { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: 1.3rem; }
+
+@media (max-width: 860px) {
+  .enroll-main,
+  .claim-layout {
+    grid-template-columns: 1fr !important;
+    gap: 2rem !important;
+    width: min(620px, calc(100% - 28px)) !important;
+    padding-top: 1.15rem !important;
+  }
+  .enroll-hero h1,
+  .claim-hero h1 { max-width: 12ch; font-size: clamp(3rem, 13vw, 5rem) !important; }
+  .enroll-brand,
+  .claim-brand { margin-bottom: 2.8rem !important; }
+  .auth-benefits { margin-top: 1.5rem; }
+  .enroll-foot,
+  .claim-footer { width: min(620px, calc(100% - 28px)); margin: 0 auto !important; text-align: center !important; }
+}
+@media (max-width: 520px) {
+  .enroll-main,
+  .claim-layout { width: min(100% - 20px, 620px) !important; gap: 1.5rem !important; }
+  .enroll-brand,
+  .claim-brand { margin-bottom: 2.1rem !important; }
+  .enroll-hero h1,
+  .claim-hero h1 { font-size: clamp(2.8rem, 16vw, 4.1rem) !important; }
+  .auth-benefits { grid-template-columns: 1fr 1fr; }
+  .auth-benefit:last-child { display: none; }
+  .auth-panel,
+  .claim-card { padding: 1rem !important; border-radius: 24px !important; }
+  .auth-tabs { margin-bottom: 1.35rem !important; }
+  .auth-tab-btn { min-height: 2.65rem !important; font-size: .7rem !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-orb,
+  .enroll-hero,
+  .claim-hero,
+  .auth-panel,
+  .claim-card,
+  .tab-pane.active { animation: none !important; }
+  .auth-panel *, .claim-card * { scroll-behavior: auto !important; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .auth-panel,
+  .claim-card { background: var(--auth-glass-strong) !important; }
+}
+
+/*
+ * AUTH / 02 — "After class"
+ * Editorial split-screen treatment inspired by cinematic authentication pages.
+ * Cobalt is the environment; translucent paper is the functional glass layer.
+ */
+body.enroll-page,
+body.auth-claim-page {
+  --auth-paper: rgba(246, 247, 252, .88);
+  --auth-paper-strong: #f3f4f8;
+  --auth-paper-line: rgba(20, 25, 48, .13);
+  --auth-dark: #101426;
+  --auth-cobalt: #2448f5;
+  --auth-orange: #ff5c35;
+  --auth-acid: #d9ff52;
+  color: #fff;
+  background: #0b0e1a !important;
+  font-family: "DM Sans", sans-serif !important;
+}
+
+body.enroll-page::before,
+body.auth-claim-page::before {
+  opacity: 1;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    var(--auth-cobalt);
+  background-size: 84px 84px, 84px 84px, auto;
+  clip-path: polygon(0 0, 51% 0, 58% 100%, 0 100%);
+  mask-image: none;
+}
+
+.auth-aurora { z-index: -2; }
+.auth-orb { animation: none; filter: none; opacity: 1; }
+.auth-orb::after { display: none; }
+.auth-orb.one {
+  width: min(43vw, 42rem);
+  height: min(43vw, 42rem);
+  top: 52%;
+  left: 5%;
+  right: auto;
+  border: clamp(3rem, 6vw, 6.5rem) solid rgba(217,255,82,.94);
+  border-radius: 50%;
+  background: transparent;
+  transform: translateY(-17%);
+  mix-blend-mode: hard-light;
+}
+.auth-orb.two {
+  width: clamp(9rem, 16vw, 15rem);
+  height: 3.1rem;
+  left: 38%;
+  bottom: 11%;
+  border: 2px solid rgba(255,255,255,.75);
+  border-radius: 999px;
+  background: var(--auth-orange);
+  transform: rotate(-13deg);
+  box-shadow: 0 0 0 9px rgba(11,14,26,.17);
+}
+
+.enroll-main,
+.claim-layout {
+  width: min(1280px, calc(100% - 48px)) !important;
+  min-height: calc(100svh - 34px);
+  padding: 17px 0 !important;
+  grid-template-columns: minmax(0, 1fr) minmax(410px, 510px) !important;
+  gap: clamp(3rem, 7vw, 7.5rem) !important;
+}
+
+.enroll-hero,
+.claim-hero {
+  align-self: center;
+  padding: clamp(1rem, 4vw, 3rem) 0;
+}
+
+.enroll-brand,
+.claim-brand {
+  margin-bottom: clamp(3rem, 9vh, 6rem) !important;
+  font-family: "Bricolage Grotesque", sans-serif !important;
+  font-size: 1.15rem !important;
+  letter-spacing: -.05em !important;
+}
+.enroll-brand::before,
+.claim-brand::before {
+  content: "M";
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid rgba(255,255,255,.65);
+  border-radius: 50%;
+  color: #fff;
+  background: transparent;
+  box-shadow: none;
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: 1rem;
+}
+
+.auth-eyebrow {
+  margin-bottom: 1.3rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: rgba(255,255,255,.72);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .64rem;
+  letter-spacing: .13em;
+}
+.auth-eyebrow::before {
+  width: 1.8rem;
+  height: 2px;
+  border-radius: 0;
+  background: var(--auth-acid);
+  box-shadow: none;
+}
+
+.enroll-hero h1,
+.claim-hero h1 {
+  max-width: 7.5ch;
+  margin-bottom: 1.4rem !important;
+  font-family: "Bricolage Grotesque", sans-serif !important;
+  font-size: clamp(4.7rem, 7.7vw, 7.7rem) !important;
+  font-stretch: 82%;
+  font-weight: 700 !important;
+  letter-spacing: -.085em !important;
+  line-height: .78 !important;
+  text-transform: uppercase;
+}
+.auth-gradient-text {
+  color: var(--auth-acid);
+  background: none;
+  background-clip: border-box;
+  -webkit-background-clip: border-box;
+}
+.enroll-hero > p,
+.claim-hero > p {
+  max-width: 35rem !important;
+  padding-left: clamp(2rem, 8vw, 7rem);
+  color: rgba(255,255,255,.74) !important;
+  font-size: .92rem !important;
+  line-height: 1.62 !important;
+}
+
+.auth-benefits {
+  max-width: 35rem;
+  margin-top: 2.2rem;
+  gap: 0;
+  border-top: 1px solid rgba(255,255,255,.32);
+  border-bottom: 1px solid rgba(255,255,255,.32);
+}
+.auth-benefit {
+  padding: .85rem .75rem .85rem 0;
+  border: 0;
+  border-right: 1px solid rgba(255,255,255,.22);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.auth-benefit + .auth-benefit { padding-left: .75rem; }
+.auth-benefit:last-child { border-right: 0; }
+.auth-benefit strong {
+  color: var(--auth-acid);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .58rem;
+  letter-spacing: .08em;
+}
+.auth-benefit span { color: rgba(255,255,255,.6); font-size: .66rem; }
+
+.enroll-links,
+.claim-help-links { margin-top: 1.1rem !important; }
+.enroll-links a,
+.claim-help-links a {
+  padding: .25rem 0 !important;
+  margin-right: .95rem;
+  border: 0;
+  border-radius: 0 !important;
+  color: rgba(255,255,255,.56) !important;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .59rem !important;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.enroll-links a:hover,
+.claim-help-links a:hover { color: var(--auth-acid) !important; background: none !important; }
+
+.auth-panel,
+.claim-card {
+  align-self: center;
+  padding: clamp(1.4rem, 3vw, 2.45rem) !important;
+  padding-top: clamp(2.8rem, 5vw, 4rem) !important;
+  border: 1px solid rgba(255,255,255,.7) !important;
+  border-radius: 42px 42px 12px 42px !important;
+  color: var(--auth-dark) !important;
+  background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(237,239,249,.78)) !important;
+  box-shadow: 0 30px 100px rgba(0,0,0,.5), inset 0 1px rgba(255,255,255,1) !important;
+  backdrop-filter: blur(28px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(125%) !important;
+}
+.auth-panel::before,
+.claim-card::before {
+  inset: 0;
+  background: linear-gradient(118deg, rgba(255,255,255,.5), transparent 36%);
+  mask-image: none;
+}
+.auth-panel::after,
+.claim-card::after {
+  content: "AUTH / 2026";
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: .65rem 1.1rem .7rem 1.4rem;
+  border-radius: 0 40px 0 20px;
+  color: rgba(255,255,255,.72);
+  background: var(--auth-dark);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .56rem;
+  letter-spacing: .12em;
+}
+.claim-card::after { content: "INVITE / CLAIM"; }
+
+.auth-tabs {
+  gap: 1rem !important;
+  margin-bottom: 2rem !important;
+  padding: 0 0 .85rem !important;
+  border: 0 !important;
+  border-bottom: 1px solid var(--auth-paper-line) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none;
+}
+.auth-tab-btn {
+  flex: 0 1 auto;
+  min-height: 2rem !important;
+  padding: .25rem 0 !important;
+  border-radius: 0 !important;
+  color: rgba(16,20,38,.42) !important;
+  background: transparent !important;
+  font-family: "DM Sans", sans-serif !important;
+  font-size: .76rem !important;
+  font-weight: 700 !important;
+  white-space: nowrap;
+}
+.auth-tab-btn span {
+  display: block;
+  margin-bottom: .08rem;
+  color: rgba(16,20,38,.33);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .5rem;
+}
+.auth-tab-btn.active {
+  color: var(--auth-dark) !important;
+  background: transparent !important;
+  box-shadow: inset 0 -2px var(--auth-orange) !important;
+}
+.auth-tab-btn.active span { color: var(--auth-orange); }
+
+.panel-head h2,
+.claim-card h2,
+#claim-title {
+  color: var(--auth-dark) !important;
+  font-family: "Bricolage Grotesque", sans-serif !important;
+  font-size: clamp(1.75rem, 3vw, 2.25rem) !important;
+  font-weight: 700 !important;
+  letter-spacing: -.055em !important;
+}
+.panel-head p,
+#claim-desc,
+.claim-card .auth-card-copy { color: rgba(16,20,38,.58) !important; }
+.auth-panel .field-label,
+.claim-card .field-label {
+  color: rgba(16,20,38,.63) !important;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .59rem !important;
+  letter-spacing: .075em !important;
+}
+.auth-panel input:not([type="checkbox"]),
+.auth-panel select,
+.auth-panel textarea,
+.claim-card input:not([type="checkbox"]) {
+  min-height: 3.2rem !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(16,20,38,.2) !important;
+  border-radius: 0 !important;
+  color: var(--auth-dark) !important;
+  background: rgba(255,255,255,.36) !important;
+  box-shadow: none !important;
+  font-family: "DM Sans", sans-serif !important;
+}
+.auth-panel input::placeholder,
+.auth-panel textarea::placeholder,
+.claim-card input::placeholder { color: rgba(16,20,38,.27) !important; }
+.auth-panel input:not([type="checkbox"]):focus,
+.auth-panel select:focus,
+.auth-panel textarea:focus,
+.claim-card input:not([type="checkbox"]):focus {
+  border-bottom-color: var(--auth-cobalt) !important;
+  background: rgba(255,255,255,.72) !important;
+  box-shadow: inset 4px 0 var(--auth-cobalt) !important;
+}
+.auth-panel select option { color: var(--auth-dark); background: #f5f5f7; }
+.forgot-link { color: var(--auth-cobalt) !important; }
+
+.auth-panel .btn,
+.auth-panel .btn-primary,
+.auth-panel .btn-ghost,
+.claim-card .btn-primary,
+.claim-card .claim-action {
+  min-height: 3.35rem !important;
+  border: 0 !important;
+  border-radius: 6px 18px 6px 18px !important;
+  color: #fff !important;
+  background: var(--auth-orange) !important;
+  box-shadow: 0 12px 24px rgba(255,92,53,.22) !important;
+  font-family: "IBM Plex Mono", monospace !important;
+  font-size: .72rem !important;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.auth-panel .btn:hover,
+.auth-panel .btn-primary:hover,
+.claim-card .claim-action:hover {
+  filter: none;
+  background: var(--auth-dark) !important;
+  box-shadow: 0 14px 28px rgba(16,20,38,.25) !important;
+}
+.agree-row,
+.warning-alert,
+#no-email-form,
+.claim-warning {
+  border-color: rgba(16,20,38,.11) !important;
+  color: rgba(16,20,38,.68) !important;
+  background: rgba(255,255,255,.4) !important;
+}
+.agree-row label,
+.warning-alert span,
+#no-email-form p,
+.claim-warning span { color: rgba(16,20,38,.65) !important; }
+.warning-alert strong,
+.claim-warning strong { color: #b62f28 !important; }
+.agree-row a,
+#no-email-link,
+#support-actions a { color: var(--auth-cobalt) !important; }
+#login-msg, #msg, #tmsg, #rtmsg, #claim-msg { color: rgba(16,20,38,.62); }
+.pw-strength-bars > div { background: rgba(16,20,38,.1); }
+.claim-card-icon {
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--auth-cobalt);
+  box-shadow: 8px 8px 0 var(--auth-acid);
+}
+
+.enroll-foot,
+.claim-footer {
+  color: rgba(255,255,255,.34) !important;
+  font-family: "IBM Plex Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+body:has(#pane-invite.active) .enroll-main,
+body:has(#pane-reset.active) .enroll-main { align-items: start !important; }
+body:has(#pane-invite.active) .enroll-hero,
+body:has(#pane-reset.active) .enroll-hero { position: sticky !important; top: 1rem !important; }
+
+/* Chromebook and compact landscape screens */
+@media (min-width: 861px) and (max-height: 820px) {
+  .enroll-main,
+  .claim-layout { min-height: calc(100svh - 18px); padding: 9px 0 !important; }
+  .enroll-brand,
+  .claim-brand { margin-bottom: clamp(1.8rem, 5vh, 3rem) !important; }
+  .enroll-hero h1,
+  .claim-hero h1 { font-size: clamp(4rem, 7vw, 6rem) !important; }
+  .enroll-hero > p,
+  .claim-hero > p { font-size: .82rem !important; }
+  .auth-benefits { margin-top: 1.25rem; }
+  .enroll-links,
+  .claim-help-links { margin-top: .65rem !important; }
+  .auth-panel,
+  .claim-card { padding: 2.6rem 1.6rem 1.35rem !important; }
+  .auth-tabs { margin-bottom: 1.15rem !important; }
+  .panel-head { margin-bottom: 1rem !important; }
+  .auth-panel input:not([type="checkbox"]),
+  .auth-panel select,
+  .claim-card input:not([type="checkbox"]) { min-height: 2.8rem !important; margin-bottom: .72rem !important; }
+}
+
+@media (max-width: 1050px) and (min-width: 861px) {
+  .enroll-main,
+  .claim-layout {
+    width: min(100% - 32px, 1000px) !important;
+    grid-template-columns: minmax(0, .86fr) minmax(390px, 1.14fr) !important;
+    gap: 2.5rem !important;
+  }
+  .enroll-hero h1,
+  .claim-hero h1 { font-size: clamp(4rem, 7.8vw, 5.7rem) !important; }
+  .auth-benefit:last-child { display: none; }
+  .auth-benefits { grid-template-columns: 1fr 1fr; }
+  .auth-benefit:nth-child(2) { border-right: 0; }
+}
+
+@media (max-width: 860px) {
+  body.enroll-page::before,
+  body.auth-claim-page::before { clip-path: polygon(0 0, 100% 0, 100% 35%, 0 43%); }
+  .auth-orb.one { width: 26rem; height: 26rem; top: 3rem; left: 55%; border-width: 4rem; opacity: .48; }
+  .auth-orb.two { left: 67%; top: 18rem; bottom: auto; }
+  .enroll-main,
+  .claim-layout {
+    grid-template-columns: 1fr !important;
+    gap: 1.5rem !important;
+    width: min(620px, calc(100% - 28px)) !important;
+    padding: 1rem 0 2rem !important;
+  }
+  .enroll-hero,
+  .claim-hero { padding: 0 !important; }
+  .enroll-brand,
+  .claim-brand { margin-bottom: 2rem !important; }
+  .enroll-hero h1,
+  .claim-hero h1 { max-width: 8ch; font-size: clamp(3.5rem, 13vw, 5.5rem) !important; }
+  .enroll-hero > p,
+  .claim-hero > p { padding-left: 2rem; }
+  .auth-benefits { margin-top: 1.25rem; }
+  .auth-panel,
+  .claim-card { border-radius: 34px 34px 10px 34px !important; }
+  body:has(#pane-invite.active) .enroll-hero,
+  body:has(#pane-reset.active) .enroll-hero { position: static !important; }
+}
+
+@media (max-width: 520px) {
+  body.enroll-page::before,
+  body.auth-claim-page::before { clip-path: polygon(0 0, 100% 0, 100% 29rem, 0 32rem); }
+  .enroll-main,
+  .claim-layout { width: calc(100% - 18px) !important; }
+  .enroll-brand,
+  .claim-brand { margin-bottom: 1.65rem !important; }
+  .auth-eyebrow { font-size: .54rem; }
+  .enroll-hero h1,
+  .claim-hero h1 { font-size: clamp(3.15rem, 17vw, 4.7rem) !important; }
+  .enroll-hero > p,
+  .claim-hero > p { padding-left: 1.4rem; font-size: .8rem !important; }
+  .auth-benefits { display: none; }
+  .auth-panel,
+  .claim-card { padding: 2.8rem 1rem 1rem !important; }
+  .auth-tabs { gap: .8rem !important; justify-content: space-between; }
+  .auth-tab-btn { font-size: .7rem !important; }
+}
+
+@media (max-width: 360px) {
+  .enroll-hero h1,
+  .claim-hero h1 { font-size: 2.9rem !important; }
+  .auth-tab-btn span { display: none; }
+  .auth-tabs { gap: .45rem !important; }
+  .auth-panel,
+  .claim-card { padding-inline: .8rem !important; }
+}
+
+/* Full-bleed mitch.pro night artwork supplied for the authentication suite. */
+body.enroll-page,
+body.auth-claim-page {
+  --auth-paper: rgba(12, 10, 29, .76);
+  --auth-paper-strong: #100c24;
+  --auth-paper-line: rgba(255, 255, 255, .14);
+  --auth-dark: #0b091b;
+  --auth-cobalt: #b52f70;
+  --auth-orange: #f23f83;
+  --auth-acid: #ff6ca7;
+  background:
+    linear-gradient(90deg, rgba(3,5,18,.7) 0%, rgba(3,5,18,.34) 45%, rgba(3,5,18,.76) 100%),
+    linear-gradient(0deg, rgba(3,4,16,.52) 0%, transparent 56%),
+    url('/auth-mitch-pro-night.png') center 48% / cover no-repeat fixed !important;
+}
+
+body.enroll-page::before,
+body.auth-claim-page::before {
+  opacity: .32;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size: 84px 84px;
+  clip-path: none;
+}
+
+.auth-orb { display: none; }
+
+.auth-gradient-text { color: #ff75ac; text-shadow: 0 0 38px rgba(239,54,127,.26); }
+.auth-eyebrow::before { background: #ff5a9c; }
+.auth-benefit strong { color: #ff82b3; }
+
+.auth-panel,
+.claim-card {
+  border-color: rgba(255,255,255,.2) !important;
+  color: #f8f4ff !important;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.12), transparent 38%),
+    rgba(10, 8, 28, .72) !important;
+  box-shadow:
+    0 38px 110px rgba(0,0,0,.58),
+    inset 0 1px rgba(255,255,255,.2),
+    0 0 0 1px rgba(230,64,137,.08) !important;
+  backdrop-filter: blur(30px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(140%) !important;
+}
+.auth-panel::before,
+.claim-card::before { background: radial-gradient(circle at 8% 0%, rgba(255,130,184,.17), transparent 36%); }
+.auth-panel::after,
+.claim-card::after { color: rgba(255,255,255,.7); background: rgba(3,3,14,.72); }
+
+.auth-tabs { border-bottom-color: rgba(255,255,255,.14) !important; }
+.auth-tab-btn { color: rgba(255,255,255,.4) !important; }
+.auth-tab-btn span { color: rgba(255,255,255,.28); }
+.auth-tab-btn.active { color: #fff !important; box-shadow: inset 0 -2px #f24a8c !important; }
+.auth-tab-btn.active span { color: #ff75ac; }
+
+.panel-head h2,
+.claim-card h2,
+#claim-title { color: #fff !important; }
+.panel-head p,
+#claim-desc,
+.claim-card .auth-card-copy { color: rgba(239,232,250,.62) !important; }
+.auth-panel .field-label,
+.claim-card .field-label { color: rgba(245,238,255,.68) !important; }
+
+.auth-panel input:not([type="checkbox"]),
+.auth-panel select,
+.auth-panel textarea,
+.claim-card input:not([type="checkbox"]) {
+  border-bottom-color: rgba(255,255,255,.18) !important;
+  color: #fff !important;
+  background: rgba(255,255,255,.045) !important;
+}
+.auth-panel input::placeholder,
+.auth-panel textarea::placeholder,
+.claim-card input::placeholder { color: rgba(240,232,255,.26) !important; }
+.auth-panel input:not([type="checkbox"]):focus,
+.auth-panel select:focus,
+.auth-panel textarea:focus,
+.claim-card input:not([type="checkbox"]):focus {
+  border-bottom-color: #ff65a4 !important;
+  background: rgba(255,255,255,.09) !important;
+  box-shadow: inset 4px 0 #f4478a !important;
+}
+.auth-panel select option { color: #171024; background: #f7eff5; }
+.forgot-link,
+.agree-row a,
+#no-email-link,
+#support-actions a { color: #ff82b3 !important; }
+.agree-row,
+.warning-alert,
+#no-email-form,
+.claim-warning {
+  border-color: rgba(255,255,255,.12) !important;
+  color: rgba(245,236,255,.7) !important;
+  background: rgba(255,255,255,.055) !important;
+}
+.agree-row label,
+.warning-alert span,
+#no-email-form p,
+.claim-warning span { color: rgba(244,235,255,.65) !important; }
+.warning-alert strong,
+.claim-warning strong { color: #ff9fbd !important; }
+#login-msg, #msg, #tmsg, #rtmsg, #claim-msg { color: rgba(245,237,255,.64); }
+.pw-strength-bars > div { background: rgba(255,255,255,.11); }
+.claim-card-icon { background: #d83378; box-shadow: 8px 8px 0 rgba(255,116,172,.22); }
+
+.auth-panel .btn,
+.auth-panel .btn-primary,
+.auth-panel .btn-ghost,
+.claim-card .btn-primary,
+.claim-card .claim-action {
+  color: #fff !important;
+  background: #d9367a !important;
+  box-shadow: 0 12px 28px rgba(207,39,109,.3) !important;
+}
+.auth-panel .btn:hover,
+.auth-panel .btn-primary:hover,
+.claim-card .claim-action:hover {
+  color: #180915 !important;
+  background: #ff86b5 !important;
+  box-shadow: 0 14px 34px rgba(232,61,130,.32) !important;
+}
+
+@media (max-width: 860px) {
+  body.enroll-page,
+  body.auth-claim-page {
+    background:
+      linear-gradient(180deg, rgba(3,5,18,.38) 0%, rgba(3,5,18,.72) 42%, rgba(3,5,18,.92) 100%),
+      url('/auth-mitch-pro-night.png') center top / auto max(42rem, 72vh) no-repeat,
+      #080919 !important;
+  }
+  body.enroll-page::before,
+  body.auth-claim-page::before { clip-path: none; }
+}
+
+@media (max-width: 520px) {
+  body.enroll-page,
+  body.auth-claim-page {
+    background:
+      linear-gradient(180deg, rgba(3,5,18,.32) 0%, rgba(3,5,18,.78) 34rem, #080919 48rem),
+      url('/auth-mitch-pro-night.png') center top / auto 36rem no-repeat,
+      #080919 !important;
+  }
+}
+
+/* Explicitly local-only test access control. Server capability decides visibility. */
+.dev-test-access {
+  position: fixed;
+  z-index: 2147483000;
+  top: max(.75rem, env(safe-area-inset-top));
+  left: 50%;
+  display: grid;
+  justify-items: center;
+  transform: translateX(-50%);
+}
+.dev-test-access[hidden] { display: none !important; }
+#dev-test-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: .58rem;
+  min-height: 2.7rem;
+  padding: .48rem .62rem .48rem .72rem;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(8,6,25,.56);
+  box-shadow: 0 14px 38px rgba(0,0,0,.38), inset 0 1px rgba(255,255,255,.14);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .68rem;
+  font-weight: 600;
+  letter-spacing: .015em;
+  cursor: pointer;
+  transition: transform .2s ease, background .2s ease, box-shadow .2s ease;
+}
+#dev-test-btn small {
+  padding: .35rem .55rem;
+  border-radius: 999px;
+  color: #1a0713;
+  background: #ff82b3;
+  font-size: .54rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.dev-test-dot {
+  width: .48rem;
+  height: .48rem;
+  border-radius: 50%;
+  background: #d9ff52;
+  box-shadow: 0 0 0 4px rgba(217,255,82,.11), 0 0 14px rgba(217,255,82,.7);
+}
+#dev-test-btn:hover {
+  transform: translateY(-2px);
+  background: rgba(17,10,40,.78);
+  box-shadow: 0 18px 42px rgba(0,0,0,.46), inset 0 1px rgba(255,255,255,.2);
+}
+#dev-test-btn:disabled { cursor: wait; opacity: .72; }
+#dev-test-btn.is-loading .dev-test-dot { animation: dev-test-pulse .7s ease-in-out infinite alternate; }
+#dev-test-msg {
+  min-height: 1rem;
+  margin-top: .3rem;
+  color: rgba(255,255,255,.72);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: .52rem;
+  text-shadow: 0 2px 8px #000;
+}
+@keyframes dev-test-pulse { to { opacity: .3; transform: scale(.7); } }
+@media (max-width: 520px) {
+  #dev-test-btn { min-height: 2.45rem; font-size: .62rem; }
+  #dev-test-btn small { font-size: .48rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #dev-test-btn, .dev-test-dot { transition: none !important; animation: none !important; }
+}
+
+/* Logo lockup and high-energy authentication actions. */
+.enroll-brand,
+.claim-brand {
+  width: fit-content;
+  gap: 0;
+  line-height: 0 !important;
+}
+.enroll-brand::before,
+.claim-brand::before { display: none !important; }
+.enroll-brand img,
+.claim-brand img {
+  display: block;
+  width: clamp(3.2rem, 5vw, 4.4rem);
+  height: auto;
+  filter: drop-shadow(0 12px 26px rgba(238,55,132,.34));
+  transition: transform .3s cubic-bezier(.2,.8,.2,1), filter .3s ease;
+}
+.enroll-brand:hover img,
+.claim-brand:hover img {
+  transform: translateY(-3px) rotate(-3deg) scale(1.04);
+  filter: drop-shadow(0 18px 32px rgba(255,83,156,.48));
+}
+
+.auth-panel .btn-primary,
+.claim-card .btn-primary,
+.claim-card .claim-action {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 3.6rem !important;
+  padding: .8rem 4rem .8rem 1.3rem !important;
+  border: 1px solid rgba(255,169,210,.42) !important;
+  border-radius: 8px 22px 8px 22px !important;
+  color: #fff !important;
+  background:
+    linear-gradient(110deg, rgba(255,255,255,.15), transparent 34%),
+    linear-gradient(100deg, #e82f78 0%, #c526a8 55%, #7834e7 100%) !important;
+  box-shadow:
+    0 14px 34px rgba(202,38,137,.32),
+    inset 0 1px rgba(255,255,255,.36),
+    inset 0 -1px rgba(62,11,74,.28) !important;
+  text-align: left;
+  transition: transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease, filter .22s ease !important;
+}
+.auth-panel .btn-primary::before,
+.claim-card .btn-primary::before,
+.claim-card .claim-action::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: -80%;
+  bottom: -80%;
+  left: -35%;
+  width: 28%;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.5), transparent);
+  transition: left .5s cubic-bezier(.2,.8,.2,1);
+}
+.auth-panel .btn-primary::after,
+.claim-card .btn-primary::after,
+.claim-card .claim-action::after {
+  content: "↗";
+  position: absolute;
+  top: 50%;
+  right: .72rem;
+  display: grid;
+  place-items: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(8,6,25,.2);
+  box-shadow: inset 0 1px rgba(255,255,255,.18);
+  font-family: "DM Sans", sans-serif;
+  font-size: 1rem;
+  transform: translateY(-50%);
+  transition: transform .22s ease, background .22s ease;
+}
+.auth-panel .btn-primary:hover,
+.claim-card .btn-primary:hover,
+.claim-card .claim-action:hover {
+  color: #fff !important;
+  filter: saturate(1.15) brightness(1.08);
+  transform: translateY(-3px) !important;
+  background:
+    linear-gradient(110deg, rgba(255,255,255,.18), transparent 34%),
+    linear-gradient(100deg, #f43782 0%, #d32ab3 55%, #873df1 100%) !important;
+  box-shadow: 0 20px 42px rgba(203,40,143,.43), inset 0 1px rgba(255,255,255,.4) !important;
+}
+.auth-panel .btn-primary:hover::before,
+.claim-card .btn-primary:hover::before,
+.claim-card .claim-action:hover::before { left: 115%; }
+.auth-panel .btn-primary:hover::after,
+.claim-card .btn-primary:hover::after,
+.claim-card .claim-action:hover::after {
+  background: rgba(8,6,25,.38);
+  transform: translateY(-50%) rotate(45deg);
+}
+.auth-panel .btn-primary:active,
+.claim-card .btn-primary:active,
+.claim-card .claim-action:active { transform: translateY(0) scale(.985) !important; }
+.auth-panel .btn-primary:focus-visible,
+.claim-card .btn-primary:focus-visible,
+.claim-card .claim-action:focus-visible {
+  outline: 3px solid rgba(255,136,191,.38) !important;
+  outline-offset: 3px !important;
+}
+
+.auth-panel .btn:not(.btn-primary) {
+  min-height: 3.05rem !important;
+  padding: .75rem 1rem !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  border-radius: 8px 16px 8px 16px !important;
+  color: rgba(255,255,255,.82) !important;
+  background: rgba(255,255,255,.065) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.08) !important;
+  text-align: center;
+}
+.auth-panel .btn:not(.btn-primary):hover {
+  color: #fff !important;
+  background: rgba(255,255,255,.12) !important;
+  transform: translateY(-2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .enroll-brand img,
+  .claim-brand img,
+  .auth-panel .btn-primary,
+  .claim-card .btn-primary,
+  .claim-card .claim-action,
+  .auth-panel .btn-primary::before,
+  .claim-card .btn-primary::before,
+  .claim-card .claim-action::before,
+  .auth-panel .btn-primary::after,
+  .claim-card .btn-primary::after,
+  .claim-card .claim-action::after { transition: none !important; }
+}
+
+/* Clear-glass variant: keep the supplied landscape visible through the form. */
+.auth-panel,
+.claim-card {
+  border-color: rgba(255,255,255,.24) !important;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.1), transparent 34%),
+    rgba(7, 6, 24, .4) !important;
+  box-shadow:
+    0 35px 100px rgba(0,0,0,.45),
+    inset 0 1px rgba(255,255,255,.24),
+    inset 0 0 45px rgba(219,47,124,.045) !important;
+  backdrop-filter: blur(18px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(135%) !important;
+}
+.auth-panel::before,
+.claim-card::before {
+  background:
+    linear-gradient(118deg, rgba(255,255,255,.1), transparent 35%),
+    radial-gradient(circle at 8% 0%, rgba(255,95,163,.1), transparent 38%);
+}
+.auth-tabs { background: rgba(4,3,17,.08) !important; }
+.auth-panel input:not([type="checkbox"]),
+.auth-panel select,
+.auth-panel textarea,
+.claim-card input:not([type="checkbox"]) { background: rgba(5,4,20,.12) !important; }
+.auth-panel input:not([type="checkbox"]):focus,
+.auth-panel select:focus,
+.auth-panel textarea:focus,
+.claim-card input:not([type="checkbox"]):focus { background: rgba(7,5,24,.3) !important; }
+
+@media (max-width: 520px) {
+  .auth-panel,
+  .claim-card {
+    background:
+      linear-gradient(145deg, rgba(255,255,255,.1), transparent 34%),
+      rgba(7, 6, 24, .56) !important;
+    backdrop-filter: blur(20px) saturate(130%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
+  }
+}

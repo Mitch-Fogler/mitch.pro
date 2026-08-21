@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 
 <html><head>
-<meta http-equiv="content-type" content="text/html; charset=windows-1252">
+<meta charset="utf-8">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<meta name="theme-color" content="#10140c">
+<meta name="theme-color" content="#08051a">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -37,7 +37,7 @@
 
   .name.neon_purple { color: #d946ef !important; text-shadow: 0 0 5px rgba(217,70,239,0.3); }
   .name.electric_blue { color: #3b82f6 !important; text-shadow: 0 0 5px rgba(59,130,246,0.3); }
-  .name.mint_flash { color: #34d399 !important; text-shadow: 0 0 5px rgba(52,211,153,0.3); }
+  .name.mint_flash { color: #c084fc !important; text-shadow: 0 0 5px rgba(192,132,252,0.3); }
   .name.rose_spark { color: #fb7185 !important; text-shadow: 0 0 5px rgba(251,113,133,0.3); }
   .name.ember_red { color: #ef4444 !important; text-shadow: 0 0 5px rgba(239,68,68,0.35); }
   .name.void_white { color: #f8fafc !important; text-shadow: 0 0 7px rgba(248,250,252,0.3); }
@@ -161,6 +161,7 @@ function makeSiteLink(type, href, label, extraClass) {
   }
   a.className = 'site-link' + (extraClass ? ' ' + extraClass : '');
   a.dataset.search = label.toLowerCase();
+  a.dataset.art = artForDestination(label, href);
   a.innerHTML = '<span class="icon">' + getIconFor(label) + '</span><span class="lbl">' + escText(label) + '</span><span class="link-arrow">→</span>';
   a.onclick = function(e) {
     if (a.classList.contains('disabled-site-link')) {
@@ -180,6 +181,14 @@ function makeSiteLink(type, href, label, extraClass) {
     }
   };
   return a;
+}
+
+function artForDestination(label, href) {
+  var text = (String(label || '') + ' ' + String(href || '')).toLowerCase();
+  if (/game|casino|canvas|pixel|chess|battle|jeopardy|clicker|movie|arcade/.test(text)) return 'games';
+  if (/chat|friend|member|invite|feedback|newsletter|leaderboard|profile|team/.test(text)) return 'social';
+  if (/market|shop|premium|inventory|coin|account|claim/.test(text)) return 'market';
+  return 'tools';
 }
 
 function categoryForLabel(label, isAdmin) {
@@ -403,23 +412,12 @@ function openMembersRail(event) {
     return;
   }
   try {
-    if (window.matchMedia('(min-width: 981px)').matches) {
-      var isOpen = rail.classList.contains('is-open');
-      if (isOpen) {
-        rail.classList.remove('is-open');
-        rail.classList.add('is-collapsed');
-        rail.setAttribute('aria-expanded', 'false');
-        var handle = document.getElementById('member-side-rail-collapsed-handle');
-        if (handle) handle.setAttribute('aria-expanded', 'false');
-      } else {
-        rail.classList.add('is-open');
-        rail.classList.remove('is-collapsed');
-        rail.setAttribute('aria-expanded', 'true');
-        var handle = document.getElementById('member-side-rail-collapsed-handle');
-        if (handle) handle.setAttribute('aria-expanded', 'true');
-      }
-    } else {
-      rail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    var nextOpen = !rail.classList.contains('is-open');
+    if (typeof rail._setOpen === 'function') rail._setOpen(nextOpen);
+    else {
+      rail.classList.toggle('is-open', nextOpen);
+      rail.classList.toggle('is-collapsed', !nextOpen);
+      rail.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
     }
   } catch (err) {
     window.location.href = '/friends/';
@@ -574,23 +572,23 @@ function filterHomeLinks() {
 
 function getIconFor(label) {
   const l = label.toLowerCase();
-  if (l.includes('market')) return '&#128722;';
-  if (l.includes('casino')) return '&#127920;';
-  if (l.includes('prox')) return '&#9889;';
-  if (l.includes('team')) return '&#129309;';
-  if (l.includes('profile')) return '&#128100;';
-  if (l.includes('members')) return '&#128101;';
-  if (l.includes('leaderboard')) return '&#127942;';
-  if (l.includes('sanctum')) return '&#128142;';
-  if (l.includes('games')) return '&#127918;';
-  if (l.includes('feedback') || l.includes('add a page')) return '&#128161;';
-  if (l.includes('chat') || l.includes('diffie')) return '&#128172;';
-  if (l.includes('export')) return '&#128190;';
-  if (l.includes('pixelplace')) return '&#127912;';
-  if (l.includes('newsletter')) return '&#128240;';
-  if (l.includes('invite')) return '&#127873;';
-  if (l.includes('shell') || l.includes('simulation') || l.includes('admin')) return '&#128736;&#65039;';
-  return '&#128279;';
+  var glyph = '<path d="M8.5 8.5h7v7h-7z"/><path d="M5 12a7 7 0 0 1 7-7m7 7a7 7 0 0 1-7 7"/>';
+  if (l.includes('market') || l.includes('shop') || l.includes('inventory')) glyph = '<path d="M5 7h14l-1.5 7.5h-11z"/><path d="M8 7l1.5-3h5L16 7"/><circle cx="9" cy="18" r="1"/><circle cx="16" cy="18" r="1"/>';
+  else if (l.includes('casino')) glyph = '<rect x="5" y="5" width="14" height="14" rx="4"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="9" cy="15" r="1"/><circle cx="15" cy="15" r="1"/>';
+  else if (l.includes('prox') || l.includes('vm')) glyph = '<path d="M13 2 5.5 13H11l-1 9 8.5-12H13z"/>';
+  else if (l.includes('team') || l.includes('members') || l.includes('friends')) glyph = '<circle cx="9" cy="9" r="3"/><circle cx="16.5" cy="10" r="2.3"/><path d="M3.5 19c.5-3.3 2.2-5 5.5-5s5 1.7 5.5 5M14 15c3.5-.5 5.5.8 6 3.5"/>';
+  else if (l.includes('profile') || l.includes('account')) glyph = '<circle cx="12" cy="8" r="4"/><path d="M4.5 20c.7-4.4 3.2-6.5 7.5-6.5s6.8 2.1 7.5 6.5"/>';
+  else if (l.includes('leaderboard')) glyph = '<path d="M8 4h8v4c0 3-1.5 5-4 5S8 11 8 8z"/><path d="M8 6H4c0 3 1.5 4.5 4.5 4.5M16 6h4c0 3-1.5 4.5-4.5 4.5M12 13v4m-4 3h8"/>';
+  else if (l.includes('sanctum') || l.includes('premium')) glyph = '<path d="m12 3 6 6-6 12L6 9z"/><path d="M6 9h12M9 9l3-6 3 6-3 12z"/>';
+  else if (l.includes('games') || l.includes('battle') || l.includes('jeopardy') || l.includes('chess')) glyph = '<path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/>';
+  else if (l.includes('feedback') || l.includes('add a page')) glyph = '<path d="M9 18h6M10 22h4"/><path d="M8 14c-1.3-1.1-2-2.6-2-4.5a6 6 0 1 1 12 0c0 1.9-.7 3.4-2 4.5-.8.7-1 1.3-1 2H9c0-.7-.2-1.3-1-2Z"/>';
+  else if (l.includes('chat') || l.includes('diffie')) glyph = '<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>';
+  else if (l.includes('export')) glyph = '<path d="M12 3v12m-4-4 4 4 4-4"/><path d="M5 15v5h14v-5"/>';
+  else if (l.includes('pixelplace') || l.includes('canvas')) glyph = '<path d="M4 17 15 6l3 3L7 20H4z"/><path d="m13 8 3 3M16 5l1-1 3 3-2 2"/>';
+  else if (l.includes('newsletter')) glyph = '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="m5 7 7 6 7-6"/>';
+  else if (l.includes('invite')) glyph = '<rect x="4" y="9" width="16" height="11" rx="2"/><path d="M12 9v11M3 9h18V6H3zM12 6c-2-4-6-3-4 0m4 0c2-4 6-3 4 0"/>';
+  else if (l.includes('shell') || l.includes('simulation') || l.includes('admin') || l.includes('settings') || l.includes('preferences')) glyph = '<path d="M5 6h14M5 12h14M5 18h14"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/>';
+  return '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + glyph + '</svg>';
 }
 
 function showPopup(src) {
@@ -908,7 +906,7 @@ function loadGreeting() {
     var now = new Date();
     var h = now.getHours();
     var greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
-    greetEl.textContent = greeting + ',';
+    if (greetEl) greetEl.textContent = greeting + ',';
     var mm = String(now.getMinutes()).padStart(2,'0');
     if (_clockFmt === '24') {
       clockEl.textContent = String(h).padStart(2,'0') + ':' + mm;
@@ -927,7 +925,7 @@ function loadGreeting() {
   tick();
   setInterval(tick, 1000);
 
-  if (_greetName) {
+  if (_greetName && emailEl) {
     emailEl.textContent = _greetName;
   }
   fetch('/api/me', {credentials: 'include'}).then(function(r) {
@@ -935,7 +933,7 @@ function loadGreeting() {
   }).then(function(d) {
     if (d) {
       if (d.email) {
-        emailEl.textContent = d.email;
+        if (emailEl) emailEl.textContent = d.email;
         window._currentUserEmail = d.email.toLowerCase();
       }
       if (d.bonusAwarded) {
@@ -990,7 +988,7 @@ function loadGreeting() {
       if (count && count > 0) stats.push('&#127850; ' + Math.floor(count).toLocaleString() + ' cookies');
     }
   } catch(e) {}
-  if (stats.length) {
+  if (stats.length && statsEl) {
     statsEl.style.display = 'flex';
     statsEl.innerHTML = stats.map(function(s) {
       return '<span style="padding:2px 8px;background:var(--t-bg3);border:1px solid var(--t-bd);border-radius:5px;">' + s + '</span>';
@@ -1015,35 +1013,14 @@ function loadGreeting() {
     var rail = document.getElementById('member-side-rail');
     if (!rail) return;
     var handle = document.getElementById('member-side-rail-collapsed-handle');
-    var desktopMq = window.matchMedia('(min-width: 981px)');
-
-    function isDesktop() {
-      try { return desktopMq.matches; } catch (e) { return window.innerWidth >= 981; }
-    }
-
     function setOpen(open) {
-      if (!isDesktop()) {
-        rail.classList.remove('is-open', 'is-collapsed');
-        rail.removeAttribute('aria-expanded');
-        return;
-      }
       rail.classList.toggle('is-open', !!open);
       rail.classList.toggle('is-collapsed', !open);
       rail.setAttribute('aria-expanded', open ? 'true' : 'false');
       if (handle) handle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      document.body.classList.toggle('members-rail-open', !!open);
     }
-
-    function syncMode() {
-      if (isDesktop()) {
-        if (!rail.classList.contains('is-open') && !rail.classList.contains('is-collapsed')) {
-          setOpen(false);
-        } else {
-          setOpen(rail.classList.contains('is-open'));
-        }
-      } else {
-        setOpen(false);
-      }
-    }
+    rail._setOpen = setOpen;
 
     if (handle) {
       handle.setAttribute('role', 'button');
@@ -1064,7 +1041,7 @@ function loadGreeting() {
     }
 
     document.addEventListener('click', function(e) {
-      if (!isDesktop() || !rail.classList.contains('is-open')) return;
+      if (!rail.classList.contains('is-open')) return;
       if (rail.contains(e.target)) return;
       setOpen(false);
     });
@@ -1073,9 +1050,7 @@ function loadGreeting() {
       if (e.key === 'Escape' && rail.classList.contains('is-open')) setOpen(false);
     });
 
-    if (desktopMq.addEventListener) desktopMq.addEventListener('change', syncMode);
-    else if (desktopMq.addListener) desktopMq.addListener(syncMode);
-    syncMode();
+    setOpen(false);
   }
 
 function escText(t) {
@@ -1143,7 +1118,7 @@ function escText(t) {
       if (r.ok && res.success) {
         // Show elegant popup / message
         var note = document.createElement('div');
-        note.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--t-gr, #10b981);color:#fff;padding:12px 24px;border-radius:12px;font-weight:800;z-index:100000;box-shadow:0 10px 40px rgba(0,0,0,0.5);animation:bonus-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;';
+        note.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:var(--t-gr, #8b5cf6);color:#fff;padding:12px 24px;border-radius:12px;font-weight:800;z-index:100000;box-shadow:0 10px 40px rgba(0,0,0,0.5);animation:bonus-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;';
         note.innerHTML = '🎁 ' + res.message;
         document.body.appendChild(note);
         setTimeout(function() {
@@ -1176,7 +1151,7 @@ function escText(t) {
     if (modWrap && (me.isModerator || me.isAdmin)) {
       modWrap.style.display = 'block';
       document.getElementById('moderator-action-btn').onclick = function() {
-        window.location.href = '/admin/';
+        window.location.href = '/moderator/';
       };
     }
     if (!me.isAdmin && !me.canGrantPremium) return;
@@ -1288,9 +1263,12 @@ function setupAdminNotificationMode() {
 function renderOnlineMembers(members) {
   var wrap = document.getElementById('online-members-wrap');
   var list = document.getElementById('online-members-list');
-  var online = (members || []).filter(function(m) { return m.online; });
-  var signature = JSON.stringify(online.map(function(m) {
-    return [m.email || '', m.displayName || '', m.pfp || '', m.badge || '', m.color || ''];
+  var allMembers = (members || []).slice().sort(function(a, b) {
+    return Number(!!b.online) - Number(!!a.online) || String(a.displayName || a.email || '').localeCompare(String(b.displayName || b.email || ''));
+  });
+  var online = allMembers.filter(function(m) { return m.online; });
+  var signature = JSON.stringify(allMembers.map(function(m) {
+    return [m.email || '', m.displayName || '', m.pfp || '', m.badge || '', m.color || '', !!m.online];
   }));
   if (signature === window._onlineMembersSignature) return;
   window._onlineMembersSignature = signature;
@@ -1298,6 +1276,8 @@ function renderOnlineMembers(members) {
   // Populate collapsed handle details
   var badgeEl = document.getElementById('collapsed-online-count');
   var pfpsEl = document.getElementById('collapsed-pfps-container');
+  var liveLabel = document.getElementById('members-live-label');
+  if (liveLabel) liveLabel.textContent = online.length ? online.length + ' live' : 'All offline';
   if (badgeEl) {
     if (online.length > 0) {
       badgeEl.textContent = online.length;
@@ -1313,14 +1293,13 @@ function renderOnlineMembers(members) {
     }).join('');
   }
 
-  var onlineListSubset = online;
-  if (!onlineListSubset.length) {
-    list.innerHTML = '<span class="side-empty">No one online</span>';
+  if (!allMembers.length) {
+    list.innerHTML = '<span class="side-empty">No members to show yet</span>';
     wrap.style.display = '';
     return;
   }
 
-  list.innerHTML = onlineListSubset.map(function(m) {
+  list.innerHTML = allMembers.map(function(m) {
     var email = m.email || '';
     var name = m.displayName || email || 'member';
     var badge = badgeLabels[m.badge];
@@ -1333,13 +1312,18 @@ function renderOnlineMembers(members) {
       var e2 = window._currentUserEmail.toLowerCase().trim();
       isMe = (e1 === e2 || e1 === e2.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro') || e2 === e1.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro'));
     }
-    var nameContent = isMe ? name : escText(name);
+    var nameContent = escText(name);
     if (colorClass === 'rainbow_name') {
       nameContent = '<span class="name-inner">' + nameContent + '</span>';
     }
-    
+    var initials = String(name).trim().split(/\s+/).slice(0, 2).map(function(part) { return part.charAt(0); }).join('').toUpperCase() || 'M';
+    var avatar = m.pfp
+      ? '<img class="member-presence-avatar" src="' + escText(m.pfp) + '" alt="">'
+      : '<span class="member-presence-avatar member-presence-initials" aria-hidden="true">' + escText(initials) + '</span>';
+    var statusText = m.online ? 'Online now' : 'Offline';
     var tooltip = email.includes('@') ? email : '';
-    return '<a class="online-chip name ' + escText(colorClass) + '" href="/profile/?u=' + encodeURIComponent(email) + '" title="' + escText(tooltip) + '"><span class="online-dot"></span>' + nameContent + badgeHtml + '</a>';
+    return '<a class="member-presence-card name ' + escText(colorClass) + (m.online ? ' is-online' : ' is-offline') + '" href="/profile/?u=' + encodeURIComponent(email) + '" title="' + escText(tooltip) + '">' +
+      avatar + '<span class="member-presence-copy"><span class="member-presence-name">' + nameContent + badgeHtml + '</span><span class="member-presence-status"><span class="online-dot"></span>' + statusText + '</span></span></a>';
   }).join('');
   wrap.style.display = '';
 }
@@ -1353,6 +1337,7 @@ async function loadOnlineMembers() {
       cache: 'no-store'
     });
     if (!r.ok) {
+      window._onlineMembersSignature = '';
       list.innerHTML = '<span class="side-empty">Sign in to see online members</span>';
       wrap.style.display = '';
       var badgeEl = document.getElementById('collapsed-online-count');
@@ -1364,6 +1349,7 @@ async function loadOnlineMembers() {
     var d = await r.json();
     renderOnlineMembers(d.members || []);
   } catch(e) {
+    window._onlineMembersSignature = '';
     list.innerHTML = '<span class="side-empty">Online list unavailable</span>';
     wrap.style.display = '';
     var badgeEl = document.getElementById('collapsed-online-count');
@@ -1390,11 +1376,12 @@ async function loadFriends() {
   try {
     const r = await fetch('/api/friends/list?t=' + Date.now(), { credentials: 'include' });
     if (!r.ok) {
+      window._friendsSignature = '';
       friendsList.innerHTML = '<span class="side-empty">Log in to view friends</span>';
       return;
     }
     const d = await r.json();
-    const list = d.friends || [];
+    const list = (d.friends || []).slice().sort((a, b) => Number(!!b.online) - Number(!!a.online) || String(a.maskedEmail || a.email || '').localeCompare(String(b.maskedEmail || b.email || '')));
     const signature = JSON.stringify(list.map(f => [f.email || '', f.maskedEmail || '', !!f.online, f.playing || '']));
     if (signature === window._friendsSignature) return;
     window._friendsSignature = signature;
@@ -1404,27 +1391,24 @@ async function loadFriends() {
     }
     friendsList.innerHTML = list.map(f => {
       const email = f.email;
-      const masked = f.maskedEmail;
+      const masked = f.maskedEmail || f.email || 'Friend';
       const isOnline = f.online;
-      const playing = f.playing ? ` (${f.playing})` : '';
-      
-      const statusColor = isOnline ? '#4ade80' : '#64748b';
-      const statusText = isOnline ? `Online${playing}` : 'Offline';
+      const statusText = isOnline ? (f.playing || 'Online now') : 'Offline';
+      const initials = String(masked).replace(/[^a-z0-9 ]/gi, ' ').trim().split(/\s+/).slice(0, 2).map(part => part.charAt(0)).join('').toUpperCase() || 'F';
       
       return `
-        <div style="display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.02); margin-bottom: 4px; transition: background 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.05)'" onmouseout="this.style.background='rgba(255,255,255,0.02)'">
-          <div style="display: flex; flex-direction: column; min-width: 0; flex: 1;">
-            <span style="font-size: 12px; font-weight: 600; color: white; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escText(masked)}</span>
-            <span style="font-size: 10px; color: ${statusColor}; font-weight: 500; display: flex; align-items: center; gap: 4px;">
-              <span style="width: 6px; height: 6px; border-radius: 50%; background: ${statusColor}; display: inline-block;"></span>
-              ${escText(statusText)}
-            </span>
+        <div class="friend-presence-card ${isOnline ? 'is-online' : 'is-offline'}">
+          <span class="friend-presence-avatar" aria-hidden="true">${escText(initials)}</span>
+          <div class="friend-presence-copy">
+            <span class="friend-presence-name">${escText(masked)}</span>
+            <span class="friend-presence-status"><span class="online-dot"></span>${escText(statusText)}</span>
           </div>
           <button onclick="removeFriend('${escText(email)}')" style="background: transparent; border: none; color: #ef4444; font-size: 13px; cursor: pointer; opacity: 0.6; padding: 2px 6px; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.6'" title="Remove Friend">✕</button>
         </div>
       `;
     }).join('');
   } catch(e) {
+    window._friendsSignature = '';
     friendsList.innerHTML = '<span class="side-empty">Error loading friends</span>';
   }
 }
@@ -1545,7 +1529,7 @@ async function loadPendingFriendRequests() {
             ${escText(req.maskedFrom)}
           </div>
           <div style="display: flex; gap: 4px; shrink: 0;">
-            <button onclick="respondFriendRequest('${escText(req.from)}', 'accept')" style="padding: 2px 6px; font-size: 10px; font-weight: bold; border-radius: 3px; border: none; background: #22c55e; color: white; cursor: pointer;">Accept</button>
+            <button onclick="respondFriendRequest('${escText(req.from)}', 'accept')" style="padding: 2px 6px; font-size: 10px; font-weight: bold; border-radius: 3px; border: none; background: #a855f7; color: white; cursor: pointer;">Accept</button>
             <button onclick="respondFriendRequest('${escText(req.from)}', 'reject')" style="padding: 2px 6px; font-size: 10px; font-weight: bold; border-radius: 3px; border: none; background: #ef4444; color: white; cursor: pointer;">Deny</button>
           </div>
         </div>
@@ -1600,7 +1584,7 @@ async function sendFriendRequest() {
     });
     const d = await r.json();
     if (r.ok) {
-      msg.style.color = '#4ade80';
+      msg.style.color = '#d8b4fe';
       msg.innerText = d.status === 'accepted' ? 'Friend request accepted (already mutual)!' : 'Friend request sent!';
       input.value = '';
       loadFriends();
@@ -1678,6 +1662,27 @@ function initFriendsSystem() {
   loadFriends();
   loadPendingFriendRequests();
   sendPresenceHeartbeat();
+
+  var presenceRefreshTimer = 0;
+  function refreshPresenceSoon() {
+    clearTimeout(presenceRefreshTimer);
+    presenceRefreshTimer = setTimeout(function() {
+      loadOnlineMembers();
+      loadFriends();
+    }, 120);
+  }
+  window.addEventListener('ws-broadcast-message', function(event) {
+    if (event.detail && event.detail.type === 'presence_changed') refreshPresenceSoon();
+  });
+  window.addEventListener('ws-broadcast-status', function(event) {
+    if (event.detail && event.detail.connected) refreshPresenceSoon();
+  });
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden) {
+      sendPresenceHeartbeat();
+      refreshPresenceSoon();
+    }
+  });
 
   setInterval(loadFriends, 15000);
   setInterval(loadPendingFriendRequests, 15000);
@@ -1760,9 +1765,9 @@ async function pollVmStatus() {
     }
     
     if (data.vmStatus === 'running') {
-      indicator.style.color = '#10B981';
-      dot.style.background = '#10B981';
-      indicator.innerHTML = `<span id="vm-dashboard-status-dot" style="width:8px; height:8px; border-radius:50%; background:#10B981; display:inline-block; margin-right:4px; box-shadow: 0 0 8px #10B981;"></span>Running`;
+      indicator.style.color = '#8b5cf6';
+      dot.style.background = '#8b5cf6';
+      indicator.innerHTML = `<span id="vm-dashboard-status-dot" style="width:8px; height:8px; border-radius:50%; background:#8b5cf6; display:inline-block; margin-right:4px; box-shadow: 0 0 8px #8b5cf6;"></span>Running`;
       
       const ipText = data.ip ? `IP Address: <strong>${data.ip}</strong>` : 'IP Address: <em>Obtaining network link...</em>';
       info.innerHTML = `${ipText} &middot; Tier: ${data.tier === 'paid' ? 'KVM VM' : 'Premium LXC'}`;
@@ -2007,7 +2012,7 @@ function launchConsoleXterm(host, username, port, authOpts, onAuthFail) {
   if (!sshTerm) {
     var style = getComputedStyle(document.documentElement);
     var bg = style.getPropertyValue('--t-bg').trim() || '#05070a';
-    var fg = style.getPropertyValue('--t-fg').trim() || '#4ade80';
+    var fg = style.getPropertyValue('--t-fg').trim() || '#d8b4fe';
     var ac = style.getPropertyValue('--t-ac').trim() || '#fbbf24';
 
     sshTerm = new Terminal({
@@ -3096,7 +3101,7 @@ function toggleMatrixRain() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillStyle = '#4ade80';
+    ctx.fillStyle = '#d8b4fe';
     ctx.font = '15px monospace';
 
     ypos.forEach(function(y, index) {
@@ -3923,7 +3928,7 @@ if (document.readyState === 'loading') {
 
   .progress-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #10b981, #059669);
+    background: linear-gradient(90deg, #8b5cf6, #7c3aed);
     border-radius: 4px;
     transition: width 0.4s ease;
   }
@@ -4068,13 +4073,13 @@ if (document.readyState === 'loading') {
   }
 
   a.riches-action {
-    border-color: rgba(16, 185, 129, 0.4);
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(250, 204, 21, 0.1));
+    border-color: rgba(139,92,246, 0.4);
+    background: linear-gradient(135deg, rgba(139,92,246, 0.15), rgba(250, 204, 21, 0.1));
   }
 
   a.riches-action .icon {
-    background: rgba(16, 185, 129, 0.2);
-    color: #10b981;
+    background: rgba(139,92,246, 0.2);
+    color: #8b5cf6;
   }
 
   a.clicker-action {
@@ -4269,7 +4274,7 @@ if (document.readyState === 'loading') {
     padding: 8px 10px; font-weight: 800; cursor: pointer;
   }
   .admin-status { min-height: 1.2em; margin-top: 8px; font-size: .74rem; color: var(--t-fg2); }
-  .admin-status.ok { color: #4ade80; }
+  .admin-status.ok { color: #d8b4fe; }
   .admin-status.err { color: #f87171; }
 
   #member-side-rail {
@@ -4313,14 +4318,14 @@ if (document.readyState === 'loading') {
   }
   .online-chip {
     display: inline-flex; align-items: center; gap: 5px;
-    font-size: clamp(.64rem, .72vw, .72rem); color: #4ade80; background: rgba(34,197,94,0.1);
-    border: 1px solid rgba(34,197,94,0.25); border-radius: 99px;
+    font-size: clamp(.64rem, .72vw, .72rem); color: #d8b4fe; background: rgba(168,85,247,0.1);
+    border: 1px solid rgba(168,85,247,0.25); border-radius: 99px;
     padding: 2px 8px; text-decoration: none; font-family: monospace;
     max-width: 100%; overflow: hidden; text-overflow: ellipsis;
   }
   .online-chip .online-dot {
-    width: 6px; height: 6px; background: #22c55e; border-radius: 50%;
-    box-shadow: 0 0 8px rgba(34,197,94,0.8); flex-shrink: 0;
+    width: 6px; height: 6px; background: #a855f7; border-radius: 50%;
+    box-shadow: 0 0 8px rgba(168,85,247,0.8); flex-shrink: 0;
   }
   @media (max-width: 980px) {
     #mainpage { padding-top: 1rem; }
@@ -4432,7 +4437,7 @@ if (document.readyState === 'loading') {
     color: #93c5fd;
   }
   #profile-shortcut {
-    border-color: rgba(52,211,153,0.42);
+    border-color: rgba(192,132,252,0.42);
     background: rgba(8,28,22,0.82);
     color: #86efac;
   }
@@ -4463,7 +4468,7 @@ if (document.readyState === 'loading') {
     color: #bfdbfe;
   }
   #profile-shortcut:hover {
-    background: rgba(52,211,153,0.18);
+    background: rgba(192,132,252,0.18);
     color: #bbf7d0;
   }
   a.student-chat-action {
@@ -4996,7 +5001,7 @@ if (document.readyState === 'loading') {
       pointer-events: none !important;
     }
     .online-badge {
-      background: #22c55e;
+      background: #a855f7;
       color: #fff;
       font-size: 11px;
       font-weight: 800;
@@ -6230,20 +6235,23 @@ html.theme-glass body.home-editorial .hud-widget-card {
     padding:.6rem .8rem;border-radius:.7rem;background:#111;color:#fff;opacity:.65}
 </style>
 <!-- AUTH_INJECT_END -->
-<style>#_ab{position:fixed;bottom:55px;left:12px;z-index:2147483630;width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;background:#81b64c;color:#fff;font-size:.65rem;font-weight:700;letter-spacing:.02em;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 14px rgba(0,0,0,.45);transition:transform .15s,box-shadow .15s;font-family:system-ui,sans-serif;}#_ab:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(0,0,0,.55);}#_ap{position:fixed;bottom:103px;left:12px;z-index:2147483629;width:310px;max-height:440px;display:flex;flex-direction:column;background:#1e1a17;border:1px solid #3d3a37;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.65);overflow:hidden;transform:translateY(10px) scale(.97);opacity:0;pointer-events:none;transition:transform .18s ease,opacity .18s ease;}#_ap.vis{transform:none;opacity:1;pointer-events:all;}#_ah{display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #3d3a37;font-family:system-ui,sans-serif;font-size:.8rem;font-weight:700;color:#e8e6e3;gap:6px;}#_ah .logo{color:#81b64c;font-size:.75rem;font-weight:900;}#_ah .title{flex:1;}#_ahx{background:none;border:none;color:#555;cursor:pointer;font-size:.9rem;padding:2px 5px;border-radius:4px;line-height:1;}#_ahx:hover{color:#e8e6e3;}#_am{flex:1;overflow-y:auto;padding:9px 11px;display:flex;flex-direction:column;gap:7px;font-family:system-ui,sans-serif;font-size:.79rem;line-height:1.55;min-height:60px;}._mb{max-width:88%;padding:6px 10px;border-radius:10px;word-break:break-word;}._mu{background:#302e2b;color:#e8e6e3;align-self:flex-end;border-radius:10px 10px 2px 10px;white-space:pre-wrap;}._ma{background:#272522;color:#bababa;align-self:flex-start;border-radius:10px 10px 10px 2px;}._ma p{margin:0 0 .4em;}._ma p:last-child{margin:0;}._ma strong{color:#e8e6e3;font-weight:700;}._ma em{font-style:italic;}._ma code{background:#1a1815;color:#81b64c;padding:1px 4px;border-radius:3px;font-size:.88em;font-family:monospace;}._ma pre{background:#1a1815;padding:7px 9px;border-radius:6px;overflow-x:auto;margin:.3em 0;}._ma pre code{background:none;padding:0;color:#c8c5c0;font-size:.85em;}._ma ul,._ma ol{margin:.2em 0 .2em 1.2em;padding:0;}._ma li{margin:.1em 0;}._ma h1,._ma h2,._ma h3{color:#e8e6e3;font-weight:700;margin:.3em 0 .15em;line-height:1.2;}._ma h1{font-size:1em;}._ma h2{font-size:.95em;}._ma h3{font-size:.9em;}._ma a{color:#81b64c;text-decoration:underline;}._ma hr{border:none;border-top:1px solid #3d3a37;margin:.4em 0;}._merr{color:#e57373;font-size:.73rem;align-self:center;padding:3px 8px;background:rgba(192,57,43,.12);border-radius:6px;}._mnotice{color:#f0c040;font-size:.69rem;align-self:center;padding:3px 8px;background:rgba(240,192,64,.08);border-radius:6px;}#_ai{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #3d3a37;align-items:flex-end;}#_at{flex:1;resize:none;background:#272522;border:1px solid #3d3a37;color:#e8e6e3;border-radius:8px;padding:6px 8px;font-size:.79rem;font-family:system-ui,sans-serif;outline:none;line-height:1.4;max-height:80px;overflow-y:auto;}#_at:focus{border-color:#81b64c;}#_as{background:#81b64c;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:.79rem;font-weight:700;cursor:pointer;flex-shrink:0;}#_as:disabled{opacity:.35;cursor:default;}</style></head>
-
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="/relaunch.css">
-<body data-shell="off" class="home-editorial">
+<link rel="stylesheet" href="/site-galaxy.css">
+<link rel="stylesheet" href="/home-galaxy.css?v=9">
+<link rel="stylesheet" href="/home-dayboard.css?v=7">
+<link rel="stylesheet" href="/home-buttons-clean.css?v=8">
+<script src="/home-dayboard.js?v=1" defer></script>
+<style>#_ab{position:fixed;bottom:55px;left:12px;z-index:2147483630;width:38px;height:38px;border-radius:50%;border:none;cursor:pointer;background:#8b5cf6;color:#fff;font-size:.65rem;font-weight:700;letter-spacing:.02em;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 14px rgba(0,0,0,.45);transition:transform .15s,box-shadow .15s;font-family:system-ui,sans-serif;}#_ab:hover{transform:scale(1.1);box-shadow:0 4px 20px rgba(0,0,0,.55);}#_ap{position:fixed;bottom:103px;left:12px;z-index:2147483629;width:310px;max-height:440px;display:flex;flex-direction:column;background:#1e1a17;border:1px solid #3d3a37;border-radius:14px;box-shadow:0 8px 40px rgba(0,0,0,.65);overflow:hidden;transform:translateY(10px) scale(.97);opacity:0;pointer-events:none;transition:transform .18s ease,opacity .18s ease;}#_ap.vis{transform:none;opacity:1;pointer-events:all;}#_ah{display:flex;align-items:center;padding:9px 13px;border-bottom:1px solid #3d3a37;font-family:system-ui,sans-serif;font-size:.8rem;font-weight:700;color:#e8e6e3;gap:6px;}#_ah .logo{color:#8b5cf6;font-size:.75rem;font-weight:900;}#_ah .title{flex:1;}#_ahx{background:none;border:none;color:#555;cursor:pointer;font-size:.9rem;padding:2px 5px;border-radius:4px;line-height:1;}#_ahx:hover{color:#e8e6e3;}#_am{flex:1;overflow-y:auto;padding:9px 11px;display:flex;flex-direction:column;gap:7px;font-family:system-ui,sans-serif;font-size:.79rem;line-height:1.55;min-height:60px;}._mb{max-width:88%;padding:6px 10px;border-radius:10px;word-break:break-word;}._mu{background:#302e2b;color:#e8e6e3;align-self:flex-end;border-radius:10px 10px 2px 10px;white-space:pre-wrap;}._ma{background:#272522;color:#bababa;align-self:flex-start;border-radius:10px 10px 10px 2px;}._ma p{margin:0 0 .4em;}._ma p:last-child{margin:0;}._ma strong{color:#e8e6e3;font-weight:700;}._ma em{font-style:italic;}._ma code{background:#1a1815;color:#8b5cf6;padding:1px 4px;border-radius:3px;font-size:.88em;font-family:monospace;}._ma pre{background:#1a1815;padding:7px 9px;border-radius:6px;overflow-x:auto;margin:.3em 0;}._ma pre code{background:none;padding:0;color:#c8c5c0;font-size:.85em;}._ma ul,._ma ol{margin:.2em 0 .2em 1.2em;padding:0;}._ma li{margin:.1em 0;}._ma h1,._ma h2,._ma h3{color:#e8e6e3;font-weight:700;margin:.3em 0 .15em;line-height:1.2;}._ma h1{font-size:1em;}._ma h2{font-size:.95em;}._ma h3{font-size:.9em;}._ma a{color:#8b5cf6;text-decoration:underline;}._ma hr{border:none;border-top:1px solid #3d3a37;margin:.4em 0;}._merr{color:#e57373;font-size:.73rem;align-self:center;padding:3px 8px;background:rgba(192,57,43,.12);border-radius:6px;}._mnotice{color:#f0c040;font-size:.69rem;align-self:center;padding:3px 8px;background:rgba(240,192,64,.08);border-radius:6px;}#_ai{display:flex;gap:6px;padding:8px 10px;border-top:1px solid #3d3a37;align-items:flex-end;}#_at{flex:1;resize:none;background:#272522;border:1px solid #3d3a37;color:#e8e6e3;border-radius:8px;padding:6px 8px;font-size:.79rem;font-family:system-ui,sans-serif;outline:none;line-height:1.4;max-height:80px;overflow-y:auto;}#_at:focus{border-color:#8b5cf6;}#_as{background:#8b5cf6;color:#fff;border:none;border-radius:8px;padding:6px 11px;font-size:.79rem;font-weight:700;cursor:pointer;flex-shrink:0;}#_as:disabled{opacity:.35;cursor:default;}</style></head>
 
-<div id="admin-action-wrap">
-  <a id="admin-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/admin/" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Admin</a>
-</div>
-<div id="moderator-action-wrap">
-  <a id="moderator-action-btn" data-task5-old="https://mitch.dnswish.com/" href="/admin/" style="text-decoration:none; display:flex; align-items:center; justify-content:center;">Moderator</a>
-</div>
+<body data-shell="off" class="home-editorial home-galaxy">
 
 <div id="member-side-rail" class="is-collapsed" aria-expanded="false">
+  <div class="members-rail-head">
+    <div class="members-rail-mark" aria-hidden="true"><span></span><span></span></div>
+    <div class="members-rail-heading"><strong>People</strong><small>Live across Mitch.pro</small></div>
+    <button type="button" class="members-rail-close" onclick="openMembersRail(event)" aria-label="Close members panel">&times;</button>
+  </div>
   <!-- Collapsed handle — hover or click to open -->
   <div id="member-side-rail-collapsed-handle" title="Members & friends">
     <div class="handle-icon" aria-hidden="true">👥</div>
@@ -6252,8 +6260,8 @@ html.theme-glass body.home-editorial .hud-widget-card {
   </div>
 
   <div id="online-members-wrap" class="side-section" style="display:none">
-    <div class="side-title" style="color:#4ade80;">&#9679; Online Members</div>
-    <div id="online-members-list" class="side-list"></div>
+    <div class="side-title side-title-presence"><span>Member activity</span><small id="members-live-label">Live</small></div>
+    <div id="online-members-list" class="side-list" aria-live="polite"></div>
   </div>
   <div id="owner-members-wrap" class="side-section" style="display:none">
     <div class="side-title" style="color:#eab308;">Owner</div>
@@ -6272,21 +6280,21 @@ html.theme-glass body.home-editorial .hud-widget-card {
     <div id="premium-members-list" class="side-list"></div>
   </div>
   
-  <div id="friends-section-wrap" class="side-section" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
-    <div class="side-title" style="color: #3b82f6; display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+  <div id="friends-section-wrap" class="side-section">
+    <div class="side-title friends-side-title">
       <span style="display: flex; align-items: center; gap: 6px;">
         <span style="font-size: 14px;">🤝</span> Friends
       </span>
       <div style="display: flex; align-items: center; gap: 8px;">
-        <a href="/friends/" style="color: #3b82f6; text-decoration: none; font-size: 11px; text-transform: none; font-weight: 600;" title="Manage Friends">Manage</a>
+        <a href="/friends/" class="friends-manage-link" title="Manage Friends">Manage</a>
         <span id="friend-requests-badge" style="background: #ef4444; color: white; border-radius: 9999px; padding: 2px 6px; font-size: 10px; font-weight: 800; display: none;">0</span>
       </div>
     </div>
 
     <!-- Friend Request Form -->
-    <div style="display: flex; gap: 6px; margin: 10px 0;">
-      <input type="email" id="friend-req-input" placeholder="friend@email.com" style="flex: 1; min-width: 0; padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: rgba(255,255,255,0.05); color: white; font-size: 12px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='#3b82f6'" onblur="this.style.borderColor='rgba(255,255,255,0.15)'" />
-      <button id="friend-req-submit-btn" style="padding: 6px 12px; border-radius: 6px; border: none; background: #3b82f6; color: white; font-size: 12px; font-weight: 600; cursor: pointer; transition: background-color 0.2s;" onmouseover="this.style.backgroundColor='#2563eb'" onmouseout="this.style.backgroundColor='#3b82f6'">Add</button>
+    <div class="friend-request-form">
+      <input type="email" id="friend-req-input" placeholder="friend@email.com" />
+      <button id="friend-req-submit-btn" type="button">Add</button>
     </div>
     <div id="friend-req-status-msg" style="font-size: 11px; margin-bottom: 8px; display: none;"></div>
 
@@ -6297,22 +6305,60 @@ html.theme-glass body.home-editorial .hud-widget-card {
     </div>
 
     <!-- Friends List Container -->
-    <div id="friends-list" class="side-list"></div>
+    <div id="friends-list" class="side-list" aria-live="polite"></div>
   </div>
 </div>
 
 <div id="mainpage" class="home-editorial-main">
+  <nav class="home-access-rail" aria-label="Quick access">
+    <a class="home-access-link home-access-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');" aria-label="Open Encrypted Chat">
+      <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/><path d="M9 9h6M9 12h4"/><path d="M16 5V4a4 4 0 0 0-8 0v1"/></svg></span>
+      <span class="home-access-copy"><b>Encrypted</b><small>Chat</small></span>
+    </a>
+    <a class="home-access-link home-access-games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');" aria-label="Choose a games library">
+      <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span>
+      <span class="home-access-copy"><b>Games</b><small>Libraries</small></span>
+    </a>
+    <button type="button" class="home-access-link home-access-friends" onclick="openMembersRail(event)" aria-label="Open friends and members">
+      <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="16.5" cy="10" r="2.3"/><path d="M3.5 19c.5-3.3 2.2-5 5.5-5s5 1.7 5.5 5M14 15c3.5-.5 5.5.8 6 3.5"/></svg></span>
+      <span class="home-access-copy"><b>Friends</b><small>Online</small></span>
+    </button>
+    <div id="admin-action-wrap">
+      <a id="admin-action-btn" class="home-access-link home-access-admin" data-task5-old="https://mitch.dnswish.com/" href="/admin/" aria-label="Open admin controls">
+        <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 20 7v5c0 4.7-3.2 7.6-8 9-4.8-1.4-8-4.3-8-9V7z"/><path d="m9 12 2 2 4-5"/></svg></span>
+        <span class="home-access-copy"><b>Admin</b><small>Control</small></span>
+      </a>
+    </div>
+    <div id="moderator-action-wrap">
+      <a id="moderator-action-btn" class="home-access-link home-access-moderator" data-task5-old="https://mitch.dnswish.com/" href="/moderator/" aria-label="Open moderator controls">
+        <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3 20 7v5c0 4.7-3.2 7.6-8 9-4.8-1.4-8-4.3-8-9V7z"/><path d="M8.5 12h7M12 8.5v7"/></svg></span>
+        <span class="home-access-copy"><b>Moderator</b><small>Tools</small></span>
+      </a>
+    </div>
+  </nav>
   <!-- Top Command Header Bar -->
   <header class="hud-topbar">
     <div class="hud-logo-area">
-      <span class="hud-kicker">mitch.pro</span>
-      <h1 class="hud-brand" id="home-brand">Home</h1>
+      <img class="hud-logo-mark" src="/icon-192.png" alt="">
+      <span class="hud-kicker">MITCH<span>.PRO</span></span>
+      <h1 class="hud-brand" id="home-brand">Orbit</h1>
     </div>
+
+    <nav class="hud-primary-nav" aria-label="Main destinations">
+      <a class="hud-main-link hud-main-games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');">
+        <span><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span>
+        <b>Games</b>
+      </a>
+      <a class="hud-main-link hud-main-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');">
+        <span><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></span>
+        <b>Encrypted Chat</b>
+      </a>
+    </nav>
     
     <div class="hud-search-area">
       <div class="home-search-box">
         <span aria-hidden="true" class="search-icon">⌕</span>
-        <input id="home-search" type="search" placeholder="Search pages…" autocomplete="off">
+        <input id="home-search" type="search" placeholder="Search the universe" autocomplete="off">
         <button id="home-search-clear" type="button">Clear</button>
       </div>
     </div>
@@ -6322,36 +6368,78 @@ html.theme-glass body.home-editorial .hud-widget-card {
       <button type="button" class="hud-terminal-toggle-btn" onclick="toggleHudTerminal()" title="Toggle console (`)">
         <span>Console</span>
       </button>
-      <div class="status-pill">
-        <span class="status-indicator-dot"></span>
-        <span id="home-link-count">23 links</span>
-      </div>
       <span id="home-admin-count" class="status-user-view">Standard</span>
     </div>
   </header>
+
+  <section class="home-dayboard" aria-labelledby="home-dayboard-title">
+    <h2 id="home-dayboard-title" class="home-dayboard-sr">Live Roseville and Woodcreek dashboard</h2>
+    <div class="home-dayboard-grid">
+      <article class="home-day-card home-weather-card" id="home-weather-card">
+        <header class="home-card-head">
+          <div><small>LOCAL WEATHER</small><h3>Roseville</h3></div>
+          <span class="home-live-pill" id="home-weather-state"><i></i> LIVE</span>
+        </header>
+        <div class="home-weather-now">
+          <div><strong id="home-weather-temp">--°</strong><b id="home-weather-condition">Connecting</b></div>
+          <span id="home-weather-icon" class="home-weather-icon" aria-hidden="true"></span>
+        </div>
+        <div class="home-weather-metrics">
+          <span><small>FEELS</small><b id="home-weather-feels">--°</b></span>
+          <span><small>HIGH / LOW</small><b id="home-weather-range">--° / --°</b></span>
+          <span><small>WIND</small><b id="home-weather-wind">-- mph</b></span>
+        </div>
+        <div class="home-hourly-weather" id="home-hourly-weather" aria-label="Hourly weather"></div>
+        <footer id="home-weather-updated">Connecting to Open-Meteo</footer>
+      </article>
+
+      <article class="home-day-card home-calendar-card">
+        <header class="home-card-head">
+          <div><small>WOODCREEK CALENDAR</small><h3 id="home-calendar-title">This month</h3></div>
+          <div class="home-calendar-nav">
+            <button type="button" id="home-cal-prev" aria-label="Previous month">‹</button>
+            <button type="button" id="home-cal-today">Today</button>
+            <button type="button" id="home-cal-next" aria-label="Next month">›</button>
+          </div>
+        </header>
+        <div class="home-calendar-week"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+        <div class="home-calendar-days" id="home-calendar-days"></div>
+        <div class="home-calendar-agenda">
+          <div><small>UPCOMING AT WOODCREEK</small><a href="https://woodcreek.rjuhsd.us/calendar" target="_blank" rel="noopener">OFFICIAL FEED ↗</a></div>
+          <ol id="home-school-events"><li>Loading Woodcreek events…</li></ol>
+        </div>
+      </article>
+
+      <article class="home-day-card home-bell-card">
+        <header class="home-card-head">
+          <div><small>WOODCREEK HIGH SCHOOL</small><h3>Today’s bell schedule</h3></div>
+          <a class="home-official-link" href="https://woodcreek.rjuhsd.us/about/bell-schedules" target="_blank" rel="noopener">Official schedule ↗</a>
+        </header>
+        <div class="home-bell-hero">
+          <div><span class="home-live-pill" id="home-bell-state"><i></i> CHECKING</span><strong id="home-bell-current">Checking today’s schedule</strong><small id="home-bell-countdown">Pacific time</small></div>
+          <div class="home-lunch-toggle" role="group" aria-label="Lunch schedule">
+            <button type="button" id="home-first-lunch">1st lunch</button>
+            <button type="button" id="home-second-lunch">2nd lunch</button>
+          </div>
+        </div>
+        <div class="home-schedule-heading"><button type="button" id="home-day-prev" aria-label="Previous day">‹</button><span><b id="home-schedule-label">Today</b><small id="home-bell-note">Loading schedule</small></span><button type="button" id="home-day-next" aria-label="Next day">›</button></div>
+        <ol class="home-periods" id="home-periods"></ol>
+        <footer><span class="home-bell-dot"></span><span id="home-bell-footer">Periods only — no personal class data</span></footer>
+      </article>
+    </div>
+  </section>
 
   <!-- Main Grid Workspace -->
   <div class="hud-workspace">
     <!-- Left Workspace Pane (Main content) -->
     <main class="hud-pane-main">
-      <!-- Welcome Hero Banner -->
-      <section class="hud-hero-card">
-        <div class="hero-glow-blob"></div>
-        <div class="hero-content">
-          <div class="hero-text-group">
-            <span id="greeting-text">Welcome back,</span>
-            <h2 id="greeting-email">mitch@mitch.pro</h2>
-            <p class="hero-subtitle">Games, chat, market, and tools — pick a destination below.</p>
-          </div>
-          <nav class="home-actions" aria-label="Quick actions">
-            <a class="hub-action hub-action-primary" href="/games/" onclick="openHomeHref(event, '/games/');">Games</a>
-            <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');">Shop</a>
-            <a class="hub-action" href="/vms/" onclick="openHomeHref(event, '/vms/');">VMs</a>
-            <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)">Friends</button>
-            <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily claim</button>
-          </nav>
-        </div>
-      </section>
+      <nav class="home-actions" aria-label="Quick actions">
+        <a class="hub-action hub-action-primary" data-art="games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span><span class="action-copy"><b>Games</b><small>Choose your arcade</small></span></a>
+        <a class="hub-action" data-art="market" href="/shop/" onclick="openHomeHref(event, '/shop/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="m12 3 6 6-6 12L6 9z"/><path d="M6 9h12M9 9l3-6 3 6-3 12z"/></svg></span><span class="action-copy"><b>Market</b><small>Browse drops</small></span></a>
+        <a class="hub-action" data-art="tools" href="/vms/" onclick="openHomeHref(event, '/vms/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M13 2 5.5 13H11l-1 9 8.5-12H13z"/></svg></span><span class="action-copy"><b>VM Lab</b><small>Open workspace</small></span></a>
+        <button type="button" class="hub-action" data-art="social" id="hub-friends-btn" onclick="openMembersRail(event)"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="16.5" cy="10" r="2.3"/><path d="M3.5 19c.5-3.3 2.2-5 5.5-5s5 1.7 5.5 5M14 15c3.5-.5 5.5.8 6 3.5"/></svg></span><span class="action-copy"><b>People</b><small>See who's here</small></span></button>
+        <button type="button" class="hub-action hub-daily" data-art="market" id="hub-daily-chip" hidden>Daily claim</button>
+      </nav>
 
       <!-- Cloud VM promo -->
       <section class="site-advert-banner" style="background: var(--t-bg2); border: 1px solid var(--t-bd); border-radius: 14px; padding: 1.1rem 1.25rem; margin-bottom: 1.15rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
@@ -6380,7 +6468,7 @@ html.theme-glass body.home-editorial .hud-widget-card {
           <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <button id="vm-power-btn" onclick="controlVmPower()" class="btn-ghost" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none;">Power On</button>
             <button id="vm-ssh-btn" onclick="connectVmSsh()" class="btn-primary" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none;">Terminal Console</button>
-            <button id="vm-vnc-btn" onclick="connectVmVnc()" class="btn-primary" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none; background: linear-gradient(135deg, #10B981, #059669); border: none;">VNC Desktop</button>
+            <button id="vm-vnc-btn" onclick="connectVmVnc()" class="btn-primary" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none; background: linear-gradient(135deg, #8b5cf6, #7c3aed); border: none;">VNC Desktop</button>
             <button id="vm-reset-btn" onclick="resetFreeVm()" class="btn-primary" style="min-height: 40px; padding: 0 16px; font-size: 0.88rem; border-radius: 8px; cursor: pointer; display: none; background: linear-gradient(135deg, #f59e0b, #d97706); border: none; color: white;">Reset Sandbox</button>
           </div>
         </div>
@@ -6402,8 +6490,9 @@ html.theme-glass body.home-editorial .hud-widget-card {
       <!-- Catalog Directory -->
       <section class="home-links-panel home-links-full">
         <div class="panel-heading links-heading">
-          <h3>Pages</h3>
-          <p>Grouped by what they’re for</p>
+          <span class="section-index">02</span>
+          <h3>Explore the universe</h3>
+          <p>Every destination, reorganized into visual launch decks.</p>
         </div>
         <div id="links">
           <div class="quick-empty">Loading pages…</div>
@@ -6414,11 +6503,16 @@ html.theme-glass body.home-editorial .hud-widget-card {
 
     <!-- Right Workspace Pane (Widgets drawer) -->
     <aside class="hud-pane-aside">
+      <div class="command-deck-heading">
+        <span class="deck-orbit"><i></i></span>
+        <span><b>Command Deck</b><small>Live account controls</small></span>
+        <em>ONLINE</em>
+      </div>
       <!-- Daily Reward Widget -->
       <div id="daily-login-widget" class="daily-login-card daily-login-inline hud-widget-card">
         <div class="daily-login-inline-main">
           <div class="panel-heading daily-login-inline-head">
-            <span class="widget-title">Daily Streak</span>
+            <span class="widget-title"><span class="widget-logo">✦</span><span>Daily Streak</span></span>
             <div class="daily-login-inline-meta">
               <span id="daily-login-freezes" title="Streak Freezes Owned" style="font-size:0.7rem; color:#60a5fa; background:rgba(96,165,250,0.1); border:1px solid rgba(96,165,250,0.25); padding:2px 6px; border-radius:99px; display:none;">❄️ 0</span>
               <small id="daily-login-streak-label">Streak: 0 days</small>
@@ -6450,19 +6544,20 @@ html.theme-glass body.home-editorial .hud-widget-card {
       <!-- Quick Preferences -->
       <div class="hud-preferences-widget hud-widget-card">
         <div class="widget-heading">
-          <span class="widget-title">Controls</span>
+          <span class="widget-title"><span class="widget-logo">⌘</span><span>Quick Controls</span></span>
         </div>
         <div class="home-toolbar">
           <div id="abToggleBar">
+            <span class="control-logo"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+            <span class="control-copy"><b>Stealth launch</b><small>Open in about:blank</small></span>
             <label class="toggle-switch">
               <input type="checkbox" id="abToggle">
               <span class="toggle-slider"></span>
             </label>
-            <span>about:blank</span>
           </div>
           <a id="preferences-card" href="/preferences/">
-            <span>Settings</span>
-            <small>Themes, display, privacy</small>
+            <span class="control-logo"><svg viewBox="0 0 24 24"><path d="M5 6h14M5 12h14M5 18h14"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></svg></span>
+            <span class="control-copy"><b>Preferences</b><small>Theme, display, privacy</small></span><span class="control-arrow">→</span>
           </a>
           <div id="stats-bar"></div>
         </div>
@@ -6471,7 +6566,7 @@ html.theme-glass body.home-editorial .hud-widget-card {
       <!-- Popular Items Sidebar -->
       <section id="popular-hub" class="hud-widget-card popular-hub" aria-label="Popular and frequent">
         <div class="popular-hub-head">
-          <span class="widget-title">Popular</span>
+          <span class="widget-title"><span class="widget-logo">↗</span><span>Popular Launches</span></span>
         </div>
         <div id="popular-strip" class="popular-strip">
           <p class="popular-empty">Loading…</p>

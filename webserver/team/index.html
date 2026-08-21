@@ -179,7 +179,7 @@ body {
   border-radius: 50%;
   flex-shrink: 0;
 }
-.hcheck { font-size: .65rem; color: #22c55e; flex-shrink: 0; }
+.hcheck { font-size: .65rem; color: #a855f7; flex-shrink: 0; }
 
 #main {
   flex: 1;
@@ -377,7 +377,7 @@ body {
 .btn-primary:hover { opacity: .87; }
 .btn-primary:disabled { opacity: .35; cursor: default; pointer-events: none; }
 .btn-handled { border: 1px solid var(--t-bd); }
-.btn-handled.on { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,.07); }
+.btn-handled.on { border-color: #a855f7; color: #a855f7; background: rgba(168,85,247,.07); }
 .icon-btn {
   background: none;
   border: 1px solid transparent;
@@ -441,7 +441,7 @@ body {
 .ai-badge {
   padding:.13rem .45rem; border-radius:5px; font-size:.65rem; font-weight:600; text-transform:capitalize;
 }
-.badge-positive,.badge-low  { background:rgba(34,197,94,.1);  color:#4ade80; }
+.badge-positive,.badge-low  { background:rgba(168,85,247,.1);  color:#d8b4fe; }
 .badge-neutral             { background:rgba(99,102,241,.1); color:#a5b4fc; }
 .badge-negative,.badge-high { background:rgba(239,68,68,.1);  color:#f87171; }
 .badge-frustrated          { background:rgba(249,115,22,.1); color:#fb923c; }
@@ -476,6 +476,7 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--t-bd); border-radius: 4px; }
 </style>
+<link rel="stylesheet" href="/site-galaxy.css">
 </head>
 <body>
 
@@ -1082,7 +1083,7 @@ async function unsubscribeSender() {
     if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || 'Failed');
     toast(`${email} unsubscribed ✓`);
     btn.textContent = 'Unsubscribed ✓';
-    btn.style.color = '#22c55e';
+    btn.style.color = '#a855f7';
   } catch (e) {
     toast(e.message || 'Failed', true);
     btn.disabled = false;
