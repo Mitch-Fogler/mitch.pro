@@ -185,11 +185,27 @@ def load_doppler_env():
         except Exception:
             pass
 
+def get_bun_runner():
+    candidates = [
+        '/home/mitch/.bun/bin/bun',
+        os.path.expanduser('~/.bun/bin/bun'),
+        '/usr/local/bin/bun',
+        '/usr/bin/bun',
+        '/root/.bun/bin/bun',
+    ]
+    for c in candidates:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+    res = subprocess.run(['which', 'bun'], capture_output=True, text=True)
+    if res.returncode == 0 and res.stdout.strip():
+        return res.stdout.strip()
+    return 'bun'
+
 def send(to, subject, body):
     if has_profanity(to):
         return True, 'silently dropped (profanity)'
     load_doppler_env()
-    runner = 'bun' if os.path.exists('/usr/bin/bun') or subprocess.run(['which', 'bun'], capture_output=True).returncode == 0 else 'node'
+    runner = get_bun_runner()
     result = subprocess.run(
         [runner, _email_script(to), to, subject, body + UNSUB_FOOTER],
         capture_output=True, text=True, timeout=20, env=os.environ
