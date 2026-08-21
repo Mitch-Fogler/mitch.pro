@@ -184,7 +184,7 @@
   transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease;
 }
 
-.small-btn:hover, .tool-btn:hover, .msg-action:hover, #attachBtn:hover, .small-btn.on {
+.small-btn:hover, .tool-btn:hover, .msg-action:hover, #attachBtn:hover, .small-btn.on, .tool-btn.on {
   color: #fff;
   border-color: rgba(202, 139, 255, .55);
   background: linear-gradient(145deg, rgba(186, 104, 255, .26), rgba(255,255,255,.07));
@@ -403,6 +403,13 @@
 .msg.theirs { margin-right: auto; align-items: flex-start; }
 .msg-meta { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
 .msg.mine .msg-meta { flex-direction: row-reverse; }
+.msg-delivery {
+  color: #c9a6ff;
+  font-size: 0.65rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  opacity: 0.78;
+}
 .msg .who { font-family: var(--t-font); font-size: .68rem; color: #cdb8e9; max-width: 260px; }
 .msg .who.me { color: #e1b8ff; }
 .msg .ts { color: #776b8c; font-size: .62rem; }

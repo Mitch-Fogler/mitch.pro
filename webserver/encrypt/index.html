@@ -110,7 +110,7 @@ button {
 }
 
 .small-btn:hover, .tool-btn:hover, .msg-action:hover, #sendBtn:hover, #attachBtn:hover,
-.small-btn.on {
+.small-btn.on, .tool-btn.on {
   border-color: color-mix(in srgb, var(--t-bd) 65%, var(--t-ac) 35%);
   color: var(--t-fg);
   background: var(--t-bg3);
@@ -710,7 +710,7 @@ button {
   transition: none !important;
 }
 </style>
-<link rel="stylesheet" href="/encrypt-galaxy.css">
+<link rel="stylesheet" href="/encrypt-galaxy.css?v=2">
 </head>
 <body class="encrypt-page">
 
@@ -751,7 +751,7 @@ button {
       <div class="encryption-status"><i></i><span>END-TO-END<br>ENCRYPTED</span></div>
       <div class="header-tools">
         <input id="msgSearch" placeholder="search this chat..." autocomplete="off">
-        <button id="expiry-btn" class="tool-btn" type="button" title="Hide messages locally after a short time">Expire: off</button>
+        <button id="expiry-btn" class="tool-btn" type="button" title="Set auto-delete for new messages in this session">Auto-delete: off</button>
         <button id="clear-chat-btn" class="tool-btn" type="button">Clear chat</button>
         <button id="export-chat-btn" class="tool-btn" type="button">Export</button>
         <button id="leave-group-btn" class="tool-btn" type="button" style="display:none">Leave</button>
@@ -840,11 +840,14 @@ let livePollTimer = null;
 let livePollBusy = false;
 let hasMoreMessages = true;
 let isLoadingMore = false;
+let activeChatLoadSeq = 0;
 
 const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
 const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
 let msgExpiry = 0;
-try { msgExpiry = parseInt(localStorage.getItem('_chatExpiry') || '0', 10) || 0; } catch {}
+// Auto-delete is deliberately session-only. A stale saved value previously
+// made normal messages disappear after a reload with no obvious cause.
+try { localStorage.removeItem('_chatExpiry'); } catch {}
 
 const h2b = h => {
   const value = String(h || '').trim();
@@ -998,10 +1001,18 @@ function isDirectBetween(m, email) {
     ((sameEmail(m.from, myEmail) && sameEmail(m.to, email)) ||
      (sameEmail(m.from, email) && sameEmail(m.to, myEmail)));
 }
+function sameChat(a, b) {
+  return Boolean(a && b && a.type === b.type && String(a.id) === String(b.id));
+}
+function isMessageForChat(m, chat) {
+  if (!chat) return false;
+  if (chat.type === 'group') return m.kind === 'group' && String(m.groupId) === String(chat.id);
+  return (m.kind || 'dm') !== 'group' &&
+    ((sameEmail(m.from, myEmail) && sameEmail(m.to, chat.id)) ||
+     (sameEmail(m.from, chat.id) && sameEmail(m.to, myEmail)));
+}
 function isActiveMessage(m) {
-  if (!activeChat) return false;
-  if (activeChat.type === 'group') return (m.kind === 'group') && String(m.groupId) === activeChat.id;
-  return isDirectBetween(m, activeChat.id);
+  return isMessageForChat(m, activeChat);
 }
 
 let derivedKeysCache = {};
@@ -1647,7 +1658,10 @@ function bindEvents() {
   document.getElementById('reply-cancel-btn').onclick = clearReply;
   document.getElementById('sendBtn').onclick = send;
   document.getElementById('msgInput').addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) send();
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      void send();
+    }
   });
   document.getElementById('msgInput').addEventListener('input', syncComposer);
   const msgsEl = document.getElementById('msgs');
@@ -2135,6 +2149,7 @@ async function handleDeleteReport() {
 }
 
 function deselectChat() {
+  activeChatLoadSeq++;
   activeChat = null;
   document.getElementById('no-chat').style.display = '';
   document.getElementById('msgs').classList.remove('on');
@@ -2168,22 +2183,30 @@ function showChatShell() {
 
 async function reloadActiveChat() {
   if (!activeChat) return;
+  const chatAtStart = { ...activeChat };
+  const loadSeq = ++activeChatLoadSeq;
   hasMoreMessages = true;
   isLoadingMore = false;
-  const url = activeChat.type === 'group'
-    ? `/api/dm/inbox?group=${encodeURIComponent(activeChat.id)}&limit=5`
-    : `/api/dm/inbox?with=${encodeURIComponent(activeChat.id)}&limit=5`;
+  const url = chatAtStart.type === 'group'
+    ? `/api/dm/inbox?group=${encodeURIComponent(chatAtStart.id)}&limit=20`
+    : `/api/dm/inbox?with=${encodeURIComponent(chatAtStart.id)}&limit=20`;
   try {
     const r = await fetch(url, { credentials:'include' });
     const d = await r.json();
     const msgs = (d.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
     // Important: Decrypt messages before rendering in the active chat view
     await Promise.all(msgs.map(decryptMessageContent));
-    currentMessages = msgs;
+    if (loadSeq !== activeChatLoadSeq || !sameChat(activeChat, chatAtStart)) return;
+    const pending = currentMessages.filter(m => m.isPending && isMessageForChat(m, chatAtStart));
+    const merged = new Map();
+    // Preserve pending messages that the response has not seen yet, but let a
+    // stored server copy with the same clientId confirm/replace the pending one.
+    for (const message of [...pending, ...msgs]) merged.set(msgId(message), message);
+    currentMessages = [...merged.values()].sort((a,b) => (a.ts || 0) - (b.ts || 0));
     renderMessages();
     const el = document.getElementById('msgs');
     el.scrollTop = el.scrollHeight;
-    if (msgs.length < 5) {
+    if (msgs.length < 20) {
       hasMoreMessages = false;
     }
   } catch {}
@@ -2270,11 +2293,13 @@ function messageHtml(m) {
     ? `<div class="reply-box">${esc(displayNameFor(m.replyTo.from || ''))}: ${esc(m.replyTo.text || '')}</div>`
     : '';
   const bodyText = esc(text || (m.image ? 'sent an image' : ''));
-  const expiry = m.expiresAt ? ` data-expire="${m.expiresAt}"` : (msgExpiry > 0 ? ` data-expire="${Date.now() + msgExpiry}"` : '');
-  return `<div class="msg ${mine ? 'mine' : 'theirs'}" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
+  const expiry = m.expiresAt ? ` data-expire="${m.expiresAt}"` : '';
+  const delivery = m.isPending ? '<span class="msg-delivery">sending...</span>' : '';
+  return `<div class="msg ${mine ? 'mine' : 'theirs'}${m.isPending ? ' pending' : ''}" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
     <div class="msg-meta">
       <span class="who ${mine ? 'me' : 'them'}">${mine ? name : esc(name)}</span>
       <span class="ts">${fmtTime(m.ts)}</span>
+      ${delivery}
     </div>
     ${reply}
     <div class="msg-line msg-bubble">
@@ -2290,11 +2315,13 @@ function messageHtml(m) {
 }
 
 function scheduleLocalExpiry() {
-  if (msgExpiry <= 0) return;
   document.querySelectorAll('#msgs .msg[data-expire]').forEach(el => {
     const expireAt = Number(el.dataset.expire || 0);
     const wait = Math.max(0, expireAt - Date.now());
     setTimeout(() => {
+      const id = el.dataset.id;
+      currentMessages = currentMessages.filter(message => msgId(message) !== id);
+      allMessages = allMessages.filter(message => msgId(message) !== id);
       if (el.parentNode) el.remove();
     }, wait);
   });
@@ -2325,6 +2352,7 @@ async function send() {
     return;
   }
 
+  const chatAtSend = { ...activeChat };
   const pendingMsgId = 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   const imageToSend = pendingImage;
   const replyToSend = replyTo ? { ...replyTo } : null;
@@ -2333,10 +2361,10 @@ async function send() {
   // Construct optimistic pending message
   const pendingMsg = {
     id: pendingMsgId,
-    kind: activeChat.type === 'group' ? 'group' : 'dm',
-    groupId: activeChat.type === 'group' ? activeChat.id : '',
+    kind: chatAtSend.type === 'group' ? 'group' : 'dm',
+    groupId: chatAtSend.type === 'group' ? chatAtSend.id : '',
     from: myEmail,
-    to: activeChat.type === 'dm' ? activeChat.id : '',
+    to: chatAtSend.type === 'dm' ? chatAtSend.id : '',
     text: text, // Display immediately as plain text
     image: imageToSend,
     replyTo: replyToSend,
@@ -2344,12 +2372,13 @@ async function send() {
     read: false,
     readBy: [myEmail],
     clientId: pendingMsgId,
-    isPending: true
+    isPending: true,
+    expiresAt: msgExpiry > 0 ? Date.now() + msgExpiry : undefined
   };
   
   // Optimistically push and render
   allMessages.push(pendingMsg);
-  if (isActiveMessage(pendingMsg)) {
+  if (isMessageForChat(pendingMsg, activeChat)) {
     currentMessages.push(pendingMsg);
     currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
     renderMessages();
@@ -2365,8 +2394,8 @@ async function send() {
   let textToSend = text;
 
   {
-    if (activeChat.type === 'group') {
-      const group = groups.find(g => String(g.id) === String(activeChat.id));
+    if (chatAtSend.type === 'group') {
+      const group = groups.find(g => String(g.id) === String(chatAtSend.id));
       if (group && group.members) {
         const payloads = {};
         const allMembers = [...group.members];
@@ -2374,20 +2403,21 @@ async function send() {
           allMembers.push(myEmail);
         }
 
-        for (const memberEmail of allMembers) {
+        const senderPubKey = await exportPub(myKP);
+        const encodedContent = new TextEncoder().encode(secureContent);
+        await Promise.all(allMembers.map(async memberEmail => {
           let member = sameEmail(memberEmail, myEmail)
-            ? { pubKey: await exportPub(myKP) }
+            ? { pubKey: senderPubKey }
             : memberFor(memberEmail);
 
           if (member && member.pubKey) {
             try {
               const sharedSecret = await deriveSharedKey(member.pubKey);
               const iv = crypto.getRandomValues(new Uint8Array(12));
-              const encText = new TextEncoder().encode(secureContent);
               const ciphertext = await crypto.subtle.encrypt(
                 { name: 'AES-GCM', iv },
                 sharedSecret,
-                encText
+                encodedContent
               );
               payloads[normEmail(memberEmail)] = {
                 recipientPubKey: member.pubKey,
@@ -2398,17 +2428,17 @@ async function send() {
               console.error("Error encrypting for group member:", memberEmail, err);
             }
           }
-        }
+        }));
         textToSend = JSON.stringify({
           e2e: true,
           version: 3,
           group: true,
-          senderPubKey: await exportPub(myKP),
+          senderPubKey,
           payloads
         });
       }
     } else {
-      const peerEmail = activeChat.id;
+      const peerEmail = chatAtSend.id;
       const peer = memberFor(peerEmail);
       if (peer && peer.pubKey) {
         try {
@@ -2435,6 +2465,7 @@ async function send() {
           allMessages = allMessages.filter(x => x.id !== pendingMsgId);
           currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
           renderMessages();
+          restoreFailedDraft(text, imageToSend, replyToSend, chatAtSend);
           return;
         }
       } else {
@@ -2443,6 +2474,7 @@ async function send() {
         allMessages = allMessages.filter(x => x.id !== pendingMsgId);
         currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
         renderMessages();
+        restoreFailedDraft(text, imageToSend, replyToSend, chatAtSend);
         return;
       }
     }
@@ -2455,15 +2487,14 @@ async function send() {
     allMessages = allMessages.filter(x => x.id !== pendingMsgId);
     currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
     renderMessages();
+    restoreFailedDraft(text, imageToSend, replyToSend, chatAtSend);
     toast('This encrypted message is too large. Use a smaller image or group.');
     return;
   }
 
-  const recaptcha_token = await getOptionalCaptchaToken('dm_send');
-
-  const body = activeChat.type === 'group'
-    ? { groupId: activeChat.id, text: textToSend, image: null, replyTo: null, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token }
-    : { to: activeChat.id, text: textToSend, image: null, replyTo: null, expiry: msgExpiry, clientId: pendingMsgId, recaptcha_token };
+  const body = chatAtSend.type === 'group'
+    ? { groupId: chatAtSend.id, text: textToSend, image: null, replyTo: null, expiry: msgExpiry, clientId: pendingMsgId }
+    : { to: chatAtSend.id, text: textToSend, image: null, replyTo: null, expiry: msgExpiry, clientId: pendingMsgId };
 
   try {
     const r = await fetch('/api/dm/send', {
@@ -2480,15 +2511,16 @@ async function send() {
 
     if (!r.ok || !d.success) {
       renderMessages();
+      restoreFailedDraft(text, imageToSend, replyToSend, chatAtSend);
       toast(d.error || 'Message failed.');
       return;
     }
     const msg = d.message || {
       id: String(Date.now()),
-      kind: activeChat.type === 'group' ? 'group' : 'dm',
-      groupId: activeChat.type === 'group' ? activeChat.id : '',
+      kind: chatAtSend.type === 'group' ? 'group' : 'dm',
+      groupId: chatAtSend.type === 'group' ? chatAtSend.id : '',
       from: myEmail,
-      to: activeChat.type === 'dm' ? activeChat.id : '',
+      to: chatAtSend.type === 'dm' ? chatAtSend.id : '',
       text: textToSend,
       image: imageToSend,
       ts: Date.now(),
@@ -2500,8 +2532,8 @@ async function send() {
     msg.replyTo = replyToSend;
     if (msg.clientId === pendingMsgId) {
       msg.from = myEmail;
-      if (activeChat.type === 'dm') msg.to = activeChat.id;
-      if (activeChat.type === 'group') msg.groupId = activeChat.id;
+      if (chatAtSend.type === 'dm') msg.to = chatAtSend.id;
+      if (chatAtSend.type === 'group') msg.groupId = chatAtSend.id;
     }
     dmSince = Math.max(dmSince, msg.ts || 0);
     allMessages = allMessages.filter(x => msgId(x) !== msgId(msg));
@@ -2515,13 +2547,13 @@ async function send() {
         g.lastTs = msg.ts;
       }
     } else {
-      const peerEmail = activeChat.id;
+      const peerEmail = chatAtSend.id;
       const member = members.find(x => sameEmail(x.email, peerEmail));
       if (member) {
         member.lastMessage = msg;
       }
     }
-    if (isActiveMessage(msg) || msg.clientId === pendingMsgId) {
+    if (sameChat(activeChat, chatAtSend) && isMessageForChat(msg, chatAtSend)) {
       currentMessages.push(msg);
       currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
     }
@@ -2533,6 +2565,11 @@ async function send() {
     allMessages = allMessages.filter(x => x.id !== pendingMsgId);
     currentMessages = currentMessages.filter(x => x.id !== pendingMsgId);
     renderMessages();
+    // The WebSocket acknowledgement can arrive even if the HTTP response is
+    // lost. In that case the message is already confirmed and must not be
+    // restored as a draft that the user could accidentally send twice.
+    if (allMessages.some(message => msgId(message) === pendingMsgId && !message.isPending)) return;
+    restoreFailedDraft(text, imageToSend, replyToSend, chatAtSend);
     toast('Network error while sending.');
   }
 }
@@ -2566,6 +2603,10 @@ async function pollNewDMs() {
           if (member) {
             member.lastMessage = m;
           }
+        }
+        if (isActiveMessage(m) && !currentMessages.some(existing => msgId(existing) === msgId(m))) {
+          currentMessages.push(m);
+          activeAdded = true;
         }
         continue;
       }
@@ -2701,6 +2742,7 @@ async function leaveCurrentGroup() {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) return toast(d.error || 'Could not leave group.');
+    activeChatLoadSeq++;
     activeChat = null;
     currentMessages = [];
     document.getElementById('chat-title').textContent = 'No chat selected';
@@ -2795,6 +2837,25 @@ function clearImage() {
   syncComposer();
 }
 
+function restoreFailedDraft(text, image, quotedReply, chat) {
+  if (!sameChat(activeChat, chat)) return;
+  const input = document.getElementById('msgInput');
+  if (text && input && !input.value.trim()) input.value = text;
+  if (image && !pendingImage) {
+    pendingImage = image;
+    document.getElementById('image-preview-img').src = image.data || '';
+    document.getElementById('image-preview-name').textContent = image.name || 'image';
+    document.getElementById('image-preview').classList.add('on');
+  }
+  if (quotedReply && !replyTo) {
+    replyTo = quotedReply;
+    document.getElementById('reply-preview-text').textContent =
+      'Replying to ' + displayNameFor(quotedReply.from) + ': ' + (quotedReply.text || '');
+    document.getElementById('reply-preview').classList.add('on');
+  }
+  syncComposer();
+}
+
 function syncComposer() {
   const input = document.getElementById('msgInput');
   const sendButton = document.getElementById('sendBtn');
@@ -2826,14 +2887,19 @@ function handleImagePick() {
 
 function cycleExpiry() {
   const cur = EXPIRY_OPTIONS.indexOf(msgExpiry);
-  msgExpiry = EXPIRY_OPTIONS[(cur + 1) % EXPIRY_OPTIONS.length];
-  try { localStorage.setItem('_chatExpiry', msgExpiry); } catch {}
+  const next = EXPIRY_OPTIONS[(cur + 1) % EXPIRY_OPTIONS.length];
+  if (msgExpiry === 0 && next > 0 && !confirm('Auto-delete permanently removes new messages for everyone after the selected time. Turn it on?')) {
+    return;
+  }
+  msgExpiry = next;
   syncExpiryButton();
 }
 
 function syncExpiryButton() {
   const idx = Math.max(0, EXPIRY_OPTIONS.indexOf(msgExpiry));
-  document.getElementById('expiry-btn').textContent = 'Expire: ' + EXPIRY_LABELS[idx];
+  const button = document.getElementById('expiry-btn');
+  button.textContent = 'Auto-delete: ' + EXPIRY_LABELS[idx];
+  button.classList.toggle('on', msgExpiry > 0);
 }
 
 function openGroupModal() {

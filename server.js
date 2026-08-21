@@ -1232,7 +1232,9 @@ const RATE_LIMITS = {
   '/api/premium-chat/send':    [3,   10],
   '/api/public-chat/history':  [60,  60],
   '/api/public-chat/send':     [3,   10],
-  '/api/dm/send':              [3,   10],
+  // Direct/group chat is authenticated and CSRF-protected. Allow normal
+  // conversational bursts while retaining a firm abuse ceiling.
+  '/api/dm/send':              [20,  10],
   '/api/marketplace/list':     [1,   30],
   '/api/marketplace/buy':      [1,   30],
   '/api/marketplace/cancel':   [2,   30],
@@ -4684,7 +4686,7 @@ function checkRateLimit(req, endpoint) {
   const ep = endpoint || new URL(req.url).pathname;
 
   // Anti-bot timing regularity check on non-polling action endpoints
-  if (!ep.endsWith('/state') && !ep.includes('/inbox') && !ep.includes('/heartbeat') && !ep.includes('/groups') && !ep.includes('/canvas/') && !ep.includes('/blooket-bot/status')) {
+  if (!ep.endsWith('/state') && !ep.includes('/inbox') && !ep.includes('/heartbeat') && !ep.includes('/groups') && !ep.includes('/dm/send') && !ep.includes('/canvas/') && !ep.includes('/blooket-bot/status')) {
     const timingKey = ip + ':' + ep;
     if (detectNonHumanTiming(timingKey)) {
       console.warn(`[Anti-Bot] Non-human timing detected from ${ip} on ${ep}`);
@@ -13310,9 +13312,6 @@ function loadAllGamesList() {
       const declaredChatBytes = Number(req.headers.get('Content-Length') || 0);
       if (declaredChatBytes > MAX_CHAT_JSON_BODY_BYTES) return jsonResp(413, { error: 'message request too large' });
       if (!await tryParseJson(MAX_CHAT_JSON_BODY_BYTES)) return jsonResp(400, { error: 'bad json' });
-      if (!await verifyRecaptcha(body.recaptcha_token || '', ip, sid)) {
-        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
-      }
       const groupId = body.groupId ? String(body.groupId) : '';
       const to   = groupId ? '' : normalizeEmail(body.to || '');
       const rawText = String(body.text || '').trim();
@@ -13347,9 +13346,35 @@ function loadAllGamesList() {
         ts: Number(body.replyTo.ts) || 0,
       } : null;
       const dms = loadJson(DMS_FILE, []);
+      // Treat clientId as an idempotency key. A retry after a slow/lost HTTP
+      // response must return the stored message instead of creating a copy.
+      if (clientId) {
+        const existing = [...dms].reverse().find(existingMsg => {
+          if (!existingMsg || existingMsg.clientId !== clientId) return false;
+          if (existingMsg.expiresAt && Date.now() > existingMsg.expiresAt) return false;
+          if (normalizeEmail(existingMsg.from || '') !== normalizeEmail(senderEmail)) return false;
+          if (groupId) return existingMsg.kind === 'group' && String(existingMsg.groupId || '') === groupId;
+          return existingMsg.kind !== 'group' && normalizeEmail(existingMsg.to || '') === normalizeEmail(to);
+        });
+        if (existing) {
+          return jsonResp(200, {
+            success: true,
+            duplicate: true,
+            message: {
+              ...existing,
+              from: maskEmail(existing.from),
+              to: existing.to ? maskEmail(existing.to) : undefined,
+              readBy: (existing.readBy || []).map(maskEmail),
+            },
+          });
+        }
+      }
       const subs = VAPID_PUBLIC ? loadPushSubscriptions() : {};
       let msg;
-      const expiry = Number(body.expiry) || 0;
+      const requestedExpiry = Number(body.expiry) || 0;
+      const expiry = [30000, 60000, 300000, 3600000].includes(requestedExpiry)
+        ? requestedExpiry
+        : 0;
       const getNotificationBody = (t, img) => encryptedEnvelope
         ? '[Secure Message]'
         : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));
