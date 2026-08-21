@@ -760,33 +760,7 @@
     document.addEventListener('click', function () { panel.style.display = 'none'; });
     panel.addEventListener('click', function (e) { e.stopPropagation(); });
 
-    var xBtn = document.createElement('button');
-    xBtn.id = 'theme-clean-btn';
-    xBtn.title = 'Clean mode';
-    xBtn.innerHTML = '&#10005;';
-    xBtn.style.cssText =
-      'width:26px;height:26px;border-radius:50%;' +
-      'border:1.5px solid rgba(160,160,160,0.45);' +
-      'background:rgba(30,30,30,0.55);color:rgba(180,180,180,0.8);' +
-      'font-size:11px;cursor:pointer;padding:0;flex-shrink:0;' +
-      'display:flex;align-items:center;justify-content:center;' +
-      '' +
-      'transition:opacity .15s;line-height:1;font-family:inherit;';
-    xBtn.onmouseenter = function () { xBtn.style.opacity = '1'; xBtn.style.borderColor = 'rgba(200,200,200,0.7)'; };
-    xBtn.onmouseleave = function () { xBtn.style.opacity = ''; xBtn.style.borderColor = 'rgba(160,160,160,0.45)'; };
-    if (!location.pathname.startsWith('/encrypt')) {
-      xBtn.onclick = activateCleanMode;
-      var topbarX = document.getElementById('site-topbar');
-      if (topbarX) {
-        topbarX.insertBefore(xBtn, topbarX.firstChild);
-      } else {
-        xBtn.style.position = 'fixed';
-        xBtn.style.right = '56px';
-        xBtn.style.top = '20px';
-        xBtn.style.zIndex = '999999';
-        document.body.appendChild(xBtn);
-      }
-    }
+
 
     var topbar = document.getElementById('site-topbar');
     if (topbar) {

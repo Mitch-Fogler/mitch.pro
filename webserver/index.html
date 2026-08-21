@@ -538,6 +538,7 @@ function setupHomeSearch() {
   if (!input) return;
   input.oninput = filterHomeLinks;
   if (clear) {
+    clear.style.display = input.value.trim() ? '' : 'none';
     clear.onclick = function() {
       input.value = '';
       filterHomeLinks();
@@ -549,8 +550,12 @@ function setupHomeSearch() {
 function filterHomeLinks() {
   var input = document.getElementById('home-search');
   var empty = document.getElementById('links-empty');
+  var clear = document.getElementById('home-search-clear');
   if (!input) return;
   var q = input.value.trim().toLowerCase();
+  if (clear) {
+    clear.style.display = q ? '' : 'none';
+  }
   var visibleCount = 0;
   document.querySelectorAll('.category-group').forEach(function(group) {
     var groupVisible = 0;
@@ -1038,7 +1043,14 @@ function loadGreeting() {
           handle.click();
         }
       });
+      handle.addEventListener('mouseenter', function() {
+        setOpen(true);
+      });
     }
+
+    rail.addEventListener('mouseleave', function() {
+      setOpen(false);
+    });
 
     document.addEventListener('click', function(e) {
       if (!rail.classList.contains('is-open')) return;
@@ -5852,44 +5864,84 @@ body.home-editorial .hero-subtitle {
   max-width: 42ch;
 }
 
-body.home-editorial .home-actions { display: flex; flex-wrap: wrap; gap: 0.55rem; }
+body.home-editorial .home-actions {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 1.5rem !important;
+  padding: 0.4rem 0.25rem !important;
+  border-bottom: 1px solid var(--t-bd) !important;
+  margin-bottom: 1.25rem !important;
+}
 
 body.home-editorial .hub-action {
-  appearance: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 2.4rem;
-  padding: 0.3rem 0.9rem;
-  border-radius: 8px;
-  border: 1px solid var(--t-bd);
+  appearance: none !important;
+  position: relative !important;
+  aspect-ratio: auto !important;
+  flex: none !important;
+  min-height: 0 !important;
+  padding: 0.2rem 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
   background: transparent !important;
-  color: var(--t-fg);
-  font-family: inherit;
-  font-size: 0.84rem;
-  font-weight: 600;
-  letter-spacing: 0;
-  text-transform: none;
-  text-decoration: none;
-  cursor: pointer;
+  color: var(--t-fg2) !important;
+  font-family: inherit !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  text-decoration: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  cursor: pointer !important;
+  transition: color 0.15s ease !important;
 }
 
 body.home-editorial .hub-action:hover {
-  background: var(--t-bg2) !important;
+  background: transparent !important;
   color: var(--t-fg) !important;
-  transform: none;
+  transform: none !important;
 }
 
 body.home-editorial .hub-action-primary {
-  background: var(--t-ac) !important;
-  color: #10140c !important;
-  border-color: var(--t-ac) !important;
+  color: var(--t-ac) !important;
+  background: transparent !important;
+  border: none !important;
   box-shadow: none !important;
 }
 
 body.home-editorial .hub-action-primary:hover {
-  background: var(--t-ac2) !important;
-  color: #10140c !important;
+  background: transparent !important;
+  color: var(--t-ac2) !important;
+}
+
+body.home-editorial .action-logo {
+  width: auto !important;
+  height: auto !important;
+  flex: none !important;
+  border: none !important;
+  background: none !important;
+  box-shadow: none !important;
+  display: inline-flex !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+body.home-editorial .action-logo svg {
+  width: 14px !important;
+  height: 14px !important;
+  stroke: currentColor !important;
+  stroke-width: 2.2 !important;
+  filter: none !important;
+}
+
+body.home-editorial .action-copy small {
+  display: none !important;
+}
+
+body.home-editorial .action-copy b {
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  font-family: inherit !important;
 }
 
 body.home-editorial .hub-daily.is-claimable {
@@ -6250,7 +6302,6 @@ html.theme-glass body.home-editorial .hud-widget-card {
   <div class="members-rail-head">
     <div class="members-rail-mark" aria-hidden="true"><span></span><span></span></div>
     <div class="members-rail-heading"><strong>People</strong><small>Live across Mitch.pro</small></div>
-    <button type="button" class="members-rail-close" onclick="openMembersRail(event)" aria-label="Close members panel">&times;</button>
   </div>
   <!-- Collapsed handle — hover or click to open -->
   <div id="member-side-rail-collapsed-handle" title="Members & friends">
@@ -6357,7 +6408,7 @@ html.theme-glass body.home-editorial .hud-widget-card {
     
     <div class="hud-search-area">
       <div class="home-search-box">
-        <span aria-hidden="true" class="search-icon">⌕</span>
+        <svg viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px; color: var(--t-ac); opacity: 0.8; margin-right: 4px; flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
         <input id="home-search" type="search" placeholder="Search the universe" autocomplete="off">
         <button id="home-search-clear" type="button">Clear</button>
       </div>
