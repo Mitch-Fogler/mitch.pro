@@ -13432,10 +13432,10 @@ function loadAllGamesList() {
       }
       const subs = VAPID_PUBLIC ? loadPushSubscriptions() : {};
       let msg;
-      // Secure Chat now keeps messages until a user deliberately clears them.
-      // Ignore expiry values from older cached clients so messages cannot seem
-      // to vanish without an explicit action.
-      const expiry = 0;
+      const requestedExpiry = Number(body.expiry) || 0;
+      const expiry = [30000, 60000, 300000, 3600000].includes(requestedExpiry)
+        ? requestedExpiry
+        : 0;
       const getNotificationBody = (t, img) => encryptedEnvelope
         ? '[Secure Message]'
         : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));

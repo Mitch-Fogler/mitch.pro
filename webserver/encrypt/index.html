@@ -749,6 +749,7 @@ button {
       </div>
       <div class="encryption-status"><i></i><span>END-TO-END<br>ENCRYPTED</span></div>
       <div class="header-tools">
+        <button id="expiry-btn" class="tool-btn" type="button" title="Set auto-delete for new messages in this session">Auto-delete: off</button>
         <button id="chat-search-toggle" class="tool-btn chat-icon-btn" type="button" aria-expanded="false" aria-controls="chat-tools-menu">Search</button>
         <button id="chat-more-btn" class="tool-btn chat-icon-btn" type="button" aria-expanded="false" aria-controls="chat-tools-menu" aria-label="Conversation options">•••</button>
         <div id="chat-tools-menu" role="menu">
@@ -847,10 +848,10 @@ let activeChatLoadSeq = 0;
 const conversationCache = new Map();
 const conversationRequests = new Map();
 
-const msgExpiry = 0;
-// Messages are permanent by default. Remove the obsolete saved auto-delete
-// preference that previously made messages seem to disappear at random.
-try { localStorage.removeItem('_chatExpiry'); } catch {}
+const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
+const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
+let msgExpiry = 0;
+try { msgExpiry = parseInt(localStorage.getItem('_chatExpiry') || '0', 10) || 0; } catch {}
 
 const h2b = h => {
   const value = String(h || '').trim();
@@ -1650,6 +1651,8 @@ function bindEvents() {
   document.getElementById('searchInput').oninput = renderList;
   document.getElementById('msgSearch').oninput = filterCurrentMessages;
   document.getElementById('new-group-btn').onclick = openGroupModal;
+  document.getElementById('expiry-btn').onclick = cycleExpiry;
+  syncExpiryButton();
   document.getElementById('refresh-btn').onclick = refreshEverything;
   document.getElementById('clear-all-btn').onclick = clearAllChats;
   document.getElementById('clear-chat-btn').onclick = clearCurrentChat;
@@ -2973,6 +2976,26 @@ function handleImagePick() {
     syncComposer();
   };
   reader.readAsDataURL(file);
+}
+
+function cycleExpiry() {
+  const cur = EXPIRY_OPTIONS.indexOf(msgExpiry);
+  const next = EXPIRY_OPTIONS[(cur + 1) % EXPIRY_OPTIONS.length];
+  if (msgExpiry === 0 && next > 0 && !confirm('Auto-delete permanently removes new messages for everyone after the selected time. Turn it on?')) {
+    return;
+  }
+  msgExpiry = next;
+  try { localStorage.setItem('_chatExpiry', msgExpiry); } catch {}
+  syncExpiryButton();
+}
+
+function syncExpiryButton() {
+  const idx = Math.max(0, EXPIRY_OPTIONS.indexOf(msgExpiry));
+  const button = document.getElementById('expiry-btn');
+  if (button) {
+    button.textContent = 'Auto-delete: ' + EXPIRY_LABELS[idx];
+    button.classList.toggle('on', msgExpiry > 0);
+  }
 }
 
 function openGroupModal() {
