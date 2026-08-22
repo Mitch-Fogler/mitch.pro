@@ -2735,6 +2735,10 @@ async function pollNewDMs() {
   livePollBusy = false;
 }
 
+window.__handleIncomingDm = function(m) {
+  pollNewDMs();
+};
+
 function markActiveRead() {
   if (!activeChat) return;
   const body = activeChat.type === 'group' ? { groupId: activeChat.id } : { from: activeChat.id };
