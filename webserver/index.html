@@ -2423,8 +2423,199 @@ function initHudTerminal() {
           appendLine('  ssh-add    - Import PEM key or view public key (-L)');
           appendLine('  ssh-key    - View (show) or copy saved SSH public key');
           appendLine('  ssh-copy-id- Copy saved public key to target authorized_keys');
+          appendLine('  gravity    - Collapse and pull page elements down');
+          appendLine('  barrelroll - Spin the client workspace 360 degrees');
+          appendLine('  sudo       - Run command with root privileges');
           appendLine('  clear      - Clear telemetry buffer');
           appendLine('  help       - Show command list');
+          break;
+        case 'rm':
+          var flags = parts.slice(1).join(' ');
+          if (flags.includes('-rf') && (flags.includes('/') || flags.includes('*') || flags.includes('.'))) {
+            closeTerminalIframe(true);
+            if (typeof closeTerminalXterm === 'function') closeTerminalXterm();
+            var overlay = document.getElementById('hud-terminal-overlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            // Force the html and body background to be white and override any active CSS gradients/images
+            var destroyStyle = document.createElement('style');
+            destroyStyle.innerHTML = '* { background: #ffffff !important; background-color: #ffffff !important; background-image: none !important; color: #ffffff !important; box-shadow: none !important; text-shadow: none !important; }';
+            document.head.appendChild(destroyStyle);
+            
+            var destroyInterval = setInterval(function() {
+              var allElems = Array.from(document.body.querySelectorAll('*')).filter(function(el) {
+                return el.id !== 'devtools-btn' && el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE';
+              });
+              if (allElems.length === 0) {
+                clearInterval(destroyInterval);
+                document.body.innerHTML = '';
+                document.body.style.cssText = 'background: #ffffff !important; background-color: #ffffff !important; background-image: none !important;';
+                document.documentElement.style.cssText = 'background: #ffffff !important; background-color: #ffffff !important; background-image: none !important;';
+                
+                // Stop all timeouts/intervals to freeze active loops/scripts
+                var maxId = setTimeout(function(){}, 0);
+                for (var i = 0; i < maxId; i++) {
+                  clearTimeout(i);
+                  clearInterval(i);
+                }
+                return;
+              }
+              var randomEl = allElems[Math.floor(Math.random() * allElems.length)];
+              try {
+                if (randomEl && randomEl.parentNode) {
+                  randomEl.parentNode.removeChild(randomEl);
+                }
+              } catch(e) {}
+            }, 30);
+          } else {
+            appendLine('rm: missing operand or unrecognized options. Try "rm -rf /" to destroy things.', 'sys-err');
+          }
+          break;
+        case 'sudo':
+          var sudoCmd = parts.slice(1).join(' ');
+          if (!sudoCmd.trim()) {
+            appendLine('usage: sudo command [args]', 'sys-err');
+          } else {
+            askPrompt('[sudo] password for mitch: ', true, function(pwd) {
+              appendLine('mitch is not in the sudoers file. This incident will be reported.', 'sys-err');
+            });
+          }
+          break;
+        case 'gravity':
+          appendLine('Compiling gravitational mechanics...', 'sys-warn');
+          setConsoleTimeout(function() {
+            closeTerminalIframe(true);
+            var style = document.createElement('style');
+            style.innerHTML = '* { transition: transform 2.5s cubic-bezier(0.5, 0, 1, 0.5) !important; }';
+            document.head.appendChild(style);
+            
+            var elements = Array.from(document.body.querySelectorAll('*')).filter(function(el) {
+              return el.tagName !== 'SCRIPT' && el.tagName !== 'STYLE' && el.id !== 'devtools-btn';
+            });
+            
+            elements.forEach(function(el) {
+              var rect = el.getBoundingClientRect();
+              var dist = window.innerHeight - rect.bottom;
+              if (dist > 0) {
+                el.style.transform = 'translateY(' + dist + 'px) rotate(' + (Math.random() * 40 - 20) + 'deg)';
+              }
+            });
+          }, 600);
+          break;
+        case 'barrelroll':
+        case 'rotate':
+          appendLine('Simulating planetary rotation...', 'sys-cmd');
+          document.body.style.transition = 'transform 2s ease-in-out';
+          document.body.style.transform = 'rotate(360deg)';
+          setConsoleTimeout(function() {
+            document.body.style.transform = '';
+          }, 2000);
+          break;
+        case 'forkbomb':
+        case ':(){':
+        case ':(){:|:&};:':
+          appendLine('fork: spawning process children...', 'sys-warn');
+          var overlay = document.getElementById('hud-terminal-overlay');
+          
+          var bombStyle = document.createElement('style');
+          bombStyle.innerHTML = '@keyframes terminal-shake { 0%, 100% { transform: translate(0, 0) rotate(0deg); } 10% { transform: translate(-2px, -2px) rotate(-1deg); } 20% { transform: translate(3px, 2px) rotate(1deg); } 30% { transform: translate(-3px, 1px) rotate(0deg); } 40% { transform: translate(2px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(3px, 1px) rotate(0deg); } 70% { transform: translate(-2px, 2px) rotate(1deg); } 80% { transform: translate(-1px, -2px) rotate(-1deg); } 90% { transform: translate(2px, 2px) rotate(0deg); } } .term-shake { animation: terminal-shake 0.15s infinite !important; }';
+          document.head.appendChild(bombStyle);
+          
+          if (overlay) overlay.classList.add('term-shake');
+          
+          var count = 0;
+          var bombInterval = setInterval(function() {
+            appendLine('fork: retry: Resource temporarily unavailable (pid: ' + Math.floor(Math.random() * 30000 + 2000) + ')', 'sys-err');
+            count++;
+            if (count > 50) {
+              clearInterval(bombInterval);
+              if (overlay) overlay.classList.remove('term-shake');
+              closeTerminalIframe(true);
+              
+              var panic = document.createElement('div');
+              panic.id = 'kernel-panic-screen';
+              panic.style.cssText = 'position:fixed;inset:0;background:#7a0000;color:#ffffff;font-family:monospace;padding:50px;z-index:2147483647;line-height:1.6;font-size:14px;';
+              panic.innerHTML = '<h1 style="font-size:24px;margin-bottom:20px;color:#ff8888;">[!] KERNEL PANIC: OUT OF MEMORY (OOM)</h1>' +
+                '<p>Pid ' + Math.floor(Math.random() * 1000 + 1) + ' (hudsh) invoked oom-killer: gfp_mask=0x201d2, order=0, oom_score_adj=0</p>' +
+                '<p>CPU: 0 PID: ' + Math.floor(Math.random() * 1000 + 1) + ' Comm: hudsh Not tainted 5.15.0-88-generic #98-Ubuntu</p>' +
+                '<p>Hardware name: Browser Virtual Machine/QEMU, BIOS 1.14.0-2 04/01/2014</p>' +
+                '<p style="color:#cccccc;margin-top:20px;">System execution halted. Click anywhere to reboot system shell.</p>';
+              
+              panic.onclick = function() {
+                document.body.removeChild(panic);
+                location.reload();
+              };
+              document.body.appendChild(panic);
+            }
+          }, 40);
+          break;
+        case 'rickroll':
+          appendLine('Accessing remote music stream archive...', 'sys-cmd');
+          setConsoleTimeout(function() {
+            closeTerminalIframe(true);
+            var overlay = document.getElementById('hud-terminal-overlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            var container = document.createElement('div');
+            container.id = 'rickroll-overlay';
+            container.style.cssText = 'position:fixed;inset:0;background:#000000;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ffffff;font-family:sans-serif;';
+            
+            container.innerHTML = '<iframe width="560" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="border:3px solid var(--t-ac);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.8);"></iframe>' +
+              '<h2 style="margin-top:20px;letter-spacing:0.05em;color:var(--t-ac);">You have been rolled.</h2>' +
+              '<button id="close-rickroll" style="margin-top:15px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:8px 16px;border-radius:8px;cursor:pointer;">Return to Orbit</button>';
+            
+            document.body.appendChild(container);
+            
+            var closeBtn = container.querySelector('#close-rickroll');
+            if (closeBtn) {
+              closeBtn.onclick = function() {
+                document.body.removeChild(container);
+              };
+            }
+          }, 800);
+          break;
+        case 'cowsay':
+          var text = rawParts.slice(1).join(' ') || 'Moo!';
+          var len = text.length;
+          var border = ' ' + '-'.repeat(len + 2);
+          var bubble = border + '\n< ' + text + ' >\n' + border;
+          var cow = bubble + '\n' +
+            '        \\   ^__^\n' +
+            '         \\  (oo)\\_______\n' +
+            '            (__)\\       )\\/\\\n' +
+            '                ||----w |\n' +
+            '                ||     ||';
+          appendLine('<pre style="margin:0; font-family:monospace; line-height:1.2; color:#fff;">' + escText(cow) + '</pre>');
+          break;
+        case 'sl':
+          closeTerminalIframe(true);
+          var overlay = document.getElementById('hud-terminal-overlay');
+          if (overlay) overlay.style.display = 'none';
+          
+          var train = document.createElement('pre');
+          train.style.cssText = 'position:fixed;right:-600px;top:40%;font-family:monospace;font-size:12px;color:#a855f7;z-index:2147483647;pointer-events:none;line-height:1.15;';
+          var trainArt = 
+            '      ______      ______\n' +
+            '    _/      \\_  _/      \\_\n' +
+            '   /__________\\/__________\\\n' +
+            '   |  o o  o o |  o o  o o |   _____\n' +
+            '   |___________|___________|  |     |______\n' +
+            '   |                       |  |     |      \\\n' +
+            '  [________________________]  |  SL  | () () \\\n' +
+            '   / o o o o o o o o o o o \\  |______|_______|\n' +
+            '  (_________________________)   (o)     (o)';
+          train.textContent = trainArt;
+          document.body.appendChild(train);
+          
+          var pos = -600;
+          var slideInterval = setInterval(function() {
+            pos += 8;
+            train.style.right = pos + 'px';
+            if (pos > window.innerWidth + 600) {
+              clearInterval(slideInterval);
+              document.body.removeChild(train);
+            }
+          }, 15);
           break;
         case 'ping':
           appendLine('PING gateway (mitch.pro)...');
@@ -2447,10 +2638,58 @@ function initHudTerminal() {
           toggleMatrixRain();
           break;
         case 'hack':
-          appendLine('Connecting to server backup gateway...', 'sys-err');
-          setConsoleTimeout(function() { appendLine('Bypassing firewall protocols...', 'sys-warn'); }, 400);
-          setConsoleTimeout(function() { appendLine('Injecting payload script...', 'sys-warn'); }, 800);
-          setConsoleTimeout(function() { appendLine('ACCESS GRANTED: MitchCoins database acquired.', 'sys-success'); }, 1200);
+          closeTerminalIframe(true);
+          var overlay = document.getElementById('hud-terminal-overlay');
+          if (overlay) overlay.style.display = 'none';
+          
+          var hackDiv = document.createElement('div');
+          hackDiv.style.cssText = 'position:fixed;inset:0;background:#050505;color:#00ff00;font-family:monospace;padding:30px;z-index:2147483647;line-height:1.5;font-size:12px;overflow:hidden;box-sizing:border-box;';
+          document.body.appendChild(hackDiv);
+          
+          var lines = [
+            'SSH_CONNECT: Connecting to root@gateway.mitch.pro:22...',
+            'HANDSHAKE: ECDSA SHA256 exchange established.',
+            'AUTHENTICATION: Bypassing PAM module overrides...',
+            'EXPLOIT: Triggering stack buffer overflow in libc.so...',
+            'SUCCESS: Shell spawned with EUID = 0 (root).',
+            'SWEEPING: Reading credentials database /etc/shadow...',
+            'DECRYPTING hashes (AES-NI hardware acceleration active):',
+            '  [mitch   : $6$8b91a2f... : password123] -> SUCCESS',
+            '  [support : $6$9d21c38... : admin2026]  -> SUCCESS',
+            'DOWNLOADING site backups (14.2 GB)...',
+            '  [||||||||||||||||||||||||||||||] 100% Complete',
+            'EXTRACTING MitchCoin reward ledger records...',
+            'GRANTING 1,000,000 MitchCoins to wallet index 0x902F...',
+            'CLEARING LOGS: overwriting /var/log/auth.log with zeros...',
+            'HACK SUCCESSFUL. TERMINATING SECURE CONNECTION.'
+          ];
+          
+          var lineIdx = 0;
+          var hackInterval = setInterval(function() {
+            if (lineIdx >= lines.length) {
+              clearInterval(hackInterval);
+              setTimeout(function() {
+                document.body.removeChild(hackDiv);
+                appendLine('Exploit session ended successfully.', 'sys-success');
+                if (overlay) overlay.style.display = '';
+              }, 1200);
+              return;
+            }
+            
+            var lineEl = document.createElement('div');
+            if (lines[lineIdx].includes('SUCCESS') || lines[lineIdx].includes('GRANTED')) {
+              lineEl.style.color = '#55ff55';
+              lineEl.style.fontWeight = 'bold';
+            } else if (lines[lineIdx].includes('EXPLOIT') || lines[lineIdx].includes('Bypassing')) {
+              lineEl.style.color = '#ffff55';
+            } else if (lines[lineIdx].includes('ERROR') || lines[lineIdx].includes('PAM')) {
+              lineEl.style.color = '#ff5555';
+            }
+            lineEl.textContent = lines[lineIdx];
+            hackDiv.appendChild(lineEl);
+            hackDiv.scrollTop = hackDiv.scrollHeight;
+            lineIdx++;
+          }, 300);
           break;
         case 'shell':
         case 'webvm':
