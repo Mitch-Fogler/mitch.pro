@@ -982,7 +982,13 @@ function loadGreeting() {
     var rail = document.getElementById('member-side-rail');
     if (!rail) return;
     var handle = document.getElementById('member-side-rail-collapsed-handle');
+    var hoverTimeout = null;
+
     function setOpen(open) {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+        hoverTimeout = null;
+      }
       rail.classList.toggle('is-open', !!open);
       rail.classList.toggle('is-collapsed', !open);
       rail.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -1007,13 +1013,22 @@ function loadGreeting() {
           handle.click();
         }
       });
-      handle.addEventListener('mouseenter', function() {
-        setOpen(true);
-      });
     }
 
+    // Hover to pop open smoothly with a grace timeout on mouseleave
+    rail.addEventListener('mouseenter', function() {
+      if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+        hoverTimeout = null;
+      }
+      setOpen(true);
+    });
+
     rail.addEventListener('mouseleave', function() {
-      setOpen(false);
+      if (hoverTimeout) clearTimeout(hoverTimeout);
+      hoverTimeout = setTimeout(function() {
+        setOpen(false);
+      }, 280);
     });
 
     document.addEventListener('click', function(e) {
@@ -5773,8 +5788,17 @@ body.home-editorial .hud-workspace {
   align-items: start;
 }
 
-body.home-editorial .hud-pane-main { min-width: 0; display: flex; flex-direction: column; }
-body.home-editorial .hud-pane-aside { display: flex; flex-direction: column; gap: 0; border-left: 1px solid var(--t-bd); padding-left: 1.5rem; }
+body.home-editorial .hud-pane-aside {
+  position: sticky;
+  top: 90px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-left: 1px solid var(--t-bd);
+  padding-left: 1.5rem;
+  max-height: calc(100vh - 110px);
+}
 
 body.home-editorial .hud-hero-card {
   position: relative;
@@ -6706,7 +6730,14 @@ var origShow = showIframe;
   (async function() {
     try {
       const { members } = await (await fetch('/api/premium-members')).json();
-      renderMemberChips('premium-members-wrap', 'premium-members-list', members, {
+      const list = (members || []).slice();
+      for (let i = list.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const temp = list[i];
+        list[i] = list[j];
+        list[j] = temp;
+      }
+      renderMemberChips('premium-members-wrap', 'premium-members-list', list, {
         icon: '&#10022;',
         color: '#f59e0b',
         bg: 'rgba(245,158,11,0.1)',

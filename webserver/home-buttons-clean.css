@@ -645,6 +645,9 @@ body.home-galaxy .hud-pane-aside > * {
 }
 
 body.home-galaxy .hud-pane-aside {
+  position: sticky !important;
+  top: 90px !important;
+  align-self: start !important;
   width: 100% !important;
   max-width: 100% !important;
   max-height: calc(100dvh - 116px) !important;
@@ -674,7 +677,7 @@ body.home-galaxy .hud-pane-aside .popular-strip a.site-link.hub-popular-link {
   box-sizing: border-box !important;
 }
 
-@media (max-width: 1440px) {
+@media (max-width: 860px) {
   body.home-galaxy .hud-workspace {
     grid-template-columns: minmax(0, 1fr) !important;
     gap: 18px !important;
@@ -801,14 +804,14 @@ body.home-galaxy #member-side-rail {
   scrollbar-color: rgba(190, 142, 255, .42) transparent;
 }
 
-body.home-galaxy #member-side-rail.is-collapsed,
-body.home-galaxy #member-side-rail.is-collapsed:hover {
+body.home-galaxy #member-side-rail.is-collapsed {
   transform: translateX(calc(100% - 52px)) !important;
 }
 
 body.home-galaxy #member-side-rail.is-open,
-body.home-galaxy #member-side-rail.is-open:hover {
+body.home-galaxy #member-side-rail:hover {
   transform: translateX(0) !important;
+  box-shadow: -24px 24px 75px rgba(2, 0, 12, .65), inset 0 1px 0 rgba(255, 255, 255, .15) !important;
 }
 
 body.home-galaxy #member-side-rail::-webkit-scrollbar { width: 5px !important; }
@@ -968,8 +971,10 @@ body.home-galaxy #member-side-rail.is-collapsed > :not(#member-side-rail-collaps
   opacity: 0 !important;
   visibility: hidden !important;
   pointer-events: none !important;
+  transition: opacity .2s ease, visibility .2s ease !important;
 }
-body.home-galaxy #member-side-rail.is-open > :not(#member-side-rail-collapsed-handle) {
+body.home-galaxy #member-side-rail.is-open > :not(#member-side-rail-collapsed-handle),
+body.home-galaxy #member-side-rail:hover > :not(#member-side-rail-collapsed-handle) {
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
