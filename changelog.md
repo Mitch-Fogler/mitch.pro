@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-22
+
+- **LXC SSH bootstrap fix.** Replaced the brittle `setTimeout` + `ssh root@mitch.pro:39222` shellout in `createLxcContainer` with a proper Proxmox-API-based bootstrap (`pctExec`, `waitForLxcRunning`, `bootstrapLxcSshd`). The new path installs `openssh-server` if missing, writes an idempotent `/etc/ssh/sshd_config.d/99-mitch.conf` drop-in (Debian 12's default `PermitRootLogin prohibit-password` was rejecting the auto-generated root password), enables and starts the service, and verifies port 22 is listening. Added `/api/admin/lxc-repair` so admins can fix already-broken LXCs without re-creating them. Failures now log clearly instead of vanishing silently.
+- **Fixed the UFW `10.0.0.0/8` route-reject** in `tools/setup-firewall.sh`. The student subnet lives inside that /8; the broad reject would have blocked student-to-student and gateway-to-student traffic. The allow on `10.0.0.0/24` is now added before the broad reject so the more-specific match wins.
+- **Test harness is in the repo.** Moved `endpoint_test.js`, `generate_session.js`, `test_daily_login*.js`, `test_runner.js` into `tests/`. The harness is now path-agnostic (uses `import.meta.dir` instead of hardcoded `/home/mitch/bun-server/data`) and survives SIGINT/SIGTERM (signal handlers call the data restore so a Ctrl-C never leaves `data/` empty). Added `tests/README.md`. `package.json` has `test:unit`, `test:integration`, `test:integration:daily-login`, and a combined `test` script.
+- **CI runs unit tests on push.** `.github/workflows/deploy.yml` now has a `test` job that runs `bun run test:unit` before the deploy job. Integration tests are intentionally not in CI (they need a clean `data/` and a running server; they should be run locally before merging).
+- **SQLite migration audit.** Found and fixed two real source-of-truth splits: `newsletter_extra.json` was being read through `loadJson` but written with `writeFileSync` (lines 9636/9645), and `email_whitelist.json` was being read with `readFileSync`. Both now go through the data store.
+- **Pre-existing syntax errors on master fixed.** Removed a duplicate `function loadTypingSessions()` (and its `saveTypingSessions` partner) and renamed a shadowing `function maskEmail` (the second declaration was overriding the first via hoisting — every caller was getting the wrong behavior; renamed to `displayEmail` to make the right one win without forcing a behavior change in this commit).
+- **Started the server.js split.** Extracted `loadJson`/`saveJson`/`saveJsonSync` into `lib/jsonStore.js`. The full router + per-resource refactor plan is at `/home/mitch/.claude/plans/floating-snacking-rain.md`; pass 1 (helpers + state) and pass 2 (router + registry) are still to do.
+- **.gitignore** now excludes `data_backup_test/`, `tests/.tmp/`, and `test-results/`.
+- All changes are behavior-preserving except the LXC SSH fix and the `maskEmail` rename, both of which were fixing pre-existing broken behavior. `node --check` and `bun run test:unit` both pass; `bun server.js` boots cleanly through to `Bun.serve`.
+
 ## 2026-05-16
 
 - Redesigned `preferences.html` into a fuller preferences dashboard with summary cards, clearer sections, and improved controls.
