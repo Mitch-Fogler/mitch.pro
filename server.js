@@ -18077,7 +18077,16 @@ async function createLxcContainer(email, tier, vmid, password) {
       nameserver: '1.1.1.1',
       unprivileged: 1,
       start: 1,
-      pool: 'sandboxes'
+      pool: 'sandboxes',
+      // Host-side hookscript (runs on the Proxmox host during pre-start,
+      // not inside the LXC) writes /etc/ssh/sshd_config.d/99-mitch.conf
+      // to override the distros' default PermitRootLogin prohibit-password
+      // — that's the line rejecting root logins from the password
+      // Proxmox stored at create time.
+      // Install on tartarus (one-time):
+      //   install -m 0755 tools/proxmox-hookscript-mitch-sshd-bootstrap.sh \
+      //              /var/lib/vz/snippets/mitch-sshd-bootstrap.sh
+      hookscript: 'local:snippets/mitch-sshd-bootstrap.sh'
     });
 
     const res = await fetch(createUrl, {
