@@ -18095,29 +18095,87 @@ async function pctExec(node, vmid, commandArray) {
   return { ok: res.ok, status: res.status, data };
 }
 
-async function waitForLxcRunning(vmid, { timeoutMs = 60_000, intervalMs = 1500 } = {}) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const res = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/current`, {
+async function fetchLxcStatus(vmid) {
+  const res = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/current`, {
+    headers: { 'Authorization': PVE_TOKEN },
+    tls: { rejectUnauthorized: false }
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data?.data?.status || null;
+}
+
+// Pull last ~50 lines of the LXC's start log so we can surface a useful error
+// instead of "did not reach 'running' state in time". Returns null if unavailable.
+async function fetchLxcStartLog(vmid) {
+  try {
+    const res = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/log?limit=50`, {
       headers: { 'Authorization': PVE_TOKEN },
       tls: { rejectUnauthorized: false }
     });
-    if (res.ok) {
-      const data = await res.json();
-      const status = data?.data?.status;
-      if (status === 'running') return true;
-      if (status === 'stopped' || status === 'paused') {
-        // Try to start it; the user can re-run repair if this fails.
-        await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/start`, {
-          method: 'POST',
-          headers: { 'Authorization': PVE_TOKEN },
-          tls: { rejectUnauthorized: false }
-        });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = (data?.data || []).join('');
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+function classifyLxcStartFailure(log) {
+  if (!log) return 'LXC failed to start (no log available). Most common cause: template has no init system (e.g. debian-12-standard). Use a template with systemd preinstalled such as debian-12-genericcloud.';
+  if (log.includes('Failed to exec "/sbin/init"')) {
+    return 'LXC template has no init system (lxc-start could not exec /sbin/init). Use a template that ships systemd, e.g. debian-12-genericcloud-amd64.tar.zst.';
+  }
+  if (log.includes('Failed to mount cgroup')) {
+    return 'LXC failed to mount cgroup filesystem. The Proxmox host kernel is missing cgroup v2 support or the cgroupfs is not mounted at /sys/fs/cgroup.';
+  }
+  if (log.includes('apparmor')) {
+    return 'LXC failed due to an AppArmor policy error. Check `aa-status` on the Proxmox host and `journalctl -xe` for AppArmor complaints.';
+  }
+  if (log.includes('Failed to setup the seccomp')) {
+    return 'LXC failed due to a seccomp configuration error. The kernel may be missing required seccomp features.';
+  }
+  // Surface the last error line verbatim so it's not lost.
+  const errLine = log.split('\n').reverse().find(l => /ERROR|WARN.*fail/i.test(l));
+  if (errLine) return `LXC failed to start. Last log line: ${errLine.trim()}. See 'pct start <vmid> --debug' on the Proxmox host for full details.`;
+  return 'LXC failed to start. See /nodes/.../lxc/<vmid>/log on the Proxmox API or run `pct start <vmid> --debug` on the host.';
+}
+
+async function waitForLxcRunning(vmid, { timeoutMs = 60_000, intervalMs = 1500 } = {}) {
+  const start = Date.now();
+  let sawStarting = false;
+  let lastNonRunningStatus = null;
+  while (Date.now() - start < timeoutMs) {
+    const status = await fetchLxcStatus(vmid);
+    if (status === 'running') return { ok: true };
+    if (status === 'starting') {
+      sawStarting = true;
+    } else if (status === 'stopped' || status === 'paused') {
+      lastNonRunningStatus = status;
+      // If the container started and then came back to stopped, it crashed —
+      // don't loop here, that's the bug we're trying to diagnose.
+      if (sawStarting) {
+        const log = await fetchLxcStartLog(vmid);
+        return { ok: false, error: classifyLxcStartFailure(log), log };
       }
+      // Never reached starting yet: kick a start and keep waiting.
+      await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/start`, {
+        method: 'POST',
+        headers: { 'Authorization': PVE_TOKEN },
+        tls: { rejectUnauthorized: false }
+      }).catch(() => {});
     }
     await new Promise(r => setTimeout(r, intervalMs));
   }
-  return false;
+  // Timed out. If we never even got the container into 'starting', the create
+  // call may not have started it. Kick one more start attempt and capture the
+  // log if it's now stopped (the common case for init-missing templates).
+  if (lastNonRunningStatus === 'stopped' && !sawStarting) {
+    const log = await fetchLxcStartLog(vmid);
+    return { ok: false, error: classifyLxcStartFailure(log), log };
+  }
+  return { ok: false, error: `LXC ${vmid} did not reach 'running' state in time (last status: ${lastNonRunningStatus ?? 'unknown'})` };
 }
 
 // Idempotent sshd bootstrap for student LXCs. Written to /etc/ssh/sshd_config.d/ so it
@@ -18132,11 +18190,48 @@ const LXC_SSHD_DROPIN_BODY = [
   ''
 ].join('\n');
 
+// Derive the student-subnet IP assigned to an LXC VMID.
+// Mirrors the formula in createLxcContainer so the LXC bootstrap can probe
+// sshd reachability without needing a working pctExec API endpoint.
+function lxcIpForVmid(vmid) {
+  const suffix = vmid >= 300 ? (vmid - 200) : vmid;
+  return `10.0.0.${suffix}`;
+}
+
+// Open a TCP connection to host:port. Resolves to true if the connect
+// succeeded before the timeout, false otherwise. Doesn't read or write
+// any bytes — just confirms that *something* is listening.
+async function tcpProbe(host, port, timeoutMs = 4000) {
+  let conn;
+  try {
+    conn = await Promise.race([
+      Bun.connect({ hostname: host, port, socket: { data(_d, _e) {}, open(_s) {}, close() {}, error() {} } }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
+    ]);
+    try { conn.end?.(); } catch {}
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function bootstrapLxcSshd(vmid, { password } = {}) {
   // 1. Make sure container is running before exec calls.
   const running = await waitForLxcRunning(vmid);
-  if (!running) {
-    return { success: false, error: `LXC ${vmid} did not reach 'running' state in time` };
+  if (!running.ok) {
+    console.error('[proxmox] sshd bootstrap blocked, container not running:', running.error);
+    return { success: false, error: running.error, log: running.log };
+  }
+
+  // 1a. Fast-path probe: if sshd is already listening on the container's IP,
+  //     nothing else needs to happen. Standard Proxmox templates (debian-12,
+  //     ubuntu-22.04+) ship with openssh-server installed and started by
+  //     default, so this is the common case. The pctExec API path below
+  //     is a 501 on some PVE versions, so we don't want to depend on it
+  //     unless we have to.
+  const ip = lxcIpForVmid(vmid);
+  if (await tcpProbe(ip, 22)) {
+    return { success: true, alreadyReady: true };
   }
 
   // 2. Update apt and install openssh-server if missing.
@@ -18235,7 +18330,23 @@ async function createLxcContainer(email, tier, vmid, password) {
       nameserver: '1.1.1.1',
       unprivileged: 1,
       start: 1,
-      pool: 'sandboxes'
+      pool: 'sandboxes',
+      // Host-side hookscript (runs on the Proxmox host, not inside the LXC,
+      // so it bypasses the 501-returning /nodes/<n>/lxc/<vmid>/exec API):
+      //   - installs openssh-server if missing
+      //   - writes /etc/ssh/sshd_config.d/99-mitch.conf (PermitRootLogin yes)
+      //   - generates host keys if missing
+      //   - makes /var/run/sshd
+      //   - reads the password Proxmox stored in /etc/pve/lxc/<vmid>.conf
+      //     and runs `chpasswd` inside the chroot, because standard
+      //     templates (debian-12-standard etc.) do NOT honor the
+      //     password: arg without cloud-init
+      // Lives at /var/lib/vz/snippets/mitch-sshd-bootstrap.sh on tartarus;
+      // repo copy is tools/proxmox-hookscript-mitch-sshd-bootstrap.sh.
+      // Install path on the host (run once):
+      //   install -m 0755 tools/proxmox-hookscript-mitch-sshd-bootstrap.sh \
+      //              /var/lib/vz/snippets/mitch-sshd-bootstrap.sh
+      hookscript: 'local:snippets/mitch-sshd-bootstrap.sh'
     });
 
     const res = await fetch(createUrl, {
