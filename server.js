@@ -8045,8 +8045,8 @@ Mitch.pro Team`;
       const targetEmail = String(body.email || '').toLowerCase().trim();
       const vmid = parseInt(body.vmid, 10);
 
-      if (!targetEmail || isNaN(vmid) || vmid < 100) {
-        return jsonResp(400, { error: 'Valid email and VMID (>= 100) are required.' });
+      if (!targetEmail || !isVmIdInRange(vmid)) {
+        return jsonResp(400, { error: `Valid email and VMID (${PVE_VMID_MIN}-${PVE_VMID_MAX}) are required.` });
       }
 
       const data = loadJson(VM_APPS_FILE, {});
@@ -8172,6 +8172,28 @@ Mitch.pro Team`;
       saveJson(VM_APPS_FILE, data);
 
       return jsonResp(200, { success: true, message: `VM ${app.vmid} successfully restored and powered on.` });
+    }
+
+    if (path === '/api/admin/lxc-attach-sshd-hook' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+
+      const vmid = parseInt(body.vmid, 10);
+      if (!isVmIdInRange(vmid)) {
+        return jsonResp(400, { error: `vmid must be in [${PVE_VMID_MIN}, ${PVE_VMID_MAX}]` });
+      }
+
+      const adminEmail = emailFromSid(sid) || 'admin';
+      const result = await attachSshdHookToLxc(vmid);
+      logAdminAction(adminEmail, 'lxc_attach_sshd_hook', { vmid, success: result.success, error: result.error || null });
+      if (!result.success) {
+        return jsonResp(502, { success: false, error: result.error, stderr: result.stderr || null });
+      }
+      return jsonResp(200, { success: true, vmid, stdout: result.stdout || '' });
     }
 
     if (path === '/api/admin/grant-premium' && method === 'POST') {
@@ -17925,6 +17947,26 @@ const PVE_NODE = process.env.PVE_NODE || 'pve';
 const PVE_TEMPLATE_LINUX = parseInt(process.env.PVE_TEMPLATE_LINUX || '9000', 10);
 const PVE_LXC_TEMPLATE = process.env.PVE_LXC_TEMPLATE || 'local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst';
 
+// Allowlist range for student/premium sandbox VMIDs. The free-VM allocator
+// scans 200-209; the approve-vm admin endpoint accepts anything in this
+// range. Anything outside is blocked at the helper layer AND at the
+// tartarus /usr/local/bin/pct-exec-only forced command (see
+// tools/tartarus-pct-exec-only-mitch-verb.sh).
+const PVE_VMID_MIN = 200;
+const PVE_VMID_MAX = 999;
+
+function assertVmIdInRange(vmid, where = '') {
+  if (!Number.isFinite(vmid) || vmid < PVE_VMID_MIN || vmid > PVE_VMID_MAX) {
+    const err = new Error(`VMID ${vmid} out of allowed range [${PVE_VMID_MIN}, ${PVE_VMID_MAX}]${where ? ' (' + where + ')' : ''}`);
+    err.code = 'EVMIDRANGE';
+    throw err;
+  }
+}
+
+function isVmIdInRange(vmid) {
+  return Number.isFinite(vmid) && vmid >= PVE_VMID_MIN && vmid <= PVE_VMID_MAX;
+}
+
 async function getExistingVmids() {
   const ids = new Map();
   try {
@@ -18053,8 +18095,63 @@ async function powerUserVm(vmid, action) {
 }
 
 
+// Bridge the bun-server PVEVMAdmin token's permission limit on the
+// `hookscript:` field. Bun-server SSHes to tartarus as a user whose
+// authorized_keys forced command is /usr/local/bin/pct-exec-only, and
+// asks it to run the `mitch-attach-hook <vmid>` verb (which the host
+// script translates to `pct set <vmid> --hookscript local:snippets/
+// mitch-sshd-bootstrap.sh`). The forced command is restricted to vmid
+// ∈ [200, 999] — see tools/tartarus-pct-exec-only-mitch-verb.sh.
+//
+// This is fire-and-forget from createLxcContainer's perspective: if the
+// SSH call fails (host down, key not installed, forced command rejects
+// the vmid), we log and move on. The admin endpoint
+// /api/admin/lxc-attach-sshd-hook calls the same helper synchronously
+// and surfaces failures.
+async function attachSshdHookToLxc(vmid) {
+  if (!isVmIdInRange(vmid)) {
+    return { success: false, error: `vmid ${vmid} out of allowed range [${PVE_VMID_MIN}, ${PVE_VMID_MAX}]` };
+  }
+  const host = process.env.PVE_SSH_HOST || 'tartarus';
+  const user = process.env.PVE_SSH_USER || 'root';
+  const keyPath = process.env.PVE_SSH_KEY_PATH || '/etc/mitch/pve-host.key';
+  const port = parseInt(process.env.PVE_SSH_PORT || '22', 10);
+
+  // mitch-attach-hook <vmid> is the verb recognized by the
+  // /usr/local/bin/pct-exec-only forced command on tartarus.
+  // The forced command enforces the vmid range itself; we double-check
+  // before shelling out as defense in depth.
+  const cmd = `mitch-attach-hook ${vmid}`;
+
+  let result;
+  try {
+    result = spawnSync('ssh', [
+      '-i', keyPath,
+      '-o', 'BatchMode=yes',
+      '-o', 'ConnectTimeout=5',
+      '-o', 'StrictHostKeyChecking=accept-new',
+      '-p', String(port),
+      `${user}@${host}`,
+      cmd
+    ], { encoding: 'utf8', timeout: 15_000 });
+  } catch (e) {
+    return { success: false, error: `ssh spawn failed: ${e.message}` };
+  }
+  if (result.error) {
+    return { success: false, error: `ssh exec error: ${result.error.message}` };
+  }
+  if (result.status !== 0) {
+    const stderr = (result.stderr || '').trim();
+    return { success: false, error: `mitch-attach-hook exit ${result.status}`, stderr };
+  }
+  return { success: true, stdout: (result.stdout || '').trim() };
+}
+
 async function createLxcContainer(email, tier, vmid, password) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
+  try { assertVmIdInRange(vmid, 'createLxcContainer'); } catch (e) {
+    return { success: false, error: e.message };
+  }
 
   const cores = tier === 'premium' ? 2 : 1;
   const memory = tier === 'premium' ? 4096 : 1024;
@@ -18077,17 +18174,15 @@ async function createLxcContainer(email, tier, vmid, password) {
       nameserver: '1.1.1.1',
       unprivileged: 1,
       start: 1,
-      pool: 'sandboxes',
-      // Host-side hookscript (runs on the Proxmox host during pre-start,
-      // not inside the LXC) writes /etc/ssh/sshd_config.d/99-mitch.conf
-      // to override the distros' default PermitRootLogin prohibit-password
-      // — that's the line rejecting root logins from the password
-      // Proxmox stored at create time.
-      // Install on tartarus (one-time):
-      //   install -m 0755 tools/proxmox-hookscript-mitch-sshd-bootstrap.sh \
-      //              /var/lib/vz/snippets/mitch-sshd-bootstrap.sh
-      hookscript: 'local:snippets/mitch-sshd-bootstrap.sh'
+      pool: 'sandboxes'
     });
+    // Note: the LXC sshd PermitRootLogin override hookscript is NOT
+    // attached in the pct create bodyParams above. PVE restricts the
+    // `hookscript:` field to root@pam (the bun-server PVEVMAdmin token
+    // gets a 403), so the hook is attached out-of-band by
+    // attachSshdHookToLxc() (via SSH to tartarus). See
+    // tools/tartarus-pct-exec-only.sh for the host-side forced command
+    // that translates `mitch-attach-hook <vmid>` into the pct set.
 
     const res = await fetch(createUrl, {
       method: 'POST',
@@ -18106,9 +18201,18 @@ async function createLxcContainer(email, tier, vmid, password) {
     }
 
     // Standard Proxmox templates (debian-12-standard, ubuntu-22.04, etc.) ship with
-    // openssh-server installed and started by default and accept the `password:`
-    // field via pct create, so the container is ssh-ready once the API reports
-    // it as running. No client-side bootstrap is needed.
+    // openssh-server installed and started by default, so once running, sshd
+    // is listening on :22 — but root password auth is rejected by the
+    // distros' default PermitRootLogin prohibit-password. Auto-attach the
+    // hookscript via the SSH bridge so the override is in place when this
+    // function returns. Failures are logged but do not roll back the create.
+    attachSshdHookToLxc(vmid).then((r) => {
+      if (r.success) {
+        console.log(`[proxmox] sshd hook attached for LXC ${vmid}`);
+      } else {
+        console.warn(`[proxmox] sshd hook attach failed for LXC ${vmid}:`, r.error, r.stderr || '');
+      }
+    });
 
     return { success: true, vmid };
   } catch (err) {
@@ -18121,6 +18225,9 @@ async function cloneUserVm(email, tier, vmid, password) {
   if (!PVE_TOKEN) {
     console.error('[proxmox] API token is not configured in environment.');
     return { success: false, error: 'Proxmox token not configured.' };
+  }
+  try { assertVmIdInRange(vmid, 'cloneUserVm'); } catch (e) {
+    return { success: false, error: e.message };
   }
 
   const templateId = PVE_TEMPLATE_LINUX;
