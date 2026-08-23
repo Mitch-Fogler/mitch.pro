@@ -27,8 +27,15 @@
 # and a non-zero exit, which sshd reports as a permission failure to the
 # SSH client. The script never logs the requested command.
 #
-set -euo pipefail
-cmd="$SSH_ORIGINAL_COMMAND"
+# We deliberately do NOT use `set -u` here: when this script runs as
+# a forced command over an interactive SSH session (no command supplied
+# on the command line, e.g. someone runs `ssh -i key user@host`), sshd
+# invokes the script with no $SSH_ORIGINAL_COMMAND set. Under `set -u`
+# that would print "SSH_ORIGINAL_COMMAND: unbound variable" and the
+# connection would drop. Without `-u`, an unset $SSH_ORIGINAL_COMMAND
+# is just an empty string and the Access Denied path runs cleanly.
+set -eo pipefail
+cmd="${SSH_ORIGINAL_COMMAND:-}"
 
 # Verb 2: mitch-attach-hook <vmid>
 # Validates the vmid is in the student/premium sandbox range, then runs

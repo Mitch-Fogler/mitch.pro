@@ -57,18 +57,33 @@ const LOGS_DIR = join(BASE, 'logs');
 try { mkdirSync(LOGS_DIR, { recursive: true }); } catch {}
 
 try {
-  const env = readFileSync(join(BASE, '.env'), 'utf8');
-  for (const line of env.split('\n')) {
+  const envText = readFileSync(join(BASE, '.env'), 'utf8');
+  const seen = [];
+  const skipped = [];
+  for (const line of envText.split('\n')) {
     const m = line.match(/^\s*(?:export\s+)?([A-Z_]+)\s*=\s*"?([^"]*)"?\s*$/);
     if (m) {
       const key = m[1];
       const val = m[2];
       if (process.env[key] === undefined) {
         process.env[key] = val;
+        seen.push(key);
+      } else {
+        skipped.push(key);
       }
+    } else if (line.trim() && !line.trim().startsWith('#')) {
+      // Non-empty, non-comment lines that didn't match the regex
+      // — useful for diagnosing "I put it in .env but the loader skipped it".
+      skipped.push(`<unmatched: ${line.trim().slice(0, 60)}>`);
     }
   }
-} catch {}
+  if (process.env.NODE_ENV !== 'test') {
+    console.log(`[env] loaded ${seen.length} vars from .env: ${seen.join(', ') || '(none)'}`);
+    if (skipped.length) console.log(`[env] skipped ${skipped.length}: ${skipped.slice(0, 5).join(', ')}${skipped.length > 5 ? '…' : ''}`);
+  }
+} catch (e) {
+  console.warn(`[env] .env loader failed: ${e.message}`);
+}
 
 let VAPID_PUBLIC  = (process.env.VAPID_PUBLIC_KEY  || '').trim();
 let VAPID_PRIVATE = (process.env.VAPID_PRIVATE_KEY || '').trim();
@@ -12326,7 +12341,10 @@ function loadAllGamesList() {
         await powerUserVm(entry.vmid, 'start');
       }
       const fallbackIp = `10.0.0.${entry.vmid >= 300 ? (entry.vmid - 200) : entry.vmid}`;
-      return jsonResp(200, { success: true, ip: pveStatus.ip || fallbackIp, vmid: entry.vmid });
+      // Returning the stored password too — otherwise the second click
+      // hits this branch (reconnect, no new pct create) and the frontend
+      // gets `data.password === undefined`, producing a broken SSH URL.
+      return jsonResp(200, { success: true, ip: pveStatus.ip || fallbackIp, vmid: entry.vmid, password: entry.password || 'password' });
     }
 
     // Check pool capacity (Max 10) by querying Proxmox directly
@@ -18133,7 +18151,12 @@ async function attachSshdHookToLxc(vmid) {
   const keyPath = process.env.PVE_SSH_KEY_PATH;
   const port = parseInt(process.env.PVE_SSH_PORT || '22', 10);
   if (!keyPath) {
-    return { success: false, error: 'PVE_SSH_KEY_PATH is not configured. Set it in .env to the bun-server-private key whose public half is in tartarus:/root/.ssh/authorized_keys with command="/usr/local/bin/pct-exec-only".' };
+    // Surface diagnostic context in the error so the operator can tell
+    // whether the .env loader failed to match the line, the var was
+    // already-set-but-empty by the orchestrator, or .env genuinely lacks
+    // the entry. The keys.json loader logs at startup if anything was
+    // skipped; pair that with this message to nail down the cause.
+    return { success: false, error: 'PVE_SSH_KEY_PATH is not configured. process.env.PVE_SSH_KEY_PATH is undefined — check that .env contains `PVE_SSH_KEY_PATH=/path/to/key` (no quotes, no trailing comment) and that the [env] startup log reports it as loaded.' };
   }
 
   // mitch-attach-hook <vmid> is the verb recognized by the
