@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-23
+
+- **Daily puzzle themes crash.** `puzzles` is `[fen, moves, rating, "theme1 theme2 …"]` (space-separated string, not array); the worker was doing `(p[3] || []).slice(0,3).join(',')` which threw `TypeError: ... .join is not a function` whenever a puzzle fired. Now `String(p[3] || '').split(/\s+/).filter(Boolean).slice(0,3).join(', ')`.
+- **`attachSshdHookToLxc` SSH defaults fixed.** Host was `tartarus` (unresolvable from the bun-server container) and key was `/etc/mitch/pve-host.key` (not mounted). Default host is now `192.168.100.1`, the key has no fallback default — `PVE_SSH_KEY_PATH` must be set in `.env` and the key file mounted into the container, otherwise the helper short-circuits with `PVE_SSH_KEY_PATH is not configured`.
+- **Masked-recipient guard in `sendEmailBg`.** Auto-email workers were observed sending to a recipient shaped like `ad***n@…`, which is the exact `maskEmail()` display pattern. Audited all 28 call sites — none of them pass a masked value to `sendEmailBg`; `maskEmail` is only ever used for display contexts. As a safety net, `sendEmailBg` now refuses to spawn the mail script and emits an ntfy + stderr warning if `to` matches the mask pattern `^[A-Za-z0-9._%+-]{2}\*\*\*[A-Za-z0-9._%+-]*@`. If this guard ever fires, the leak is from a caller, not from the send pipeline.
+
 ## 2026-08-22
 
 - **LXC creation cleanup.** The Proxmox standard templates (debian-12-standard, ubuntu-22.04+) ship openssh-server installed and started by default and accept the `password:` field at create time, so `createLxcContainer` no longer needs to bootstrap sshd. The earlier `pctExec` / `waitForLxcRunning` / `bootstrapLxcSshd` / hookscript path is removed; `createLxcContainer` is now a thin wrapper around `pct create` plus the existing post-create logic.

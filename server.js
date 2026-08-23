@@ -2668,6 +2668,16 @@ function emailScript(to) {
 }
 
 function sendEmailBg(to, subject, body) {
+  // Defensive: refuse to send if the recipient looks masked (e.g. ad***n@…),
+  // which would mean a display-time censor leaked into a send path. The
+  // exact maskEmail() output pattern is `<first2>***<last1>@<domain>` for
+  // locals of length > 2, so any literal "***" sandwiched between alphanum
+  // on either side of an @ is a red flag.
+  if (typeof to === 'string' && /^[A-Za-z0-9._%+-]{2}\*\*\*[A-Za-z0-9._%+-]*@/.test(to)) {
+    ntfy(`Refusing to send — recipient looks masked: ${to}`, { title: 'Masked recipient guard', priority: 'high' });
+    console.error(`[sendEmailBg] refusing masked recipient: ${to}`);
+    return;
+  }
   const matched = emailHasProfanity(to);
   if (matched) {
     ntfy(`Email to ${to} dropped — "${matched}" in name`, { title: 'Profanity drop', priority: 'high' });
@@ -4072,7 +4082,7 @@ async function dailyPuzzleWorker() {
       if (ulog.puzzle === dayKey) continue;
       const p = pool[Math.floor(Math.random() * pool.length)];
       const turn   = p[0].split(' ')[1] === 'w' ? 'White' : 'Black';
-      const themes = (p[3] || []).slice(0, 3).join(', ');
+      const themes = String(p[3] || '').split(/\s+/).filter(Boolean).slice(0, 3).join(', ');
       const body = `Here's today's chess puzzle (rating ~${p[2]}):\n\n${turn} to move and find the best continuation.\nFEN: ${p[0]}\nThemes: ${themes}\n\nSolve it at ${siteUrl(email)}/games/chess-bot/ (Puzzles tab)`;
       sendEmailBg(email, "Today's chess puzzle — mitch.pro", body);
       log[email] = { ...ulog, puzzle: dayKey };
@@ -18112,10 +18122,17 @@ async function attachSshdHookToLxc(vmid) {
   if (!isVmIdInRange(vmid)) {
     return { success: false, error: `vmid ${vmid} out of allowed range [${PVE_VMID_MIN}, ${PVE_VMID_MAX}]` };
   }
-  const host = process.env.PVE_SSH_HOST || 'tartarus';
+  // Defaults: 192.168.100.1 = tartarus on the user-supplied network.
+  // PVE_SSH_KEY_PATH must be set explicitly — no fallback so a wrong
+  // default can't silently pick the wrong key. Mount the key into the
+  // container via docker-compose and set both env vars in .env.
+  const host = process.env.PVE_SSH_HOST || '192.168.100.1';
   const user = process.env.PVE_SSH_USER || 'root';
-  const keyPath = process.env.PVE_SSH_KEY_PATH || '/etc/mitch/pve-host.key';
+  const keyPath = process.env.PVE_SSH_KEY_PATH;
   const port = parseInt(process.env.PVE_SSH_PORT || '22', 10);
+  if (!keyPath) {
+    return { success: false, error: 'PVE_SSH_KEY_PATH is not configured. Set it in .env to the bun-server-private key whose public half is in tartarus:/root/.ssh/authorized_keys with command="/usr/local/bin/pct-exec-only".' };
+  }
 
   // mitch-attach-hook <vmid> is the verb recognized by the
   // /usr/local/bin/pct-exec-only forced command on tartarus.
