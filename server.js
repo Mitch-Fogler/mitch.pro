@@ -17,6 +17,7 @@ import {
   writeDocument,
   rebuildCoreTablesFromDocuments,
 } from './lib/data_store.js';
+import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
 
 try {
   if (dns && dns.setDefaultResultOrder) {
@@ -381,16 +382,6 @@ function loadClickerSessions() {
 }
 function saveClickerSessions() {
   saveJson(CLICKER_FILE, Object.fromEntries(clickerSessions));
-}
-
-function loadTypingSessions() {
-  try {
-    const data = loadJson(TYPING_FILE, {});
-    typingSessions = new Map(Object.entries(data));
-  } catch { typingSessions = new Map(); }
-}
-function saveTypingSessions() {
-  saveJson(TYPING_FILE, Object.fromEntries(typingSessions));
 }
 
 function loadLogicSessions() {
@@ -1308,25 +1299,8 @@ function threadKey(subject) {
   return (subject || '').replace(/^(re|fwd?):\s*/i, '').trim().toLowerCase();
 }
 
-function loadJson(file, fallback) {
-  return readDocument(file, fallback);
-}
-
-async function saveJson(file, data) {
-  try {
-    writeDocument(file, data);
-  } catch (e) {
-    console.error(`[saveJson] error writing ${file}: ${e.message}`);
-  }
-}
-
-function saveJsonSync(file, data) {
-  try {
-    writeDocument(file, data);
-  } catch (e) {
-    console.error(`[saveJsonSync] error writing ${file}: ${e.message}`);
-  }
-}
+// JSON I/O is now in lib/jsonStore.js. The functions loadJson/saveJson/saveJsonSync
+// are imported at the top of this file.
 
 // One-time reset requested for the messaging-app relaunch. The marker lives in
 // the persistent data directory, so later restarts cannot erase new messages.
@@ -1857,7 +1831,7 @@ function renameEmailReferences(oldNorm, newNorm, newEmail) {
   try { rebuildCoreTablesFromDocuments(); } catch {}
 }
 
-function maskEmail(email) {
+function displayEmail(email) {
   if (!email) return '';
   return email.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro');
 }
@@ -2673,7 +2647,7 @@ setInterval(() => {
 // ── Email helpers ─────────────────────────────────────────────────────────────
 
 function loadEmailWhitelist() {
-  try { return new Set(JSON.parse(readFileSync(join(BASE, 'data', 'email_whitelist.json'), 'utf8')).map(e => e.toLowerCase())); }
+  try { return new Set(loadJson(join(BASE, 'data', 'email_whitelist.json'), []).map(e => e.toLowerCase())); }
   catch { return new Set(); }
 }
 
@@ -8200,6 +8174,29 @@ Mitch.pro Team`;
       return jsonResp(200, { success: true, message: `VM ${app.vmid} successfully restored and powered on.` });
     }
 
+    if (path === '/api/admin/lxc-repair' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+
+      const vmid = parseInt(body.vmid, 10);
+      if (!Number.isFinite(vmid) || vmid < 100) {
+        return jsonResp(400, { error: 'valid vmid required' });
+      }
+      const password = body.password ? String(body.password) : '';
+
+      const result = await bootstrapLxcSshd(vmid, { password: password || undefined });
+      const adminEmail = emailFromSid(sid) || 'admin';
+      logAdminAction(adminEmail, 'lxc_repair', { vmid, success: result.success, error: result.error || null });
+      if (!result.success) {
+        return jsonResp(502, { success: false, error: result.error, detail: result.detail || null });
+      }
+      return jsonResp(200, { success: true, vmid });
+    }
+
     if (path === '/api/admin/grant-premium' && method === 'POST') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
@@ -9610,8 +9607,8 @@ Mitch.pro Team`;
         if (email) {
           const extra = loadJson(join(BASE, 'data', 'newsletter_extra.json'), []);
           if (!extra.includes(email)) extra.push(email);
-          writeFileSync(join(BASE, 'data', 'newsletter_extra.json'),
-            JSON.stringify([...new Set(extra)].sort(), null, 2));
+          saveJsonSync(join(BASE, 'data', 'newsletter_extra.json'),
+            [...new Set(extra)].sort());
         }
         return jsonResp(200, { ok: true });
       }
@@ -9619,7 +9616,7 @@ Mitch.pro Team`;
       if (dtype === 'newsletter_remove') {
         const email = (body.email || '').trim().toLowerCase();
         const extra = loadJson(join(BASE, 'data', 'newsletter_extra.json'), []).filter(e => e.toLowerCase() !== email);
-        writeFileSync(join(BASE, 'data', 'newsletter_extra.json'), JSON.stringify(extra, null, 2));
+        saveJsonSync(join(BASE, 'data', 'newsletter_extra.json'), extra);
         return jsonResp(200, { ok: true });
       }
 
@@ -18078,15 +18075,151 @@ async function powerUserVm(vmid, action) {
   }
 }
 
+async function pctExec(node, vmid, commandArray) {
+  // Proxmox API exec wrapper. commandArray is an array of strings sent as repeated 'command' params.
+  const url = `${PVE_URL}/nodes/${node}/lxc/${vmid}/exec`;
+  const params = new URLSearchParams();
+  for (const part of commandArray) params.append('command', part);
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': PVE_TOKEN,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: params.toString(),
+    tls: { rejectUnauthorized: false }
+  });
+  const text = await res.text();
+  let data;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function waitForLxcRunning(vmid, { timeoutMs = 60_000, intervalMs = 1500 } = {}) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const res = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/current`, {
+      headers: { 'Authorization': PVE_TOKEN },
+      tls: { rejectUnauthorized: false }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const status = data?.data?.status;
+      if (status === 'running') return true;
+      if (status === 'stopped' || status === 'paused') {
+        // Try to start it; the user can re-run repair if this fails.
+        await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/start`, {
+          method: 'POST',
+          headers: { 'Authorization': PVE_TOKEN },
+          tls: { rejectUnauthorized: false }
+        });
+      }
+    }
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
+// Idempotent sshd bootstrap for student LXCs. Written to /etc/ssh/sshd_config.d/ so it
+// survives distro default-config updates and never fights the PermitRootLogin line.
+const LXC_SSHD_DROPIN = '99-mitch.conf';
+const LXC_SSHD_DROPIN_BODY = [
+  '# Managed by mitch.pro — do not edit by hand.',
+  'PermitRootLogin yes',
+  'PasswordAuthentication yes',
+  'PubkeyAuthentication yes',
+  'UsePAM yes',
+  ''
+].join('\n');
+
+async function bootstrapLxcSshd(vmid, { password } = {}) {
+  // 1. Make sure container is running before exec calls.
+  const running = await waitForLxcRunning(vmid);
+  if (!running) {
+    return { success: false, error: `LXC ${vmid} did not reach 'running' state in time` };
+  }
+
+  // 2. Update apt and install openssh-server if missing.
+  //    Use DEBIAN_FRONTEND=noninteractive and --no-install-recommends to keep it fast.
+  const installRes = await pctExec(PVE_NODE, vmid, [
+    'bash', '-lc',
+    'export DEBIAN_FRONTEND=noninteractive; ' +
+      'if ! dpkg -s openssh-server >/dev/null 2>&1; then ' +
+        'apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-server; ' +
+      'fi'
+  ]);
+  if (!installRes.ok) {
+    console.error('[proxmox] sshd install failed', installRes.status, installRes.data);
+    return { success: false, error: 'Failed to install openssh-server', detail: installRes.data };
+  }
+
+  // 3. Write the drop-in. /etc/ssh/sshd_config.d/ is the supported override path on
+  //    Debian 12 / Ubuntu 22.04+; Include /etc/ssh/sshd_config.d/*.conf is on by default.
+  //    The drop-in overrides distro defaults so PermitRootLogin prohibit-password
+  //    stops blocking password logins for root.
+  const writeDropin = await pctExec(PVE_NODE, vmid, [
+    'bash', '-c',
+    `mkdir -p /etc/ssh/sshd_config.d && ` +
+      `printf %s ${JSON.stringify(LXC_SSHD_DROPIN_BODY)} > /etc/ssh/sshd_config.d/${LXC_SSHD_DROPIN} && ` +
+      `chmod 0644 /etc/ssh/sshd_config.d/${LXC_SSHD_DROPIN}`
+  ]);
+  if (!writeDropin.ok) {
+    console.error('[proxmox] sshd drop-in write failed', writeDropin.status, writeDropin.data);
+    return { success: false, error: 'Failed to write sshd drop-in', detail: writeDropin.data };
+  }
+
+  // 4. Make sure the service is enabled and started. systemctl may not work in a
+  //    brand-new LXC without an init; fall back to invoking sshd directly.
+  const enableRes = await pctExec(PVE_NODE, vmid, [
+    'bash', '-lc',
+    'if command -v systemctl >/dev/null 2>&1; then ' +
+      'systemctl enable ssh >/dev/null 2>&1 || systemctl enable sshd >/dev/null 2>&1; ' +
+      'systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; ' +
+    'else ' +
+      'service ssh restart 2>/dev/null || service sshd restart 2>/dev/null || true; ' +
+    'fi'
+  ]);
+  if (!enableRes.ok) {
+    console.warn('[proxmox] sshd enable/restart returned non-ok, continuing', enableRes.status);
+  }
+
+  // 5. If root password was provided, force-set it. Proxmox sets it at creation
+  //    but if the LXC was created without one (e.g. on repair), we need this.
+  if (password) {
+    const setPass = await pctExec(PVE_NODE, vmid, [
+      'bash', '-lc',
+      `echo 'root:${password.replace(/'/g, "'\\''")}' | chpasswd`
+    ]);
+    if (!setPass.ok) {
+      console.warn('[proxmox] chpasswd failed for', vmid, setPass.data);
+    }
+  }
+
+  // 6. Verify sshd is actually listening on port 22. If not, sshd failed to start.
+  await new Promise(r => setTimeout(r, 1500));
+  const verify = await pctExec(PVE_NODE, vmid, [
+    'bash', '-c',
+    'if command -v ss >/dev/null 2>&1; then ss -tlnp 2>/dev/null | grep -E \':22\\s\'; ' +
+      'else netstat -tlnp 2>/dev/null | grep -E \':22\\s\'; fi; ' +
+      'exit 0'
+  ]);
+  const listening = (verify.data?.data || '').toLowerCase().includes(':22');
+  if (!listening) {
+    return { success: false, error: 'sshd not listening on port 22 after bootstrap', detail: verify.data };
+  }
+
+  return { success: true };
+}
+
 async function createLxcContainer(email, tier, vmid, password) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
-  
+
   const cores = tier === 'premium' ? 2 : 1;
   const memory = tier === 'premium' ? 4096 : 1024;
-  
+
   const ipSuffix = vmid >= 300 ? (vmid - 200) : vmid;
   const containerIp = `10.0.0.${ipSuffix}`;
-  
+
   try {
     const createUrl = `${PVE_URL}/nodes/${PVE_NODE}/lxc`;
     const bodyParams = new URLSearchParams({
@@ -18121,23 +18254,20 @@ async function createLxcContainer(email, tier, vmid, password) {
       return { success: false, error: data.errors ? JSON.stringify(data.errors) : (data.message || 'LXC creation failed') };
     }
 
-    // Wait a brief moment for LXC to boot, then configure SSH root login via portal SSH key
-    setTimeout(() => {
-      try {
-        const { spawn } = require('child_process');
-        spawn('ssh', [
-          '-i', join(DATA_DIR, 'portal_id_rsa'),
-          '-p', '39222',
-          '-o', 'StrictHostKeyChecking=no',
-          '-o', 'UserKnownHostsFile=/dev/null',
-          'root@mitch.pro',
-          `pct exec ${vmid} -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config && pct exec ${vmid} -- systemctl restart ssh`
-        ]);
-        console.log(`[proxmox] Spawned SSH config task to enable root login on LXC ${vmid}`);
-      } catch (err) {
-        console.error('[proxmox] Failed to run post-create config:', err);
-      }
-    }, 5000);
+    // Run sshd bootstrap in the background. We do NOT block the create response on this —
+    // the user gets a 'starting' state immediately, and the VM is ready when sshd is up.
+    // Failures are logged; admins can re-run repair via /api/admin/lxc-repair.
+    bootstrapLxcSshd(vmid, { password })
+      .then((r) => {
+        if (r.success) {
+          console.log(`[proxmox] sshd ready for LXC ${vmid}`);
+        } else {
+          console.error(`[proxmox] sshd bootstrap failed for LXC ${vmid}:`, r.error, r.detail || '');
+        }
+      })
+      .catch((err) => {
+        console.error(`[proxmox] sshd bootstrap crashed for LXC ${vmid}:`, err);
+      });
 
     return { success: true, vmid };
   } catch (err) {
