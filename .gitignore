@@ -40,6 +40,11 @@ mail/check_email/*
 backups/
 .docker-data/
 proxy/jail/
+
+# Test harness artifacts (created by tests/test_runner.js)
+data_backup_test/
+/tests/.tmp/
+/test-results/
 /*.json
 !/package.json
 !/package-lock.json
