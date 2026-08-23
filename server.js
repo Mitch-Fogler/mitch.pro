@@ -17980,21 +17980,21 @@ function isVmIdInRange(vmid) {
 async function getExistingVmids() {
   const ids = new Map();
   try {
-    const lxcRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc`, {
+    const lxcRes = await fetchWithDeadline(`${PVE_URL}/nodes/${PVE_NODE}/lxc`, {
       headers: { 'Authorization': PVE_TOKEN },
       tls: { rejectUnauthorized: false }
-    });
-    if (lxcRes.ok) {
+    }, 5000);
+    if (lxcRes && lxcRes.ok) {
       const data = await lxcRes.json();
       if (data.data) {
         for (const vm of data.data) ids.set(parseInt(vm.vmid, 10), vm.name || '');
       }
     }
-    const qemuRes = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/qemu`, {
+    const qemuRes = await fetchWithDeadline(`${PVE_URL}/nodes/${PVE_NODE}/qemu`, {
       headers: { 'Authorization': PVE_TOKEN },
       tls: { rejectUnauthorized: false }
-    });
-    if (qemuRes.ok) {
+    }, 5000);
+    if (qemuRes && qemuRes.ok) {
       const data = await qemuRes.json();
       if (data.data) {
         for (const vm of data.data) ids.set(parseInt(vm.vmid, 10), vm.name || '');
@@ -18031,10 +18031,11 @@ async function getUserVmStatus(vmid) {
   const type = getVmTypeByVmid(vmid);
   try {
     const statusUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}/status/current`;
-    const res = await fetch(statusUrl, {
+    const res = await fetchWithDeadline(statusUrl, {
       headers: { 'Authorization': PVE_TOKEN },
       tls: { rejectUnauthorized: false }
-    });
+    }, 5000);
+    if (!res) return { success: false, error: 'Proxmox status fetch timed out' };
     if (!res.ok) return { success: false, error: `Failed to fetch status: ${res.status}` };
     const data = await res.json();
 
@@ -18045,11 +18046,12 @@ async function getUserVmStatus(vmid) {
     } else if (data.data && data.data.status === 'running') {
       // Try to get IP address from QEMU Guest Agent
       const agentUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/agent/network-get-interfaces`;
-      const agentRes = await fetch(agentUrl, {
+      const agentRes = await fetchWithDeadline(agentUrl, {
         headers: { 'Authorization': PVE_TOKEN },
         tls: { rejectUnauthorized: false }
-      });
-      if (agentRes.ok) {
+      }, 3000);
+      if (!agentRes) { /* timeout — fall through to fallback ip */ }
+      else if (agentRes.ok) {
         const agentData = await agentRes.json();
         if (agentData.data && agentData.data.result) {
           for (const iface of agentData.data.result) {
@@ -18201,7 +18203,7 @@ async function createLxcContainer(email, tier, vmid, password) {
     // tools/tartarus-pct-exec-only.sh for the host-side forced command
     // that translates `mitch-attach-hook <vmid>` into the pct set.
 
-    const res = await fetch(createUrl, {
+    const res = await fetchWithDeadline(createUrl, {
       method: 'POST',
       headers: {
         'Authorization': PVE_TOKEN,
@@ -18209,9 +18211,16 @@ async function createLxcContainer(email, tier, vmid, password) {
       },
       body: bodyParams.toString(),
       tls: { rejectUnauthorized: false }
-    });
+    }, 15000);
 
-    const data = await res.json();
+    if (!res) return { success: false, error: 'Proxmox unreachable (pct create timed out)' };
+
+    let data;
+    try { data = await res.json(); } catch (je) {
+      const txt = await res.text().catch(() => '');
+      console.error('[proxmox] LXC creation: non-JSON response:', res.status, txt.slice(0, 500));
+      return { success: false, error: `Proxmox returned non-JSON (${res.status}): ${txt.slice(0, 200) || '(empty body)'}` };
+    }
     if (!res.ok) {
       console.error('[proxmox] LXC creation failed:', res.status, data);
       return { success: false, error: data.errors ? JSON.stringify(data.errors) : (data.message || 'LXC creation failed') };
