@@ -8174,29 +8174,6 @@ Mitch.pro Team`;
       return jsonResp(200, { success: true, message: `VM ${app.vmid} successfully restored and powered on.` });
     }
 
-    if (path === '/api/admin/lxc-repair' && method === 'POST') {
-      const rl = checkRateLimit(req, path); if (rl) return rl;
-      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const cookies = getCookies(req);
-      const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
-      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
-
-      const vmid = parseInt(body.vmid, 10);
-      if (!Number.isFinite(vmid) || vmid < 100) {
-        return jsonResp(400, { error: 'valid vmid required' });
-      }
-      const password = body.password ? String(body.password) : '';
-
-      const result = await bootstrapLxcSshd(vmid, { password: password || undefined });
-      const adminEmail = emailFromSid(sid) || 'admin';
-      logAdminAction(adminEmail, 'lxc_repair', { vmid, success: result.success, error: result.error || null });
-      if (!result.success) {
-        return jsonResp(502, { success: false, error: result.error, detail: result.detail || null });
-      }
-      return jsonResp(200, { success: true, vmid });
-    }
-
     if (path === '/api/admin/grant-premium' && method === 'POST') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
@@ -18075,236 +18052,6 @@ async function powerUserVm(vmid, action) {
   }
 }
 
-async function pctExec(node, vmid, commandArray) {
-  // Proxmox API exec wrapper. commandArray is an array of strings sent as repeated 'command' params.
-  const url = `${PVE_URL}/nodes/${node}/lxc/${vmid}/exec`;
-  const params = new URLSearchParams();
-  for (const part of commandArray) params.append('command', part);
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': PVE_TOKEN,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body: params.toString(),
-    tls: { rejectUnauthorized: false }
-  });
-  const text = await res.text();
-  let data;
-  try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
-  return { ok: res.ok, status: res.status, data };
-}
-
-async function fetchLxcStatus(vmid) {
-  const res = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/current`, {
-    headers: { 'Authorization': PVE_TOKEN },
-    tls: { rejectUnauthorized: false }
-  });
-  if (!res.ok) return null;
-  const data = await res.json();
-  return data?.data?.status || null;
-}
-
-// Pull last ~50 lines of the LXC's start log so we can surface a useful error
-// instead of "did not reach 'running' state in time". Returns null if unavailable.
-async function fetchLxcStartLog(vmid) {
-  try {
-    const res = await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/log?limit=50`, {
-      headers: { 'Authorization': PVE_TOKEN },
-      tls: { rejectUnauthorized: false }
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const text = (data?.data || []).join('');
-    return text || null;
-  } catch {
-    return null;
-  }
-}
-
-function classifyLxcStartFailure(log) {
-  if (!log) return 'LXC failed to start (no log available). Most common cause: template has no init system (e.g. debian-12-standard). Use a template with systemd preinstalled such as debian-12-genericcloud.';
-  if (log.includes('Failed to exec "/sbin/init"')) {
-    return 'LXC template has no init system (lxc-start could not exec /sbin/init). Use a template that ships systemd, e.g. debian-12-genericcloud-amd64.tar.zst.';
-  }
-  if (log.includes('Failed to mount cgroup')) {
-    return 'LXC failed to mount cgroup filesystem. The Proxmox host kernel is missing cgroup v2 support or the cgroupfs is not mounted at /sys/fs/cgroup.';
-  }
-  if (log.includes('apparmor')) {
-    return 'LXC failed due to an AppArmor policy error. Check `aa-status` on the Proxmox host and `journalctl -xe` for AppArmor complaints.';
-  }
-  if (log.includes('Failed to setup the seccomp')) {
-    return 'LXC failed due to a seccomp configuration error. The kernel may be missing required seccomp features.';
-  }
-  // Surface the last error line verbatim so it's not lost.
-  const errLine = log.split('\n').reverse().find(l => /ERROR|WARN.*fail/i.test(l));
-  if (errLine) return `LXC failed to start. Last log line: ${errLine.trim()}. See 'pct start <vmid> --debug' on the Proxmox host for full details.`;
-  return 'LXC failed to start. See /nodes/.../lxc/<vmid>/log on the Proxmox API or run `pct start <vmid> --debug` on the host.';
-}
-
-async function waitForLxcRunning(vmid, { timeoutMs = 60_000, intervalMs = 1500 } = {}) {
-  const start = Date.now();
-  let sawStarting = false;
-  let lastNonRunningStatus = null;
-  while (Date.now() - start < timeoutMs) {
-    const status = await fetchLxcStatus(vmid);
-    if (status === 'running') return { ok: true };
-    if (status === 'starting') {
-      sawStarting = true;
-    } else if (status === 'stopped' || status === 'paused') {
-      lastNonRunningStatus = status;
-      // If the container started and then came back to stopped, it crashed —
-      // don't loop here, that's the bug we're trying to diagnose.
-      if (sawStarting) {
-        const log = await fetchLxcStartLog(vmid);
-        return { ok: false, error: classifyLxcStartFailure(log), log };
-      }
-      // Never reached starting yet: kick a start and keep waiting.
-      await fetch(`${PVE_URL}/nodes/${PVE_NODE}/lxc/${vmid}/status/start`, {
-        method: 'POST',
-        headers: { 'Authorization': PVE_TOKEN },
-        tls: { rejectUnauthorized: false }
-      }).catch(() => {});
-    }
-    await new Promise(r => setTimeout(r, intervalMs));
-  }
-  // Timed out. If we never even got the container into 'starting', the create
-  // call may not have started it. Kick one more start attempt and capture the
-  // log if it's now stopped (the common case for init-missing templates).
-  if (lastNonRunningStatus === 'stopped' && !sawStarting) {
-    const log = await fetchLxcStartLog(vmid);
-    return { ok: false, error: classifyLxcStartFailure(log), log };
-  }
-  return { ok: false, error: `LXC ${vmid} did not reach 'running' state in time (last status: ${lastNonRunningStatus ?? 'unknown'})` };
-}
-
-// Idempotent sshd bootstrap for student LXCs. Written to /etc/ssh/sshd_config.d/ so it
-// survives distro default-config updates and never fights the PermitRootLogin line.
-const LXC_SSHD_DROPIN = '99-mitch.conf';
-const LXC_SSHD_DROPIN_BODY = [
-  '# Managed by mitch.pro — do not edit by hand.',
-  'PermitRootLogin yes',
-  'PasswordAuthentication yes',
-  'PubkeyAuthentication yes',
-  'UsePAM yes',
-  ''
-].join('\n');
-
-// Derive the student-subnet IP assigned to an LXC VMID.
-// Mirrors the formula in createLxcContainer so the LXC bootstrap can probe
-// sshd reachability without needing a working pctExec API endpoint.
-function lxcIpForVmid(vmid) {
-  const suffix = vmid >= 300 ? (vmid - 200) : vmid;
-  return `10.0.0.${suffix}`;
-}
-
-// Open a TCP connection to host:port. Resolves to true if the connect
-// succeeded before the timeout, false otherwise. Doesn't read or write
-// any bytes — just confirms that *something* is listening.
-async function tcpProbe(host, port, timeoutMs = 4000) {
-  let conn;
-  try {
-    conn = await Promise.race([
-      Bun.connect({ hostname: host, port, socket: { data(_d, _e) {}, open(_s) {}, close() {}, error() {} } }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))
-    ]);
-    try { conn.end?.(); } catch {}
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function bootstrapLxcSshd(vmid, { password } = {}) {
-  // 1. Make sure container is running before exec calls.
-  const running = await waitForLxcRunning(vmid);
-  if (!running.ok) {
-    console.error('[proxmox] sshd bootstrap blocked, container not running:', running.error);
-    return { success: false, error: running.error, log: running.log };
-  }
-
-  // 1a. Fast-path probe: if sshd is already listening on the container's IP,
-  //     nothing else needs to happen. Standard Proxmox templates (debian-12,
-  //     ubuntu-22.04+) ship with openssh-server installed and started by
-  //     default, so this is the common case. The pctExec API path below
-  //     is a 501 on some PVE versions, so we don't want to depend on it
-  //     unless we have to.
-  const ip = lxcIpForVmid(vmid);
-  if (await tcpProbe(ip, 22)) {
-    return { success: true, alreadyReady: true };
-  }
-
-  // 2. Update apt and install openssh-server if missing.
-  //    Use DEBIAN_FRONTEND=noninteractive and --no-install-recommends to keep it fast.
-  const installRes = await pctExec(PVE_NODE, vmid, [
-    'bash', '-lc',
-    'export DEBIAN_FRONTEND=noninteractive; ' +
-      'if ! dpkg -s openssh-server >/dev/null 2>&1; then ' +
-        'apt-get update -qq && apt-get install -y -qq --no-install-recommends openssh-server; ' +
-      'fi'
-  ]);
-  if (!installRes.ok) {
-    console.error('[proxmox] sshd install failed', installRes.status, installRes.data);
-    return { success: false, error: 'Failed to install openssh-server', detail: installRes.data };
-  }
-
-  // 3. Write the drop-in. /etc/ssh/sshd_config.d/ is the supported override path on
-  //    Debian 12 / Ubuntu 22.04+; Include /etc/ssh/sshd_config.d/*.conf is on by default.
-  //    The drop-in overrides distro defaults so PermitRootLogin prohibit-password
-  //    stops blocking password logins for root.
-  const writeDropin = await pctExec(PVE_NODE, vmid, [
-    'bash', '-c',
-    `mkdir -p /etc/ssh/sshd_config.d && ` +
-      `printf %s ${JSON.stringify(LXC_SSHD_DROPIN_BODY)} > /etc/ssh/sshd_config.d/${LXC_SSHD_DROPIN} && ` +
-      `chmod 0644 /etc/ssh/sshd_config.d/${LXC_SSHD_DROPIN}`
-  ]);
-  if (!writeDropin.ok) {
-    console.error('[proxmox] sshd drop-in write failed', writeDropin.status, writeDropin.data);
-    return { success: false, error: 'Failed to write sshd drop-in', detail: writeDropin.data };
-  }
-
-  // 4. Make sure the service is enabled and started. systemctl may not work in a
-  //    brand-new LXC without an init; fall back to invoking sshd directly.
-  const enableRes = await pctExec(PVE_NODE, vmid, [
-    'bash', '-lc',
-    'if command -v systemctl >/dev/null 2>&1; then ' +
-      'systemctl enable ssh >/dev/null 2>&1 || systemctl enable sshd >/dev/null 2>&1; ' +
-      'systemctl restart ssh 2>/dev/null || systemctl restart sshd 2>/dev/null; ' +
-    'else ' +
-      'service ssh restart 2>/dev/null || service sshd restart 2>/dev/null || true; ' +
-    'fi'
-  ]);
-  if (!enableRes.ok) {
-    console.warn('[proxmox] sshd enable/restart returned non-ok, continuing', enableRes.status);
-  }
-
-  // 5. If root password was provided, force-set it. Proxmox sets it at creation
-  //    but if the LXC was created without one (e.g. on repair), we need this.
-  if (password) {
-    const setPass = await pctExec(PVE_NODE, vmid, [
-      'bash', '-lc',
-      `echo 'root:${password.replace(/'/g, "'\\''")}' | chpasswd`
-    ]);
-    if (!setPass.ok) {
-      console.warn('[proxmox] chpasswd failed for', vmid, setPass.data);
-    }
-  }
-
-  // 6. Verify sshd is actually listening on port 22. If not, sshd failed to start.
-  await new Promise(r => setTimeout(r, 1500));
-  const verify = await pctExec(PVE_NODE, vmid, [
-    'bash', '-c',
-    'if command -v ss >/dev/null 2>&1; then ss -tlnp 2>/dev/null | grep -E \':22\\s\'; ' +
-      'else netstat -tlnp 2>/dev/null | grep -E \':22\\s\'; fi; ' +
-      'exit 0'
-  ]);
-  const listening = (verify.data?.data || '').toLowerCase().includes(':22');
-  if (!listening) {
-    return { success: false, error: 'sshd not listening on port 22 after bootstrap', detail: verify.data };
-  }
-
-  return { success: true };
-}
 
 async function createLxcContainer(email, tier, vmid, password) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
@@ -18330,23 +18077,7 @@ async function createLxcContainer(email, tier, vmid, password) {
       nameserver: '1.1.1.1',
       unprivileged: 1,
       start: 1,
-      pool: 'sandboxes',
-      // Host-side hookscript (runs on the Proxmox host, not inside the LXC,
-      // so it bypasses the 501-returning /nodes/<n>/lxc/<vmid>/exec API):
-      //   - installs openssh-server if missing
-      //   - writes /etc/ssh/sshd_config.d/99-mitch.conf (PermitRootLogin yes)
-      //   - generates host keys if missing
-      //   - makes /var/run/sshd
-      //   - reads the password Proxmox stored in /etc/pve/lxc/<vmid>.conf
-      //     and runs `chpasswd` inside the chroot, because standard
-      //     templates (debian-12-standard etc.) do NOT honor the
-      //     password: arg without cloud-init
-      // Lives at /var/lib/vz/snippets/mitch-sshd-bootstrap.sh on tartarus;
-      // repo copy is tools/proxmox-hookscript-mitch-sshd-bootstrap.sh.
-      // Install path on the host (run once):
-      //   install -m 0755 tools/proxmox-hookscript-mitch-sshd-bootstrap.sh \
-      //              /var/lib/vz/snippets/mitch-sshd-bootstrap.sh
-      hookscript: 'local:snippets/mitch-sshd-bootstrap.sh'
+      pool: 'sandboxes'
     });
 
     const res = await fetch(createUrl, {
@@ -18365,20 +18096,10 @@ async function createLxcContainer(email, tier, vmid, password) {
       return { success: false, error: data.errors ? JSON.stringify(data.errors) : (data.message || 'LXC creation failed') };
     }
 
-    // Run sshd bootstrap in the background. We do NOT block the create response on this —
-    // the user gets a 'starting' state immediately, and the VM is ready when sshd is up.
-    // Failures are logged; admins can re-run repair via /api/admin/lxc-repair.
-    bootstrapLxcSshd(vmid, { password })
-      .then((r) => {
-        if (r.success) {
-          console.log(`[proxmox] sshd ready for LXC ${vmid}`);
-        } else {
-          console.error(`[proxmox] sshd bootstrap failed for LXC ${vmid}:`, r.error, r.detail || '');
-        }
-      })
-      .catch((err) => {
-        console.error(`[proxmox] sshd bootstrap crashed for LXC ${vmid}:`, err);
-      });
+    // Standard Proxmox templates (debian-12-standard, ubuntu-22.04, etc.) ship with
+    // openssh-server installed and started by default and accept the `password:`
+    // field via pct create, so the container is ssh-ready once the API reports
+    // it as running. No client-side bootstrap is needed.
 
     return { success: true, vmid };
   } catch (err) {
