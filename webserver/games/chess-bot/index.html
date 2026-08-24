@@ -1721,19 +1721,29 @@ function vsRenderUserList(){
   if(!el) return;
   if(vsLobbyType==='corr'){
     const q = (document.getElementById('vs-corr-search')?.value||'').toLowerCase().trim();
-    const list = vsAllMembers.filter(m=>!q||m.email.includes(q));
+    // Match against both the handle (username) and the masked/real email
+    // — /api/members masks `email` for non-admin viewers and returns the
+    // raw email for admin/mods, so depending on who's looking either
+    // could be the "real" string. The handle is always present.
+    const list = vsAllMembers.filter(m => !q || (m.handle||'').includes(q) || (m.email||'').includes(q));
     if(cnt) cnt.textContent = `(${list.length})`;
     if(!list.length){
       el.innerHTML = '<div style="padding:8px 10px;font-size:.78rem;opacity:.5;">No players found</div>';
       return;
     }
     el.innerHTML = list.map(m=>{
-      const name = m.email.split('@')[0];
-      const pending = vsChallenges.some(c=>c.from===vsMyEmail&&c.to===m.email);
+      // Use the username (handle) for display — it's always non-PII and
+      // matches what the user actually sees elsewhere on the site.
+      const name = m.handle || m.email.split('@')[0];
+      // Send the handle to the challenge endpoint — the server resolves
+      // it via resolveTargetEmail() so it works for both raw-email and
+      // masked-email variants. This also dodges the masked-recipient
+      // guard in sendEmailBg().
+      const pending = vsChallenges.some(c=>c.from===vsMyEmail && (c.to===m.handle || c.to===m.email));
       return `<div class="vs-user-row">
         <div class="vs-user-av" style="position:relative;">${name[0].toUpperCase()}<span style="position:absolute;bottom:0;right:0;width:7px;height:7px;border-radius:50%;background:${m.online?'#4caf50':'#666'};border:1px solid var(--bg2);"></span></div>
         <div style="flex:1;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</div>
-        <button class="vs-chal-btn${pending?' pending':''}" onclick="vsChallenge('${m.email}')" ${pending?'disabled':''}>${pending?'Sent ✓':'Challenge'}</button>
+        <button class="vs-chal-btn${pending?' pending':''}" onclick="vsChallenge('${m.handle}')" ${pending?'disabled':''}>${pending?'Sent ✓':'Challenge'}</button>
       </div>`;
     }).join('');
   } else {

@@ -13889,8 +13889,17 @@ function loadAllGamesList() {
 
     if (path === '/api/chess-vs/challenge') {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const to = (body.to || '').toLowerCase().trim();
-      if (!to || to === myEmail) return jsonResp(400, { error: 'invalid target' });
+      const rawTarget = (body.to || '').toLowerCase().trim();
+      // The corr lobby sends a username (because /api/members masks the
+      // email field for privacy), the live lobby sends a raw email. Use
+      // resolveTargetEmail() to handle either — it returns the real email
+      // or null. Without this, non-admin corr challengers got
+      // "invalid target" and admin corr challengers would have their
+      // sendEmailBg() trip the masked-recipient guard.
+      const resolved = resolveTargetEmail(rawTarget);
+      const to = resolved ? normalizeEmail(resolved) : rawTarget;
+      if (!resolved) return jsonResp(400, { error: 'target user not found' });
+      if (to === normalizeEmail(myEmail)) return jsonResp(400, { error: 'cannot challenge yourself' });
       const type = body.type === 'corr' ? 'corr' : 'live';
       const tc = type === 'live'
         ? { initial: Math.min(600000, Math.max(30000, parseInt(body.initial) || 300000)), increment: Math.min(30000, Math.max(0, parseInt(body.increment) || 0)) }
