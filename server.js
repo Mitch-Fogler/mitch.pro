@@ -18168,6 +18168,14 @@ async function attachSshdHookToLxc(vmid) {
     return { success: false, error: 'PVE_SSH_KEY_PATH is not configured. process.env.PVE_SSH_KEY_PATH is undefined — check that .env contains `PVE_SSH_KEY_PATH=/path/to/key` (no quotes, no trailing comment) and that the [env] startup log reports it as loaded.' };
   }
 
+  // Pre-flight the key path. The most common prod failure mode is the
+  // .env value being a HOST path (e.g. /home/mitch/server/bun/data/...)
+  // that doesn't exist inside the container — the container's only mount
+  // is ./data:/app/data, so the in-container path is always /app/data/...
+  if (!existsSync(keyPath)) {
+    return { success: false, error: `PVE_SSH_KEY_PATH points at '${keyPath}' but that file is not accessible to this process. If this is running inside a container, .env needs to use the container-internal path (e.g. /app/data/portal_id_rsa) — host paths like /home/mitch/... aren't visible. To find the real key: ls data/portal_id_rsa, then set PVE_SSH_KEY_PATH to the path as it appears from inside the bun-server container.` };
+  }
+
   // mitch-attach-hook <vmid> is the verb recognized by the
   // /usr/local/bin/pct-exec-only forced command on tartarus.
   // The forced command enforces the vmid range itself; we double-check
