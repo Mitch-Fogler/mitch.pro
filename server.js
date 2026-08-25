@@ -4077,32 +4077,36 @@ async function weeklyDigestWorker() {
   } catch (e) { console.log(`[weekly] error: ${e}`); }
 }
 
-// daily puzzle — fires between 7-9am, spread across 12 ten-minute slots
+// daily puzzle — fires between 12-1am (midnight), spread across 6 ten-minute slots
 async function dailyPuzzleWorker() {
   try {
     if (!puzzles.length) return;
     const now = new Date();
     const h = now.getHours();
-    if (h < 7 || h >= 9) return;
-    const minuteInWindow = now.getMinutes() + (h - 7) * 60;
-    const currentSlot = Math.floor(minuteInWindow / 10);
+    if (h !== 0) return;
+    const currentSlot = Math.floor(now.getMinutes() / 10);
     const dayKey = now.toISOString().slice(0, 10);
     const log = loadEmailLog();
     let changed = false;
     const pool = puzzles.filter(p => p[2] >= 800 && p[2] <= 1400);
     if (!pool.length) return;
     for (const { email } of enrolledUsers()) {
-      if (emailSlot(email, 12) !== currentSlot) continue;
+      if (emailSlot(email, 6) !== currentSlot) continue;
       const ulog = log[email] || {};
       if (ulog.puzzle === dayKey) continue;
-      const p = pool[Math.floor(Math.random() * pool.length)];
-      const turn   = p[0].split(' ')[1] === 'w' ? 'White' : 'Black';
-      const themes = String(p[3] || '').split(/\s+/).filter(Boolean).slice(0, 3).join(', ');
-      const body = `Here's today's chess puzzle (rating ~${p[2]}):\n\n${turn} to move and find the best continuation.\nFEN: ${p[0]}\nThemes: ${themes}\n\nSolve it at ${siteUrl(email)}/games/chess-bot/ (Puzzles tab)`;
-      sendEmailBg(email, "Today's chess puzzle — mitch.pro", body);
+      
       log[email] = { ...ulog, puzzle: dayKey };
       changed = true;
-      console.log(`[puzzle] sent to ${email}`);
+
+      // 1 in 10 chance of sending
+      if (Math.random() < 0.1) {
+        const p = pool[Math.floor(Math.random() * pool.length)];
+        const turn   = p[0].split(' ')[1] === 'w' ? 'White' : 'Black';
+        const themes = String(p[3] || '').split(/\s+/).filter(Boolean).slice(0, 3).join(', ');
+        const body = `Here's today's chess puzzle (rating ~${p[2]}):\n\n${turn} to move and find the best continuation.\nFEN: ${p[0]}\nThemes: ${themes}\n\nSolve it at ${siteUrl(email)}/games/chess-bot/ (Puzzles tab)`;
+        sendEmailBg(email, "Today's chess puzzle — mitch.pro", body);
+        console.log(`[puzzle] sent to ${email}`);
+      }
     }
     if (changed) saveEmailLog(log);
   } catch (e) { console.log(`[puzzle] error: ${e}`); }
