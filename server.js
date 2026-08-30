@@ -178,6 +178,7 @@ const MODERATOR_REQUESTS_FILE = join(DATA_DIR, 'moderator_requests.json');
 const GENERATIONS_FILE       = join(DATA_DIR, 'generations.json');
 const INVALIDATED_FILE       = join(DATA_DIR, 'invalidated_ids.json');
 const ADMINS_FILE            = join(DATA_DIR, 'admins.json');
+const SEBASTIANS_CLAIMS_FILE = join(DATA_DIR, 'sebastians_claims.json');
 const PASSPHRASE_FILE        = join(DATA_DIR, 'admin_passphrase.json');
 const FRIENDS_FILE           = join(DATA_DIR, 'friends.json');
 const FRIEND_REQUESTS_FILE   = join(DATA_DIR, 'friend_requests.json');
@@ -293,6 +294,7 @@ const NOTIFICATION_ORIGIN = 'https://mitchdog.com';
 
 const SEND_SCRIPT           = join(BASE, 'mail', 'send_email.js');
 const NOREPLY_SCRIPT        = join(BASE, 'mail', 'noreply_send.js');
+const SUPPORT_SEND_SCRIPT   = join(BASE, 'mail', 'support_send.js');
 
 const PROTECTED_FILES = new Set(['senpai-cafe.webp', 'adrian-lopez.webp']);
 const TEST_ACCOUNT_EMAIL = 'tingtongsuperman@linux.com';
@@ -368,6 +370,7 @@ loadLogicDictionary();
 const TYPING_FILE = join(DATA_DIR, 'typing_sessions.json');
 const LOGIC_FILE = join(DATA_DIR, 'logic_sessions.json');
 const PIANO_FILE = join(DATA_DIR, 'piano_sessions.json');
+const PICCOLO_FILE = join(DATA_DIR, 'piccolo_sessions.json');
 
 let pianoSessions = new Map(); // normEmail -> { dailyCount, lastTs }
 function loadPianoSessions() {
@@ -378,6 +381,17 @@ function loadPianoSessions() {
 }
 function savePianoSessions() {
   saveJson(PIANO_FILE, Object.fromEntries(pianoSessions));
+}
+
+let piccoloSessions = new Map(); // normEmail -> { dailyCoins, lastTs }
+function loadPiccoloSessions() {
+  try {
+    const data = loadJson(PICCOLO_FILE, {});
+    piccoloSessions = new Map(Object.entries(data));
+  } catch { piccoloSessions = new Map(); }
+}
+function savePiccoloSessions() {
+  saveJson(PICCOLO_FILE, Object.fromEntries(piccoloSessions));
 }
 
 function loadTypingSessions() {
@@ -1249,6 +1263,8 @@ const RATE_LIMITS = {
   '/api/marketplace/appeal':   [1,   30],
   '/api/marketplace/items':    [60,  60],
   '/api/chess/puzzle-solved':  [15,  3600],
+  '/api/claim-sebastians-reward': [10,  60],
+  '/api/games/sebastians-piccolo/payout': [10,  60],
   '/api/games/lillians-logic/solve': [10, 60],
   '/api/chess-vs/challenge':   [5,   600],
   '/api/chess-vs/move':        [60,  60],
@@ -1781,7 +1797,7 @@ function renameEmailReferences(oldNorm, newNorm, newEmail) {
   const keyMaps = [
     PASSWORDS_FILE, PROFILES_FILE, COINS_FILE, USER_STATS_FILE, ACHIEVEMENTS_FILE, DAILY_LOGINS_FILE,
     COSMETICS_FILE, COIN_GIFTS_FILE, INVITE_CODES_FILE, INVITE_CLAIMS_FILE, INVITE_SENT_FILE,
-    PREMIUM_GIFTS_SENT_FILE, E2E_KEYS_FILE, DM_CLEARED_FILE, PUSH_SUBS_FILE,
+    PREMIUM_GIFTS_SENT_FILE, E2E_KEYS_FILE, DM_CLEARED_FILE, PUSH_SUBS_FILE, SEBASTIANS_CLAIMS_FILE, PICCOLO_FILE,
   ];
   for (const file of keyMaps) {
     const obj = loadJson(file, {});
@@ -11847,6 +11863,41 @@ function loadAllGamesList() {
       return jsonResp(200, { ok: true, coins: getCoins(email) });
     }
 
+    if (path === '/api/claim-sebastians-reward' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const studentIdInput = String(body.studentId || '').trim();
+      if (studentIdInput !== '123456') {
+        return jsonResp(400, { error: 'Invalid Student ID. Access Denied.' });
+      }
+
+      const norm = normalizeEmail(email);
+      const claims = loadJson(SEBASTIANS_CLAIMS_FILE, {});
+      const lastClaimed = Number(claims[norm] || 0);
+      const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+      if (Date.now() - lastClaimed < oneWeekMs) {
+        const nextClaimTime = new Date(lastClaimed + oneWeekMs);
+        return jsonResp(400, {
+          error: `Reward already claimed this week. You can claim it again after ${nextClaimTime.toLocaleString()}`
+        });
+      }
+
+      claims[norm] = Date.now();
+      saveJsonSync(SEBASTIANS_CLAIMS_FILE, claims);
+
+      addCoins(email, 100.0, "Sebastian's Chromebook Easter Egg Reward");
+      return jsonResp(200, {
+        success: true,
+        message: 'Success! 100 MitchCoins granted to your account.',
+        coins: getCoins(email)
+      });
+    }
+
     // /api/sms-reply — provider webhook (shared secret required)
     if (path === '/api/sms-reply') {
       const expected = (process.env.SMS_WEBHOOK_SECRET || '').trim();
@@ -15919,14 +15970,112 @@ function loadAllGamesList() {
         });
       }
 
-      // Daily cap hit — still update lastTs so the next-day reset check works
+        s.lastTs = Date.now();
+        pianoSessions.set(norm, s);
+        savePianoSessions();
+        updateStat(email, 'piano_games', 1);
+        return jsonResp(200, { success: true, coinsEarned: 0, dailyRemaining: 0, message: "Daily coin limit reached (1,000). Come back tomorrow!" });
+      } catch (e) {
+        console.error('[piano] error:', e);
+        return jsonResp(400, { success: false, error: String(e) });
+      }
+    }
+
+  // ── Sebastian's Piccolo routes ─────────────────────────────────────────────
+  if (path === '/api/games/sebastians-piccolo/payout' && method === 'POST') {
+    try {
+      if (!await tryParseJson()) return jsonResp(400, { success: false, error: 'Invalid JSON body' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { success: false, error: 'Authentication required' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { success: false, error: 'Invalid identity' });
+      const norm = normalizeEmail(email);
+
+      const score = Math.max(0, parseInt(body.score) || 0);
+      const ms = Math.max(0, parseInt(body.ms) || 0);
+
+      // Hard backend safety cap to prevent cheat engines sending massive scores
+      if (score > 12000) {
+        logCheat(email, "Sebastian's Piccolo", `Suspiciously high score: ${score} points in ${ms}ms`);
+        return jsonResp(400, { success: false, error: 'Legendary performance detected, but score exceeds safety threshold (12,000 points).' });
+      }
+
+      // Secure reaction speed verification:
+      // Minimum average human tap speed across 4 columns is at least 135ms per tile.
+      // Average points per tile: a PERFECT is 15, GOOD is 10. Let's assume average of 12 points per tile.
+      // So estimated tiles hit = score / 12.
+      // Flag if score is significant (> 100) and average is less than 135ms/tile.
+      const estimatedTiles = score / 12;
+      if (score > 100 && estimatedTiles > 0) {
+        const timePerTile = ms / estimatedTiles;
+        if (timePerTile < 135) {
+          logCheat(email, "Sebastian's Piccolo", `Impossible speed: ${score} points in ${ms}ms (${Math.round(timePerTile)}ms/tile)`);
+          return jsonResp(400, { success: false, error: 'Suspiciously fast notes! Play like a human.' });
+        }
+      }
+
+      let s = piccoloSessions.get(norm) || { dailyCoins: 0, lastTs: 0 };
+      const today = new Date().toDateString();
+      if (new Date(s.lastTs).toDateString() !== today) {
+        s.dailyCoins = 0;
+      }
+
+      // Time-travel loop exploit prevention:
+      const actualElapsed = Date.now() - s.lastTs;
+      if (s.lastTs > 0 && ms > 5000) {
+        if (actualElapsed < ms * 0.8) {
+          logCheat(email, "Sebastian's Piccolo", `Time-travel exploit: Claimed game duration ${ms}ms, but only ${actualElapsed}ms elapsed since last submission`);
+          return jsonResp(400, { success: false, error: 'Exploit detected: Play in real-time!' });
+        }
+      }
+
+      const DAILY_COIN_CAP = 1000; // 1k MitchCoins cap!
+
+      // Calculation of coins: 0.05 MitchCoins per 10 points (0.005 per point)
+      let baseCoinsAwarded = Math.floor(score * 0.005);
+      
+      let allowedCoins = baseCoinsAwarded;
+      if (s.dailyCoins >= DAILY_COIN_CAP) {
+        allowedCoins = 0;
+      } else if (s.dailyCoins + allowedCoins > DAILY_COIN_CAP) {
+        allowedCoins = DAILY_COIN_CAP - s.dailyCoins;
+      }
+
+      if (allowedCoins > 0) {
+        let finalCoins = allowedCoins;
+        if (isPremiumEmail(email)) {
+          finalCoins = allowedCoins * 2; // Premium members earn 2x coins!
+        }
+        addCoins(email, finalCoins, "Sebastian's Piccolo Symphony Performance");
+        updateStat(email, 'piccolo_coins', finalCoins);
+        updateStat(email, 'piccolo_games', 1);
+
+        s.dailyCoins += allowedCoins;
+        s.lastTs = Date.now();
+        piccoloSessions.set(norm, s);
+        savePiccoloSessions();
+
+        console.log(`[piccolo] ${email} earned ${finalCoins} coins for score ${score}`);
+        return jsonResp(200, { 
+          success: true, 
+          coinsEarned: finalCoins, 
+          dailyRemainingCoins: DAILY_COIN_CAP - s.dailyCoins 
+        });
+      }
+
       s.lastTs = Date.now();
-      pianoSessions.set(norm, s);
-      savePianoSessions();
-      updateStat(email, 'piano_games', 1);
-      return jsonResp(200, { success: true, coinsEarned: 0, dailyRemaining: 0, message: "Daily coin limit reached (1,000). Come back tomorrow!" });
+      piccoloSessions.set(norm, s);
+      savePiccoloSessions();
+      updateStat(email, 'piccolo_games', 1);
+      return jsonResp(200, { 
+        success: true, 
+        coinsEarned: 0, 
+        dailyRemainingCoins: DAILY_COIN_CAP - s.dailyCoins,
+        message: s.dailyCoins >= DAILY_COIN_CAP ? "Daily limit reached (1,000)." : "No coins earned."
+      });
     } catch (e) {
-      console.error('[piano] error:', e);
+      console.error('[piccolo] error:', e);
       return jsonResp(400, { success: false, error: String(e) });
     }
   }
@@ -17742,6 +17891,7 @@ setTimeout(() => {
   loadLogicSessions();
   loadRichardSessions();
   loadPianoSessions();
+  loadPiccoloSessions();
   console.log(`[startup] All systems active.`);
 }, 100);
 

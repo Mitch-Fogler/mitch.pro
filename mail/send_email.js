@@ -101,6 +101,99 @@ async function getBody() {
   });
 }
 
+function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) {
+  if (textBody.trim().startsWith('<') || /<[a-z][\s\S]*>/i.test(textBody)) {
+    return textBody;
+  }
+
+  const escapedText = textBody
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+  const paragraphs = escapedText.split(/\n\n+/).map(p => {
+    return `<p style="margin: 0 0 16px; line-height: 1.6;">${p.replace(/\n/g, '<br>')}</p>`;
+  }).join('');
+
+  let footerHtml = '';
+  if (unsubscribeUrl) {
+    footerHtml = `
+      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
+        <p style="margin: 0 0 8px;">
+          Want to change how you receive these emails? <br>
+          You can <a href="${unsubscribeUrl}" style="color: #38bdf8; text-decoration: underline;">unsubscribe from this list</a>.
+        </p>
+        <p style="margin: 0 0 8px;">
+          Also accessible at <a href="${altUrl || 'https://mitchdog.com'}" style="color: #64748b; text-decoration: underline;">mitchdog.com</a>
+        </p>
+        <p style="margin: 0;">
+          For support: email SUPPORT to <a href="mailto:support@mitch.pro" style="color: #64748b; text-decoration: none;">support@mitch.pro</a> or mitchell.fogler@student.rjuhsd.us
+        </p>
+        <p style="margin: 8px 0 0;">
+          2014 Capitol Ave #100, Sacramento, CA 95811
+        </p>
+      </div>
+    `;
+  } else {
+    footerHtml = `
+      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
+        <p style="margin: 0 0 8px;">
+          Also accessible at <a href="${primaryUrl || 'https://mitch.pro'}" style="color: #64748b; text-decoration: underline;">mitch.pro</a> | <a href="${altUrl || 'https://mitchdog.com'}" style="color: #64748b; text-decoration: underline;">mitchdog.com</a>
+        </p>
+        <p style="margin: 0;">
+          For support: email SUPPORT to <a href="mailto:support@mitch.pro" style="color: #64748b; text-decoration: none;">support@mitch.pro</a>
+        </p>
+        <p style="margin: 8px 0 0;">
+          2014 Capitol Ave #100, Sacramento, CA 95811
+        </p>
+      </div>
+    `;
+  }
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #06060c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc; -webkit-font-smoothing: antialiased;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #06060c; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #0f172a; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+          <tr>
+            <td height="6" style="background: linear-gradient(to right, #a855f7, #38bdf8);"></td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 32px 16px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td>
+                    <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #f8fafc; background: linear-gradient(to right, #c084fc, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">mitch.pro</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 32px 32px; font-size: 15px; color: #cbd5e1; line-height: 1.6;">
+              ${paragraphs}
+              ${footerHtml}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
 (async () => {
   const rawBody = await getBody();
   
@@ -128,6 +221,15 @@ async function getBody() {
 
   const body = (useAlt || useRaw) ? rawBody : rawBody + `\n\n---\nVisit ${PRIMARY}/unsubscribe/${token} to unsubscribe.\nAlso available at ${ALT}/unsubscribe/${token}\nFor support: email SUPPORT to support@mitch.pro or mitchell.fogler@student.rjuhsd.us\n2014 Capitol Ave #100, Sacramento, CA 95811`;
   console.log(body);
+
+  let htmlBody = undefined;
+  if (!useRaw) {
+    const unsubUrl = `${PRIMARY}/unsubscribe/${token}`;
+    htmlBody = formatHtmlEmail(subject, rawBody, unsubUrl, PRIMARY, ALT);
+  } else {
+    htmlBody = formatHtmlEmail(subject, rawBody, null, PRIMARY, ALT);
+  }
+
   const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: { user: GMAIL_USER, pass: GMAIL_PASS },
@@ -138,6 +240,7 @@ async function getBody() {
     from: `${GMAIL_NAME} <${GMAIL_USER}>`,
     to, subject: useAlt ? subject + zwsp : subject,
     text: body,
+    html: htmlBody,
     priority: 'high',
     headers: {
       'X-Priority': '1', 'Importance': 'high',

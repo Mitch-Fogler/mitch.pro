@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sebastian's Piccolo Symphony — mitch.pro</title>
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/api.js"></script>
+  <style>
+    :root {
+      --ac-piccolo: #a855f7;
+      --ac-accent: var(--t-ac, #38bdf8);
+      --ac-gold: #fbbf24;
+      --ac-crab: #ef4444;
+      --panel: var(--t-bg2, rgba(255, 255, 255, 0.04));
+      --line: var(--t-bd, rgba(255, 255, 255, 0.08));
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      background-color: var(--t-bg, #06060c);
+      background-image: var(--t-bg-img-layer, var(--t-bgr, none));
+      background-attachment: fixed;
+      color: var(--t-fg, #fff);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+      padding: 40px 20px;
+    }
+
+    #back-btn {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--t-fg);
+      padding: 10px 18px;
+      border-radius: var(--t-radius, 10px);
+      text-decoration: none;
+      font-weight: 700;
+      z-index: 100;
+      transition: background 0.2s, border-color 0.2s;
+      font-size: 0.88rem;
+      letter-spacing: 0.02em;
+    }
+    #back-btn:hover {
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+      border-color: var(--t-bda, var(--line));
+    }
+
+    .container {
+      width: 100%;
+      max-width: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .game-header {
+      text-align: center;
+    }
+    h1 {
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-weight: 800;
+      font-size: clamp(1.6rem, 5vw, 2.1rem);
+      color: var(--t-fg);
+      letter-spacing: -0.03em;
+      text-shadow: 0 0 25px rgba(168, 85, 247, 0.4);
+    }
+    .subtitle {
+      font-size: 0.92rem;
+      color: var(--t-fg2);
+      margin-top: 4px;
+    }
+
+    /* Sebastian Maestro Stage */
+    .stage {
+      width: 100%;
+      background: linear-gradient(to bottom, #0f172a, #020617);
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      border-radius: 16px 16px 0 0;
+      padding: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .maestro-crab {
+      width: 110px;
+      height: 90px;
+      transition: transform 0.2s ease;
+      transform-origin: center bottom;
+      z-index: 2;
+    }
+    /* Swaying Idle Animation */
+    .maestro-crab.idle {
+      animation: sway 2.4s infinite ease-in-out;
+    }
+    @keyframes sway {
+      0%, 100% { transform: rotate(-3deg) scaleX(1); }
+      50% { transform: rotate(3deg) scaleX(0.98); }
+    }
+    /* Hit state */
+    .maestro-crab.hit {
+      transform: scale(1.08) translateY(-4px);
+    }
+    /* Dizzy State */
+    .maestro-crab.dizzy {
+      animation: shake-crab 0.3s ease;
+    }
+    @keyframes shake-crab {
+      0%, 100% { transform: translateX(0) rotate(0); }
+      20%, 60% { transform: translateX(-8px) rotate(-6deg); }
+      40%, 80% { transform: translateX(8px) rotate(6deg); }
+    }
+    /* Fainted State */
+    .maestro-crab.fainted {
+      transform: rotate(180deg) translateY(10px);
+    }
+
+    /* Health Bar */
+    .health-container {
+      width: 100%;
+      height: 8px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .health-bar {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(to right, #a855f7, #38bdf8);
+      box-shadow: 0 0 10px rgba(168,85,247,0.7);
+      transition: width 0.15s ease-out, background 0.3s;
+    }
+
+    .stats-bar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      gap: 15px;
+    }
+    .stat-card {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      text-align: center;
+      position: relative;
+    }
+    .stat-lbl {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--t-fg2);
+      letter-spacing: 0.08em;
+    }
+    .stat-val {
+      font-family: 'Outfit', system-ui, sans-serif;
+      font-size: 1.45rem;
+      font-weight: 700;
+      margin-top: 2px;
+    }
+    #score-display { color: var(--ac-piccolo); }
+    #coins-display { color: var(--ac-accent); }
+
+    /* Game Viewport */
+    .game-viewport {
+      width: 100%;
+      height: 420px;
+      background: color-mix(in srgb, var(--t-bg) 92%, #000);
+      border: 1px solid var(--line);
+      border-radius: 0 0 16px 16px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      user-select: none;
+    }
+
+    .lanes-container {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0; left: 0;
+    }
+    .lane-divider {
+      border-right: 1px dashed rgba(255, 255, 255, 0.04);
+      height: 100%;
+      position: relative;
+    }
+    .lane-divider:last-child { border-right: none; }
+
+    /* Floating rating indicators */
+    .rating-popup {
+      position: absolute;
+      font-weight: 850;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      animation: float-up 0.4s ease-out forwards;
+      z-index: 50;
+    }
+    @keyframes float-up {
+      0% { opacity: 1; transform: translate(-50%, -20px) scale(0.8); }
+      100% { opacity: 0; transform: translate(-50%, -65px) scale(1.15); }
+    }
+
+    /* Key indicators */
+    .key-indicators {
+      position: absolute;
+      bottom: 20px;
+      left: 0;
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      pointer-events: none;
+      z-index: 10;
+    }
+    .key-indicator {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .key-circle {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(8, 8, 16, 0.9);
+      color: rgba(255, 255, 255, 0.8);
+      font-weight: 800;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.08s ease;
+    }
+    .key-indicator.active .key-circle {
+      background: var(--ac-piccolo);
+      border-color: #fff;
+      color: #fff;
+      transform: scale(0.85);
+      box-shadow: 0 0 15px var(--ac-piccolo);
+    }
+
+    .hit-zone {
+      position: absolute;
+      bottom: 39px;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: rgba(168, 85, 247, 0.22);
+      box-shadow: 0 0 8px rgba(168, 85, 247, 0.4);
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* Falling tiles: Long piccolo-tube styling */
+    .note-tile {
+      position: absolute;
+      left: 8%;
+      width: 84%;
+      height: 100px; /* Much taller notes! */
+      border-radius: 12px;
+      background: linear-gradient(to right, #cbd5e1 0%, #f1f5f9 30%, #cbd5e1 70%, #475569 100%);
+      border: 3px solid #94a3b8;
+      box-shadow: inset 0 2px 5px rgba(255,255,255,0.7), 0 0 15px rgba(168, 85, 247, 0.45);
+      z-index: 6;
+    }
+    /* Piccolo finger keys detail decoration inside the tile */
+    .note-tile::after {
+      content: '●\n●\n●\n●';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      color: rgba(15, 23, 42, 0.65);
+      line-height: 1.4;
+      white-space: pre-line;
+    }
+
+    /* Start / Game Over Screen Overlays */
+    .screen-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(3, 2, 10, 0.94);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+      text-align: center;
+      backdrop-filter: blur(8px);
+    }
+    .start-btn {
+      background: linear-gradient(135deg, var(--ac-piccolo), #8b5cf6);
+      color: white;
+      border: 0;
+      padding: 14px 30px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 10px 25px rgba(139, 92, 246, 0.4);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .start-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 30px rgba(139, 92, 246, 0.6);
+    }
+
+    /* Chromebook Easter Egg styling */
+    .chromebook-anchor {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      width: 32px;
+      height: 22px;
+      background: #1e293b;
+      border-radius: 5px;
+      border: 2px solid #475569;
+      cursor: pointer;
+      z-index: 90;
+      opacity: 0.5;
+      transition: opacity 0.2s, transform 0.2s, border-color 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.6);
+    }
+    .chromebook-anchor:hover {
+      opacity: 1;
+      border-color: var(--ac-accent);
+      transform: scale(1.1) rotate(-3deg);
+    }
+    .chromebook-logo {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ac-accent);
+      box-shadow: 0 0 5px var(--ac-accent);
+    }
+
+    /* Modal dialog */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.85);
+      z-index: 1000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      backdrop-filter: blur(12px);
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+    .chromebook-frame {
+      background: #334155;
+      border: 12px solid #1e293b;
+      border-radius: 24px;
+      width: 100%;
+      max-width: 430px;
+      box-shadow: 0 30px 70px rgba(0,0,0,0.9);
+      overflow: hidden;
+      font-family: system-ui, -apple-system, sans-serif;
+      transition: transform 0.15s ease-out;
+    }
+    /* Chromebook screen shaking effect */
+    .chromebook-frame.shake {
+      animation: frame-shake 0.35s ease;
+    }
+    @keyframes frame-shake {
+      0%, 100% { transform: translateX(0); }
+      15%, 45%, 75% { transform: translateX(-10px); }
+      30%, 60%, 90% { transform: translateX(10px); }
+    }
+
+    .chromeos-screen {
+      background: linear-gradient(135deg, #090d16, #020617);
+      padding: 28px 24px;
+      color: white;
+      text-align: center;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ChromeOS Boot screen simulator */
+    .chromeos-boot {
+      position: absolute;
+      inset: 0;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      color: #94a3b8;
+    }
+    .chrome-logo-spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(56, 189, 248, 0.1);
+      border-top: 4px solid var(--ac-accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 12px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .chromeos-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding-bottom: 10px;
+    }
+    .chromeos-title {
+      font-weight: 750;
+      font-size: 0.85rem;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      text-transform: uppercase;
+    }
+    .chromeos-logo-icon {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #38bdf8;
+      box-shadow: 0 0 6px #38bdf8;
+    }
+    .close-chromebook-btn {
+      background: transparent;
+      border: 0;
+      color: #475569;
+      cursor: pointer;
+      font-size: 1.3rem;
+      line-height: 1;
+    }
+    .close-chromebook-btn:hover { color: #f87171; }
+
+    .enroll-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.15);
+      border: 2px dashed var(--ac-accent);
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.7rem;
+    }
+
+    .chromeos-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .chromeos-input {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: white;
+      font-family: inherit;
+      font-size: 0.95rem;
+      outline: none;
+      text-align: center;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .chromeos-input:focus {
+      border-color: var(--ac-accent);
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+    }
+    .chromeos-btn {
+      width: 100%;
+      background: #2563eb;
+      color: white;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px;
+      font-weight: 750;
+      font-size: 0.9rem;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .chromeos-btn:hover { background: #1d4ed8; }
+
+    #chromeos-status {
+      margin-top: 15px;
+      font-size: 0.85rem;
+      border-radius: 8px;
+      padding: 10px 12px;
+      display: none;
+      line-height: 1.45;
+      text-align: left;
+      font-weight: 500;
+    }
+    #chromeos-status.success {
+      display: block;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      color: #34d399;
+      box-shadow: 0 0 15px rgba(16,185,129,0.15);
+    }
+    #chromeos-status.error {
+      display: block;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #f87171;
+      box-shadow: 0 0 15px rgba(239,68,68,0.15);
+    }
+  </style>
+</head>
+<body>
+
+  <a href="/games/" id="back-btn">← Back to Arcade</a>
+
+  <div class="container">
+    <div class="game-header">
+      <h1>Sebastian's Piccolo Symphony</h1>
+      <div class="subtitle">Match the high-pitched notes to earn rewards</div>
+    </div>
+
+    <!-- Sebastian the Crab Stage -->
+    <div class="stage">
+      <svg class="maestro-crab idle" id="maestro-svg" viewBox="0 0 120 100">
+        <!-- Sebastian the Crab Vector Art -->
+        <!-- Eyes -->
+        <line x1="45" y1="40" x2="45" y2="22" stroke="#ef4444" stroke-width="5" stroke-linecap="round"/>
+        <line x1="75" y1="40" x2="75" y2="22" stroke="#ef4444" stroke-width="5" stroke-linecap="round"/>
+        <circle cx="45" cy="20" r="8" fill="#fff"/>
+        <circle cx="45" cy="20" r="3.5" fill="#000" id="left-pupil"/>
+        <circle cx="75" cy="20" r="8" fill="#fff"/>
+        <circle cx="75" cy="20" r="3.5" fill="#000" id="right-pupil"/>
+        
+        <!-- Legs -->
+        <path d="M 20,70 Q 10,75 5,82" stroke="#ef4444" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+        <path d="M 25,75 Q 15,84 10,91" stroke="#ef4444" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+        <path d="M 100,70 Q 110,75 115,82" stroke="#ef4444" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+        <path d="M 95,75 Q 105,84 110,91" stroke="#ef4444" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+
+        <!-- Crab Body shell -->
+        <ellipse cx="60" cy="58" rx="40" ry="24" fill="#ef4444"/>
+        <!-- Cheek blush -->
+        <ellipse cx="32" cy="58" rx="5" ry="3.5" fill="#f87171" opacity="0.6"/>
+        <ellipse cx="88" cy="58" rx="5" ry="3.5" fill="#f87171" opacity="0.6"/>
+        <!-- Smile -->
+        <path d="M 52,60 Q 60,67 68,60" stroke="#7f1d1d" stroke-width="3" fill="none" stroke-linecap="round" id="crab-mouth"/>
+
+        <!-- Left Claw -->
+        <path d="M 30,50 C 15,48 5,30 20,25 C 28,32 25,48 30,50" fill="#dc2626"/>
+        <!-- Right Claw holding Piccolo -->
+        <path d="M 90,50 C 105,48 115,30 100,25 C 92,32 95,48 90,50" fill="#dc2626"/>
+
+        <!-- Silver Piccolo Flute -->
+        <rect x="35" y="32" width="62" height="6" rx="3" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.5" transform="rotate(-6, 60, 35)" id="piccolo-flute"/>
+        <!-- Keys on flute -->
+        <circle cx="48" cy="34" r="1.5" fill="#475569"/>
+        <circle cx="58" cy="33" r="1.5" fill="#475569"/>
+        <circle cx="68" cy="32" r="1.5" fill="#475569"/>
+        <circle cx="78" cy="31" r="1.5" fill="#475569"/>
+        <circle cx="88" cy="30" r="1.5" fill="#475569"/>
+      </svg>
+      <!-- Health Bar -->
+      <div class="health-container">
+        <div class="health-bar" id="hp-bar"></div>
+      </div>
+    </div>
+
+    <!-- Scores and Coins display -->
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="stat-lbl">Points</div>
+        <div class="stat-val" id="score-display">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-lbl">MitchCoins</div>
+        <div class="stat-val" id="coins-display">--</div>
+      </div>
+    </div>
+
+    <!-- Active Viewport -->
+    <div class="game-viewport">
+      <!-- Start overlay screen -->
+      <div class="screen-overlay" id="start-screen">
+        <div class="enroll-avatar">🎶</div>
+        <h2 style="margin-bottom: 8px; font-weight: 800;">Sebastian's Concert</h2>
+        <p style="color: var(--t-fg2); font-size: 0.88rem; margin-bottom: 24px; max-width: 320px; line-height: 1.5;">
+          Press <b>D, F, J, K</b> to play notes. Missing notes causes damage. Keep Sebastian playing!
+        </p>
+        <button class="start-btn" id="start-btn" type="button">Start Concert</button>
+      </div>
+
+      <!-- Game Over overlay screen -->
+      <div class="screen-overlay" id="gameover-screen" style="display: none;">
+        <div class="enroll-avatar" style="border-color: #ef4444; color: #ef4444;">💀</div>
+        <h2 style="margin-bottom: 4px; font-weight: 800; color: #ef4444;">Concert Over!</h2>
+        <p id="gameover-blurb" style="color: var(--t-fg2); font-size: 0.9rem; margin-bottom: 24px;">
+          You scored 0 points.
+        </p>
+        <button class="start-btn" id="restart-btn" type="button">Try Again</button>
+      </div>
+
+      <div class="lanes-container">
+        <div class="lane-divider" id="lane-0"></div>
+        <div class="lane-divider" id="lane-1"></div>
+        <div class="lane-divider" id="lane-2"></div>
+        <div class="lane-divider" id="lane-3"></div>
+      </div>
+
+      <div class="hit-zone"></div>
+
+      <div class="key-indicators">
+        <div class="key-indicator" id="ind-0"><span class="key-circle">D</span></div>
+        <div class="key-indicator" id="ind-1"><span class="key-circle">F</span></div>
+        <div class="key-indicator" id="ind-2"><span class="key-circle">J</span></div>
+        <div class="key-indicator" id="ind-3"><span class="key-circle">K</span></div>
+      </div>
+
+      <!-- Chromebook Easter Egg Anchor -->
+      <div class="chromebook-anchor" id="chromebook-btn" title="Enroll Chromebook">
+        <div class="chromebook-logo"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chromebook Enrollment Modal -->
+  <div class="modal-overlay" id="chromebook-modal">
+    <div class="chromebook-frame" id="cb-frame">
+      <div class="chromeos-screen" style="position: relative;">
+        <!-- Simulated Boot Overlay -->
+        <div class="chromeos-boot" id="cb-boot-screen" style="display:none;">
+          <div class="chrome-logo-spinner"></div>
+          <div style="font-weight: 700; font-size: 0.85rem; letter-spacing: 0.05em; text-transform: uppercase;">ChromeOS booting...</div>
+        </div>
+
+        <div class="chromeos-header">
+          <div class="chromeos-title">
+            <div class="chromeos-logo-icon"></div>
+            <span>ChromeOS Enrollment</span>
+          </div>
+          <button class="close-chromebook-btn" id="close-modal-btn">&times;</button>
+        </div>
+        
+        <div class="enroll-avatar">💻</div>
+        <h3 style="margin-bottom: 8px; font-weight: 800; font-size: 1.15rem;">Enter Chromebook Credentials</h3>
+        <p style="color: #64748b; font-size: 0.82rem; margin-bottom: 20px; max-width: 300px; margin-inline: auto; line-height: 1.4;">
+          Enroll this terminal by entering the system activation code.
+        </p>
+
+        <form class="chromeos-form" id="enroll-form" onsubmit="return false;">
+          <input type="text" class="chromeos-input" id="student-id-input" placeholder="Enter System ID (e.g. 123456)" maxlength="12" autocomplete="off">
+          <button type="submit" class="chromeos-btn" id="enroll-submit-btn">Enroll Device</button>
+        </form>
+
+        <div id="chromeos-status"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Web Audio Synthesizer
+    let audioCtx = null;
+    
+    function initAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playNote(freq, dur, type = 'sine', volume = 0.12) {
+      initAudio();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      
+      gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    }
+
+    // High piccolo whistles
+    const noteFrequencies = [587.33, 698.46, 880.00, 1046.50]; // D5, F5, A5, C6 (very high whistles)
+
+    function playSuccessChimes() {
+      // Happy arpeggio
+      const notes = [523.25, 659.25, 783.99, 1046.50];
+      notes.forEach((freq, idx) => {
+        setTimeout(() => playNote(freq, 0.18, 'triangle', 0.15), idx * 90);
+      });
+    }
+
+    function playErrorBuzz() {
+      // Low failure buzz
+      playNote(130.81, 0.4, 'sawtooth', 0.22);
+      setTimeout(() => playNote(110.00, 0.45, 'sawtooth', 0.22), 80);
+    }
+
+    // Game Constants & Configuration
+    let score = 0;
+    let health = 100;
+    let gameActive = false;
+    let baseSpeed = 3.2;
+    let currentSpeed = baseSpeed;
+    let spawnInterval = 720;
+    let gameTimer = null;
+    let spawnedNotes = [];
+    const keys = ['d', 'f', 'j', 'k'];
+    let startTime = 0;
+    
+    // Elements
+    const hpBar = document.getElementById('hp-bar');
+    const scoreDisplay = document.getElementById('score-display');
+    const coinsDisplay = document.getElementById('coins-display');
+    const startOverlay = document.getElementById('start-screen');
+    const gameOverOverlay = document.getElementById('gameover-screen');
+    const gameOverBlurb = document.getElementById('gameover-blurb');
+    const maestroCrab = document.getElementById('maestro-svg');
+    const mouth = document.getElementById('crab-mouth');
+    const leftPupil = document.getElementById('left-pupil');
+    const rightPupil = document.getElementById('right-pupil');
+
+    const laneDivs = [
+      document.getElementById('lane-0'),
+      document.getElementById('lane-1'),
+      document.getElementById('lane-2'),
+      document.getElementById('lane-3')
+    ];
+    const indicators = [
+      document.getElementById('ind-0'),
+      document.getElementById('ind-1'),
+      document.getElementById('ind-2'),
+      document.getElementById('ind-3')
+    ];
+
+    // Load wallet balance
+    async function loadWallet() {
+      try {
+        const r = await fetch('/api/me/coins');
+        const data = await r.json();
+        if (data && data.coins !== undefined) {
+          coinsDisplay.textContent = Number(data.coins).toFixed(2);
+        }
+      } catch (err) {}
+    }
+    loadWallet();
+
+    // Start / Restart trigger
+    document.getElementById('start-btn').onclick = () => {
+      startOverlay.style.display = 'none';
+      initGame();
+    };
+    document.getElementById('restart-btn').onclick = () => {
+      gameOverOverlay.style.display = 'none';
+      initGame();
+    };
+
+    function setCrabState(state) {
+      maestroCrab.className = 'maestro-crab ' + state;
+      if (state === 'idle') {
+        mouth.setAttribute('d', 'M 52,60 Q 60,67 68,60'); // happy smile
+        leftPupil.setAttribute('cy', '20');
+        rightPupil.setAttribute('cy', '20');
+      } else if (state === 'hit') {
+        mouth.setAttribute('d', 'M 54,63 Q 60,60 66,63'); // blow shape
+        leftPupil.setAttribute('cy', '18');
+        rightPupil.setAttribute('cy', '18');
+        // Spawn mini music note visual particles from the piccolo flute tip
+        spawnMusicParticle();
+      } else if (state === 'dizzy') {
+        mouth.setAttribute('d', 'M 52,64 Q 60,56 68,64'); // sad frown
+        leftPupil.setAttribute('cy', '23');
+        rightPupil.setAttribute('cy', '23');
+      } else if (state === 'fainted') {
+        mouth.setAttribute('d', 'M 50,60 Q 60,60 70,60'); // flat line mouth
+      }
+    }
+
+    function spawnMusicParticle() {
+      const p = document.createElement('div');
+      p.style.position = 'absolute';
+      p.style.left = '60%';
+      p.style.top = '10px';
+      p.style.color = '#c084fc';
+      p.style.fontSize = '1.1rem';
+      p.style.fontWeight = 'bold';
+      p.style.pointerEvents = 'none';
+      p.style.transition = 'transform 0.4s ease-out, opacity 0.4s';
+      p.textContent = ['♩', '♪', '♫', '♬'][Math.floor(Math.random() * 4)];
+      document.querySelector('.stage').appendChild(p);
+
+      // Animate floating out
+      setTimeout(() => {
+        p.style.transform = `translate(${Math.random() * 40 - 20}px, -40px) scale(1.3) rotate(${Math.random() * 60 - 30}deg)`;
+        p.style.opacity = '0';
+      }, 10);
+      setTimeout(() => p.remove(), 420);
+    }
+
+    function initGame() {
+      initAudio();
+      score = 0;
+      health = 100;
+      currentSpeed = baseSpeed;
+      spawnInterval = 720;
+      spawnedNotes = [];
+      gameActive = true;
+      startTime = Date.now();
+      
+      scoreDisplay.textContent = score;
+      updateHpUI();
+      setCrabState('idle');
+      
+      document.querySelectorAll('.note-tile').forEach(el => el.remove());
+
+      // Start loop
+      startSpawner();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function startSpawner() {
+      if (gameTimer) clearTimeout(gameTimer);
+      
+      const spawnNext = () => {
+        if (!gameActive) return;
+        const lane = Math.floor(Math.random() * 4);
+        createNote(lane);
+        
+        // Scale frequency down (faster spawn rate) as score increases
+        const nextDelay = Math.max(380, spawnInterval - (score / 4));
+        gameTimer = setTimeout(spawnNext, nextDelay);
+      };
+      
+      gameTimer = setTimeout(spawnNext, spawnInterval);
+    }
+
+    function createNote(lane) {
+      const tile = document.createElement('div');
+      tile.className = 'note-tile';
+      tile.style.top = '-100px';
+      laneDivs[lane].appendChild(tile);
+
+      spawnedNotes.push({
+        el: tile,
+        lane: lane,
+        top: -100
+      });
+    }
+
+    function updateHpUI() {
+      hpBar.style.width = health + '%';
+      if (health > 50) {
+        hpBar.style.background = 'linear-gradient(to right, #a855f7, #38bdf8)';
+      } else if (health > 25) {
+        hpBar.style.background = 'linear-gradient(to right, #fbbf24, #f59e0b)';
+      } else {
+        hpBar.style.background = 'linear-gradient(to right, #ef4444, #b91c1c)';
+      }
+    }
+
+    function takeDamage(amount) {
+      health = Math.max(0, health - amount);
+      updateHpUI();
+      setCrabState('dizzy');
+      playNote(220, 0.15, 'sawtooth', 0.08); // low alert tone
+      
+      setTimeout(() => {
+        if (gameActive && health > 0) setCrabState('idle');
+      }, 350);
+
+      if (health <= 0) {
+        triggerGameOver();
+      }
+    }
+
+    function triggerGameOver() {
+      gameActive = false;
+      clearTimeout(gameTimer);
+      setCrabState('fainted');
+      
+      const gameDuration = Date.now() - startTime;
+      
+      // Fall note sequence sound
+      playNote(440, 0.2, 'sine', 0.1);
+      setTimeout(() => playNote(349.23, 0.2, 'sine', 0.1), 150);
+      setTimeout(() => playNote(293.66, 0.2, 'sine', 0.1), 300);
+      setTimeout(() => playNote(220.00, 0.45, 'sine', 0.12), 450);
+
+      gameOverBlurb.innerHTML = `You scored <strong>${score}</strong> points during the concert. Saving performance...`;
+
+      // Submit payout to backend
+      fetch('/api/games/sebastians-piccolo/payout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score: score, ms: gameDuration })
+      })
+      .then(r => r.json())
+      .then(d => {
+        loadWallet();
+        if (d.success) {
+          if (d.coinsEarned > 0) {
+            gameOverBlurb.innerHTML = `You scored <strong>${score}</strong> points during the concert and earned <strong>${Number(d.coinsEarned).toFixed(2)} MitchCoins</strong>! <br><span style="font-size:0.8rem;color:var(--t-fg2);margin-top:6px;display:inline-block;">Daily Cap Remaining: ${Number(d.dailyRemainingCoins).toFixed(2)} coins</span>`;
+          } else {
+            gameOverBlurb.innerHTML = `You scored <strong>${score}</strong> points during the concert.<br><span style="font-size:0.85rem;color:var(--t-fg2);margin-top:6px;display:inline-block;">${d.message || "Daily limit reached."}</span>`;
+          }
+        } else {
+          gameOverBlurb.innerHTML = `You scored <strong>${score}</strong> points during the concert.<br><span style="font-size:0.85rem;color:#f87171;margin-top:6px;display:inline-block;">Payout status: ${d.error || "exceeded limit"}</span>`;
+        }
+      })
+      .catch(() => {
+        gameOverBlurb.innerHTML = `You scored <strong>${score}</strong> points during the concert.`;
+      });
+
+      setTimeout(() => {
+        gameOverOverlay.style.display = 'flex';
+      }, 700);
+    }
+
+    function gameLoop() {
+      if (!gameActive) return;
+
+      // Speed increases like a square root: starts fast but slows down rate of increase
+      currentSpeed = baseSpeed + Math.sqrt(score) * 0.25;
+      
+      for (let i = spawnedNotes.length - 1; i >= 0; i--) {
+        const note = spawnedNotes[i];
+        note.top += currentSpeed;
+        note.el.style.top = note.top + 'px';
+
+        // Miss check: if note falls completely past the hit line (top of note past 380px)
+        if (note.top > 380) {
+          note.el.remove();
+          spawnedNotes.splice(i, 1);
+          createRatingPopup(note.lane, 'MISS', '#f87171');
+          takeDamage(15);
+        }
+      }
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Input management
+    window.addEventListener('keydown', e => {
+      if (!gameActive) return;
+      const laneIdx = keys.indexOf(e.key.toLowerCase());
+      if (laneIdx !== -1) {
+        indicators[laneIdx].classList.add('active');
+        playNote(noteFrequencies[laneIdx], 0.2, 'sine', 0.14);
+        checkHitAttempt(laneIdx);
+      }
+    });
+
+    window.addEventListener('keyup', e => {
+      const laneIdx = keys.indexOf(e.key.toLowerCase());
+      if (laneIdx !== -1) {
+        indicators[laneIdx].classList.remove('active');
+      }
+    });
+
+    function checkHitAttempt(lane) {
+      let closestNote = null;
+      let closestIdx = -1;
+      let minDistance = 999;
+
+      for (let i = 0; i < spawnedNotes.length; i++) {
+        const note = spawnedNotes[i];
+        if (note.lane === lane) {
+          const noteCenter = note.top + 50; // Center coordinate of the 100px note
+          const distance = Math.abs(noteCenter - 380); // Distance to hit target
+          if (distance < 50 && distance < minDistance) {
+            minDistance = distance;
+            closestNote = note;
+            closestIdx = i;
+          }
+        }
+      }
+
+      if (closestNote && closestIdx !== -1) {
+        // Hit evaluation
+        let rating = 'GOOD';
+        let ratingColor = '#38bdf8';
+        let pointsEarned = 10;
+        
+        if (minDistance <= 12) {
+          rating = 'PERFECT!';
+          ratingColor = '#fbbf24';
+          pointsEarned = 15;
+          health = Math.min(100, health + 4);
+        } else {
+          health = Math.min(100, health + 2);
+        }
+
+        score += pointsEarned;
+        scoreDisplay.textContent = score;
+        updateHpUI();
+        
+        // Animate Sebastian playing
+        setCrabState('hit');
+        setTimeout(() => {
+          if (gameActive && health > 0) setCrabState('idle');
+        }, 180);
+
+        closestNote.el.remove();
+        spawnedNotes.splice(closestIdx, 1);
+
+        createRatingPopup(lane, rating, ratingColor);
+        
+        // Visual indicator flash
+        const circle = indicators[lane].querySelector('.key-circle');
+        circle.style.borderColor = ratingColor;
+        circle.style.background = `color-mix(in srgb, ${ratingColor} 30%, rgba(8, 8, 16, 0.9))`;
+        setTimeout(() => {
+          circle.style.borderColor = '';
+          circle.style.background = '';
+        }, 100);
+      } else {
+        // Punish bad click (empty lane hit)
+        takeDamage(8);
+      }
+    }
+
+    function createRatingPopup(lane, text, color) {
+      const popup = document.createElement('div');
+      popup.className = 'rating-popup';
+      popup.textContent = text;
+      popup.style.color = color;
+      popup.style.left = `${(lane * 25) + 12.5}%`;
+      popup.style.top = '375px';
+      
+      document.querySelector('.game-viewport').appendChild(popup);
+      setTimeout(() => popup.remove(), 400);
+    }
+
+    // Chromebook Modal & Boot Sequence logic
+    const cbModal = document.getElementById('chromebook-modal');
+    const cbFrame = document.getElementById('cb-frame');
+    const cbStatus = document.getElementById('chromeos-status');
+    const cbBootScreen = document.getElementById('cb-boot-screen');
+
+    document.getElementById('chromebook-btn').onclick = () => {
+      // Pause active game session
+      if (gameActive) {
+        gameActive = false;
+        clearTimeout(gameTimer);
+        startOverlay.style.display = 'flex';
+      }
+
+      cbModal.classList.add('open');
+      cbStatus.style.display = 'none';
+      document.getElementById('student-id-input').value = '';
+      
+      // Simulate Chromebook boot sequence
+      cbBootScreen.style.display = 'flex';
+      setTimeout(() => {
+        cbBootScreen.style.display = 'none';
+        document.getElementById('student-id-input').focus();
+      }, 1000);
+    };
+
+    document.getElementById('close-modal-btn').onclick = () => {
+      cbModal.classList.remove('open');
+    };
+
+    document.getElementById('enroll-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const inputVal = document.getElementById('student-id-input').value.trim();
+      
+      cbStatus.className = '';
+      cbStatus.style.display = 'none';
+      cbFrame.classList.remove('shake');
+
+      if (!inputVal) {
+        cbStatus.textContent = 'Please enter your System ID.';
+        cbStatus.classList.add('error');
+        return;
+      }
+
+      try {
+        const r = await fetch('/api/claim-sebastians-reward', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ studentId: inputVal })
+        });
+        const d = await r.json();
+
+        if (r.ok && d.success) {
+          cbStatus.textContent = d.message;
+          cbStatus.classList.add('success');
+          loadWallet();
+          playSuccessChimes();
+        } else {
+          cbStatus.textContent = d.error || 'Authentication denied.';
+          cbStatus.classList.add('error');
+          cbFrame.classList.add('shake');
+          playErrorBuzz();
+        }
+      } catch (err) {
+        cbStatus.textContent = 'Network authentication timeout.';
+        cbStatus.classList.add('error');
+        cbFrame.classList.add('shake');
+        playErrorBuzz();
+      }
+    };
+  </script>
+</body>
+</html>
