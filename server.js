@@ -4429,7 +4429,11 @@ async function dailyPuzzleWorker() {
       
       log[email] = { ...ulog, puzzle: dayKey };
       changed = true;
-
+      // 1 in 10 chance of sending
+      if (Math.random() < 0.1) {
+        const p = pool[Math.floor(Math.random() * pool.length)];
+        const turn   = p[0].split(' ')[1] === 'w' ? 'White' : 'Black';
+        const themes = String(p[3] || '').split(/\s+/).filter(Boolean).slice(0, 3).join(', ');
         sendEmailBg(email, "Today's chess puzzle — mitch.pro", makeChessPuzzleHtml(email, turn, p[2], p[0], themes));
         console.log(`[puzzle] sent to ${email}`);
       }
