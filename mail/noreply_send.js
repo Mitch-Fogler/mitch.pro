@@ -111,20 +111,21 @@ function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) 
   }).join('');
 
   let footerHtml = '';
+  const PRIMARY = (primaryUrl || 'https://mitch.pro').replace(/\/$/, '');
+  const ALT     = (altUrl || 'https://mitchdog.com').replace(/\/$/, '');
   if (unsubscribeUrl) {
     footerHtml = `
       <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
         <p style="margin: 0 0 8px;">
-          Want to change how you receive these emails? <br>
-          You can <a href="${unsubscribeUrl}" style="color: #38bdf8; text-decoration: underline;">unsubscribe from this list</a>.
+          Delivered by <a href="${ALT}" style="color: #64748b; text-decoration: underline; font-weight: 600;">mitchdog.com</a> | <a href="${PRIMARY}" style="color: #64748b; text-decoration: underline;">mitch.pro</a>
         </p>
         <p style="margin: 0 0 8px;">
-          Also accessible at <a href="${altUrl || 'https://mitchdog.com'}" style="color: #64748b; text-decoration: underline;">mitchdog.com</a>
+          To opt-out of these communications, you can <a href="${unsubscribeUrl}" style="color: #38bdf8; text-decoration: underline;">unsubscribe from this list</a>.
         </p>
         <p style="margin: 0;">
           For support: email SUPPORT to <a href="mailto:support@mitch.pro" style="color: #64748b; text-decoration: none;">support@mitch.pro</a>
         </p>
-        <p style="margin: 8px 0 0;">
+        <p style="margin: 8px 0 0; font-size: 11px; color: #475569;">
           2014 Capitol Ave #100, Sacramento, CA 95811
         </p>
       </div>
@@ -133,12 +134,12 @@ function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) 
     footerHtml = `
       <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
         <p style="margin: 0 0 8px;">
-          Also accessible at <a href="${primaryUrl || 'https://mitch.pro'}" style="color: #64748b; text-decoration: underline;">mitch.pro</a> | <a href="${altUrl || 'https://mitchdog.com'}" style="color: #64748b; text-decoration: underline;">mitchdog.com</a>
+          Delivered by <a href="${ALT}" style="color: #64748b; text-decoration: underline; font-weight: 600;">mitchdog.com</a> | <a href="${PRIMARY}" style="color: #64748b; text-decoration: underline;">mitch.pro</a>
         </p>
         <p style="margin: 0;">
           For support: email SUPPORT to <a href="mailto:support@mitch.pro" style="color: #64748b; text-decoration: none;">support@mitch.pro</a>
         </p>
-        <p style="margin: 8px 0 0;">
+        <p style="margin: 8px 0 0; font-size: 11px; color: #475569;">
           2014 Capitol Ave #100, Sacramento, CA 95811
         </p>
       </div>
@@ -165,8 +166,11 @@ function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) 
             <td style="padding: 32px 32px 16px;">
               <table border="0" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
-                  <td>
-                    <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #f8fafc; background: linear-gradient(to right, #c084fc, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">mitch.pro</span>
+                  <td style="vertical-align: middle;">
+                    <img src="https://mitchdog.com/favicon.ico" width="24" height="24" style="vertical-align: middle; margin-right: 10px; border-radius: 4px;" alt="mitch.pro">
+                    <span style="font-size: 24px; font-weight: 800; color: #ffffff; vertical-align: middle; letter-spacing: -0.02em;">mitch.pro</span>
+                    <span style="font-size: 24px; font-weight: 300; color: #64748b; vertical-align: middle; margin: 0 8px;">/</span>
+                    <span style="font-size: 24px; font-weight: 800; color: #38bdf8; vertical-align: middle; letter-spacing: -0.02em;">mitchdog.com</span>
                   </td>
                 </tr>
               </table>

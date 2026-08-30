@@ -1362,20 +1362,26 @@ function siteUrl(email) {
   return String(email).toLowerCase().endsWith('@student.rjuhsd.us') ? s.alternate : s.primary;
 }
 
-function htmlBaseTemplate(subject, contentHtml, footerHtml = '') {
+function htmlBaseTemplate(email, subject, contentHtml, footerHtml = '') {
   const s = site();
   const PRIMARY = s.primary.replace(/\/$/, '');
   const ALT     = s.alternate.replace(/\/$/, '');
   if (!footerHtml) {
+    const unsub = email && email.includes('@') ? unsubscribeUrl(email) : '';
     footerHtml = `
       <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
         <p style="margin: 0 0 8px;">
-          Also accessible at <a href="${PRIMARY}" style="color: #64748b; text-decoration: underline;">mitch.pro</a> | <a href="${ALT}" style="color: #64748b; text-decoration: underline;">mitchdog.com</a>
+          Delivered by <a href="${ALT}" style="color: #64748b; text-decoration: underline; font-weight: 600;">mitchdog.com</a> | <a href="${PRIMARY}" style="color: #64748b; text-decoration: underline;">mitch.pro</a>
         </p>
+        ${unsub ? `
+        <p style="margin: 0 0 8px;">
+          To opt-out of these communications, you can <a href="${unsub}" style="color: #38bdf8; text-decoration: underline;">unsubscribe from this list</a>.
+        </p>
+        ` : ''}
         <p style="margin: 0;">
           For support: email SUPPORT to <a href="mailto:support@mitch.pro" style="color: #64748b; text-decoration: none;">support@mitch.pro</a> or mitchell.fogler@student.rjuhsd.us
         </p>
-        <p style="margin: 8px 0 0;">
+        <p style="margin: 8px 0 0; font-size: 11px; color: #475569;">
           2014 Capitol Ave #100, Sacramento, CA 95811
         </p>
       </div>
@@ -1399,7 +1405,16 @@ function htmlBaseTemplate(subject, contentHtml, footerHtml = '') {
           </tr>
           <tr>
             <td style="padding: 32px 32px 16px;">
-              <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #f8fafc; background: linear-gradient(to right, #c084fc, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">mitch.pro</span>
+              <table border="0" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <img src="https://mitchdog.com/favicon.ico" width="24" height="24" style="vertical-align: middle; margin-right: 10px; border-radius: 4px;" alt="mitch.pro">
+                    <span style="font-size: 24px; font-weight: 800; color: #ffffff; vertical-align: middle; letter-spacing: -0.02em;">mitch.pro</span>
+                    <span style="font-size: 24px; font-weight: 300; color: #64748b; vertical-align: middle; margin: 0 8px;">/</span>
+                    <span style="font-size: 24px; font-weight: 800; color: #38bdf8; vertical-align: middle; letter-spacing: -0.02em;">mitchdog.com</span>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr>
@@ -1417,7 +1432,7 @@ function htmlBaseTemplate(subject, contentHtml, footerHtml = '') {
   `.trim();
 }
 
-function makeVerificationCodeHtml(label, code, expiryMinutes) {
+function makeVerificationCodeHtml(email, label, code, expiryMinutes) {
   const content = `
     <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #f4f4f5;">Verification Code</h2>
     <p style="margin: 0 0 24px;">Please use the following verification code to confirm <strong>${label}</strong> on your account:</p>
@@ -1426,7 +1441,7 @@ function makeVerificationCodeHtml(label, code, expiryMinutes) {
     </div>
     <p style="margin: 0; font-size: 13px; color: #f87171;">⚠️ This verification code is active and valid for <strong>${expiryMinutes} minutes</strong>. If you did not request this action, please secure your account.</p>
   `;
-  return htmlBaseTemplate(`Confirm ${label} - mitch.pro`, content);
+  return htmlBaseTemplate(email, `Confirm ${label} - mitch.pro`, content);
 }
 
 function makeWeeklyDigestHtml(email, totalVisits, topGame, eloData, cookies) {
@@ -1481,7 +1496,7 @@ function makeWeeklyDigestHtml(email, totalVisits, topGame, eloData, cookies) {
       <a href="${dashboardUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700;">Visit mitch.pro</a>
     </div>
   `;
-  return htmlBaseTemplate('Your mitch.pro week in review', content);
+  return htmlBaseTemplate(email, 'Your mitch.pro week in review', content);
 }
 
 function makeChessPuzzleHtml(email, turn, rating, fen, themes) {
@@ -1499,7 +1514,7 @@ function makeChessPuzzleHtml(email, turn, rating, fen, themes) {
       <a href="${solveUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Solve on mitch.pro</a>
     </div>
   `;
-  return htmlBaseTemplate("Today's chess puzzle — mitch.pro", content);
+  return htmlBaseTemplate(email, "Today's chess puzzle — mitch.pro", content);
 }
 
 function makeChessClockWarningHtml(email, h, oppName) {
@@ -1514,7 +1529,7 @@ function makeChessClockWarningHtml(email, h, oppName) {
       <a href="${gameUrl}" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);">Go to Game</a>
     </div>
   `;
-  return htmlBaseTemplate(`⏰ ${h}h left to move — mitch.pro chess`, content);
+  return htmlBaseTemplate(email, `⏰ ${h}h left to move — mitch.pro chess`, content);
 }
 
 function makeUnreadMessagesHtml(email, total, senderNames) {
@@ -1529,7 +1544,7 @@ function makeUnreadMessagesHtml(email, total, senderNames) {
       <a href="${chatUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Open Chat Room</a>
     </div>
   `;
-  return htmlBaseTemplate(`💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, content);
+  return htmlBaseTemplate(email, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, content);
 }
 
 function makeBlogNotificationHtml(email, post, link) {
@@ -1548,7 +1563,7 @@ function makeBlogNotificationHtml(email, post, link) {
       You can manage your notification settings in <a href="${prefUrl}" style="color: #64748b; text-decoration: underline;">Preferences</a>.
     </p>
   `;
-  return htmlBaseTemplate(`New blog post: ${post.title}`, content);
+  return htmlBaseTemplate(email, `New blog post: ${post.title}`, content);
 }
 
 function makeChessCorrActionHtml(email, title, messageText) {
@@ -1563,7 +1578,7 @@ function makeChessCorrActionHtml(email, title, messageText) {
       <a href="${gameUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Go to Chess Board</a>
     </div>
   `;
-  return htmlBaseTemplate(title, content);
+  return htmlBaseTemplate(email, title, content);
 }
 
 function makeInviteAwardHtml(email) {
@@ -1577,7 +1592,7 @@ function makeInviteAwardHtml(email) {
       <a href="${siteUrl(email)}" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700;">Claim Bonus</a>
     </div>
   `;
-  return htmlBaseTemplate('mitch.pro - Referral Bonus Claimed!', content);
+  return htmlBaseTemplate(email, 'mitch.pro - Referral Bonus Claimed!', content);
 }
 
 function makeNewsletterWelcomeHtml(email, unsubUrl) {
@@ -1591,7 +1606,7 @@ function makeNewsletterWelcomeHtml(email, unsubUrl) {
       If you wish to opt-out, you can <a href="${unsubUrl}" style="color: #64748b; text-decoration: underline;">unsubscribe here</a> at any time.
     </p>
   `;
-  return htmlBaseTemplate('mitch.pro Newsletter Subscription', content);
+  return htmlBaseTemplate(email, 'mitch.pro Newsletter Subscription', content);
 }
 
 function makeInviteFriendHtml(toEmail, senderDisplay, inviteLink) {
@@ -1606,7 +1621,7 @@ function makeInviteFriendHtml(toEmail, senderDisplay, inviteLink) {
       <a href="${inviteLink}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Accept Invite</a>
     </div>
   `;
-  return htmlBaseTemplate("You're invited to mitch.pro!", content);
+  return htmlBaseTemplate(toEmail, "You're invited to mitch.pro!", content);
 }
 
 function makeAccessStatusHtml(email, title, messageText, actionUrl = '', actionLabel = '') {
@@ -1621,7 +1636,7 @@ function makeAccessStatusHtml(email, title, messageText, actionUrl = '', actionL
     </div>
     ` : ''}
   `;
-  return htmlBaseTemplate(title, content);
+  return htmlBaseTemplate(email, title, content);
 }
 
 function makeMediatorEscrowHtml(email, seller, buyer, price, item, marketplaceUrl) {
@@ -1641,7 +1656,7 @@ function makeMediatorEscrowHtml(email, seller, buyer, price, item, marketplaceUr
       <a href="${marketplaceUrl}" style="display: inline-block; background-color: #fbbf24; color: #1e1b4b; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(251, 191, 36, 0.2);">Go to Marketplace</a>
     </div>
   `;
-  return htmlBaseTemplate("Mitch.pro Marketplace Escrow Mediation", content);
+  return htmlBaseTemplate(email, "Mitch.pro Marketplace Escrow Mediation", content);
 }
 
 function makePremiumGiftHtml(email, senderEmail, base) {
@@ -1659,7 +1674,7 @@ function makePremiumGiftHtml(email, senderEmail, base) {
       <a href="${base}" style="display: inline-block; background: linear-gradient(135deg, #eab308, #ca8a04); color: #1e1b4b; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(234, 179, 8, 0.35);">Explore Premium Features</a>
     </div>
   `;
-  return htmlBaseTemplate("You have been gifted Mitch.pro Premium! 🌟", content);
+  return htmlBaseTemplate(email, "You have been gifted Mitch.pro Premium! 🌟", content);
 }
 
 function makePremiumAlertHtml(email, title, messageText, actionUrl = '', actionLabel = '') {
@@ -1675,7 +1690,7 @@ function makePremiumAlertHtml(email, title, messageText, actionUrl = '', actionL
     </div>
     ` : ''}
   `;
-  return htmlBaseTemplate(title, content);
+  return htmlBaseTemplate(email, title, content);
 }
 
 function unsubscribeEmailKey(email) {
@@ -1693,7 +1708,8 @@ function unsubscribeUrl(email) {
     tokens[key] = token;
     saveJsonSync(UNSUBSCRIBE_TOKENS_FILE, tokens);
   }
-  return `${siteUrl(key)}/unsubscribe/${token}`;
+  const s = site();
+  return `${s.alternate}/unsubscribe/${token}`;
 }
 
 function notificationUrl(path = '/') {
