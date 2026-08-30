@@ -1362,6 +1362,322 @@ function siteUrl(email) {
   return String(email).toLowerCase().endsWith('@student.rjuhsd.us') ? s.alternate : s.primary;
 }
 
+function htmlBaseTemplate(subject, contentHtml, footerHtml = '') {
+  const s = site();
+  const PRIMARY = s.primary.replace(/\/$/, '');
+  const ALT     = s.alternate.replace(/\/$/, '');
+  if (!footerHtml) {
+    footerHtml = `
+      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
+        <p style="margin: 0 0 8px;">
+          Also accessible at <a href="${PRIMARY}" style="color: #64748b; text-decoration: underline;">mitch.pro</a> | <a href="${ALT}" style="color: #64748b; text-decoration: underline;">mitchdog.com</a>
+        </p>
+        <p style="margin: 0;">
+          For support: email SUPPORT to <a href="mailto:support@mitch.pro" style="color: #64748b; text-decoration: none;">support@mitch.pro</a> or mitchell.fogler@student.rjuhsd.us
+        </p>
+        <p style="margin: 8px 0 0;">
+          2014 Capitol Ave #100, Sacramento, CA 95811
+        </p>
+      </div>
+    `;
+  }
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #06060c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc; -webkit-font-smoothing: antialiased;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #06060c; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #0f172a; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+          <tr>
+            <td height="6" style="background: linear-gradient(to right, #a855f7, #38bdf8);"></td>
+          </tr>
+          <tr>
+            <td style="padding: 32px 32px 16px;">
+              <span style="font-size: 24px; font-weight: 800; letter-spacing: -0.03em; color: #f8fafc; background: linear-gradient(to right, #c084fc, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">mitch.pro</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 0 32px 32px; font-size: 15px; color: #cbd5e1; line-height: 1.6;">
+              ${contentHtml}
+              ${footerHtml}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+function makeVerificationCodeHtml(label, code, expiryMinutes) {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #f4f4f5;">Verification Code</h2>
+    <p style="margin: 0 0 24px;">Please use the following verification code to confirm <strong>${label}</strong> on your account:</p>
+    <div style="background-color: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+      <span style="font-family: monospace; font-size: 36px; font-weight: 800; letter-spacing: 0.25em; color: #c084fc; padding-left: 0.25em;">${code}</span>
+    </div>
+    <p style="margin: 0; font-size: 13px; color: #f87171;">⚠️ This verification code is active and valid for <strong>${expiryMinutes} minutes</strong>. If you did not request this action, please secure your account.</p>
+  `;
+  return htmlBaseTemplate(`Confirm ${label} - mitch.pro`, content);
+}
+
+function makeWeeklyDigestHtml(email, totalVisits, topGame, eloData, cookies) {
+  const dashboardUrl = siteUrl(email);
+  let statsHtml = '';
+  
+  if (totalVisits) {
+    const gameName = topGame ? topGame[0].split('/').filter(Boolean).pop() : '';
+    statsHtml += `
+      <div style="background-color: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+        <span style="font-size: 18px; margin-right: 8px;">🎮</span>
+        <strong style="color: #38bdf8;">Games Played</strong>
+        <p style="margin: 6px 0 0 28px; font-size: 14px; color: #94a3b8;">
+          <strong>${totalVisits}</strong> session${totalVisits !== 1 ? 's' : ''} this week.
+          ${gameName ? `<br><span style="font-size: 12px;">Most played: <em>${gameName}</em></span>` : ''}
+        </p>
+      </div>
+    `;
+  }
+  
+  if (eloData && eloData.elo) {
+    statsHtml += `
+      <div style="background-color: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.15); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+        <span style="font-size: 18px; margin-right: 8px;">♟</span>
+        <strong style="color: #fbbf24;">Chess ELO</strong>
+        <p style="margin: 6px 0 0 28px; font-size: 14px; color: #94a3b8;">
+          Current Rating: <strong>${eloData.elo}</strong> (${eloData.wins || 0}W / ${eloData.losses || 0}L)
+        </p>
+      </div>
+    `;
+  }
+  
+  if (cookies > 0) {
+    statsHtml += `
+      <div style="background-color: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.15); border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+        <span style="font-size: 18px; margin-right: 8px;">🍪</span>
+        <strong style="color: #c084fc;">Cookie Clicker</strong>
+        <p style="margin: 6px 0 0 28px; font-size: 14px; color: #94a3b8;">
+          Cookies Collected: <strong>${Math.floor(cookies).toLocaleString()}</strong>
+        </p>
+      </div>
+    `;
+  }
+  
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #f4f4f5; text-align: center;">⚡ Your Week in Review</h2>
+    <p style="margin: 0 0 24px; text-align: center; color: #94a3b8;">Here is a summary of your stats and accomplishments on mitch.pro this week:</p>
+    <div style="margin-bottom: 24px;">
+      ${statsHtml}
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${dashboardUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700;">Visit mitch.pro</a>
+    </div>
+  `;
+  return htmlBaseTemplate('Your mitch.pro week in review', content);
+}
+
+function makeChessPuzzleHtml(email, turn, rating, fen, themes) {
+  const solveUrl = `${siteUrl(email)}/games/chess-bot/`;
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #fbbf24; text-align: center;">♟ Daily Chess Puzzle</h2>
+    <div style="background-color: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: center;">
+      <p style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #f4f4f5;">${turn} to move and find the best continuation.</p>
+      <div style="background: #1e293b; padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 13px; color: #94a3b8; word-break: break-all; margin-bottom: 12px;">
+        FEN: ${fen}
+      </div>
+      <p style="margin: 0; font-size: 13px; color: #64748b;">Rating: <strong>~${rating}</strong> | Themes: <em>${themes}</em></p>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${solveUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Solve on mitch.pro</a>
+    </div>
+  `;
+  return htmlBaseTemplate("Today's chess puzzle — mitch.pro", content);
+}
+
+function makeChessClockWarningHtml(email, h, oppName) {
+  const gameUrl = `${siteUrl(email)}/games/chess-bot/`;
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #ef4444; text-align: center;">⏰ Time is running out!</h2>
+    <div style="background-color: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+      <p style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #f4f4f5;">Your Turn — Chess Clock Alert</p>
+      <p style="margin: 0 0 16px; color: #cbd5e1;">You have less than <strong>${h} hour${h !== 1 ? 's' : ''}</strong> remaining to make your move against <strong>${oppName}</strong>, or your clock will run out.</p>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${gameUrl}" style="display: inline-block; background-color: #ef4444; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);">Go to Game</a>
+    </div>
+  `;
+  return htmlBaseTemplate(`⏰ ${h}h left to move — mitch.pro chess`, content);
+}
+
+function makeUnreadMessagesHtml(email, total, senderNames) {
+  const chatUrl = `${siteUrl(email)}/encrypt.html`;
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #a855f7; text-align: center;">💬 Unread Messages</h2>
+    <div style="background-color: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+      <p style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #f4f4f5;">You have new mail in your inbox!</p>
+      <p style="margin: 0; color: #cbd5e1;">You have <strong>${total} unread message${total !== 1 ? 's' : ''}</strong> waiting for you from <strong>${senderNames}</strong>.</p>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${chatUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Open Chat Room</a>
+    </div>
+  `;
+  return htmlBaseTemplate(`💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, content);
+}
+
+function makeBlogNotificationHtml(email, post, link) {
+  const prefUrl = `${siteUrl(email)}/preferences/#privacy`;
+  const content = `
+    <h2 style="margin: 0 0 8px; font-size: 22px; font-weight: 800; color: #f4f4f5; text-align: left; line-height: 1.3;">📰 ${post.title}</h2>
+    <p style="margin: 0 0 20px; font-size: 13px; color: #94a3b8;">Published by <strong>${post.authorName || 'mitch.pro'}</strong></p>
+    <div style="background-color: rgba(255, 255, 255, 0.03); border-left: 4px solid #a855f7; border-radius: 4px; padding: 16px 20px; margin-bottom: 24px; font-style: italic; line-height: 1.7; color: #cbd5e1;">
+      "${blogExcerpt(post.body)}"
+    </div>
+    <div style="text-align: left; margin-bottom: 24px;">
+      <a href="${link}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: 700;">Read Full Post</a>
+    </div>
+    <p style="margin: 32px 0 0; font-size: 11px; color: #64748b; text-align: center;">
+      You received this because you are subscribed to blog alerts. <br>
+      You can manage your notification settings in <a href="${prefUrl}" style="color: #64748b; text-decoration: underline;">Preferences</a>.
+    </p>
+  `;
+  return htmlBaseTemplate(`New blog post: ${post.title}`, content);
+}
+
+function makeChessCorrActionHtml(email, title, messageText) {
+  const gameUrl = `${siteUrl(email)}/games/chess-bot/`;
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #fbbf24; text-align: center;">♟ Chess Correspondence</h2>
+    <div style="background-color: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+      <p style="margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #f4f4f5;">${title}</p>
+      <p style="margin: 0; color: #cbd5e1; line-height: 1.6;">${messageText}</p>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${gameUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Go to Chess Board</a>
+    </div>
+  `;
+  return htmlBaseTemplate(title, content);
+}
+
+function makeInviteAwardHtml(email) {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #10b981; text-align: center;">🎉 Referral Bonus Claimed!</h2>
+    <div style="background-color: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+      <p style="margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #f4f4f5;">You earned 2,000 MitchCoins!</p>
+      <p style="margin: 0; color: #cbd5e1;">Someone you invited just completed their sign-up on mitch.pro. Keep sharing your invite link to earn more referral bonuses!</p>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${siteUrl(email)}" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700;">Claim Bonus</a>
+    </div>
+  `;
+  return htmlBaseTemplate('mitch.pro - Referral Bonus Claimed!', content);
+}
+
+function makeNewsletterWelcomeHtml(email, unsubUrl) {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #38bdf8; text-align: center;">Welcome to the Newsletter!</h2>
+    <p style="margin: 0 0 24px; text-align: center; color: #cbd5e1;">You are now subscribed to the mitch.pro newsletter. You'll receive updates when new games, features, or developer updates are posted.</p>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${siteUrl(email)}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700;">Explore mitch.pro</a>
+    </div>
+    <p style="margin: 32px 0 0; font-size: 11px; color: #64748b; text-align: center;">
+      If you wish to opt-out, you can <a href="${unsubUrl}" style="color: #64748b; text-decoration: underline;">unsubscribe here</a> at any time.
+    </p>
+  `;
+  return htmlBaseTemplate('mitch.pro Newsletter Subscription', content);
+}
+
+function makeInviteFriendHtml(toEmail, senderDisplay, inviteLink) {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 22px; font-weight: 800; color: #f4f4f5; text-align: center;">🎮 Join mitch.pro</h2>
+    <div style="background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: center;">
+      <p style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #f4f4f5;">You've been invited by ${senderDisplay}!</p>
+      <p style="margin: 0 0 16px; color: #94a3b8; line-height: 1.6;">mitch.pro is a student-only platform featuring custom games, tools, secure messaging, and MitchCoins.</p>
+      <p style="margin: 0; color: #fbbf24; font-weight: 700;">🎁 Sign up today and you'll both earn 2,000 MitchCoins!</p>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${inviteLink}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);">Accept Invite</a>
+    </div>
+  `;
+  return htmlBaseTemplate("You're invited to mitch.pro!", content);
+}
+
+function makeAccessStatusHtml(email, title, messageText, actionUrl = '', actionLabel = '') {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #f4f4f5; text-align: center;">${title}</h2>
+    <div style="background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+      <p style="margin: 0; color: #cbd5e1; line-height: 1.6;">${messageText}</p>
+    </div>
+    ${actionUrl ? `
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${actionUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700;">${actionLabel}</a>
+    </div>
+    ` : ''}
+  `;
+  return htmlBaseTemplate(title, content);
+}
+
+function makeMediatorEscrowHtml(email, seller, buyer, price, item, marketplaceUrl) {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #fbbf24; text-align: center;">⚖️ Marketplace Mediation</h2>
+    <div style="background-color: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+      <p style="margin: 0 0 12px; font-weight: 700; color: #f4f4f5; text-align: center;">You have been selected as a mediator!</p>
+      <table border="0" cellpadding="0" cellspacing="0" width="100%" style="font-size: 14px; color: #cbd5e1; line-height: 1.8;">
+        <tr><td><strong>Seller:</strong></td><td>${seller}</td></tr>
+        <tr><td><strong>Buyer:</strong></td><td>${buyer}</td></tr>
+        <tr><td><strong>Price:</strong></td><td>${price} MitchCoins</td></tr>
+        <tr><td><strong>Item:</strong></td><td>${item}</td></tr>
+      </table>
+      <p style="margin: 16px 0 0; font-size: 13px; color: #ef4444; text-align: center;">🚨 Please resolve or undo this deal within 24 hours. Otherwise, it will auto-finalize.</p>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${marketplaceUrl}" style="display: inline-block; background-color: #fbbf24; color: #1e1b4b; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(251, 191, 36, 0.2);">Go to Marketplace</a>
+    </div>
+  `;
+  return htmlBaseTemplate("Mitch.pro Marketplace Escrow Mediation", content);
+}
+
+function makePremiumGiftHtml(email, senderEmail, base) {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 22px; font-weight: 800; color: #eab308; text-align: center;">⭐ Premium Membership Gifted!</h2>
+    <div style="background-color: rgba(234, 179, 8, 0.08); border: 1px solid rgba(234, 179, 8, 0.25); border-radius: 12px; padding: 20px; margin-bottom: 24px; text-align: center;">
+      <p style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #f4f4f5;">Your friend (${senderEmail}) has gifted you a Lifetime Premium Membership to Mitch.pro!</p>
+      <ul style="margin: 0; padding: 0 0 0 20px; text-align: left; color: #cbd5e1; font-size: 14px; line-height: 1.8;">
+        <li>A free custom student email alias (e.g., @student.mitch.pro)</li>
+        <li>Access to Premium cosmetics, badges, and colors</li>
+        <li>Exclusive chat and feature access</li>
+      </ul>
+    </div>
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${base}" style="display: inline-block; background: linear-gradient(135deg, #eab308, #ca8a04); color: #1e1b4b; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(234, 179, 8, 0.35);">Explore Premium Features</a>
+    </div>
+  `;
+  return htmlBaseTemplate("You have been gifted Mitch.pro Premium! 🌟", content);
+}
+
+function makePremiumAlertHtml(email, title, messageText, actionUrl = '', actionLabel = '') {
+  const content = `
+    <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #fbbf24; text-align: center;">🌟 Premium Status Alert</h2>
+    <div style="background-color: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
+      <p style="margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #f4f4f5;">${title}</p>
+      <p style="margin: 0; color: #cbd5e1; line-height: 1.6;">${messageText}</p>
+    </div>
+    ${actionUrl ? `
+    <div style="text-align: center; margin-bottom: 8px;">
+      <a href="${actionUrl}" style="display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.2);">${actionLabel}</a>
+    </div>
+    ` : ''}
+  `;
+  return htmlBaseTemplate(title, content);
+}
+
 function unsubscribeEmailKey(email) {
   return String(email || '').toLowerCase().trim();
 }
@@ -1684,7 +2000,7 @@ function sendSecurityActionCode(normEmail, action) {
     attempts: 0,
     expires: Date.now() + 10 * 60 * 1000,
   });
-  sendEmailBg(normEmail, `Confirm ${label} - mitch.pro`, `Your confirmation code for ${label} is: ${code}\n\nThis code expires in 10 minutes.${emailSig()}`);
+  sendEmailBg(normEmail, `Confirm ${label} - mitch.pro`, makeVerificationCodeHtml(label, code, 10));
   return { ok: true };
 }
 
@@ -3335,8 +3651,8 @@ async function premiumMaintenanceWorker() {
           if (now - lastWarn > 86400 * 1000) { // Warn at most once per 24h
              console.log(`[premium] warning ${email} about inactivity (5d)`);
              const subject = "Urgent: Your mitch.pro Premium is about to expire";
-             const body = `Hi,\n\nOur records show you haven't logged in to mitch.pro for 5 days.\n\nIf you do not log on in the next 2 days, your Premium status will be automatically revoked.\n\nSimply visit mitch.pro and log in to keep your perks!`;
-             spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), email, subject, body]);
+             const html = makePremiumAlertHtml(email, subject, "Our records show you haven't logged in to mitch.pro for 5 days. If you do not log on in the next 2 days, your Premium status will be automatically revoked. Simply visit mitch.pro and log in to keep your perks!", siteUrl(email), "Login to mitch.pro");
+             spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), email, subject, html]);
              if (!stats[norm]) stats[norm] = {};
              stats[norm].last_premium_warn = now;
              statsChanged = true;
@@ -3389,10 +3705,10 @@ function sendPremiumEmailOffer(targetEmail) {
   
   const base = siteUrl(toEmail);
   const subject = "Eligible for a Free @mitch.pro Email Address!";
-  const body = `Hi,\n\nCongratulations on getting Premium!\n\nAs a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address!\n\nTo claim your custom email address, please submit your application at ${base}/premium-email.\n\nBest,\nsupport@mitch.pro`;
+  const html = makePremiumAlertHtml(toEmail, subject, "Congratulations on getting Premium! As a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address! Claim yours now by submitting your application.", base + "/premium-email", "Claim Email Address");
   
   try {
-    spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), toEmail, subject, body]);
+    spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), toEmail, subject, html]);
     console.log(`[premium] Sent premium email offer to ${toEmail} (original target: ${targetEmail})`);
   } catch (e) {
     console.error(`[premium] Failed to send email offer to ${toEmail}: ${e.message}`);
@@ -4085,7 +4401,7 @@ async function weeklyDigestWorker() {
       if (cookies > 0) body += `🍪 Cookies: ${Math.floor(cookies).toLocaleString()}\n`;
       body += `\nSee you next week — ${siteUrl(email)}`;
 
-      sendEmailBg(email, 'Your mitch.pro week in review', body);
+      sendEmailBg(email, 'Your mitch.pro week in review', makeWeeklyDigestHtml(email, totalVisits, topGame, eloData, cookies));
       log[email] = { ...ulog, weekly_digest: weekKey };
       console.log(`[weekly] sent to ${email}`);
     }
@@ -4114,13 +4430,7 @@ async function dailyPuzzleWorker() {
       log[email] = { ...ulog, puzzle: dayKey };
       changed = true;
 
-      // 1 in 10 chance of sending
-      if (Math.random() < 0.1) {
-        const p = pool[Math.floor(Math.random() * pool.length)];
-        const turn   = p[0].split(' ')[1] === 'w' ? 'White' : 'Black';
-        const themes = String(p[3] || '').split(/\s+/).filter(Boolean).slice(0, 3).join(', ');
-        const body = `Here's today's chess puzzle (rating ~${p[2]}):\n\n${turn} to move and find the best continuation.\nFEN: ${p[0]}\nThemes: ${themes}\n\nSolve it at ${siteUrl(email)}/games/chess-bot/ (Puzzles tab)`;
-        sendEmailBg(email, "Today's chess puzzle — mitch.pro", body);
+        sendEmailBg(email, "Today's chess puzzle — mitch.pro", makeChessPuzzleHtml(email, turn, p[2], p[0], themes));
         console.log(`[puzzle] sent to ${email}`);
       }
     }
@@ -4147,8 +4457,7 @@ async function clockWarnWorker() {
         if (remaining < h * 3600_000 && remaining > 0 && !warned.has(h)) {
           const opp = g.turn === 'w' ? g.black : g.white;
           const oppName = (opp || '').split('@')[0];
-          sendEmailBg(turnEmail, `⏰ ${h}h left to move — mitch.pro chess`,
-            `You have less than ${h} hour${h !== 1 ? 's' : ''} to make your move against ${oppName}.\n\nView the game: ${siteUrl(turnEmail)}/games/chess-bot/`);
+          sendEmailBg(turnEmail, `⏰ ${h}h left to move — mitch.pro chess`, makeChessClockWarningHtml(turnEmail, h, oppName));
           warned.add(h); newWarn = true;
           console.log(`[clock-warn] ${h}h → ${turnEmail} game ${gameId}`);
         }
@@ -4190,8 +4499,7 @@ async function dmDigestWorker() {
       if (ulog.dm_digest_ts && latestTs <= ulog.dm_digest_ts) continue;
       const total = Object.values(senders).reduce((a, b) => a + b, 0);
       const names = Object.keys(senders).map(e => e.split('@')[0]).join(', ');
-      sendEmailBg(recip, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`,
-        `You have ${total} unread message${total !== 1 ? 's' : ''} from ${names}.\n\nRead them at ${siteUrl(recip)}/encrypt.html`);
+      sendEmailBg(recip, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, makeUnreadMessagesHtml(recip, total, names));
       log[recip] = { ...ulog, dm_digest_ts: latestTs };
       changed = true;
       console.log(`[dm-digest] ${total} msgs from ${Object.keys(senders).length} senders → ${recip}`);
@@ -5327,8 +5635,7 @@ function notifyBlogSubscribers(post) {
     .map(([email]) => email);
   for (const email of emails) {
     const link = `${siteUrl(email)}/blog/#post/${encodeURIComponent(post.slug)}`;
-    const body = `New blog post on mitch.pro\n\n${post.title}\nBy ${post.authorName || 'mitch.pro'}\n\n${blogExcerpt(post.body)}\n\nRead it here:\n${link}\n\nYou can turn off blog alerts in Preferences:\n${siteUrl(email)}/preferences/#privacy${emailSig()}`;
-    sendEmailBg(email, `New blog post: ${post.title}`, body);
+    sendEmailBg(email, `New blog post: ${post.title}`, makeBlogNotificationHtml(email, post, link));
   }
 }
 
@@ -7238,18 +7545,9 @@ async function handleRequest(req, server) {
 
       // Email notification
       const emailSubject = "Mitch.pro Marketplace — You are a mediator!";
-      const emailBody = `Hello,
-
-You have been selected as a mediator for a transaction on the mitch.pro Marketplace:
-- Seller: ${maskEmail(listing.seller)}
-- Buyer: ${maskEmail(email)}
-- Price: ${listing.price} MitchCoins
-- Item: ${listing.type === 'cosmetic' ? listing.itemId : 'Custom: ' + listing.description}
-
-Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal within 24 hours. If no action is taken, the trade will finalize automatically.
-
-— Mitch.pro Team`;
-      sendEmailBg(listing.mediator, emailSubject, emailBody);
+      const itemDesc = listing.type === 'cosmetic' ? listing.itemId : 'Custom: ' + listing.description;
+      const mUrl = `https://mitch.pro/marketplace/`;
+      sendEmailBg(listing.mediator, emailSubject, makeMediatorEscrowHtml(listing.mediator, maskEmail(listing.seller), maskEmail(email), listing.price, itemDesc, mUrl));
       return jsonResp(200, { ok: true, message: "Purchase placed in mediator escrow successfully!" });
     } else {
       // Finalize immediately
@@ -7903,20 +8201,7 @@ Please log in to https://mitch.pro/marketplace/ to resolve or undo this deal wit
       // Send email to target user
       const base = siteUrl(targetEmail);
       const emailSubject = 'You have been gifted Mitch.pro Premium! 🌟';
-      const emailBody = `Hello!
-
-Amazing news! Your friend (${email}) has gifted you a Lifetime Premium Membership to Mitch.pro!
-
-Your Premium benefits are now fully active:
-- A free custom @student.mitch.pro email address (Apply at ${base}/premium-email)
-- Access to all Premium-only custom cosmetics (name colors, badges, themes, and effects).
-- Exclusive chat privileges and direct access to Premium features.
-
-Head over to ${base} to check out your new Premium features!
-
-Best,
-Mitch.pro Team`;
-      sendEmailBg(targetEmail, emailSubject, emailBody);
+      sendEmailBg(targetEmail, emailSubject, makePremiumGiftHtml(targetEmail, email, base));
 
       return jsonResp(200, { ok: true, message: 'Premium gifted successfully!' });
     }
@@ -9518,10 +9803,10 @@ Mitch.pro Team`;
           tokens[newTok] = { email, created_at: Date.now() / 1000, used: false };
           if (tok in tokens) delete tokens[tok];
           saveTokens(tokens);
-          const _s  = site();
+          const _s = site();
           const link = `${siteUrl(email)}/claim.html?token=${newTok}`;
           sendEmailBg(email, `Your ${_s.name} Access Has Been Approved`,
-            `Hi,\n\nYour access request has been approved. Click the link below to claim your account:\n\n${link}\n\nSave your token in case you need it later: ${newTok}${emailFooter()}${emailSig()}`);
+            makeAccessStatusHtml(email, 'Your Access Has Been Approved', 'Your access request has been approved. Click the link below to claim your account. Save your token in case you need it later: ' + newTok, link, 'Claim Account'));
           return jsonResp(200, { ok: true });
         }
         if (action === 'approve_team') {
@@ -9547,7 +9832,7 @@ Mitch.pro Team`;
           saveTokens(tokens);
           const _s = site();
           sendEmailBg(email, `Your ${_s.name} Access Request Was Not Approved`,
-            `Hi,\n\nUnfortunately, your access request to ${_s.name} was not approved at this time.\n\nIf you think this is a mistake, you can submit an appeal at:\n${siteUrl(email)}/appeal.html${emailFooter()}${emailSig()}`);
+            makeAccessStatusHtml(email, 'Access Request Update', 'Unfortunately, your access request was not approved at this time. If you think this is a mistake, you can submit an appeal.', siteUrl(email) + '/appeal.html', 'Appeal Decision'));
           return jsonResp(200, { ok: true });
         }
         if (action === 'blacklist') {
@@ -9559,7 +9844,7 @@ Mitch.pro Team`;
           writeFileSync(BLACKLIST_FILE, JSON.stringify(bl, null, 2));
           const _s = site();
           sendEmailBg(email, `Your ${_s.name} Access Request Was Not Approved`,
-            `Hi,\n\nYour access request to ${_s.name} was not approved.\n\nReason: ${reason}${emailFooter()}${emailSig()}`);
+            makeAccessStatusHtml(email, 'Access Request Denied', 'Your access request was not approved.<br><br><strong>Reason:</strong> ' + reason));
           return jsonResp(200, { ok: true });
         }
         return jsonResp(400, { error: 'unknown action' });
@@ -9579,7 +9864,7 @@ Mitch.pro Team`;
           const _s  = site();
           const link = `${siteUrl(email)}/claim.html?token=${newTok}`;
           sendEmailBg(email, `Your ${_s.name} Appeal Has Been Approved`,
-            `Hi,\n\nGreat news — your appeal has been approved and your access has been restored.\n\nClick the link below to claim your account:\n\n${link}\n\nSave your token in case you need it later: ${newTok}${emailFooter()}${emailSig()}`);
+            makeAccessStatusHtml(email, 'Appeal Approved', 'Great news — your appeal has been approved and your access has been restored. Click the link below to claim your account. Save your token in case you need it later: ' + newTok, link, 'Claim Account'));
         }
         appeals = appeals.filter(a => !(a.email === email && String(a.submitted_at) === String(submitted_at)));
         saveAppeals(appeals);
@@ -9598,11 +9883,11 @@ Mitch.pro Team`;
           writeFileSync(NEWSLETTER_UNSUB_FILE, JSON.stringify([...new Set(unsub)].sort(), null, 2));
           const _s = site();
           sendEmailBg(email, `You've Been Unsubscribed from the ${_s.name} Newsletter`,
-            `Hi,\n\nYou've been successfully unsubscribed from the ${_s.name} newsletter. You won't receive any further emails.\n\nIf you change your mind, you can re-subscribe at:\n${siteUrl(email)}/newsletter.html${emailSig()}`);
+            makeAccessStatusHtml(email, 'Unsubscribed Successfully', 'You have been successfully unsubscribed from the newsletter. You won\'t receive any further emails.', siteUrl(email) + '/newsletter.html', 'Resubscribe'));
         } else {
           const _s = site();
           sendEmailBg(email, `Your ${_s.name} Unsubscribe Request`,
-            `Hi,\n\nYour request to unsubscribe from the ${_s.name} newsletter was not processed.\n\nIf you believe this is an error, please reply to this email.${emailFooter()}${emailSig()}`);
+            makeAccessStatusHtml(email, 'Unsubscribe Request Not Processed', 'Your request to unsubscribe from the newsletter was not processed. If you believe this is an error, please reply to this email.'));
         }
         return jsonResp(200, { ok: true });
       }
@@ -9747,7 +10032,7 @@ Mitch.pro Team`;
           const rec = { normEmail, type: twofa.type, attempts: 0, expires: Date.now() + 5 * 60 * 1000 };
           if (twofa.type === 'email') {
             rec.code = Math.floor(100000 + Math.random() * 900000).toString();
-            sendEmailBg(normEmail, 'Your mitch.pro login code', `Your login verification code is: ${rec.code}\n\nThis code expires in 5 minutes.${emailSig()}`);
+            sendEmailBg(normEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
           }
           pendingTwoFactor.set(tempToken, rec);
           writeAppLog('info', 'login', 'Login requires 2FA', { email: normEmail, type: twofa.type, ip });
@@ -9866,8 +10151,7 @@ Mitch.pro Team`;
         saveJson(SIGNUP_CODES_FILE, codes);
 
         const _s = site();
-        sendEmailBg(email, `Your ${_s.name} Verification Code`,
-          `Hi,\n\nYour verification code is: ${code}\n\nThis code expires in 30 minutes. Enter it on the sign-up page to complete your account setup.\n\nIf you didn't request this email, you can safely ignore it.${emailFooter()}${emailSig()}`);
+        sendEmailBg(email, `Your ${_s.name} Verification Code`, makeVerificationCodeHtml('Account Signup', code, 30));
 
         writeAppLog('info', 'signup', 'Signup verification code sent', { email: normEmail, ip });
         return jsonResp(200, { success: true });
@@ -9951,9 +10235,7 @@ Mitch.pro Team`;
                 saveJson(INVITE_CLAIMS_FILE, invClaims);
                 addCoins(refNorm, 2000);
                 addCoins(normEmail, 2000);
-                sendEmailBg(refNorm,
-                  '\ud83c\udf89 Your invite earned 2,000 MitchCoins!',
-                  `Hi,\n\nGreat news \u2014 someone you invited just signed up for mitch.pro!\n\nYou've been awarded 2,000 MitchCoins as a thank you.\n\nKeep sharing your invite link to earn more.${emailSig()}`);
+                sendEmailBg(refNorm, 'mitch.pro - Referral Bonus Claimed!', makeInviteAwardHtml(refNorm));
                 ntfy(`Referral paid: ${refNorm} and ${normEmail} each earned 2000 coins for invite`, { title: 'Invite Reward' });
                 console.log(`[invite] ${refNorm} and ${normEmail} each earned 2000 coins for referring`);
               }
@@ -9997,8 +10279,7 @@ Mitch.pro Team`;
         saveTokens(tokens);
 
         const _s = site();
-        sendEmailBg(email, `Your ${_s.name} Reset Code`,
-          `Hi,\n\nYour 6-digit password reset code is: ${otp}\n\nThis code expires in 30 minutes. Enter it on the reset page to set a new password.\n\nIf you didn't request this email, you can safely ignore it.${emailFooter()}${emailSig()}`);
+        sendEmailBg(email, `Your ${_s.name} Reset Code`, makeVerificationCodeHtml('Password Reset', otp, 30));
 
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
@@ -10026,8 +10307,7 @@ Mitch.pro Team`;
         extra.push(email);
         saveJson(EXTRA_FILE, [...new Set(extra)].sort());
         const _s = site();
-        sendEmailBg(email, `You're Signed Up for the ${_s.name} Newsletter`,
-          `Hi,\n\nYou're now subscribed to the ${_s.name} newsletter. You'll receive updates when new games or features are added.\n\nTo unsubscribe at any time, visit:\n${unsubscribeUrl(email)}${emailSig()}`);
+        sendEmailBg(email, `You're Signed Up for the ${_s.name} Newsletter`, makeNewsletterWelcomeHtml(email, unsubscribeUrl(email)));
         ntfy(email, { title: 'Newsletter Signup' });
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
@@ -10104,9 +10384,7 @@ Mitch.pro Team`;
           saveJson(INVITE_SENT_FILE, invSent);
         }
 
-        sendEmailBg(toEmail,
-          `${senderDisplay} invited you to join ${_s.name}`,
-          `Hi,\n\n${senderDisplay} thinks you'd enjoy mitch.pro — a student site with games, tools, MitchCoins, and more.\n\nJoin using their invite link and you'll both earn 2,000 MitchCoins when you sign up:\n\n${inviteLink}\n\nJust pick a password and you're in.${emailFooter()}${emailSig()}`);
+        sendEmailBg(toEmail, `${senderDisplay} invited you to join ${_s.name}`, makeInviteFriendHtml(toEmail, senderDisplay, inviteLink));
 
         console.log(`[invite] ${email} sent invite to ${toEmail}`);
         return jsonResp(200, { success: true, alreadySent });
@@ -10990,7 +11268,7 @@ function loadAllGamesList() {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const token = createTempToken();
       pendingEmailChanges.set(token, { oldNorm, newNorm, newEmail, code, expires: Date.now() + 30 * 60 * 1000, attempts: 0 });
-      sendEmailBg(newEmail, 'Confirm your mitch.pro email change', `Your email change confirmation code is: ${code}\n\nThis code expires in 30 minutes.${emailSig()}`);
+      sendEmailBg(newEmail, 'Confirm your mitch.pro email change', makeVerificationCodeHtml('Email Change Request', code, 30));
       return jsonResp(200, { ok: true, change_token: token });
     }
 
@@ -13978,8 +14256,7 @@ function loadAllGamesList() {
         const fromName = myEmail.split('@')[0];
         const days = tc.perMove / 86400000;
         const _s = site();
-        sendEmailBg(to, `Chess challenge from ${fromName}`,
-          `${fromName} has challenged you to a correspondence chess game (${days} day${days !== 1 ? 's' : ''}/move) with a bet of ${bet} coins.\n\nLog in to accept: ${siteUrl(to)}/games/chess-bot/`);
+        sendEmailBg(to, `Chess challenge from ${fromName}`, makeChessCorrActionHtml(to, `Chess challenge from ${fromName}`, `${fromName} has challenged you to a correspondence chess game (${days} day${days !== 1 ? 's' : ''}/move) with a bet of ${bet} coins.`));
       }
       addAdminNotification(to, 'New Chess Challenge', `${myEmail.split('@')[0]} has challenged you to a Chess game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/chess-bot/');
       triggerNotificationRefresh();
@@ -14116,10 +14393,7 @@ function loadAllGamesList() {
           ? `Chess game over — ${fromName} played the final move`
           : `${fromName} played a move in your correspondence game`;
         const _s = site();
-        const body2 = g.status === 'over'
-          ? `Result: ${g.result}. View the game: ${siteUrl(oppEmail)}/games/chess-bot/`
-          : `It's your turn! View the game: ${siteUrl(oppEmail)}/games/chess-bot/`;
-        sendEmailBg(oppEmail, subject, body2);
+        sendEmailBg(oppEmail, subject, makeChessCorrActionHtml(oppEmail, subject, g.status === 'over' ? `Result: ${g.result}.` : `It's your turn!`));
       }
       return jsonResp(200, { ok: true, game: g });
     }
@@ -17892,6 +18166,13 @@ setTimeout(() => {
   loadRichardSessions();
   loadPianoSessions();
   loadPiccoloSessions();
+
+  // Send automated test email on startup from school email to GMAIL_USER variable
+  const testTarget = (process.env.GMAIL_USER || 'mitchell.fogler@student.rjuhsd.us').trim();
+  console.log(`[startup] Sending test startup email to ${testTarget}...`);
+  sendEmailBg(testTarget, "mitch.pro - Server Startup Test", 
+    `Hello!\n\nThe mitch.pro server has successfully restarted at ${new Date().toLocaleString()}.\n\nThis is an automated verification test email checking that emailing from the school email account is fully active and working.\n\nHave a great day!`);
+
   console.log(`[startup] All systems active.`);
 }, 100);
 
