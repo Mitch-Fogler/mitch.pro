@@ -977,8 +977,28 @@ function initialsFor(value) {
 function memberFor(email) {
   const m = members.find(x => sameEmail(x.email, email));
   if (m) return m;
+  // Group member refs are public usernames; match the handle when the email
+  // form does not line up (admins see masked emails in the members list).
+  const q = String(email || '').toLowerCase().trim();
+  if (q && !q.includes('@')) {
+    const byHandle = members.find(x => String(x.handle || '').toLowerCase() === q);
+    if (byHandle) return byHandle;
+  }
   if (sameEmail(email, myEmail) && myNickPubKey) return { email: myEmail, pubKey: myNickPubKey };
   return null;
+}
+
+// The keys this device's own messages are encrypted under: our public
+// username first (what group payload maps use), then our masked email as a
+// legacy fallback for older stored messages.
+function myPayloadKeys() {
+  const keys = [];
+  const me = memberFor(myEmail);
+  const h = me && me.handle ? normEmail(me.handle) : '';
+  if (h && !keys.includes(h)) keys.push(h);
+  const e = normEmail(myEmail);
+  if (e && !keys.includes(e)) keys.push(e);
+  return keys;
 }
 
 function roleRank(role) {
@@ -1158,8 +1178,9 @@ async function decryptMessageContent(m) {
       let decryptedText = null;
       
       if (payload.group) {
-        if (payload.payloads && payload.payloads[normEmail(myEmail)]) {
-          const innerPayload = payload.payloads[normEmail(myEmail)];
+        const myKeys = myPayloadKeys();
+        const innerPayload = myKeys.map(k => payload.payloads && payload.payloads[k]).find(Boolean);
+        if (innerPayload) {
           if (sentByMe && innerPayload.recipientPubKey && !peerPubKeys.includes(innerPayload.recipientPubKey)) {
             peerPubKeys.unshift(innerPayload.recipientPubKey);
           }
@@ -2484,7 +2505,9 @@ async function send() {
       if (group && group.members) {
         const payloads = {};
         const allMembers = [...group.members];
-        if (!allMembers.some(m => sameEmail(m, myEmail))) {
+        // Member refs are public usernames; add our own masked email only if
+        // the list doesn't already identify us (by email or via the handle).
+        if (!allMembers.some(m => sameEmail(m, myEmail) || sameEmail((memberFor(m) || {}).email, myEmail))) {
           allMembers.push(myEmail);
         }
 

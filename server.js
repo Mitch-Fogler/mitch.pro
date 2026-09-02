@@ -1399,9 +1399,9 @@ function htmlBaseTemplate(email, subject, contentHtml, footerHtml = '') {
   <title>${subject}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #06060c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc; -webkit-font-smoothing: antialiased;">
-  <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#06060c" style="background-color: #06060c; padding: 40px 20px;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#06060c" style="background-color: #06060c; border-collapse: collapse;">
     <tr>
-      <td align="center">
+      <td align="center" bgcolor="#06060c" style="background-color: #06060c; padding: 40px 20px;">
         <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #0f172a; border-radius: 16px; overflow: hidden; border: 1px solid #0f172a; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
           <tr>
             <td height="6" style="background: linear-gradient(to right, #a855f7, #38bdf8);"></td>
@@ -1941,6 +1941,64 @@ function defaultUsernameForEmail(email, used = new Set()) {
   while (used.has(candidate)) candidate = `${local}-${i++}`;
   used.add(candidate);
   return candidate;
+}
+
+// Chat participants are referenced three ways in the wild: real email (older
+// messages), masked email (what /api/members shows admins and the viewer
+// themself), and public username (what it shows everyone else). The client
+// addresses chats with whatever the members list gave it, so every DM/group
+// endpoint has to resolve those refs back to the canonical email or delivery
+// silently fails — the message stores fine for the sender but never matches
+// the recipient's inbox filter.
+let _dmAddrIdx = null;
+function dmAddressIndex() {
+  if (_dmAddrIdx && Date.now() - _dmAddrIdx.at < 15000) return _dmAddrIdx;
+  const emails = new Set();
+  const byUsername = new Map();
+  const byMask = new Map();
+  const addEmail = (raw) => {
+    if (!raw) return;
+    const rawLower = String(raw).toLowerCase().trim();
+    const norm = normalizeEmail(rawLower);
+    if (!norm.includes('@') || emails.has(norm)) return;
+    emails.add(norm);
+    const putMask = (key, val) => {
+      key = normalizeEmail(String(key || '').toLowerCase());
+      if (key && !byMask.has(key)) byMask.set(key, val);
+    };
+    putMask(maskEmail(norm), norm);
+    putMask(maskEmail(rawLower), norm);
+  };
+  const addUsername = (uname, norm) => {
+    uname = normalizeUsername(uname);
+    if (uname && !byUsername.has(uname)) byUsername.set(uname, norm);
+  };
+  const profiles = loadJson(PROFILES_FILE, {});
+  for (const [email, p] of Object.entries(profiles || {})) {
+    addEmail(email);
+    const norm = normalizeEmail(email);
+    addUsername(p && p.username, norm);
+    addUsername(defaultUsernameForEmail(norm), norm);
+  }
+  const names = loadJson(NAMES_FILE, {});
+  for (const email of Object.values(names || {})) addEmail(email);
+  const tokens = loadTokens();
+  for (const data of Object.values(tokens || {})) {
+    if (data && data.email) addEmail(data.email);
+  }
+  _dmAddrIdx = { emails, byUsername, byMask, at: Date.now() };
+  return _dmAddrIdx;
+}
+function resolveMemberRef(raw) {
+  const q = String(raw || '').toLowerCase().trim();
+  if (!q) return '';
+  const idx = dmAddressIndex();
+  if (q.includes('@')) {
+    const norm = normalizeEmail(q);
+    if (idx.emails.has(norm)) return norm;
+    return idx.byMask.get(normalizeEmail(q)) || '';
+  }
+  return idx.byUsername.get(normalizeUsername(q)) || '';
 }
 
 function ensureProfileDefaults(normEmail, originalEmail = normEmail, patch = {}) {
@@ -13751,7 +13809,7 @@ function loadAllGamesList() {
       if (declaredChatBytes > MAX_CHAT_JSON_BODY_BYTES) return jsonResp(413, { error: 'message request too large' });
       if (!await tryParseJson(MAX_CHAT_JSON_BODY_BYTES)) return jsonResp(400, { error: 'bad json' });
       const groupId = body.groupId ? String(body.groupId) : '';
-      const to   = groupId ? '' : normalizeEmail(body.to || '');
+      const to   = groupId ? '' : (resolveMemberRef(body.to || '') || normalizeEmail(body.to || ''));
       const rawText = String(body.text || '').trim();
       const image = body.image && typeof body.image === 'object' ? body.image : null;
       let safeImage = null;
@@ -13820,7 +13878,8 @@ function loadAllGamesList() {
         const groups = loadJson(GROUPS_FILE, []);
         const group = groups.find(g => g.id === groupId);
         if (!group) return jsonResp(404, { error: 'group not found' });
-        if (!group.members.some(m => normalizeEmail(m) === normalizeEmail(senderEmail)))
+        const groupMemberNorms = (group.members || []).map(m => resolveMemberRef(m) || normalizeEmail(m));
+        if (!groupMemberNorms.includes(normalizeEmail(senderEmail)))
           return jsonResp(403, { error: 'not a member' });
         msg = { kind: 'group', groupId, groupName: group.name, from: senderEmail, text, image: safeImage, replyTo, ts: Date.now(), readBy: [senderEmail] };
         if (clientId) msg.clientId = clientId;
@@ -13912,11 +13971,22 @@ function loadAllGamesList() {
       const myEmail = (names[sid] || '').toLowerCase();
       if (!myEmail) return jsonResp(403, { error: 'email not found' });
       const allGroups = loadJson(GROUPS_FILE, []);
-      const myGroups = allGroups.filter(g => g.members.some(m => normalizeEmail(m) === normalizeEmail(myEmail)));
+      const myGroups = allGroups.filter(g => (g.members || []).some(m => (resolveMemberRef(m) || normalizeEmail(m)) === normalizeEmail(myEmail)));
+      const profiles = loadJson(PROFILES_FILE, {});
       const dms = loadJson(DMS_FILE, []);
       const cleared = loadJson(DM_CLEARED_FILE, {});
       const myCleared = cleared[normalizeEmail(myEmail)] || {};
       const result = myGroups.map(g => {
+        // Return each member as their public username: the client encrypts one
+        // group payload per member and keys it by this ref, and each recipient
+        // looks up their copy by their own username. Masked emails would leave
+        // the recipient unable to find (or the sender unable to build) copies.
+        const publicRef = (m) => {
+          const r = resolveMemberRef(m);
+          if (!r) return maskEmail(m);
+          const p = profiles[r] || {};
+          return p.username || defaultUsernameForEmail(r);
+        };
         const clearedAt = myCleared['group:' + g.id] || 0;
         const msgs = dms.filter(m => m.kind === 'group' && m.groupId === g.id && (m.ts || 0) > clearedAt)
                         .sort((a, b) => (b.ts || 0) - (a.ts || 0));
@@ -13931,9 +14001,9 @@ function loadAllGamesList() {
             readBy: (last.readBy || []).map(maskEmail)
           };
         }
-        return { 
-          ...g, 
-          members: (g.members || []).map(maskEmail),
+        return {
+          ...g,
+          members: (g.members || []).map(publicRef),
           createdBy: maskEmail(g.createdBy),
           lastText: last ? (last.text || (last.image ? 'Sent an image' : '')) : '', 
           lastTs: last ? last.ts : g.createdAt, 
@@ -13955,6 +14025,10 @@ function loadAllGamesList() {
       const myEmail = (names[sid] || '').toLowerCase();
       if (!myEmail) return jsonResp(403, { error: 'email not found' });
       const withUser = (qs.get('with') || '').toLowerCase();
+      // The client passes whatever ref it has for the peer (username or masked
+      // email); resolve it to the canonical email, but keep matching the raw
+      // value too so older messages addressed verbatim still show up.
+      const withResolved = resolveMemberRef(withUser) || normalizeEmail(withUser);
       const groupId  = qs.get('group') || '';
       const since = parseInt(qs.get('since') || '0') || 0;
       const before = parseInt(qs.get('before') || '0') || 0;
@@ -13963,8 +14037,17 @@ function loadAllGamesList() {
       const dms = loadJson(DMS_FILE, []);
       const cleared = loadJson(DM_CLEARED_FILE, {});
       const myCleared = cleared[normalizeEmail(myEmail)] || {};
-      const myGroups = (loadJson(GROUPS_FILE, [])).filter(g => g.members.some(m => normalizeEmail(m) === normalizeEmail(myEmail)));
+      const myGroups = (loadJson(GROUPS_FILE, [])).filter(g => (g.members || []).some(m => (resolveMemberRef(m) || normalizeEmail(m)) === normalizeEmail(myEmail)));
       const myGroupIds = new Set(myGroups.map(g => g.id));
+      const myNormEmail = normalizeEmail(myEmail);
+      const myMaskedEmail = maskEmail(myEmail);
+      const myUsername = normalizeUsername((loadJson(PROFILES_FILE, {})[myNormEmail] || {}).username || defaultUsernameForEmail(myNormEmail));
+      const isMeRef = (v) => {
+        if (!v) return false;
+        const nv = normalizeEmail(v);
+        if (nv === myNormEmail || (myMaskedEmail && nv === myMaskedEmail)) return true;
+        return !String(v).includes('@') && normalizeUsername(v) === myUsername;
+      };
       const msgs = dms.filter(m => {
         if (m.expiresAt && Date.now() > m.expiresAt) return false;
         if (since && (m.ts || 0) <= since) return false;
@@ -13977,8 +14060,8 @@ function loadAllGamesList() {
         if (withUser) {
           if (m.kind === 'group') return false;
           const clearedAt = myCleared['dm:' + normalizeEmail(withUser)] || 0;
-          return ((normalizeEmail(m.from) === normalizeEmail(myEmail) && normalizeEmail(m.to) === normalizeEmail(withUser)) ||
-                  (normalizeEmail(m.from) === normalizeEmail(withUser) && normalizeEmail(m.to) === normalizeEmail(myEmail))) &&
+          return ((normalizeEmail(m.from) === myNormEmail && (normalizeEmail(m.to) === withResolved || normalizeEmail(m.to) === normalizeEmail(withUser))) ||
+                  ((normalizeEmail(m.from) === withResolved || normalizeEmail(m.from) === normalizeEmail(withUser)) && normalizeEmail(m.to) === myNormEmail)) &&
                  (m.ts || 0) > clearedAt;
         }
         // general inbox: my DMs + group messages for my groups
@@ -13987,9 +14070,9 @@ function loadAllGamesList() {
           const clearedAt = myCleared['group:' + m.groupId] || 0;
           return (m.ts || 0) > clearedAt;
         }
-        const peer = normalizeEmail(m.from) === normalizeEmail(myEmail) ? normalizeEmail(m.to || '') : normalizeEmail(m.from || '');
+        const peer = normalizeEmail(m.from) === myNormEmail ? normalizeEmail(m.to || '') : normalizeEmail(m.from || '');
         const clearedAt = myCleared['dm:' + peer] || 0;
-        return (normalizeEmail(m.from) === normalizeEmail(myEmail) || normalizeEmail(m.to) === normalizeEmail(myEmail)) &&
+        return (isMeRef(m.from) || isMeRef(m.to)) &&
                (m.ts || 0) > clearedAt;
       });
 
@@ -14033,13 +14116,14 @@ function loadAllGamesList() {
             changed = true;
           }
         } else {
-          if ((!m.kind || m.kind === 'dm') && normalizeEmail(m.to) === normalizeEmail(myEmail) && (!from || normalizeEmail(m.from) === normalizeEmail(from)) && !m.read) {
+          const fromResolved = resolveMemberRef(from) || normalizeEmail(from);
+          if ((!m.kind || m.kind === 'dm') && (normalizeEmail(m.to) === normalizeEmail(myEmail) || resolveMemberRef(m.to) === normalizeEmail(myEmail)) && (!from || normalizeEmail(m.from) === fromResolved || normalizeEmail(m.from) === normalizeEmail(from)) && !m.read) {
             m.read = true; changed = true;
           }
         }
       }
       if (changed) saveJson(DMS_FILE, dms);
-      if (from) addCoins(from, 2.0);
+      if (from) addCoins(resolveMemberRef(from) || from, 2.0);
       return jsonResp(200, { success: true });
     }
 
@@ -14054,7 +14138,9 @@ function loadAllGamesList() {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const name = String(body.name || '').trim().slice(0, 60) || 'Group chat';
       const rawMembers = Array.isArray(body.members) ? body.members : [];
-      const members = [...new Set([myEmail, ...rawMembers.map(m => String(m).toLowerCase().trim()).filter(Boolean)])];
+      // Store canonical emails so membership checks match regardless of the
+      // ref style the client used (username, masked email, or real email).
+      const members = [...new Set([myEmail, ...rawMembers.map(m => resolveMemberRef(m) || String(m).toLowerCase().trim()).filter(Boolean)])];
       if (members.length < 2) return jsonResp(400, { error: 'need at least one other member' });
       const group = { id: String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8), name, members, createdBy: myEmail, createdAt: Date.now() };
       const groups = loadJson(GROUPS_FILE, []);
