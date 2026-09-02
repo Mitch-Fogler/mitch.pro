@@ -9,6 +9,12 @@ Usage:
   ./newsletter.py -r <email>        (remove email from manual list)
   ./newsletter.py -u <email>        (unsubscribe email)
   ./newsletter.py -l                (list all recipients)
+
+The body may be plain text (wrapped in the branded HTML template by the send
+scripts, same as every other mitch.pro email) or raw HTML (passed through
+unchanged when it already contains HTML tags). Credentials come from the
+environment when available — `sudo doppler run -- ./newsletter.py ...` works
+directly; otherwise secrets are fetched from Doppler (or .env) as a fallback.
 """
 import json, os, sqlite3, subprocess, sys, time, threading
 
@@ -146,9 +152,24 @@ def has_profanity(email):
     except Exception:
         return False
 
+def _has_mail_creds():
+    # Match what the send scripts themselves require: send_email.js needs
+    # GMAIL_USER+GMAIL_PASS, noreply_send.js needs NOREPLY_USER+NOREPLY_PASS.
+    gmail  = bool(os.environ.get('GMAIL_USER')) and bool(os.environ.get('GMAIL_PASS'))
+    noreply = bool(os.environ.get('NOREPLY_USER')) and bool(os.environ.get('NOREPLY_PASS'))
+    return gmail or noreply
+
+def _strip_quotes(v):
+    v = str(v).strip()
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in '"\'':
+        v = v[1:-1]
+    return v
+
 def load_doppler_env():
     os.environ['DOPPLER_ENABLE_DNS_RESOLVER'] = 'true'
-    if 'GMAIL_USER' in os.environ or 'NOREPLY_USER' in os.environ or 'SUPPORT_USER' in os.environ:
+    # Credentials already injected (e.g. `sudo doppler run -- newsletter.py`):
+    # trust the environment as-is, never override or re-fetch.
+    if _has_mail_creds():
         return
     try:
         res = subprocess.run(['doppler', 'secrets', 'download', '--format', 'json'], capture_output=True, text=True, timeout=5)
@@ -156,8 +177,9 @@ def load_doppler_env():
             secrets = json.loads(res.stdout)
             for k, v in secrets.items():
                 if k not in os.environ:
-                    os.environ[k] = str(v)
-            return
+                    os.environ[k] = _strip_quotes(v)
+            if _has_mail_creds():
+                return
     except Exception:
         pass
     try:
@@ -166,8 +188,9 @@ def load_doppler_env():
             secrets = json.loads(res.stdout)
             for k, v in secrets.items():
                 if k not in os.environ:
-                    os.environ[k] = str(v)
-            return
+                    os.environ[k] = _strip_quotes(v)
+            if _has_mail_creds():
+                return
     except Exception:
         pass
     env_file = os.path.join(BASE, '.env')

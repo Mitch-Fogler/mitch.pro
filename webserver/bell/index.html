@@ -43,6 +43,12 @@
     background:
       radial-gradient(ellipse 60% 40% at 50% -6%, color-mix(in srgb, var(--t-ac) 10%, transparent), transparent 70%);
   }
+  /* No galaxy photo here — the schedule sits on the flat theme background
+     (theme.js paints the galaxy image through --t-bg-img-layer; kill it). */
+  html body.bell-page {
+    background-image: none !important;
+    background-attachment: initial !important;
+  }
   .bell-shell { width: min(46rem, 100%); max-width: 46rem; }
   .page-head { margin-bottom: 1.35rem; max-width: 36rem; }
   .kicker {
