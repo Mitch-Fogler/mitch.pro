@@ -11,7 +11,23 @@ function urlBase64ToUint8Array(base64String) {
 
 (async () => {
   if ("serviceWorker" in navigator && "PushManager" in window) {
-    const sw = await navigator.serviceWorker.register("sw.js");
+    // When a freshly deployed service worker takes over mid-session
+    // (skipWaiting + claim), reload once so the page refetches assets through
+    // the new worker — users never need Ctrl+Shift+R. Keyed by script URL so
+    // each deploy reloads exactly once per tab.
+    let seenSW;
+    try { seenSW = JSON.parse(sessionStorage.getItem("sw-scripts") || "{}"); } catch (_) { seenSW = {}; }
+    if (navigator.serviceWorker.controller) seenSW[navigator.serviceWorker.controller.scriptURL] = 1;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      const s = navigator.serviceWorker.controller;
+      if (!s || seenSW[s.scriptURL]) return;
+      seenSW[s.scriptURL] = 1;
+      try { sessionStorage.setItem("sw-scripts", JSON.stringify(seenSW)); } catch (_) {}
+      location.reload();
+    });
+
+    // ?v=10 busts any stale copy of the worker script itself.
+    const sw = await navigator.serviceWorker.register("sw.js?v=10", { updateViaCache: "none" });
     console.log("Service Worker registered");
 
     let subscription = await sw.pushManager.getSubscription();

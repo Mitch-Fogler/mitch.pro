@@ -29,10 +29,36 @@ body {
   line-height: 1.5;
   overflow-x: clip;
 }
-/* Flat ground: suppress the theme's background image layers */
+/* Home background: burning cherry wallpaper sits on its own fixed layer
+   behind all content, heavily blurred and faint — an ambient wash that the
+   transparent browser window breathes through. The theme's galaxy background
+   is never painted or downloaded on this page. */
+html body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: url(/home-burning-cherry.jpg) center / cover no-repeat;
+  opacity: 0.45;
+  filter: blur(26px);
+  transform: scale(1.15);
+  pointer-events: none;
+}
+html,
 html body {
+  background: transparent !important;
   background-image: none !important;
   background-attachment: initial !important;
+}
+/* Light mode: a pale wash over the wallpaper (stacked above ::before) so the
+   dark ink text keeps its contrast against the dark artwork. */
+html.theme-light body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(242,244,250,0.72), rgba(236,238,247,0.8));
+  pointer-events: none;
 }
 
 input, textarea, select {
@@ -1429,4 +1455,30 @@ html.theme-light #moderator-action-wrap .home-access-icon { color: #0369a1 !impo
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+/* --------------------------------------------------------------------------
+   Readability boxes — the wallpaper layer sits behind a blur, so every
+   control gets a translucent panel of the theme ground color to stay
+   legible over it. The 10-long #nov-* id chain out-ranks every !important
+   override above and theme.js's injected light button skin.
+   -------------------------------------------------------------------------- */
+:root {
+  --home-btn-bg: color-mix(in srgb, var(--t-bg) 62%, transparent);
+  --home-btn-bg-hover: color-mix(in srgb, var(--t-bg) 82%, transparent);
+}
+body.home :is(button, .home-access-link, .hub-action):not(.btn-primary):not(.active):not(.daily-login-claim-btn):not(#theme-btn):not(#devtools-btn):not(#sw-notif-btn):not(#_ab):not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10) {
+  background: var(--home-btn-bg) !important;
+  border: 1px solid var(--home-border) !important;
+  border-radius: var(--home-radius-sm) !important;
+}
+body.home :is(button, .home-access-link, .hub-action):not(.btn-primary):not(.active):not(.daily-login-claim-btn):not(#theme-btn):not(#devtools-btn):not(#sw-notif-btn):not(#_ab):not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10):hover {
+  background: var(--home-btn-bg-hover) !important;
+}
+/* The search field gets the same translucent panel */
+body.home .home-search-box:not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10) {
+  background: var(--home-btn-bg) !important;
+}
+body.home #home-search-clear:not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10) {
+  border: none !important;
 }

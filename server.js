@@ -17812,7 +17812,7 @@ function loadAllGamesList() {
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
-      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/auth-mitch-pro-night.png', '/home-galaxy-background.jpg',
+      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/auth-mitch-pro-night.png', '/home-galaxy-background.jpg', '/home-burning-cherry.jpg',
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');

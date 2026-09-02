@@ -25,6 +25,52 @@
   <script src="/api.js"></script>
 
   <style>
+    /* Burning cherry wallpaper on its own fixed layer behind everything —
+       the theme's galaxy background is never painted or downloaded here.
+       Heavily blurred and faint: an ambient wash the transparent browser
+       window breathes through. */
+    html body.sales-page::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: url(/home-burning-cherry.jpg) center / cover no-repeat;
+      opacity: 0.45;
+      filter: blur(26px);
+      transform: scale(1.15);
+      pointer-events: none;
+    }
+    html,
+    html body {
+      background: transparent !important;
+      background-image: none !important;
+      background-attachment: initial !important;
+    }
+    /* Light mode: pale wash over the wallpaper so ink text keeps contrast */
+    html.theme-light body.sales-page::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(180deg, rgba(242,244,250,0.72), rgba(236,238,247,0.8));
+      pointer-events: none;
+    }
+    /* Translucent readability boxes on the non-solid controls */
+    body.sales-page {
+      --sales-btn-bg: color-mix(in srgb, var(--t-bg) 62%, transparent);
+      --sales-btn-bg-hover: color-mix(in srgb, var(--t-bg) 82%, transparent);
+    }
+    body.sales-page .btn-ghost:not(.btn-primary):not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10) {
+      background: var(--sales-btn-bg) !important;
+      border: 1px solid var(--t-bd) !important;
+      border-radius: 8px !important;
+    }
+    body.sales-page .btn-ghost:not(.btn-primary):not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10):hover {
+      background: var(--sales-btn-bg-hover) !important;
+    }
+  </style>
+
+  <style>
     body.sales-page {
       overflow-x: clip;
     }
