@@ -1393,9 +1393,9 @@ function htmlBaseTemplate(email, subject, contentHtml, footerHtml = '') {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="color-scheme" content="only light">
-  <meta name="supported-color-schemes" content="only light">
-  <style> :root { color-scheme: only light; supported-color-schemes: only light; } </style>
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <style> :root { color-scheme: light dark; supported-color-schemes: light dark; } </style>
   <title>${subject}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #06060c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc; -webkit-font-smoothing: antialiased;">
