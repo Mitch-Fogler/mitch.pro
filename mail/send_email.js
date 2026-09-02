@@ -155,7 +155,7 @@ function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) 
 
   return `
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" style="background:#06060c;">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -165,10 +165,10 @@ function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) 
   <title>${subject}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #06060c; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc; -webkit-font-smoothing: antialiased;">
-  <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #06060c; padding: 40px 20px;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#06060c" style="background-color: #06060c; padding: 40px 20px;">
     <tr>
       <td align="center">
-        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #0f172a; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: 580px; background-color: #0f172a; border-radius: 16px; overflow: hidden; border: 1px solid #0f172a; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
           <tr>
             <td height="6" style="background: linear-gradient(to right, #a855f7, #38bdf8);"></td>
           </tr>
