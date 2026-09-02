@@ -1351,3 +1351,197 @@ body.auth-claim-page::before {
     -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
   }
 }
+
+/* ── Light mode ─────────────────────────────────────────────────────────────
+   The night artwork and dark glass above are hardcoded, so re-skin every
+   surface under html.theme-light with the shared light palette. */
+html.theme-light { background: #eef0f8; }
+
+html.theme-light body.enroll-page,
+html.theme-light body.auth-claim-page {
+  --auth-ink: #10142c;
+  --auth-muted: rgba(22, 27, 54, .66);
+  --auth-faint: rgba(22, 27, 54, .45);
+  --auth-line: rgba(16, 20, 44, .12);
+  --auth-glass: rgba(255, 255, 255, .62);
+  --auth-dark: #10142c;
+  --auth-cobalt: #4f46e5;
+  --auth-orange: #db2777;
+  --auth-acid: #db2777;
+  --auth-error: #dc2626;
+  --auth-success: #059669;
+  color: #10142c;
+  background:
+    radial-gradient(circle at 12% 14%, rgba(79, 70, 229, .07), transparent 30rem),
+    radial-gradient(circle at 88% 10%, rgba(219, 39, 119, .05), transparent 26rem),
+    radial-gradient(circle at 80% 92%, rgba(8, 145, 178, .05), transparent 28rem),
+    linear-gradient(165deg, #eef0f8 0%, #f7f8fd 55%, #eef1f9 100%) !important;
+  background-attachment: fixed !important;
+}
+
+html.theme-light body.enroll-page::before,
+html.theme-light body.auth-claim-page::before {
+  opacity: .4;
+  background-image:
+    linear-gradient(rgba(16, 20, 44, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 20, 44, .045) 1px, transparent 1px);
+  clip-path: none;
+}
+
+html.theme-light .enroll-brand,
+html.theme-light .claim-brand { color: #10142c !important; }
+
+html.theme-light .auth-eyebrow { color: rgba(22, 27, 54, .62); }
+html.theme-light .auth-eyebrow::before { background: #db2777; }
+
+html.theme-light .enroll-hero h1,
+html.theme-light .claim-hero h1 { color: #10142c !important; }
+html.theme-light .auth-gradient-text {
+  color: #db2777;
+  text-shadow: none;
+}
+html.theme-light .enroll-hero > p,
+html.theme-light .claim-hero > p { color: rgba(22, 27, 54, .68) !important; }
+
+html.theme-light .auth-benefits {
+  border-top-color: rgba(16, 20, 44, .22);
+  border-bottom-color: rgba(16, 20, 44, .22);
+}
+html.theme-light .auth-benefit { border-right-color: rgba(16, 20, 44, .16); }
+html.theme-light .auth-benefit strong { color: #db2777; }
+html.theme-light .auth-benefit span { color: rgba(22, 27, 54, .6); }
+
+html.theme-light .enroll-links a,
+html.theme-light .claim-help-links a { color: rgba(22, 27, 54, .52) !important; }
+html.theme-light .enroll-links a:hover,
+html.theme-light .claim-help-links a:hover { color: #db2777 !important; }
+
+html.theme-light .auth-panel,
+html.theme-light .claim-card {
+  border-color: rgba(16, 20, 44, .12) !important;
+  color: #10142c !important;
+  background:
+    linear-gradient(150deg, rgba(255, 255, 255, .96), rgba(244, 245, 251, .88)) !important;
+  box-shadow:
+    0 30px 80px rgba(16, 20, 44, .12),
+    inset 0 1px rgba(255, 255, 255, 1) !important;
+  backdrop-filter: blur(26px) saturate(135%) !important;
+  -webkit-backdrop-filter: blur(26px) saturate(135%) !important;
+}
+html.theme-light .auth-panel::before,
+html.theme-light .claim-card::before {
+  background: linear-gradient(120deg, rgba(255, 255, 255, .7), transparent 40%);
+}
+html.theme-light .auth-panel::after,
+html.theme-light .claim-card::after {
+  color: rgba(255, 255, 255, .78);
+  background: #10142c;
+}
+
+html.theme-light .auth-tabs { border-bottom-color: rgba(16, 20, 44, .14) !important; background: transparent !important; }
+html.theme-light .auth-tab-btn { color: rgba(16, 20, 44, .42) !important; background: transparent !important; }
+html.theme-light .auth-tab-btn span { color: rgba(16, 20, 44, .34); }
+html.theme-light .auth-tab-btn:hover { color: #10142c !important; }
+html.theme-light .auth-tab-btn.active {
+  color: #10142c !important;
+  box-shadow: inset 0 -2px #db2777 !important;
+}
+html.theme-light .auth-tab-btn.active span { color: #db2777; }
+
+html.theme-light .panel-head h2,
+html.theme-light .claim-card h2,
+html.theme-light #claim-title { color: #10142c !important; }
+html.theme-light .panel-head p,
+html.theme-light #claim-desc,
+html.theme-light .claim-card .auth-card-copy { color: rgba(16, 20, 44, .58) !important; }
+html.theme-light .auth-panel .field-label,
+html.theme-light .claim-card .field-label { color: rgba(16, 20, 44, .62) !important; }
+
+html.theme-light .auth-panel input:not([type="checkbox"]),
+html.theme-light .auth-panel select,
+html.theme-light .auth-panel textarea,
+html.theme-light .claim-card input:not([type="checkbox"]) {
+  border-bottom-color: rgba(16, 20, 44, .22) !important;
+  color: #10142c !important;
+  background: rgba(255, 255, 255, .6) !important;
+}
+html.theme-light .auth-panel input::placeholder,
+html.theme-light .auth-panel textarea::placeholder,
+html.theme-light .claim-card input::placeholder { color: rgba(16, 20, 44, .34) !important; }
+html.theme-light .auth-panel input:not([type="checkbox"]):focus,
+html.theme-light .auth-panel select:focus,
+html.theme-light .auth-panel textarea:focus,
+html.theme-light .claim-card input:not([type="checkbox"]):focus {
+  border-bottom-color: #4f46e5 !important;
+  background: #fff !important;
+  box-shadow: inset 4px 0 #4f46e5 !important;
+}
+html.theme-light .auth-panel select option { color: #10142c; background: #f5f6fb; }
+
+html.theme-light .forgot-link,
+html.theme-light .agree-row a,
+html.theme-light #no-email-link,
+html.theme-light #support-actions a { color: #4f46e5 !important; }
+
+html.theme-light .agree-row,
+html.theme-light .warning-alert,
+html.theme-light #no-email-form,
+html.theme-light .claim-warning {
+  border-color: rgba(16, 20, 44, .12) !important;
+  color: rgba(16, 20, 44, .68) !important;
+  background: rgba(16, 20, 44, .035) !important;
+}
+html.theme-light .agree-row label,
+html.theme-light .warning-alert span,
+html.theme-light #no-email-form p,
+html.theme-light .claim-warning span { color: rgba(16, 20, 44, .66) !important; }
+html.theme-light .warning-alert strong,
+html.theme-light .claim-warning strong { color: #b91c1c !important; }
+html.theme-light .warning-alert svg,
+html.theme-light .claim-warning svg { color: #dc2626; }
+#login-msg, #msg, #tmsg, #rtmsg, #claim-msg { color: rgba(16, 20, 44, .62); }
+html.theme-light .pw-strength-bars > div { background: rgba(16, 20, 44, .12); }
+html.theme-light .claim-card-icon {
+  color: #fff;
+  background: #4f46e5;
+  box-shadow: 8px 8px 0 rgba(219, 39, 119, .18);
+}
+
+html.theme-light .auth-panel .btn:not(.btn-primary) {
+  color: #10142c !important;
+  border-color: rgba(16, 20, 44, .16) !important;
+  background: rgba(255, 255, 255, .8) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 1) !important;
+}
+html.theme-light .auth-panel .btn:not(.btn-primary):hover {
+  color: #4f46e5 !important;
+  background: #f2f3fa !important;
+}
+
+html.theme-light .enroll-foot,
+html.theme-light .claim-footer { color: rgba(16, 20, 44, .44) !important; }
+html.theme-light .enroll-foot a,
+html.theme-light .claim-footer a { color: rgba(16, 20, 44, .58) !important; }
+
+html.theme-light .ok { color: #059669 !important; }
+html.theme-light .err { color: #dc2626 !important; }
+
+/* Light mode: keep the login button's shine/arrow light on hover. */
+html.theme-light .auth-panel .btn-primary::after,
+html.theme-light .claim-card .btn-primary::after,
+html.theme-light .claim-card .claim-action::after {
+  color: #fff;
+  border-color: rgba(255, 255, 255, .45);
+  background: rgba(219, 39, 119, .22);
+}
+html.theme-light .auth-panel .btn-primary:hover::after,
+html.theme-light .claim-card .btn-primary:hover::after,
+html.theme-light .claim-card .claim-action:hover::after { background: rgba(219, 39, 119, .38); }
+html.theme-light .auth-panel .btn-primary:hover,
+html.theme-light .claim-card .btn-primary:hover,
+html.theme-light .claim-card .claim-action:hover {
+  color: #fff !important;
+  background:
+    linear-gradient(110deg, rgba(255, 255, 255, .18), transparent 34%),
+    linear-gradient(100deg, #f43782 0%, #d32ab3 55%, #873df1 100%) !important;
+}

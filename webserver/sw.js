@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v8';
+const CACHE_NAME = 'mitch-pro-cache-v10';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -80,23 +80,39 @@ self.addEventListener('fetch', (e) => {
       })
     );
   } else {
-    // Cache-first for static assets (CSS, JS, images, fonts)
-    e.respondWith(
-      caches.match(e.request).then((cachedResponse) => {
-        if (cachedResponse) {
-          return cachedResponse;
-        }
-        return fetch(e.request).then((response) => {
+    const pathname = requestUrl.pathname;
+    const isCode = /\.(css|js|mjs|json)(\?|$)/.test(pathname) || pathname === '/readability.css';
+    if (isCode) {
+      // Network-first for code assets: never serve stale CSS/JS when online,
+      // fall back to the cache only when offline.
+      e.respondWith(
+        fetch(e.request).then((response) => {
           if (response && response.status === 200 && response.type === 'basic') {
-            const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(e.request, responseToCache);
-            });
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
           }
           return response;
-        });
-      })
-    );
+        }).catch(() => caches.match(e.request))
+      );
+    } else {
+      // Cache-first for slow-changing assets (images, fonts, media)
+      e.respondWith(
+        caches.match(e.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          return fetch(e.request).then((response) => {
+            if (response && response.status === 200 && response.type === 'basic') {
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(e.request, responseToCache);
+              });
+            }
+            return response;
+          });
+        })
+      );
+    }
   }
 });
 

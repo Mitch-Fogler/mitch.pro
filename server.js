@@ -6959,10 +6959,7 @@ async function handleRequest(req, server) {
 
   // ── Password Enforcement (Unified) ──────────────────────────────────────────
   const cleanPath = (path.endsWith('/') && path !== '/') ? path.slice(0, -1) : path;
-  if (cleanPath === '/larp' || cleanPath === '/larp/rezero') {
-    return Response.redirect('/enroll/', 302);
-  }
-  const isExempt = cleanPath === '/enroll' || 
+  const isExempt = cleanPath === '/enroll' ||
                    cleanPath === '/larp' ||
                    cleanPath === '/larp/rezero' ||
                    cleanPath === '/bell' ||

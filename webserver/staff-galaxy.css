@@ -426,3 +426,187 @@ body.moderator-page :is(a, button):focus-visible {
   .loading-orbit { animation: none; }
   body.admin-page *, body.moderator-page * { scroll-behavior: auto !important; }
 }
+
+/* Light mode: re-scope the staff tokens; most surfaces follow automatically. */
+html.theme-light body.admin-page,
+html.theme-light body.moderator-page {
+  --staff-violet: #4f46e5;
+  --staff-magenta: #db2777;
+  --staff-blue: #2563eb;
+  --staff-panel: rgba(255, 255, 255, .82);
+  --staff-panel-strong: rgba(255, 255, 255, .94);
+  --staff-line: rgba(15, 18, 35, .12);
+  --staff-text: #0f1123;
+  --staff-muted: #4b5069;
+  color: #0f1123;
+  background-color: #eef0f8;
+  background-image:
+    linear-gradient(180deg, rgba(15, 18, 35, 0), rgba(15, 18, 35, .04)),
+    radial-gradient(circle at 15% 10%, rgba(79, 70, 229, .06), transparent 30rem),
+    radial-gradient(circle at 86% 22%, rgba(219, 39, 119, .04), transparent 28rem);
+}
+
+html.theme-light body.admin-page::before,
+html.theme-light body.moderator-page::before {
+  opacity: .5;
+  background:
+    linear-gradient(rgba(15, 18, 35, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 18, 35, .03) 1px, transparent 1px),
+    radial-gradient(circle at 50% -20%, rgba(79, 70, 229, .06), transparent 42rem);
+}
+
+html.theme-light .staff-eyebrow { color: #4f46e5; }
+html.theme-light .staff-logo {
+  border-color: rgba(219, 39, 119, .22);
+  background: linear-gradient(145deg, rgba(219, 39, 119, .1), rgba(79, 70, 229, .07));
+}
+html.theme-light body.admin-page .back,
+html.theme-light body.moderator-page .back {
+  border-color: rgba(15, 18, 35, .12);
+  background: #fff;
+  color: #0f1123;
+}
+
+html.theme-light body.admin-page .card .label,
+html.theme-light body.admin-page .role-note,
+html.theme-light body.admin-page .admin-nav a,
+html.theme-light body.moderator-page .empty { color: #4b5069; }
+html.theme-light body.admin-page .card .value { color: #0f1123; }
+
+html.theme-light body.admin-page .admin-nav a:hover,
+html.theme-light body.admin-page .admin-nav a.active {
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, .35);
+  background: linear-gradient(135deg, rgba(79, 70, 229, .1), rgba(219, 39, 119, .05));
+}
+html.theme-light body.admin-page .admin-nav a.active { box-shadow: inset 3px 0 0 #4f46e5; }
+
+html.theme-light body.admin-page .tool-group > .section-head {
+  background: linear-gradient(90deg, rgba(79, 70, 229, .07), rgba(219, 39, 119, .03));
+}
+html.theme-light body.admin-page .action-card,
+html.theme-light body.admin-page .request-card {
+  border-color: rgba(15, 18, 35, .12);
+  background: #fff;
+}
+
+html.theme-light body.admin-page input,
+html.theme-light body.admin-page select,
+html.theme-light body.admin-page textarea {
+  border-color: rgba(15, 18, 35, .16);
+  background: #fff;
+  color: #0f1123;
+}
+html.theme-light body.admin-page button {
+  color: #4f46e5;
+  border-color: rgba(15, 18, 35, .14);
+  background: #fff;
+}
+html.theme-light body.admin-page button:hover {
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, .45);
+  background: #f6f7fc;
+}
+html.theme-light body.admin-page input:focus,
+html.theme-light body.admin-page select:focus,
+html.theme-light body.admin-page textarea:focus {
+  border-color: #4f46e5;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, .12);
+}
+html.theme-light body.admin-page .ok {
+  color: #4f46e5;
+  border-color: rgba(79, 70, 229, .3);
+  background: rgba(79, 70, 229, .07);
+}
+
+html.theme-light body.moderator-page .moderator-intro { color: #6b7280; }
+html.theme-light body.moderator-page .moderator-intro span {
+  border-color: rgba(79, 70, 229, .25);
+  color: #4f46e5;
+  background: rgba(79, 70, 229, .07);
+}
+html.theme-light body.moderator-page .links a {
+  border-color: rgba(15, 18, 35, .12);
+  color: #0f1123;
+  background: linear-gradient(145deg, rgba(79, 70, 229, .06), rgba(255, 255, 255, .9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+html.theme-light body.moderator-page .links a:hover {
+  border-color: rgba(79, 70, 229, .45);
+  background: linear-gradient(145deg, rgba(79, 70, 229, .12), rgba(219, 39, 119, .05));
+}
+html.theme-light body.moderator-page .links .link-icon,
+html.theme-light body.moderator-page .links .link-arrow {
+  border-color: rgba(15, 18, 35, .12);
+  background: rgba(15, 18, 35, .03);
+}
+html.theme-light body.moderator-page .links .link-arrow { color: #4f46e5; }
+html.theme-light body.moderator-page .links .link-copy small { color: #4b5069; }
+html.theme-light body.moderator-page .empty-note {
+  border-color: rgba(15, 18, 35, .12);
+  background: rgba(15, 18, 35, .02);
+}
+html.theme-light .loading-orbit {
+  border-color: rgba(79, 70, 229, .18);
+  border-top-color: #4f46e5;
+}
+html.theme-light body.admin-page :is(a, button, input, select, textarea):focus-visible,
+html.theme-light body.moderator-page :is(a, button):focus-visible {
+  outline-color: #4f46e5;
+}
+
+/* Dayboard: out-rank the dark overrides above (same file, later + stronger). */
+html.theme-light body.admin-page .admin-dayboard {
+  border-color: rgba(15, 18, 35, .1);
+  background:
+    radial-gradient(circle at 5% 0, rgba(79, 70, 229, .05), transparent 27rem),
+    radial-gradient(circle at 95% 100%, rgba(219, 39, 119, .04), transparent 26rem),
+    rgba(255, 255, 255, .85);
+}
+html.theme-light body.admin-page .admin-dayboard-head p,
+html.theme-light body.admin-page .admin-calendar-agenda time,
+html.theme-light body.admin-page .panel-title { color: #4f46e5; }
+html.theme-light body.admin-page .admin-dayboard-head p span,
+html.theme-light body.admin-page .admin-live-pill i,
+html.theme-light body.admin-page .admin-periods li.active > i,
+html.theme-light body.admin-page .admin-calendar-days span.event:not(.today)::after {
+  background: #059669;
+  box-shadow: 0 0 10px rgba(5, 150, 105, .5);
+}
+html.theme-light body.admin-page .admin-live-pill,
+html.theme-light body.admin-page .admin-periods li.active {
+  border-color: rgba(5, 150, 105, .3);
+  color: #047857;
+  background: rgba(5, 150, 105, .07);
+}
+html.theme-light body.admin-page .admin-calendar-days span.today {
+  color: #fff;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  box-shadow: 0 5px 14px rgba(79, 70, 229, .3);
+}
+
+html.theme-light body.admin-page .topbar,
+html.theme-light body.moderator-page .topbar {
+  border-color: rgba(15, 18, 35, .1);
+  background:
+    linear-gradient(135deg, rgba(79, 70, 229, .05), transparent 42%),
+    rgba(255, 255, 255, .88);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 18px 45px rgba(15, 18, 35, .08);
+}
+html.theme-light body.admin-page h1,
+html.theme-light body.moderator-page h1 {
+  color: #0f1123 !important;
+}
+html.theme-light body.admin-page .back::before,
+html.theme-light body.moderator-page .back::before { color: #0f1123; }
+html.theme-light body.admin-page .back:hover,
+html.theme-light body.moderator-page .back:hover {
+  border-color: rgba(79, 70, 229, .45);
+  background: rgba(79, 70, 229, .08);
+}
+html.theme-light body.admin-page .status,
+html.theme-light .staff-role-badge {
+  border-color: rgba(219, 39, 119, .3) !important;
+  color: #db2777;
+  background: rgba(219, 39, 119, .07) !important;
+}

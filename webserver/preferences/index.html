@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <title>Preferences — mitch.pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="/theme.js"></script>
+<script src="/theme.js?v=9"></script>
 <link rel="stylesheet" href="/app.css">
-<link rel="stylesheet" href="/site-galaxy.css">
-<link rel="stylesheet" href="/preferences-galaxy.css">
+<link rel="stylesheet" href="/site-galaxy.css?v=9">
+<link rel="stylesheet" href="/preferences-galaxy.css?v=9">
 <script src="/api.js"></script>
 <script src="/app-shell.js" defer></script>
 <script src="/sync.js"></script>
@@ -758,21 +758,8 @@
     <div class="field">
       <label>Theme Preset</label>
       <div class="chip-row" id="themePresetGrid">
-        <button class="chip" data-theme="void" onclick="selectThemePreset(this)">Void</button>
-        <button class="chip" data-theme="cyber" onclick="selectThemePreset(this)">Cyber</button>
-        <button class="chip" data-theme="matrix" onclick="selectThemePreset(this)">Matrix</button>
-        <button class="chip" data-theme="synthwave" onclick="selectThemePreset(this)">Synthwave</button>
-        <button class="chip" data-theme="abyss" onclick="selectThemePreset(this)">Abyss</button>
-        <button class="chip" data-theme="sunset" onclick="selectThemePreset(this)">Sunset</button>
-        <button class="chip" data-theme="github" onclick="selectThemePreset(this)">GitHub</button>
-        <button class="chip" data-theme="ocean" onclick="selectThemePreset(this)">Ocean</button>
-        <button class="chip" data-theme="sakura" onclick="selectThemePreset(this)">Sakura</button>
-        <button class="chip" data-theme="senpai-cafe" onclick="selectThemePreset(this)">Senpai Cafe</button>
-        <button class="chip" data-theme="adrian-lopez" onclick="selectThemePreset(this)">Adrian Lopez</button>
-        <button class="chip" data-theme="daylight" onclick="selectThemePreset(this)">Daylight</button>
-        <button class="chip" data-theme="paper" onclick="selectThemePreset(this)">Paper</button>
-        <button class="chip" data-theme="arctic" onclick="selectThemePreset(this)">Arctic</button>
-        <button class="chip" data-theme="blossom" onclick="selectThemePreset(this)">Blossom</button>
+        <button class="chip" data-theme="dark" onclick="selectThemePreset(this)">Dark (default)</button>
+        <button class="chip" data-theme="light" onclick="selectThemePreset(this)">Light</button>
       </div>
     </div>
 
@@ -1854,7 +1841,7 @@ async function disable2fa() {
 }
 
 function updateSummaries() {
-  var theme = getCookieValue('theme', 'void');
+  var theme = getCookieValue('theme', 'dark');
   var ai = load(AI_CONFIG_KEY, { enabled: true });
   var home = load(HOME_CONFIG_KEY, { showQuickActions: true, showMemberRail: true });
   var sync = load(SYNC_CONFIG_KEY, { enabled: true });
@@ -1865,14 +1852,14 @@ function updateSummaries() {
 }
 
 function refreshThemeButtons() {
-  var current = getCookieValue('theme', 'void');
+  var current = getCookieValue('theme', 'dark');
   document.querySelectorAll('#themePresetGrid [data-theme]').forEach(function(btn) {
     btn.classList.toggle('active', btn.getAttribute('data-theme') === current);
   });
 }
 
 function applyAppearanceLive(statusText) {
-  if (window.__theme && window.__theme.apply) window.__theme.apply(getCookieValue('theme', 'void'));
+  if (window.__theme && window.__theme.apply) window.__theme.apply(getCookieValue('theme', 'dark'));
   window.dispatchEvent(new CustomEvent('themecustomize', { detail: { source: 'preferences' } }));
   refreshThemeButtons();
   updateSummaries();
@@ -1900,7 +1887,7 @@ function syncAppearanceControls() {
 }
 
 function selectThemePreset(btn) {
-  var theme = btn.getAttribute('data-theme') || 'void';
+  var theme = btn.getAttribute('data-theme') || 'dark';
   setCookieValue('theme', theme);
   setCookieValue('bgimg', '');
   document.getElementById('bgImageInput').value = '';
@@ -2226,7 +2213,7 @@ function saveAll() {
       dailyBonus:  document.getElementById('prefDailyBonus').checked,
     }));
     setThemePref('motion', document.getElementById('reduceAnimToggle').checked ? 'off' : document.getElementById('motionSelect').value);
-    if (window.__theme && window.__theme.apply) window.__theme.apply(getCookieValue('theme', 'void'));
+    if (window.__theme && window.__theme.apply) window.__theme.apply(getCookieValue('theme', 'dark'));
   } catch(e) {}
 
   updateSummaries();
@@ -2305,7 +2292,7 @@ function collectPreferenceBackup() {
     var v = localStorage.getItem('theme_' + k);
     if (v !== null) data.localStorage['theme_' + k] = v;
   });
-  data.cookies.theme = getCookieValue('theme', 'void');
+  data.cookies.theme = getCookieValue('theme', 'dark');
   data.cookies.bgimg = getCookieValue('bgimg', '');
   return data;
 }
@@ -2353,7 +2340,7 @@ function resetPreferencesOnly() {
   if (!confirm('Reset mitch.pro preferences? Game saves will stay.')) return;
   PREF_BACKUP_KEYS.forEach(function(k) { localStorage.removeItem(k); });
   THEME_PREF_KEYS.forEach(function(k) { localStorage.removeItem('theme_' + k); });
-  setCookieValue('theme', 'void');
+  setCookieValue('theme', 'dark');
   setCookieValue('bgimg', '');
   setStatus('prefsDataStatus', 'Preferences reset. Reloading...');
   setTimeout(function() { location.reload(); }, 600);
