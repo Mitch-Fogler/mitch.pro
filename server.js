@@ -6647,6 +6647,10 @@ async function serveStatic(urlPath, req = null) {
       headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
       headers['Pragma'] = 'no-cache';
       headers['Expires'] = '0';
+    } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf'].includes(ext)) {
+      // Immutable media: browsers can keep these forever (bump the filename
+      // when the content actually changes).
+      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
     } else {
       headers['Cache-Control'] = 'public, max-age=2592000';
     }
@@ -6684,6 +6688,8 @@ async function serveStatic(urlPath, req = null) {
       'png': 'image/png',
       'jpg': 'image/jpeg',
       'jpeg': 'image/jpeg',
+      'webp': 'image/webp',
+      'avif': 'image/avif',
       'gif': 'image/gif',
       'svg': 'image/svg+xml',
       'ico': 'image/x-icon',
@@ -6697,6 +6703,10 @@ async function serveStatic(urlPath, req = null) {
       headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
       headers['Pragma'] = 'no-cache';
       headers['Expires'] = '0';
+    } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf'].includes(ext)) {
+      // Immutable media: browsers can keep these forever (bump the filename
+      // when the content actually changes).
+      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
     } else {
       headers['Cache-Control'] = 'public, max-age=2592000';
     }
@@ -18072,7 +18082,7 @@ function loadAllGamesList() {
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
-      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/auth-mitch-pro-night.png', '/home-burning-cherry.jpg',
+      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/home-burning-cherry.webp',
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');

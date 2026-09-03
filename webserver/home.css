@@ -38,7 +38,7 @@ html body::before {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: url(/home-burning-cherry.jpg) center / cover no-repeat;
+  background: url(/home-burning-cherry.webp) center / cover no-repeat;
   opacity: 0.45;
   filter: blur(26px);
   transform: scale(1.15);

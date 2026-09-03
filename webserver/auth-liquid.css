@@ -965,7 +965,7 @@ body.auth-claim-page {
   background:
     linear-gradient(90deg, rgba(3,5,18,.7) 0%, rgba(3,5,18,.34) 45%, rgba(3,5,18,.76) 100%),
     linear-gradient(0deg, rgba(3,4,16,.52) 0%, transparent 56%),
-    url('/auth-mitch-pro-night.png') center 48% / cover no-repeat fixed !important;
+    url('/home-burning-cherry.webp') center 48% / cover no-repeat fixed !important;
 }
 
 body.enroll-page::before,
@@ -1082,7 +1082,7 @@ body.auth-claim-page::before {
   body.auth-claim-page {
     background:
       linear-gradient(180deg, rgba(3,5,18,.38) 0%, rgba(3,5,18,.72) 42%, rgba(3,5,18,.92) 100%),
-      url('/auth-mitch-pro-night.png') center top / auto max(42rem, 72vh) no-repeat,
+      url('/home-burning-cherry.webp') center top / auto max(42rem, 72vh) no-repeat,
       #080919 !important;
   }
   body.enroll-page::before,
@@ -1094,7 +1094,7 @@ body.auth-claim-page::before {
   body.auth-claim-page {
     background:
       linear-gradient(180deg, rgba(3,5,18,.32) 0%, rgba(3,5,18,.78) 34rem, #080919 48rem),
-      url('/auth-mitch-pro-night.png') center top / auto 36rem no-repeat,
+      url('/home-burning-cherry.webp') center top / auto 36rem no-repeat,
       #080919 !important;
   }
 }

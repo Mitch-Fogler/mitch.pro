@@ -17,7 +17,7 @@ body.moderator-page {
     linear-gradient(180deg, rgba(4, 2, 13, .5), rgba(7, 3, 18, .84)),
     radial-gradient(circle at 15% 10%, rgba(157, 117, 255, .26), transparent 30rem),
     radial-gradient(circle at 86% 22%, rgba(241, 91, 181, .17), transparent 28rem),
-    url('/home-burning-cherry.jpg');
+    url('/home-burning-cherry.webp');
   background-size: auto, auto, auto, cover;
   background-position: center;
   background-attachment: fixed;

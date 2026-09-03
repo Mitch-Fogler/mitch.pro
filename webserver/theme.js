@@ -14,7 +14,7 @@
     bd: 'rgba(224,198,255,0.16)', bda: 'rgba(194,126,255,0.48)',
     gl: 'rgba(180,94,255,0.35)', gls: 'rgba(180,94,255,0.14)',
     gr: 'linear-gradient(135deg,#7957f1,#ca57f5 56%,#ff5fa7)',
-    bgr: 'linear-gradient(180deg,rgba(5,4,17,.24),rgba(5,4,17,.83)),url(/home-burning-cherry.jpg)',
+    bgr: 'linear-gradient(180deg,rgba(5,4,17,.24),rgba(5,4,17,.83)),url(/home-burning-cherry.webp)',
     bgImg: '',
     sw: '#b86cff',
   };

@@ -22,7 +22,7 @@ html:not(.theme-light) .encrypt-page {
   position: relative;
   isolation: isolate;
   padding: 0 14px 14px;
-  background: #05040d url('/home-burning-cherry.jpg') center / cover fixed no-repeat;
+  background: #05040d url('/home-burning-cherry.webp') center / cover fixed no-repeat;
 }
 
 .encrypt-page::before {

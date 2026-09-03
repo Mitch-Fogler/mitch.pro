@@ -134,43 +134,51 @@
     animation: app-fade-in 0.55s ease 0.06s both;
   }
 
+  /* Underline tabs. Kept !important: theme.js injects a late button rule with
+     ID-heavy :not() specificity that would otherwise box every tab. */
   .auth-tabs {
     display: flex;
-    gap: 0;
-    margin-bottom: 1.35rem;
-    padding: 0;
-    border: 1px solid var(--t-bd);
-    border-radius: 8px;
-    background: transparent;
+    gap: 1.1rem;
+    margin-bottom: 1.5rem !important;
+    padding: 0 0 0.7rem !important;
+    border: 0 !important;
+    border-bottom: 1px solid var(--t-bd) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
   }
 
   .auth-tab-btn {
-    flex: 1;
+    flex: 0 1 auto;
     appearance: none;
-    min-height: 2.35rem;
-    border: none;
-    border-radius: var(--t-radius, 8px);
-    background: transparent;
-    color: var(--t-fg2);
-    font-family: inherit;
+    min-height: 2.1rem !important;
+    padding: 0.25rem 0.1rem !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    color: var(--t-fg2) !important;
+    font-family: inherit !important;
     font-weight: 700;
-    font-size: 0.82rem;
+    font-size: 0.84rem;
+    letter-spacing: 0.01em;
+    box-shadow: none !important;
     cursor: pointer;
-    transition:
-      background-color var(--t-motion, 0.15s) ease,
-      color var(--t-motion, 0.15s) ease,
-      box-shadow var(--t-motion, 0.15s) ease;
+    transition: color var(--t-motion, 0.15s) ease;
+  }
+
+  .auth-tab-btn span {
+    display: none;
   }
 
   .auth-tab-btn:hover {
-    color: var(--t-fg);
+    color: var(--t-fg) !important;
+    transform: none !important;
   }
 
   .auth-tab-btn.active {
-    color: var(--t-fg);
-    background: var(--t-bg3);
-    box-shadow: none;
-    border-radius: 0;
+    color: var(--t-fg) !important;
+    background: transparent !important;
+    box-shadow: inset 0 -2px var(--t-ac) !important;
   }
 
   .tab-pane {
@@ -338,6 +346,77 @@
     margin-bottom: 0.75rem;
   }
 
+  /* Optional profile details, collapsed by default */
+  .optional-details {
+    margin: 0.2rem 0 1rem;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: color-mix(in srgb, var(--t-fg) 3%, transparent);
+  }
+
+  .optional-details summary {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.8rem 0.95rem;
+    font-size: 0.84rem;
+    font-weight: 700;
+    color: var(--t-fg2);
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+  }
+
+  .optional-details summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .optional-details summary::before {
+    content: '+';
+    width: 1.35rem;
+    height: 1.35rem;
+    display: grid;
+    place-items: center;
+    flex: 0 0 1.35rem;
+    border-radius: 50%;
+    border: 1px solid var(--t-bd);
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--t-ac);
+    transition: transform var(--t-motion, 0.2s) ease;
+  }
+
+  .optional-details[open] summary::before {
+    content: '\2212';
+  }
+
+  .optional-details summary small {
+    font-weight: 600;
+    opacity: 0.65;
+  }
+
+  .optional-details summary:hover {
+    color: var(--t-fg);
+  }
+
+  .optional-body {
+    padding: 0.35rem 0.95rem 0.35rem;
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0 0.7rem;
+  }
+
+  /* Verification codes: centered, mono, spaced out */
+  .code-input {
+    text-align: center;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 1.25rem;
+    letter-spacing: 0.4em;
+  }
+
   .pw-strength {
     margin: -0.45rem 0 0.85rem;
     display: none;
@@ -478,11 +557,6 @@
       <span class="auth-eyebrow">Woodcreek // private network</span>
       <h1>The <span class="auth-gradient-text">ULTIMATE</span> game website.</h1>
       <p>A members-only corner of the internet for games, campus tools, and the people you already know.</p>
-      <div class="auth-benefits" aria-label="Platform highlights">
-        <div class="auth-benefit"><strong>01 / PLAY</strong><span>Hundreds of games</span></div>
-        <div class="auth-benefit"><strong>02 / TALK</strong><span>Your people, in one place</span></div>
-        <div class="auth-benefit"><strong>03 / BUILD</strong><span>Tools made by students</span></div>
-      </div>
       <nav class="enroll-links" aria-label="Help links">
         <a href="/faq.html">FAQ</a>
         <a href="/use-agreement.html">Use Agreement</a>
@@ -492,9 +566,9 @@
 
     <section class="panel auth-panel" aria-label="Account access">
       <div class="auth-tabs" role="tablist">
-        <button class="auth-tab-btn active" id="tab-login" onclick="switchTab('login')" role="tab" aria-selected="true" aria-controls="pane-login" type="button"><span>01</span> Sign in</button>
-        <button class="auth-tab-btn" id="tab-invite" onclick="switchTab('invite')" role="tab" aria-selected="false" aria-controls="pane-invite" type="button"><span>02</span> Join</button>
-        <button class="auth-tab-btn" id="tab-reset" onclick="switchTab('reset')" role="tab" aria-selected="false" aria-controls="pane-reset" type="button"><span>03</span> Reset</button>
+        <button class="auth-tab-btn active" id="tab-login" onclick="switchTab('login')" role="tab" aria-selected="true" aria-controls="pane-login" type="button">Sign in</button>
+        <button class="auth-tab-btn" id="tab-invite" onclick="switchTab('invite')" role="tab" aria-selected="false" aria-controls="pane-invite" type="button">Create account</button>
+        <button class="auth-tab-btn" id="tab-reset" onclick="switchTab('reset')" role="tab" aria-selected="false" aria-controls="pane-reset" type="button">Reset</button>
       </div>
 
       <!-- Tab Pane: Log In -->
@@ -515,7 +589,7 @@
         <div id="login-msg"></div>
         <div id="login-2fa-panel" style="display:none;">
           <label class="field-label" id="login-2fa-label" for="login-2fa-code">Verification Code</label>
-          <input id="login-2fa-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456">
+          <input id="login-2fa-code" class="code-input" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="6">
           <button id="login-2fa-btn" class="btn-primary" type="button" onclick="verifyLogin2fa()">Verify Code</button>
         </div>
       </div>
@@ -546,35 +620,45 @@
           <label class="field-label" for="signup-confirm-password">Confirm Password</label>
           <input id="signup-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••">
 
-          <label class="field-label" for="signup-username">Username</label>
-          <input id="signup-username" type="text" autocomplete="username" placeholder="lowercase.name">
+          <details class="optional-details">
+            <summary>Add profile details <small>(optional)</small></summary>
+            <div class="optional-body">
+              <label class="field-label" for="signup-username">Username</label>
+              <input id="signup-username" type="text" autocomplete="username" placeholder="lowercase.name">
 
-          <label class="field-label" for="signup-nickname">Nickname</label>
-          <input id="signup-nickname" type="text" autocomplete="nickname" placeholder="Shown around the site">
+              <label class="field-label" for="signup-nickname">Nickname</label>
+              <input id="signup-nickname" type="text" autocomplete="nickname" placeholder="Shown around the site">
 
-          <label class="field-label" for="signup-grad-year">Graduation Year</label>
-          <select id="signup-grad-year"></select>
+              <div class="field-grid">
+                <div>
+                  <label class="field-label" for="signup-grad-year">Graduation Year</label>
+                  <select id="signup-grad-year"></select>
+                </div>
+                <div>
+                  <label class="field-label" for="signup-gender">Gender</label>
+                  <select id="signup-gender">
+                    <option value="">Prefer not to say</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Non-binary">Non-binary</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
 
-          <label class="field-label" for="signup-gender">Gender</label>
-          <select id="signup-gender">
-            <option value="">Prefer not to say</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Non-binary">Non-binary</option>
-            <option value="Other">Other</option>
-          </select>
+              <label class="field-label" for="signup-referral-source">Where did you hear about us?</label>
+              <select id="signup-referral-source">
+                <option value="">Prefer not to say</option>
+                <option value="Word of mouth">Word of mouth</option>
+                <option value="Search engines">Search engines</option>
+                <option value="Social media">Social media (TikTok/Insta)</option>
+                <option value="Other">Other</option>
+              </select>
 
-          <label class="field-label" for="signup-referral-source">Where did you hear about us?</label>
-          <select id="signup-referral-source">
-            <option value="">Prefer not to say</option>
-            <option value="Word of mouth">Word of mouth</option>
-            <option value="Search engines">Search engines</option>
-            <option value="Social media">Social media (TikTok/Insta)</option>
-            <option value="Other">Other</option>
-          </select>
-
-          <label class="field-label" for="signup-referral-details">Referral Details</label>
-          <input id="signup-referral-details" type="text" placeholder="Optional">
+              <label class="field-label" for="signup-referral-details">Referral Details</label>
+              <input id="signup-referral-details" type="text" placeholder="Optional">
+            </div>
+          </details>
 
           <div class="agree-row">
             <input type="checkbox" id="agree" onchange="updateBtn()">
@@ -585,7 +669,7 @@
             </label>
           </div>
 
-          <button id="btn" class="btn-primary" type="button" onclick="submit()">Sign Up</button>
+          <button id="btn" class="btn-primary" type="button" onclick="submit()">Create Account</button>
 
           <div id="support-actions" style="display:none;">
             <button id="resend-btn" class="btn" type="button" onclick="submit(true)">Didn't get email? (Wait 30s)</button>
@@ -612,7 +696,7 @@
           </div>
 
           <label class="field-label" for="token">6-Digit Verification Code</label>
-          <input id="token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
+          <input id="token" class="code-input" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" placeholder="123456" maxlength="6">
 
           <button id="tbtn" class="btn-primary" type="button" onclick="verifySignup()">Complete Sign Up</button>
           <div id="tmsg"></div>
@@ -645,7 +729,7 @@
           </div>
 
           <label class="field-label" for="reset-token">6-Digit Reset Code</label>
-          <input id="reset-token" type="text" autocomplete="off" placeholder="e.g. 123456" maxlength="6">
+          <input id="reset-token" class="code-input" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]*" placeholder="123456" maxlength="6">
 
           <label class="field-label" for="reset-password">New Password (min 8 chars)</label>
           <input id="reset-password" type="password" autocomplete="new-password" placeholder="••••••••">
@@ -906,6 +990,7 @@ async function submit(isResend = false) {
       document.getElementById('invite-step-1').style.display = 'none';
       document.getElementById('invite-step-2').style.display = 'block';
       document.getElementById('invite-step-2').appendChild(support);
+      document.getElementById('token').focus();
     } else {
       msg.className = 'err';
       msg.textContent = d.message || 'Error signing up.';
@@ -988,6 +1073,7 @@ async function requestReset() {
       msg.textContent = 'Reset code sent. Check your email.';
       document.getElementById('reset-step-1').style.display = 'none';
       document.getElementById('reset-step-2').style.display = 'block';
+      document.getElementById('reset-token').focus();
       resetCaptcha();
     } else {
       msg.className = 'err';
