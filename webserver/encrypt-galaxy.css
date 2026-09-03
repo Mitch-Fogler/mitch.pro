@@ -512,9 +512,9 @@ html:not(.theme-light) .encrypt-page {
 }
 
 /* v4: focused messaging-app layout ---------------------------------------- */
+/* NOTE: #e2e-modal must stay displayable — the unlock/setup modal gates init(). */
 .encrypt-page #_ab,
-.encrypt-page #_ap,
-.encrypt-page #e2e-modal {
+.encrypt-page #_ap {
   display: none !important;
 }
 
