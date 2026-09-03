@@ -6488,6 +6488,105 @@ function stripBroadcast(html) {
   return String(html || '').replace(/<script\b[^>]*\bsrc=["']\/broadcast\.js(?:\?[^"']*)?["'][^>]*>\s*<\/script>/gi, '');
 }
 
+// ── In-RAM static file cache ──────────────────────────────────────────────────
+// Static files under the webroot are held in memory so repeat requests skip
+// the disk entirely. Entries revalidate against the file's mtime/size every 30
+// minutes (a background sweep plus a lazy check on each request), and the
+// cache evicts least-recently-used files once it grows past the 16 GiB ceiling.
+
+const STATIC_CACHE_MAX_BYTES     = 16 * 1024 * 1024 * 1024;
+const STATIC_CACHE_PREWARM_BYTES = 1 * 1024 * 1024 * 1024;
+const STATIC_CACHE_REVALIDATE_MS = 30 * 60 * 1000;
+const staticCache = new Map(); // absolute filePath -> { data, mtimeMs, size, checkedAt }
+let staticCacheBytes = 0;
+
+function evictStaticCache() {
+  while (staticCacheBytes > STATIC_CACHE_MAX_BYTES) {
+    const oldest = staticCache.keys().next().value;
+    if (oldest === undefined) break;
+    staticCacheBytes -= staticCache.get(oldest).size;
+    staticCache.delete(oldest);
+  }
+}
+
+function staticCacheLoad(filePath) {
+  try {
+    const st = statSync(filePath);
+    if (!st.isFile() || st.size > STATIC_CACHE_MAX_BYTES) return null;
+    const old = staticCache.get(filePath);
+    if (old) staticCacheBytes -= old.size;
+    const entry = { data: Buffer.from(readFileSync(filePath)), mtimeMs: st.mtimeMs, size: st.size, checkedAt: Date.now() };
+    staticCache.delete(filePath); // refresh LRU position
+    staticCache.set(filePath, entry);
+    staticCacheBytes += entry.size;
+    evictStaticCache();
+    return entry;
+  } catch {
+    staticCacheBytes -= staticCache.get(filePath)?.size || 0;
+    staticCache.delete(filePath);
+    return null;
+  }
+}
+
+// Returns the cached entry, or null when the file doesn't exist / can't be read.
+function staticCacheGet(filePath) {
+  const entry = staticCache.get(filePath);
+  if (!entry) return staticCacheLoad(filePath);
+  staticCache.delete(filePath);
+  staticCache.set(filePath, entry); // LRU touch
+  if (Date.now() - entry.checkedAt < STATIC_CACHE_REVALIDATE_MS) return entry;
+  try {
+    const st = statSync(filePath);
+    if (st.isFile() && st.mtimeMs === entry.mtimeMs && st.size === entry.size) {
+      entry.checkedAt = Date.now();
+      return entry;
+    }
+  } catch {}
+  return staticCacheLoad(filePath); // changed or vanished on disk — reload
+}
+
+// Background sweep: drop/reload any entry whose file changed since it was
+// cached, so every cached file is re-checked on this cadence even if idle.
+setInterval(() => {
+  for (const filePath of [...staticCache.keys()]) {
+    const entry = staticCache.get(filePath);
+    try {
+      const st = statSync(filePath);
+      if (st.isFile() && st.mtimeMs === entry.mtimeMs && st.size === entry.size) continue;
+    } catch {}
+    staticCacheLoad(filePath);
+  }
+}, STATIC_CACHE_REVALIDATE_MS).unref?.();
+
+function prewarmStaticCache() {
+  // Prod's webroot can be many GB (the games tree alone was 9.2 GB there), so
+  // preload is deferred, chunked so it never blocks the event loop, and capped;
+  // anything past the budget fills on demand into the same 16 GiB LRU as it
+  // gets requested.
+  const queue = [WEBROOT];
+  let budget = STATIC_CACHE_PREWARM_BYTES;
+  const step = () => {
+    const start = Date.now();
+    while (queue.length && budget > 0) {
+      const dir = queue.shift();
+      let names = [];
+      try { names = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+      for (const name of names) {
+        const full = join(dir, name.name);
+        if (name.isDirectory()) queue.push(full);
+        else if (name.isFile()) {
+          const before = staticCacheBytes;
+          if (staticCacheLoad(full)) budget -= staticCacheBytes - before;
+        }
+      }
+      if (Date.now() - start > 25) { setTimeout(step, 50).unref?.(); return; }
+    }
+    console.log(`[static-cache] Preloaded ${staticCache.size} files (~${(staticCacheBytes / 1024 / 1024).toFixed(1)} MB) from webroot.`);
+  };
+  setTimeout(step, 1500).unref?.();
+}
+prewarmStaticCache();
+
 async function serveStatic(urlPath, req = null) {
   // Normalise path
   let filePath = safeWebrootPath(urlPath);
@@ -6509,6 +6608,71 @@ async function serveStatic(urlPath, req = null) {
       }
     }
   } catch {}
+
+  const cached = staticCacheGet(filePath);
+  if (cached) {
+    const ext = filePath.split('.').pop().toLowerCase();
+    const mimeTypes = {
+      'js': 'application/javascript; charset=utf-8',
+      'css': 'text/css; charset=utf-8',
+      'html': 'text/html; charset=utf-8',
+      'htm': 'text/html; charset=utf-8',
+      'png': 'image/png',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'gif': 'image/gif',
+      'svg': 'image/svg+xml',
+      'webp': 'image/webp',
+      'avif': 'image/avif',
+      'ico': 'image/x-icon',
+      'json': 'application/json; charset=utf-8',
+      'txt': 'text/plain; charset=utf-8',
+      'xml': 'application/xml; charset=utf-8',
+      'pdf': 'application/pdf',
+      'mp4': 'video/mp4',
+      'webm': 'video/webm',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'woff': 'font/woff',
+      'woff2': 'font/woff2',
+      'ttf': 'font/ttf',
+      'otf': 'font/otf',
+      'wasm': 'application/wasm'
+    };
+    const contentType = mimeTypes[ext] || Bun.file(filePath).type || 'application/octet-stream';
+    const headers = { 'Content-Type': contentType };
+
+    const isCode = ['html', 'htm', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
+    if (isCode) {
+      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+      headers['Pragma'] = 'no-cache';
+      headers['Expires'] = '0';
+    } else {
+      headers['Cache-Control'] = 'public, max-age=2592000';
+    }
+
+    if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
+      headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+      headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
+      headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
+    }
+
+    if (contentType.includes('text/html')) {
+      let html = injectReadability(cached.data.toString('utf8'), urlPath);
+      if (req) {
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        const isEmbeddedGameRuntime = urlPath.startsWith('/games/') && urlPath !== '/games/' && urlPath !== '/games/index.html';
+        if (!isEmbeddedGameRuntime && sid && validId(sid) && !isRevoked(sid) && checkPasswordCookie(req, sid)) {
+          html = injectBroadcast(html);
+        } else {
+          html = stripBroadcast(html);
+        }
+      }
+      return new Response(html, { headers });
+    }
+    return new Response(cached.data, { headers });
+  }
 
   const file = Bun.file(filePath);
   if (await file.exists()) {
@@ -9976,6 +10140,7 @@ async function handleRequest(req, server) {
         const tokens   = loadTokens();
         const emails   = []; const seen = new Set();
         for (const e of extra) {
+          if (e.includes('*')) continue; // masked placeholder, never sendable
           if (!unsubSet.has(e.toLowerCase()) && !seen.has(e.toLowerCase())) {
             seen.add(e.toLowerCase()); emails.push({ email: e, source: 'manual' });
           }
@@ -9997,7 +10162,7 @@ async function handleRequest(req, server) {
         const unsubSet = new Set(loadJson(NEWSLETTER_UNSUB_FILE, []));
         const tokens   = loadTokens();
         const seen     = new Set();
-        const emails   = extra.filter(e => !unsubSet.has(e.toLowerCase()));
+        const emails   = extra.filter(e => !unsubSet.has(e.toLowerCase()) && !e.includes('*'));
         for (const e of emails) seen.add(e.toLowerCase());
         for (const d of Object.values(tokens)) {
           const e = (d.email || '').trim();
@@ -10010,14 +10175,20 @@ async function handleRequest(req, server) {
       }
 
       if (dtype === 'newsletter_add') {
-        const email = (body.email || '').trim().toLowerCase();
-        if (email) {
+        const raw = String(body.email || '').trim();
+        // The dashboard's member list shows masked emails/usernames, not real
+        // ones. Resolve whatever ref arrives back to the canonical email and
+        // refuse anything that still looks masked or isn't an address at all,
+        // so placeholder refs never land in the newsletter list.
+        const email = (resolveMemberRef(raw) || raw).trim().toLowerCase();
+        if (email && email.includes('@') && !email.includes('*')) {
           const extra = loadJson(join(BASE, 'data', 'newsletter_extra.json'), []);
           if (!extra.includes(email)) extra.push(email);
           saveJsonSync(join(BASE, 'data', 'newsletter_extra.json'),
             [...new Set(extra)].sort());
+          return jsonResp(200, { ok: true, added: email });
         }
-        return jsonResp(200, { ok: true });
+        return jsonResp(400, { ok: false, error: 'Could not resolve that member to a real email address.' });
       }
 
       if (dtype === 'newsletter_remove') {
@@ -17901,7 +18072,7 @@ function loadAllGamesList() {
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
-      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/auth-mitch-pro-night.png', '/home-galaxy-background.jpg', '/home-burning-cherry.jpg',
+      '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/auth-mitch-pro-night.png', '/home-burning-cherry.jpg',
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');

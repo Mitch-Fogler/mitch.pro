@@ -1,7 +1,7 @@
 /* mitch.pro flagship galaxy homepage */
 :root{--space-ink:#070611;--space-panel:rgba(10,8,27,.66);--space-line:rgba(255,255,255,.13);--space-muted:#aaa4bd;--space-pink:#ff4fa3;--space-violet:#9c6cff}
 html{background:var(--space-ink)}
-body.home-galaxy{min-height:100vh;margin:0;color:#fff;font-family:"DM Sans",system-ui,sans-serif!important;background-color:var(--space-ink)!important;background-image:linear-gradient(180deg,rgba(5,4,17,.18),rgba(5,4,17,.72)),url('/home-galaxy-background.jpg')!important;background-size:cover!important;background-position:center top!important;background-attachment:fixed!important;overflow-x:hidden}
+body.home-galaxy{min-height:100vh;margin:0;color:#fff;font-family:"DM Sans",system-ui,sans-serif!important;background-color:var(--space-ink)!important;background-image:linear-gradient(180deg,rgba(5,4,17,.18),rgba(5,4,17,.72)),url('/home-burning-cherry.jpg')!important;background-size:cover!important;background-position:center top!important;background-attachment:fixed!important;overflow-x:hidden}
 body.home-galaxy::before{content:"";display:block!important;position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.42;background-image:radial-gradient(circle at 14% 18%,#fff 0 1px,transparent 1.5px),radial-gradient(circle at 72% 24%,rgba(255,255,255,.8) 0 1px,transparent 1.5px);background-size:120px 120px,190px 190px;mask-image:linear-gradient(to bottom,#000,transparent 72%)}
 body.home-galaxy #mainpage.home-editorial-main{width:min(1480px,100%);padding:18px clamp(18px,3vw,48px) 90px;box-sizing:border-box}
 
