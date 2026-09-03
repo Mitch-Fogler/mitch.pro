@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Woodcreek Hub — rjuhsd.school</title>
-  <meta name="description" content="Woodcreek High School hub on rjuhsd.school: live bell schedule, public chat, and encrypted chat — powered by mitch.pro accounts.">
+  <title>RJUHSD Hub — rjuhsd.school</title>
+  <meta name="description" content="The Roseville Joint Union High School District hub on rjuhsd.school: live bell schedule, weather, school events and news, public chat, and encrypted chat — powered by mitch.pro accounts.">
   <script src="/theme.js?v=9"></script>
   <link rel="stylesheet" href="/app.css">
   <script src="/bell/schedule.js?v=1"></script>
@@ -71,6 +71,30 @@
       color: var(--t-fg);
     }
     .rj-mast .spacer { flex: 1 1 auto; }
+    .rj-school-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-height: 2.6rem;
+      padding: 0 1.1rem;
+      border: 1px solid color-mix(in srgb, var(--t-ac) 40%, var(--t-bd));
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--t-ac) 14%, transparent);
+      color: var(--t-fg);
+      font: 750 0.84rem/1.2 'Outfit', system-ui, sans-serif;
+      cursor: pointer;
+      max-width: 100%;
+      transition: background var(--t-motion, .15s) ease, border-color var(--t-motion, .15s) ease, transform var(--t-motion, .15s) ease;
+    }
+    .rj-school-chip:hover { transform: translateY(-1px); border-color: var(--t-ac); }
+    .rj-school-chip small {
+      color: var(--t-fg2);
+      font-size: 0.64rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .rj-school-chip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .rj-signin {
       display: inline-flex;
       align-items: center;
@@ -98,25 +122,44 @@
     .rj-signin.out .dot { background: var(--whs-gold); box-shadow: 0 0 8px var(--whs-gold); }
     .rj-signin small { color: var(--t-fg2); font-weight: 600; }
 
-    /* Live schedule — front and center */
-    .rj-live {
+    /* Cards */
+    .rj-card {
       position: relative;
       overflow: hidden;
-      padding: clamp(1.3rem, 4vw, 2rem);
+      padding: clamp(1.1rem, 3vw, 1.6rem);
       border-radius: calc(var(--t-radius, 8px) + 10px);
       border: 1px solid color-mix(in srgb, var(--t-ac) 30%, var(--t-bd));
       background:
         linear-gradient(150deg, color-mix(in srgb, var(--t-ac) 10%, transparent), color-mix(in srgb, var(--t-bg2) 88%, transparent));
       box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
-      margin-bottom: 1.1rem;
     }
-    .rj-live-head {
+    .rj-hero { margin-bottom: 1.1rem; }
+    .rj-hero h1 {
+      margin: 0 0 0.3rem;
+      font: 800 clamp(1.5rem, 4.5vw, 2.3rem)/1.12 'Outfit', system-ui, sans-serif;
+      letter-spacing: -0.03em;
+      color: var(--t-fg);
+    }
+    .rj-hero p { margin: 0; color: var(--t-fg2); font-size: 0.9rem; font-weight: 600; }
+    .rj-hero .rj-school-links { display: flex; gap: 0.8rem; flex-wrap: wrap; margin-top: 0.8rem; }
+    .rj-hero .rj-school-links a {
+      color: var(--t-ac);
+      font-size: 0.8rem;
+      font-weight: 750;
+      text-decoration: none;
+    }
+    .rj-hero .rj-school-links a:hover { text-decoration: underline; }
+
+    .rj-grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 1.1rem; margin-bottom: 1.1rem; }
+    .rj-grid-2 { grid-template-columns: 1fr 1fr; }
+
+    .rj-card-head {
       display: flex;
       justify-content: space-between;
-      align-items: flex-start;
+      align-items: center;
       gap: 0.9rem;
       flex-wrap: wrap;
-      margin-bottom: 1rem;
+      margin-bottom: 0.9rem;
     }
     .rj-kicker {
       display: inline-flex;
@@ -141,6 +184,8 @@
       animation: rj-blink 1.4s infinite;
     }
     @keyframes rj-blink { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+    .rj-card-head a { color: var(--t-fg2); font-size: 0.74rem; font-weight: 700; text-decoration: none; }
+    .rj-card-head a:hover { color: var(--t-ac); }
     .rj-lunch { display: flex; gap: 0.35rem; }
     .rj-lunch button {
       min-height: 2.1rem;
@@ -204,6 +249,48 @@
     .rj-p-name { font-weight: 750; font-size: 0.85rem; color: var(--t-fg); }
     .rj-p-time { color: var(--t-fg2); font-size: 0.78rem; font-variant-numeric: tabular-nums; text-align: right; }
 
+    /* Weather */
+    .rj-weather-now { display: flex; align-items: center; gap: 0.9rem; margin-bottom: 0.9rem; }
+    .rj-weather-icon { font-size: 2.6rem; line-height: 1; }
+    .rj-weather-temp { font: 800 2.4rem/1 'Outfit', system-ui, sans-serif; letter-spacing: -0.03em; color: var(--t-fg); }
+    .rj-weather-meta { color: var(--t-fg2); font-size: 0.8rem; font-weight: 650; line-height: 1.45; }
+    .rj-forecast { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+    .rj-forecast-day {
+      padding: 0.6rem 0.7rem;
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      background: color-mix(in srgb, var(--t-bg) 55%, transparent);
+      text-align: center;
+    }
+    .rj-forecast-day .wd { color: var(--t-fg2); font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+    .rj-forecast-day .ic { font-size: 1.3rem; margin: 0.15rem 0; }
+    .rj-forecast-day .hi { color: var(--t-fg); font-weight: 750; font-size: 0.86rem; }
+    .rj-forecast-day .lo { color: var(--t-fg2); font-size: 0.76rem; }
+
+    /* Events & news lists */
+    .rj-list { display: grid; gap: 0.45rem; }
+    .rj-item {
+      display: flex;
+      gap: 0.8rem;
+      align-items: baseline;
+      padding: 0.6rem 0.85rem;
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      background: color-mix(in srgb, var(--t-bg) 55%, transparent);
+    }
+    .rj-item .rj-date {
+      flex: 0 0 auto;
+      min-width: 4.2rem;
+      color: var(--whs-gold);
+      font-weight: 800;
+      font-size: 0.76rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .rj-item .rj-body { min-width: 0; }
+    .rj-item .rj-title { font-weight: 750; font-size: 0.86rem; color: var(--t-fg); }
+    .rj-item .rj-detail { color: var(--t-fg2); font-size: 0.76rem; margin-top: 0.1rem; }
+    .rj-empty { color: var(--t-fg2); font-size: 0.82rem; font-weight: 600; padding: 0.4rem 0; }
+
     /* App grid */
     .rj-apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; }
     .rj-app {
@@ -258,16 +345,72 @@
     .rj-foot a { color: var(--t-fg2); font-weight: 650; }
     .rj-foot a:hover { color: var(--t-ac); }
 
+    /* School picker */
+    .rj-picker {
+      position: fixed;
+      inset: 0;
+      z-index: 3000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.58);
+      backdrop-filter: blur(6px);
+    }
+    .rj-picker.show { display: flex; }
+    .rj-picker-card {
+      width: min(640px, 100%);
+      max-height: min(760px, calc(100dvh - 32px));
+      overflow: auto;
+      display: grid;
+      gap: 0.65rem;
+      background:
+        linear-gradient(160deg, color-mix(in srgb, var(--t-bg2) 94%, transparent), color-mix(in srgb, var(--t-bg) 90%, transparent));
+      border: 1px solid var(--t-bd);
+      border-radius: calc(var(--t-radius, 8px) + 4px);
+      padding: 1.2rem;
+      box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+    }
+    .rj-picker-card h2 {
+      margin: 0;
+      font: 800 1.3rem/1.2 'Outfit', system-ui, sans-serif;
+      color: var(--t-fg);
+    }
+    .rj-picker-card p { margin: 0; color: var(--t-fg2); font-size: 0.84rem; font-weight: 600; }
+    .rj-picker-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.55rem; margin-top: 0.25rem; }
+    .rj-picker-grid button {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      background: color-mix(in srgb, var(--t-bg) 55%, transparent);
+      color: var(--t-fg);
+      font: 750 0.9rem/1.25 'Outfit', system-ui, sans-serif;
+      text-align: left;
+      cursor: pointer;
+      transition: border-color var(--t-motion, .15s) ease, background var(--t-motion, .15s) ease, transform var(--t-motion, .15s) ease;
+    }
+    .rj-picker-grid button:hover {
+      transform: translateY(-2px);
+      border-color: var(--t-ac);
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+    }
+    .rj-picker-grid button small { color: var(--t-fg2); font-size: 0.72rem; font-weight: 650; }
+
     @media (max-width: 760px) {
       .rj-apps { grid-template-columns: 1fr 1fr; }
+      .rj-grid, .rj-grid-2 { grid-template-columns: 1fr; }
       .rj-periods.grid-2 { grid-template-columns: 1fr; }
       .rj-mast { gap: 0.65rem; }
       .rj-mast .spacer { display: none; }
       .rj-signin { width: 100%; justify-content: center; }
+      .rj-picker-grid { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
       .rj-kicker i { animation: none; }
-      .rj-app, .rj-signin { transition: none !important; }
+      .rj-app, .rj-signin, .rj-school-chip, .rj-picker-grid button { transition: none !important; }
     }
   </style>
 </head>
@@ -275,45 +418,95 @@
 <main class="app-main rj-shell">
 
   <header class="rj-mast">
-    <span class="rj-mark" aria-hidden="true">W</span>
+    <span class="rj-mark" aria-hidden="true">R</span>
     <div class="rj-id">
-      <small>RJUHSD · Woodcreek High School</small>
-      <strong>rjuhsd.school — student hub</strong>
+      <small>RJUHSD · rjuhsd.school</small>
+      <strong>District student hub</strong>
     </div>
     <span class="spacer"></span>
+    <button id="schoolChip" class="rj-school-chip" type="button" title="Change school">
+      <small>School</small>
+      <span id="schoolChipName">…</span>
+    </button>
     <a id="authBtn" class="rj-signin out" href="/api/sso/bridge?back=%2F">
       <span class="dot" aria-hidden="true"></span>
       <span id="authLabel">Sign in with mitch.pro</span>
     </a>
   </header>
 
-  <!-- Live bell schedule — front and center -->
-  <section class="rj-live" aria-label="Live bell schedule">
-    <div class="rj-live-head">
-      <span class="rj-kicker"><i aria-hidden="true"></i> Live bell schedule</span>
-      <div class="rj-lunch" role="group" aria-label="Lunch assignment">
-        <button id="lunch1Btn" class="active" type="button" onclick="setLunch(1)">Lunch 1</button>
-        <button id="lunch2Btn" type="button" onclick="setLunch(2)">Lunch 2</button>
-      </div>
-    </div>
-    <div class="rj-now">
-      <div class="rj-now-label" id="nowLabel">—</div>
-      <div class="rj-now-name" id="nowName">Checking schedule…</div>
-      <div class="rj-now-count" id="nowCount"></div>
-    </div>
-    <div class="rj-day-name" id="dayName"></div>
-    <div class="rj-periods" id="periodList"></div>
-    <div style="margin-top: 0.9rem; text-align: center;">
-      <a href="/bell/" style="color: var(--t-ac); font-size: 0.8rem; font-weight: 700;">Full week schedule →</a>
-    </div>
+  <!-- School hero -->
+  <section class="rj-card rj-hero" aria-label="Your school">
+    <h1 id="schoolName">Loading…</h1>
+    <p id="schoolMotto"></p>
+    <div class="rj-school-links" id="schoolLinks"></div>
   </section>
+
+  <div class="rj-grid">
+    <!-- Live bell schedule (Woodcreek) -->
+    <section class="rj-card" id="bellCard" aria-label="Live bell schedule" style="display:none;">
+      <div class="rj-card-head">
+        <span class="rj-kicker"><i aria-hidden="true"></i> Live bell schedule</span>
+        <div class="rj-lunch" role="group" aria-label="Lunch assignment">
+          <button id="lunch1Btn" class="active" type="button" onclick="setLunch(1)">Lunch 1</button>
+          <button id="lunch2Btn" type="button" onclick="setLunch(2)">Lunch 2</button>
+        </div>
+      </div>
+      <div class="rj-now">
+        <div class="rj-now-label" id="nowLabel">—</div>
+        <div class="rj-now-name" id="nowName">Checking schedule…</div>
+        <div class="rj-now-count" id="nowCount"></div>
+      </div>
+      <div class="rj-day-name" id="dayName"></div>
+      <div class="rj-periods" id="periodList"></div>
+      <div style="margin-top: 0.9rem; text-align: center;">
+        <a href="/bell/" style="color: var(--t-ac); font-size: 0.8rem; font-weight: 700;">Full week schedule →</a>
+      </div>
+    </section>
+
+    <!-- Weather -->
+    <section class="rj-card" aria-label="Local weather">
+      <div class="rj-card-head">
+        <span class="rj-kicker"><i aria-hidden="true"></i> Weather</span>
+        <span class="rj-day-name">Roseville, CA</span>
+      </div>
+      <div class="rj-weather-now">
+        <div class="rj-weather-icon" id="wxIcon">⏳</div>
+        <div>
+          <div class="rj-weather-temp" id="wxTemp">—°</div>
+          <div class="rj-weather-meta" id="wxMeta">Loading weather…</div>
+        </div>
+      </div>
+      <div class="rj-forecast" id="wxForecast"></div>
+      <div style="margin-top: 0.7rem; text-align: center; color: var(--t-fg2); font-size: 0.68rem;">via Open-Meteo</div>
+    </section>
+  </div>
+
+  <div class="rj-grid rj-grid-2">
+    <!-- Upcoming events -->
+    <section class="rj-card" aria-label="Upcoming events">
+      <div class="rj-card-head">
+        <span class="rj-kicker"><i aria-hidden="true"></i> Upcoming events</span>
+        <a id="eventsLink" target="_blank" rel="noopener">School calendar ↗</a>
+      </div>
+      <div class="rj-list" id="eventsList"><div class="rj-empty">Loading events…</div></div>
+    </section>
+
+    <!-- News -->
+    <section class="rj-card" aria-label="School news">
+      <div class="rj-card-head">
+        <span class="rj-kicker"><i aria-hidden="true"></i> News & announcements</span>
+        <a id="newsLink" target="_blank" rel="noopener">School website ↗</a>
+      </div>
+      <div class="rj-list" id="newsList"><div class="rj-empty">Loading news…</div></div>
+    </section>
+  </div>
 
   <!-- The network — same account, same chats -->
   <section class="rj-apps" aria-label="Student apps">
     <a class="rj-app" href="/public-chat/">
       <span class="ico" aria-hidden="true">💬</span>
       <strong>Public Plaza</strong>
-      <span>The open school-wide channel. Live for everyone.</span>
+      <span>The open district-wide channel. Live for everyone.</span>
       <span class="tag">Pub chat · synced</span>
     </a>
     <a class="rj-app" href="/encrypt/">
@@ -322,10 +515,10 @@
       <span>End-to-end encrypted DMs and groups.</span>
       <span class="tag">E2E · synced</span>
     </a>
-    <a class="rj-app" href="/games/">
+    <a class="rj-app" href="https://mitch.pro/games/">
       <span class="ico" aria-hidden="true">🎮</span>
       <strong>Games</strong>
-      <span>Hundreds of games, no downloads.</span>
+      <span>Hundreds of games on mitch.pro, no downloads.</span>
       <span class="tag">Play</span>
     </a>
     <a class="rj-app" href="https://mitch.pro/">
@@ -339,12 +532,21 @@
   <footer class="rj-foot">
     <span>© 2026 rjuhsd.school · student-run hub</span>
     <span>
-      <a href="https://woodcreek.rjuhsd.us/" target="_blank" rel="noopener">Official school site</a>
-      &nbsp;·&nbsp; <a href="/faq.html">FAQ</a>
-      &nbsp;·&nbsp; <a href="/use-agreement.html">Use Agreement</a>
+      <a id="footSchoolSite" target="_blank" rel="noopener">Official school site</a>
+      &nbsp;·&nbsp; <a href="https://mitch.pro/faq.html">FAQ</a>
+      &nbsp;·&nbsp; <a href="https://mitch.pro/use-agreement.html">Use Agreement</a>
     </span>
   </footer>
 </main>
+
+<!-- School picker -->
+<div id="schoolPicker" class="rj-picker" role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+  <div class="rj-picker-card">
+    <h2 id="pickerTitle">Pick your school</h2>
+    <p>Any school in the Roseville Joint Union High School District. We'll remember your choice on this device.</p>
+    <div class="rj-picker-grid" id="pickerGrid"></div>
+  </div>
+</div>
 
 <script src="/cookie-consent.js" defer></script>
 <script>
@@ -352,9 +554,199 @@
   'use strict';
   const BELL = window.WHS_BELL;
   const $ = id => document.getElementById(id);
+
+  // Every school in the district (mirrors the server's RJUHSD_SCHOOLS list —
+  // the same slugs work for /api/school-info).
+  const SCHOOLS = {
+    woodcreek:      { name: 'Woodcreek High School',   url: 'https://woodcreek.rjuhsd.us',      sub: 'woodcreek.rjuhsd.us' },
+    antelope:       { name: 'Antelope High School',    url: 'https://antelope.rjuhsd.us',       sub: 'antelope.rjuhsd.us' },
+    granitebay:     { name: 'Granite Bay High School', url: 'https://granitebay.rjuhsd.us',     sub: 'granitebay.rjuhsd.us' },
+    oakmont:        { name: 'Oakmont High School',     url: 'https://oakmont.rjuhsd.us',        sub: 'oakmont.rjuhsd.us' },
+    roseville:      { name: 'Roseville High School',   url: 'https://roseville.rjuhsd.us',      sub: 'roseville.rjuhsd.us' },
+    westpark:       { name: 'West Park High School',   url: 'https://westpark.rjuhsd.us',       sub: 'westpark.rjuhsd.us' },
+    pathways:       { name: 'Roseville Pathways',      url: 'https://pathways.rjuhsd.us',       sub: 'pathways.rjuhsd.us' },
+    rosevilleadult: { name: 'Roseville Adult School',  url: 'https://rosevilleadult.rjuhsd.us', sub: 'rosevilleadult.rjuhsd.us' },
+  };
+  const SCHOOL_KEY = 'rjuhsd_school';
+
   let activeLunch = parseInt(localStorage.getItem('whs_lunch_preference'), 10) === 2 ? 2 : 1;
   let activeOverride = null;
+  let bellTimer = null;
+  let currentSchool = null;
 
+  // ── School picker ──────────────────────────────────────────────────────────
+  function storedSchool() {
+    try {
+      const key = localStorage.getItem(SCHOOL_KEY);
+      return SCHOOLS[key] ? key : null;
+    } catch { return null; }
+  }
+  function rememberSchool(key) {
+    try { localStorage.setItem(SCHOOL_KEY, key); } catch {}
+  }
+  function openPicker() {
+    const grid = $('pickerGrid');
+    grid.innerHTML = '';
+    for (const [key, s] of Object.entries(SCHOOLS)) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.innerHTML = '<span></span><small></small>';
+      btn.children[0].textContent = s.name;
+      btn.children[1].textContent = s.sub;
+      btn.addEventListener('click', () => {
+        rememberSchool(key);
+        $('schoolPicker').classList.remove('show');
+        applySchool(key);
+      });
+      grid.appendChild(btn);
+    }
+    $('schoolPicker').classList.add('show');
+  }
+  $('schoolChip').addEventListener('click', openPicker);
+
+  // ── Per-school rendering ───────────────────────────────────────────────────
+  function applySchool(key) {
+    currentSchool = key;
+    const s = SCHOOLS[key];
+    $('schoolChipName').textContent = s.name.replace(' High School', '').replace(' Adult School', ' Adult');
+    $('schoolName').textContent = s.name;
+    $('schoolLinks').innerHTML = '';
+    const official = document.createElement('a');
+    official.href = s.url;
+    official.target = '_blank';
+    official.rel = 'noopener';
+    official.textContent = 'Official site ↗';
+    $('schoolLinks').appendChild(official);
+    $('footSchoolSite').href = s.url;
+
+    // Woodcreek has the district's live bell schedule built in; other schools
+    // get a pointer to their own site's schedule.
+    if (key === 'woodcreek' && BELL) {
+      $('bellCard').style.display = '';
+      startBell();
+    } else {
+      $('bellCard').style.display = 'none';
+      stopBell();
+    }
+
+    $('eventsLink').href = s.url + '/calendar';
+    $('newsLink').href = s.url;
+    loadEvents(key, s);
+    loadNews(key, s);
+  }
+
+  // ── Events (district calendar for Woodcreek, scraped homepage otherwise) ──
+  async function loadEvents(key, s) {
+    const list = $('eventsList');
+    list.innerHTML = '<div class="rj-empty">Loading events…</div>';
+    const feedUrl = key === 'woodcreek' ? '/api/school-calendar' : '/api/school-info?school=' + encodeURIComponent(key);
+    try {
+      const res = await fetch(feedUrl, { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      const events = (data.events || []).filter(e => e.date >= todayKey()).slice(0, 8);
+      list.innerHTML = '';
+      if (!events.length) {
+        list.innerHTML = '<div class="rj-empty">No upcoming events listed — check back soon.</div>';
+        return;
+      }
+      for (const e of events) list.appendChild(eventItem(e));
+    } catch {
+      list.innerHTML = '<div class="rj-empty">Couldn\'t load events — <a href="' + s.url + '/calendar" target="_blank" rel="noopener">see the school calendar ↗</a></div>';
+    }
+  }
+  function eventItem(e) {
+    const row = document.createElement('div');
+    row.className = 'rj-item';
+    const d = new Date(e.date + 'T12:00:00');
+    const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    row.innerHTML = '<span class="rj-date"></span><div class="rj-body"><div class="rj-title"></div><div class="rj-detail"></div></div>';
+    row.querySelector('.rj-date').textContent = label;
+    row.querySelector('.rj-title').textContent = e.title;
+    const detail = e.detail || (e.all_day ? 'All day' : '');
+    if (detail) row.querySelector('.rj-detail').textContent = detail;
+    else row.querySelector('.rj-detail').style.display = 'none';
+    return row;
+  }
+
+  // ── News (scraped from the school's official homepage) ─────────────────────
+  async function loadNews(key, s) {
+    const list = $('newsList');
+    list.innerHTML = '<div class="rj-empty">Loading news…</div>';
+    try {
+      const res = await fetch('/api/school-info?school=' + encodeURIComponent(key), { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      const data = await res.json();
+      if (data.motto) $('schoolMotto').textContent = data.motto;
+      const items = (data.news || []).slice(0, 6);
+      list.innerHTML = '';
+      if (!items.length) {
+        list.innerHTML = '<div class="rj-empty">No recent announcements.</div>';
+        return;
+      }
+      for (const n of items) {
+        const row = document.createElement('div');
+        row.className = 'rj-item';
+        const date = n.date ? new Date(n.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+        row.innerHTML = '<span class="rj-date"></span><div class="rj-body"><div class="rj-title"></div></div>';
+        row.querySelector('.rj-date').textContent = date;
+        row.querySelector('.rj-title').textContent = n.title;
+        list.appendChild(row);
+      }
+    } catch {
+      list.innerHTML = '<div class="rj-empty">Couldn\'t load news — <a href="' + s.url + '" target="_blank" rel="noopener">visit the school site ↗</a></div>';
+    }
+  }
+
+  // ── Weather ────────────────────────────────────────────────────────────────
+  const WX = {
+    0: ['☀️', 'Clear'], 1: ['🌤️', 'Mostly clear'], 2: ['⛅', 'Partly cloudy'], 3: ['☁️', 'Overcast'],
+    45: ['🌫️', 'Fog'], 48: ['🌫️', 'Freezing fog'],
+    51: ['🌦️', 'Light drizzle'], 53: ['🌦️', 'Drizzle'], 55: ['🌦️', 'Heavy drizzle'],
+    56: ['🌧️', 'Freezing drizzle'], 57: ['🌧️', 'Freezing drizzle'],
+    61: ['🌧️', 'Light rain'], 63: ['🌧️', 'Rain'], 65: ['🌧️', 'Heavy rain'],
+    66: ['🌧️', 'Freezing rain'], 67: ['🌧️', 'Freezing rain'],
+    71: ['🌨️', 'Light snow'], 73: ['🌨️', 'Snow'], 75: ['❄️', 'Heavy snow'], 77: ['❄️', 'Snow grains'],
+    80: ['🌦️', 'Light showers'], 81: ['🌦️', 'Showers'], 82: ['⛈️', 'Heavy showers'],
+    85: ['🌨️', 'Snow showers'], 86: ['❄️', 'Snow showers'],
+    95: ['⛈️', 'Thunderstorm'], 96: ['⛈️', 'Storm w/ hail'], 99: ['⛈️', 'Storm w/ hail'],
+  };
+  function wxInfo(code) { return WX[code] || ['🌡️', '—']; }
+  async function loadWeather() {
+    try {
+      const res = await fetch('/api/weather', { cache: 'no-store' });
+      if (!res.ok) throw new Error(String(res.status));
+      const w = await res.json();
+      const c = w.current || {};
+      const [icon, label] = wxInfo(c.weather_code);
+      $('wxIcon').textContent = icon;
+      $('wxTemp').textContent = Math.round(c.temperature_2m) + '°';
+      const feels = c.apparent_temperature != null ? Math.round(c.apparent_temperature) : null;
+      $('wxMeta').innerHTML = label + (feels != null ? ' · feels like ' + feels + '°' : '') +
+        (c.wind_speed_10m != null ? '<br>Wind ' + Math.round(c.wind_speed_10m) + ' mph' : '');
+      const daily = w.daily || {};
+      const fc = $('wxForecast');
+      fc.innerHTML = '';
+      (daily.time || []).slice(0, 3).forEach((day, i) => {
+        const wd = new Date(day + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+        const [dIcon] = wxInfo((daily.weather_code || [])[i]);
+        const cell = document.createElement('div');
+        cell.className = 'rj-forecast-day';
+        cell.innerHTML = '<div class="wd"></div><div class="ic"></div><div class="hi"></div><div class="lo"></div>';
+        cell.querySelector('.wd').textContent = i === 0 ? 'Today' : wd;
+        cell.querySelector('.ic').textContent = dIcon;
+        cell.querySelector('.hi').textContent = Math.round((daily.temperature_2m_max || [])[i]) + '°';
+        cell.querySelector('.lo').textContent = Math.round((daily.temperature_2m_min || [])[i]) + '°';
+        fc.appendChild(cell);
+      });
+    } catch {
+      $('wxIcon').textContent = '🌡️';
+      $('wxTemp').textContent = '—°';
+      $('wxMeta').textContent = 'Weather unavailable right now.';
+    }
+  }
+
+  // ── Live bell schedule (Woodcreek) ─────────────────────────────────────────
   function setLunch(num) {
     activeLunch = num;
     localStorage.setItem('whs_lunch_preference', num);
@@ -453,6 +845,20 @@
     }
   }
 
+  function startBell() {
+    if (bellTimer || !BELL) return;
+    checkOverrides().then(() => {
+      $('lunch1Btn').classList.toggle('active', activeLunch === 1);
+      $('lunch2Btn').classList.toggle('active', activeLunch === 2);
+      renderToday();
+      tick();
+      bellTimer = setInterval(tick, 1000);
+    });
+  }
+  function stopBell() {
+    if (bellTimer) { clearInterval(bellTimer); bellTimer = null; }
+  }
+
   async function checkOverrides() {
     try {
       const res = await fetch('/api/bell/override');
@@ -464,6 +870,10 @@
       }
     } catch (_) {}
     function nowLA() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })); }
+  }
+
+  function todayKey() {
+    return new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
   }
 
   // Auth state: same mitch.pro account works here
@@ -484,14 +894,11 @@
     }
   }
 
-  checkOverrides().then(() => {
-    $('lunch1Btn').classList.toggle('active', activeLunch === 1);
-    $('lunch2Btn').classList.toggle('active', activeLunch === 2);
-    renderToday();
-    tick();
-    setInterval(tick, 1000);
-  });
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  loadWeather();
   checkAuth();
+  applySchool(storedSchool() || 'woodcreek');
+  if (!storedSchool()) openPicker();
 })();
 </script>
 </body>

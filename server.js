@@ -2371,6 +2371,9 @@ const PUBLIC_API_PATHS = new Set([
   '/api/next',
   '/api/sso/bridge',
   '/api/sso/exchange',
+  '/api/weather',
+  '/api/school-calendar',
+  '/api/school-info',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -4837,6 +4840,110 @@ async function woodcreekCalendarPayload() {
   }
 }
 
+// ── rjuhsd.school: per-school info scraped from each school's official site ──
+// All RJUHSD school sites run Finalsite, whose homepage markup is consistent:
+//   events: <article><time datetime="...">… <a class="fsCalendarEventLink">Title
+//           <div class="fsEventDetails">…   (+ <div class="fsAllDay">)
+//   news:   <article>… <a class="fsPostLink" data-slug="…">Title
+//           <div class="fsDateTime"><time datetime="…">
+//   motto:  <div class="fsLocationMotto">…
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#0?39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ').replace(/&#(\d+);/g, (_, n) => {
+      const code = Number(n);
+      return code > 0 && code < 0x110000 ? String.fromCodePoint(code) : '';
+    });
+}
+
+function stripHtml(value) {
+  return decodeHtmlEntities(String(value || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function parseFinalsiteHomepage(html) {
+  const events = [];
+  const news = [];
+  for (const m of String(html || '').matchAll(/<article\b[^>]*>([\s\S]*?)<\/article>/g)) {
+    const block = m[1];
+    const newsLink = block.match(/<a\s+class="fsPostLink[^"]*"\s+data-slug="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+    if (newsLink && !/fsThumbnail/.test(newsLink[0])) {
+      const title = stripHtml(newsLink[2]).replace(/\s*\(opens in new window\/tab\)\s*$/i, '');
+      const when = block.match(/<time\s+datetime="([^"]+)"/);
+      if (title && !/^read more$/i.test(title)) {
+        news.push({
+          title,
+          slug: newsLink[1],
+          date: when ? when[1].slice(0, 10) : '',
+        });
+      }
+      continue;
+    }
+    const when = block.match(/<time\s+datetime="([^"]+)"[^>]*>([\s\S]*?)<\/time>/);
+    const titleLink = block.match(/class="fsCalendarEventLink"[^>]*>([\s\S]*?)<\/a>/);
+    if (!when || !titleLink) continue;
+    const title = stripHtml(titleLink[1]);
+    if (!title || /^read more$/i.test(title)) continue;
+    const allDay = /class="fsAllDay"/.test(block);
+    let detail = '';
+    const details = block.match(/class="fsEventDetails"[^>]*>([\s\S]*?)<\/div>/);
+    if (details) detail = stripHtml(details[1]);
+    else if (allDay) detail = 'All day';
+    events.push({
+      date: when[1].slice(0, 10),
+      title: title.slice(0, 240),
+      detail: detail.slice(0, 200),
+      all_day: allDay,
+      starts_at: allDay ? null : when[1],
+    });
+  }
+  // The homepage shows upcoming events oldest-first; keep future events only
+  // (scraped pages only ever contain a short window) and cap the list.
+  const today = new Date().toISOString().slice(0, 10);
+  return {
+    events: events.filter((e) => e.date >= today).slice(0, 60),
+    news: news.slice(0, 12),
+  };
+}
+
+const schoolInfoCache = new Map(); // key → { payload, expiresAt }
+const SCHOOL_INFO_TTL_MS = 30 * 60 * 1000;
+
+async function schoolInfoPayload(schoolKey) {
+  const school = RJUHSD_SCHOOLS[schoolKey];
+  if (!school) throw new Error('unknown school');
+  const cached = schoolInfoCache.get(schoolKey);
+  if (cached && cached.payload && cached.expiresAt > Date.now()) return cached.payload;
+  try {
+    const response = await fetchWithDeadline(school.url + '/', {
+      headers: { Accept: 'text/html', 'User-Agent': 'mitch.pro school hub (rjuhsd.school)' },
+    }, 8500);
+    if (!response.ok) throw new Error(`school site ${response.status}`);
+    const html = await response.text();
+    const { events, news } = parseFinalsiteHomepage(html);
+    const mottoMatch = html.match(/class="fsLocationMotto"[^>]*>([\s\S]*?)<\/div>/);
+    const motto = mottoMatch ? stripHtml(mottoMatch[1]).slice(0, 120) : '';
+    if (!events.length && !news.length) throw new Error('school page parse empty');
+    const result = {
+      school: schoolKey,
+      name: school.name,
+      motto,
+      url: school.url,
+      events,
+      news,
+      source: school.name + ' (official site)',
+      source_url: school.url,
+      generated_at: new Date().toISOString(),
+      stale: false,
+    };
+    schoolInfoCache.set(schoolKey, { payload: result, expiresAt: Date.now() + SCHOOL_INFO_TTL_MS });
+    return result;
+  } catch (error) {
+    if (cached && cached.payload) return { ...cached.payload, stale: true };
+    throw error;
+  }
+}
+
 function validIpLiteral(value) {
   return typeof value === 'string' && isIP(value.trim()) !== 0;
 }
@@ -4849,6 +4956,20 @@ function requestHost(req) {
 // Same accounts, same chats, same data — just a school-branded front door.
 const RJUHSD_DOMAIN = 'rjuhsd.school';
 const RJUHSD_ORIGIN = 'https://rjuhsd.school';
+
+// Every school in the Roseville Joint Union High School District (from the
+// district site, rjuhsd.us). The hub lets visitors pick theirs once and
+// remembers it; keys are stable slugs used by /api/school-info.
+const RJUHSD_SCHOOLS = {
+  woodcreek:      { name: 'Woodcreek High School',      url: 'https://woodcreek.rjuhsd.us' },
+  antelope:       { name: 'Antelope High School',       url: 'https://antelope.rjuhsd.us' },
+  granitebay:     { name: 'Granite Bay High School',    url: 'https://granitebay.rjuhsd.us' },
+  oakmont:        { name: 'Oakmont High School',        url: 'https://oakmont.rjuhsd.us' },
+  roseville:      { name: 'Roseville High School',      url: 'https://roseville.rjuhsd.us' },
+  westpark:       { name: 'West Park High School',      url: 'https://westpark.rjuhsd.us' },
+  pathways:       { name: 'Roseville Pathways',         url: 'https://pathways.rjuhsd.us' },
+  rosevilleadult: { name: 'Roseville Adult School',     url: 'https://rosevilleadult.rjuhsd.us' },
+};
 const MITCH_ORIGIN  = 'https://mitch.pro';
 
 function isRjuhsdHost(req) {
@@ -4857,14 +4978,36 @@ function isRjuhsdHost(req) {
 }
 
 // Hosts we will ever redirect to from the SSO bridge (prevents open redirects).
+// mitch.pro identities come from site.json (primary + alternate), so mirrors
+// like mitchdog.com work as sign-in origins too.
+function mitchSsoOrigins() {
+  const origins = new Set(['https://mitch.pro']);
+  const s = site();
+  for (const raw of [s.primary, s.alternate]) {
+    try {
+      const u = new URL(String(raw || ''));
+      if (u.protocol === 'https:' && u.hostname) origins.add(u.origin);
+    } catch {}
+  }
+  return origins;
+}
+
+function isMitchSsoHost(hostname) {
+  const h = String(hostname || '').toLowerCase();
+  for (const origin of mitchSsoOrigins()) {
+    if (h === new URL(origin).hostname) return true;
+  }
+  return false;
+}
+
 function ssoBackAllowed(rawBack, req) {
   let back;
-  try { back = new URL(String(rawBack || ''), RJUHSD_ORIGIN); } catch { return null; }
+  try { back = new URL(String(rawBack || ''), 'https://' + (requestHost(req) || RJUHSD_DOMAIN)); } catch { return null; }
   if (back.protocol !== 'https:') return null;
   const h = back.hostname.toLowerCase();
-  if (h !== RJUHSD_DOMAIN && !h.endsWith('.' + RJUHSD_DOMAIN) &&
-      h !== 'mitch.pro' && !h.endsWith('.mitch.pro')) return null;
-  return back;
+  if (h === RJUHSD_DOMAIN || h.endsWith('.' + RJUHSD_DOMAIN)) return back;
+  if (isMitchSsoHost(h)) return back;
+  return null;
 }
 
 // Single-use, 90-second tokens that carry a verified identity across the two
@@ -7042,18 +7185,22 @@ async function handleRequest(req, server) {
     console.error('[traffic] Failed to update last known IP:', e);
   }
 
-  if ((path === '/api/weather' || path === '/api/school-calendar') && method === 'GET') {
-    const cookies = getCookies(req);
-    const sid = cookies['studentId'] || cookies['id'] || '';
-    if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'authentication required' });
+  // Public school-hub feeds (cached server-side): Roseville weather, the
+  // Woodcreek activity calendar, and scraped info for any RJUHSD school.
+  if ((path === '/api/weather' || path === '/api/school-calendar' || path === '/api/school-info') && method === 'GET') {
     try {
+      if (path === '/api/school-info') {
+        const schoolKey = String(url.searchParams.get('school') || '').toLowerCase().trim();
+        if (!RJUHSD_SCHOOLS[schoolKey]) return jsonResp(400, { error: 'unknown school' });
+        return jsonResp(200, await schoolInfoPayload(schoolKey));
+      }
       const payload = path === '/api/weather'
         ? await rosevilleWeatherPayload()
         : await woodcreekCalendarPayload();
       return jsonResp(200, payload);
     } catch (error) {
       writeAppLog('warn', 'dayboard', `${path} unavailable`, { error: String(error) });
-      return jsonResp(502, { error: path === '/api/weather' ? 'weather unavailable' : 'school calendar unavailable' });
+      return jsonResp(502, { error: path === '/api/weather' ? 'weather unavailable' : (path === '/api/school-info' ? 'school info unavailable' : 'school calendar unavailable') });
     }
   }
 
@@ -7263,6 +7410,11 @@ async function handleRequest(req, server) {
   if (!isExempt && !isAsset && path !== '/ws' && path !== '/' && !checkPasswordCookie(req)) {
     if (path.startsWith('/api/')) {
       return jsonResp(403, { error: 'password required', message: 'Please set a password at /enroll/ to continue.' });
+    }
+    // rjuhsd.school has no /enroll/ — send visitors through the SSO bridge so
+    // they sign in on mitch.pro and land back on the school site.
+    if (isRjuhsdHost(req)) {
+      return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(RJUHSD_ORIGIN + path), 302);
     }
     return Response.redirect('/enroll/', 302);
   }
@@ -9764,6 +9916,77 @@ async function handleRequest(req, server) {
     }
   }
 
+    // ── Cross-domain sign-in: mitch.pro ⇄ rjuhsd.school ──────────────────────
+    // The two sites share accounts, chats, and data on this server, but
+    // cookies are host-scoped. The bridge hands a verified identity across
+    // with a single-use, 90-second token instead.
+    if (path === '/api/sso/bridge' && method === 'GET') {
+      try {
+        const selfOrigin = 'https://' + (requestHost(req) || MITCH_ORIGIN.replace(/^https:\/\//, ''));
+        const back = ssoBackAllowed(url.searchParams.get('back') || (RJUHSD_ORIGIN + '/'), req);
+        if (!back) return jsonResp(400, { error: 'Invalid back URL.' });
+
+        // Already signed in here? Mint a token and hop straight across.
+        if (checkPasswordCookie(req)) {
+          const cookies = getCookies(req);
+          const sid = cookies['studentId'] || cookies['id'] || '';
+          const email = sid ? emailFromSid(sid) : '';
+          if (email && !bannedInfoForEmail(email)) {
+            const token = createSsoBridgeToken(email);
+            if (back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN)) {
+              // Cookies are host-scoped: the token must be exchanged on the
+              // school domain for a school-domain session.
+              const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
+              dest.searchParams.set('token', token);
+              dest.searchParams.set('back', back.toString());
+              return new Response(null, { status: 302, headers: { Location: dest.toString() } });
+            }
+            // Bound for mitch.pro — the session already works there.
+            return new Response(null, { status: 302, headers: { Location: back.toString() } });
+          }
+        }
+
+        // Not signed in: log in on this mitch.pro identity first (whichever
+        // mirror served the bridge), then come straight back through it.
+        return new Response(null, {
+          status: 302,
+          headers: { Location: selfOrigin + '/enroll/?next=' + encodeURIComponent(selfOrigin + '/api/sso/bridge?back=' + encodeURIComponent(back.toString())) }
+        });
+      } catch (e) {
+        console.error('[sso-bridge] failed:', e);
+        return jsonResp(500, { error: 'Sign-in bridge failed.' });
+      }
+    }
+
+    if (path === '/api/sso/exchange' && method === 'GET') {
+      try {
+        // The token only lands a session on the school domain.
+        if (!isRjuhsdHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
+        const rec = consumeSsoBridgeToken(url.searchParams.get('token'));
+        if (!rec) {
+          return new Response(null, { status: 302, headers: { Location: '/?sso=expired' } });
+        }
+        if (bannedInfoForEmail(rec.email)) {
+          return new Response(null, { status: 302, headers: { Location: '/?sso=banned' } });
+        }
+        ensureProfileDefaults(rec.email, rec.email);
+        const session = createAuthSession(rec.email, rec.email, req);
+        const back = ssoBackAllowed(url.searchParams.get('back') || '/', req);
+        const selfOrigin = 'https://' + (requestHost(req) || RJUHSD_DOMAIN);
+        const dest = back && (back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN)) ? back : new URL(selfOrigin + '/');
+        const headers = new Headers({ Location: dest.toString() });
+        headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
+        headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
+        headers.append('Set-Cookie', clearCookieHeader('password', req, false));
+        headers.append('Set-Cookie', clearCookieHeader('id', req, false));
+        writeAppLog('info', 'sso', 'Cross-domain sign-in', { email: rec.email, host: requestHost(req), ip });
+        return new Response(null, { status: 302, headers });
+      } catch (e) {
+        console.error('[sso-exchange] failed:', e);
+        return jsonResp(500, { error: 'Sign-in exchange failed.' });
+      }
+    }
+
   if (method === 'POST') {
 
     // POST /api/admin/maintenance-toggle
@@ -10306,74 +10529,6 @@ async function handleRequest(req, server) {
 
     // /api/request-access
     // /api/login
-    // ── Cross-domain sign-in: mitch.pro ⇄ rjuhsd.school ──────────────────────
-    // The two sites share accounts, chats, and data on this server, but
-    // cookies are host-scoped. The bridge hands a verified identity across
-    // with a single-use, 90-second token instead.
-    if (path === '/api/sso/bridge' && method === 'GET') {
-      try {
-        const back = ssoBackAllowed(url.searchParams.get('back') || (RJUHSD_ORIGIN + '/'), req);
-        if (!back) return jsonResp(400, { error: 'Invalid back URL.' });
-
-        // Already signed in here? Mint a token and hop straight across.
-        if (checkPasswordCookie(req)) {
-          const cookies = getCookies(req);
-          const sid = cookies['studentId'] || cookies['id'] || '';
-          const email = sid ? emailFromSid(sid) : '';
-          if (email && !bannedInfoForEmail(email)) {
-            const token = createSsoBridgeToken(email);
-            if (back.hostname.endsWith(RJUHSD_DOMAIN)) {
-              // Cookies are host-scoped: the token must be exchanged on the
-              // school domain for a school-domain session.
-              const dest = new URL(RJUHSD_ORIGIN + '/api/sso/exchange');
-              dest.searchParams.set('token', token);
-              dest.searchParams.set('back', back.toString());
-              return new Response(null, { status: 302, headers: { Location: dest.toString() } });
-            }
-            // Bound for mitch.pro — the session already works there.
-            return new Response(null, { status: 302, headers: { Location: back.toString() } });
-          }
-        }
-
-        // Not signed in: log in on mitch.pro first, then come straight back
-        // through the bridge.
-        return new Response(null, {
-          status: 302,
-          headers: { Location: MITCH_ORIGIN + '/enroll/?next=' + encodeURIComponent(MITCH_ORIGIN + '/api/sso/bridge?back=' + encodeURIComponent(back.toString())) }
-        });
-      } catch (e) {
-        console.error('[sso-bridge] failed:', e);
-        return jsonResp(500, { error: 'Sign-in bridge failed.' });
-      }
-    }
-
-    if (path === '/api/sso/exchange' && method === 'GET') {
-      try {
-        // The token only lands a session on the school domain.
-        if (!isRjuhsdHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
-        const rec = consumeSsoBridgeToken(url.searchParams.get('token'));
-        if (!rec) {
-          return new Response(null, { status: 302, headers: { Location: '/?sso=expired' } });
-        }
-        if (bannedInfoForEmail(rec.email)) {
-          return new Response(null, { status: 302, headers: { Location: '/?sso=banned' } });
-        }
-        ensureProfileDefaults(rec.email, rec.email);
-        const session = createAuthSession(rec.email, rec.email, req);
-        const back = ssoBackAllowed(url.searchParams.get('back') || '/', req);
-        const dest = back && back.hostname.endsWith(RJUHSD_DOMAIN) ? back : new URL(RJUHSD_ORIGIN + '/');
-        const headers = new Headers({ Location: dest.toString() });
-        headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
-        headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
-        headers.append('Set-Cookie', clearCookieHeader('password', req, false));
-        headers.append('Set-Cookie', clearCookieHeader('id', req, false));
-        writeAppLog('info', 'sso', 'Cross-domain sign-in', { email: rec.email, host: requestHost(req), ip });
-        return new Response(null, { status: 302, headers });
-      } catch (e) {
-        console.error('[sso-exchange] failed:', e);
-        return jsonResp(500, { error: 'Sign-in exchange failed.' });
-      }
-    }
 
     if (path === '/api/login') {
       try {
@@ -18043,6 +18198,59 @@ function loadAllGamesList() {
       } catch { return errResp(404, 'Not found'); }
     }
 
+    // rjuhsd.school is its own site with its own webroot (webserver/rjuhsd/),
+    // not a mirror of the mitch.pro tree. Pages only exist there if a file for
+    // them exists in that directory (shared runtime assets like /theme.js fall
+    // through to the main webroot below) — so /games/, /casino/ and the rest of
+    // mitch.pro are simply not part of rjuhsd.school and 404.
+    const HTML_OPEN = new Set(['/roblox', '/enroll', '/claim', '/password',
+                                '/appeal', '/unsubscribe', '/admin',
+                                '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
+                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
+    if (isRjuhsdHost(req) && path !== '/') {
+      const RJUHSD_WEBROOT = join(WEBROOT, 'rjuhsd');
+      const isPagePath = path.endsWith('/') || /\.html?$/i.test(path);
+      if (isPagePath) {
+        // Normalize: /foo.html → /foo/ and redirect directory misses to /foo/
+        let rel = path === '/index.html' ? '/' : path;
+        if (!rel.endsWith('/')) {
+          const asDir = '/' + rel.replace(/^\/+/, '').replace(/\.html?$/i, '');
+          let isDir = false;
+          try { isDir = statSync(join(RJUHSD_WEBROOT, asDir.replace(/^\//, ''))).isDirectory(); } catch {}
+          if (isDir) return Response.redirect(rel + '/' + (url.search || ''), 302);
+          rel = asDir + '/';
+        }
+        if (rel.includes('..')) return errResp(404, null, null);
+        const file = join(RJUHSD_WEBROOT, rel.replace(/^\//, ''), 'index.html');
+        let stat = null;
+        try { stat = statSync(file); } catch {}
+        if (!stat || stat.isDirectory()) {
+          return errResp(404, "This page isn't part of rjuhsd.school.",
+            "Looking for something else? The " + RJUHSD_DOMAIN + " hub lives here — mitch.pro pages have their own home at mitch.pro.");
+        }
+        // Gate: same policy as the shared webroot — the hub and other open
+        // pages are public, everything else needs a session. Signed-out users
+        // go through the SSO bridge instead of /enroll/ (which isn't on this
+        // site).
+        const pageBase = ('/' + rel.replace(/^\/+/, '').replace(/\/+$/, ''));
+        const open = pageBase === '' || HTML_OPEN.has(pageBase) || HTML_OPEN.has(pageBase + '/index');
+        if (!open) {
+          const cookies = getCookies(req);
+          const sid = cookies['studentId'] || cookies['id'] || '';
+          const ban = bannedInfoForSid(sid);
+          if (ban) return bannedResponse(ban);
+          if (!checkPasswordCookie(req)) {
+            return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(RJUHSD_ORIGIN + rel), 302);
+          }
+        }
+        try {
+          const html = readFileSync(file, 'utf8');
+          return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        } catch { return errResp(404, null, null); }
+      }
+      // Non-page paths (assets) fall through to the shared webroot handling.
+    }
+
     // Trailing slash redirect for directories under WEBROOT
     if (path !== '/' && !path.endsWith('/')) {
       const diskPath = safeWebrootPath(path);
@@ -18058,10 +18266,6 @@ function loadAllGamesList() {
     let htmlBase = path;
     if (htmlBase.endsWith('.html')) htmlBase = htmlBase.slice(0, -5);
     if (htmlBase.endsWith('/') && htmlBase.length > 1) htmlBase = htmlBase.slice(0, -1);
-    const HTML_OPEN = new Set(['/roblox', '/enroll', '/claim', '/password',
-                                '/appeal', '/unsubscribe', '/admin',
-                                '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
-                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
     const isHtmlRequest = path.endsWith('.html') || path.endsWith('/');
     const isOpenHtmlPage = isHtmlRequest && HTML_OPEN.has(htmlBase);
 	    if (isHtmlRequest && !isOpenHtmlPage && !path.startsWith('/unsubscribe/')) {
