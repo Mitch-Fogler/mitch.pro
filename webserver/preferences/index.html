@@ -1404,7 +1404,7 @@
 var myEmail = '';
 const b2h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
 
-async function deriveEncryptionKeyFromPassword(password, email) {
+async function deriveEncryptionKeyFromPassword(password, email, saltHex, iterations) {
   const enc = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
     "raw",
@@ -1413,12 +1413,16 @@ async function deriveEncryptionKeyFromPassword(password, email) {
     false,
     ["deriveKey", "deriveBits"]
   );
-  const salt = enc.encode(email.toLowerCase().trim());
+  // Salt: random 32 bytes for new wraps; the email for backups created before
+  // the random-salt upgrade (same derivation Secure Chat uses).
+  const salt = saltHex
+    ? new Uint8Array(String(saltHex).match(/../g).map(x => parseInt(x, 16)))
+    : enc.encode(email.toLowerCase().trim());
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
       salt: salt,
-      iterations: 100000,
+      iterations: iterations || 100000,
       hash: "SHA-256"
     },
     baseKey,
@@ -1430,6 +1434,18 @@ async function deriveEncryptionKeyFromPassword(password, email) {
 
 async function genKP() {
   return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey', 'deriveBits']);
+}
+
+// Mirror of Secure Chat's normEmail so both pages compute the same
+// account-scoped localStorage keys for the device key.
+function normPrefEmail(email) {
+  email = String(email || '').toLowerCase().trim();
+  if (!email.includes('@')) return email;
+  const at = email.lastIndexOf('@');
+  let local = email.slice(0, at).split('+')[0].replace(/\./g, '');
+  let domain = email.slice(at + 1);
+  if (domain === 'student.rjuhsd.us') domain = 'student.mitch.pro';
+  return local + '@' + domain;
 }
 
 async function exportPub(kp) {
@@ -1455,7 +1471,11 @@ async function rotateE2EKeys(email, currentPassword, newPassword) {
     }
 
     let privateJwk = null;
-    const localJwkStr = localStorage.getItem('_e2e_private_jwk');
+    // Same account-scoped storage key Secure Chat derives from its (masked)
+    // email — including the rjuhsd.us → mitch.pro domain mapping.
+    const norm = normPrefEmail(email);
+    const scopedStorageKey = '_e2e_private_jwk_v3:' + encodeURIComponent(norm);
+    const localJwkStr = localStorage.getItem(scopedStorageKey) || localStorage.getItem('_e2e_private_jwk');
     if (localJwkStr) {
       try {
         privateJwk = JSON.parse(localJwkStr);
@@ -1467,7 +1487,8 @@ async function rotateE2EKeys(email, currentPassword, newPassword) {
       if (!currentPassword) {
         throw new Error("Old private key not found in storage and no current password provided.");
       }
-      const oldAesKey = await deriveEncryptionKeyFromPassword(currentPassword, email);
+      const oldAesKey = await deriveEncryptionKeyFromPassword(
+        currentPassword, email, keyInfo.kdfSaltHex, keyInfo.kdfIterations || 0);
       const iv = h2b(keyInfo.ivHex);
       const ciphertext = h2b(keyInfo.encryptedPrivateJwk);
       const decrypted = await crypto.subtle.decrypt(
@@ -1478,8 +1499,10 @@ async function rotateE2EKeys(email, currentPassword, newPassword) {
       privateJwk = JSON.parse(new TextDecoder().decode(decrypted));
     }
 
-    // 3. Encrypt the private JWK with the new password
-    const newAesKey = await deriveEncryptionKeyFromPassword(newPassword, email);
+    // 3. Encrypt the private JWK with the new password — fresh random salt
+    //    and 600k iterations, same parameters Secure Chat writes.
+    const kdfSaltHex = b2h(crypto.getRandomValues(new Uint8Array(32)));
+    const newAesKey = await deriveEncryptionKeyFromPassword(newPassword, email, kdfSaltHex, 600000);
     const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
     const newIv = crypto.getRandomValues(new Uint8Array(12));
     const newCiphertext = await crypto.subtle.encrypt(
@@ -1496,11 +1519,14 @@ async function rotateE2EKeys(email, currentPassword, newPassword) {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pubKeyHex: keyInfo.pubKeyHex, encryptedPrivateJwk, ivHex })
+      body: JSON.stringify({
+        pubKeyHex: keyInfo.pubKeyHex, encryptedPrivateJwk, ivHex,
+        kdfSaltHex, kdfIterations: 600000
+      })
     });
     const d = await res.json();
     if (d.success) {
-      localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+      localStorage.setItem(scopedStorageKey, JSON.stringify(privateJwk));
       console.log("[E2E] Successfully migrated E2E keys with new password.");
     } else {
       throw new Error(d.message || "Failed to register migrated keys");
@@ -1513,9 +1539,11 @@ async function rotateE2EKeys(email, currentPassword, newPassword) {
 
 async function generateNewE2EKeys(email, newPassword) {
   try {
-    const aesKey = await deriveEncryptionKeyFromPassword(newPassword, email);
     const kp = await genKP();
     const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+    // Fresh random salt + 600k iterations, matching Secure Chat's wrapping.
+    const kdfSaltHex = b2h(crypto.getRandomValues(new Uint8Array(32)));
+    const aesKey = await deriveEncryptionKeyFromPassword(newPassword, email, kdfSaltHex, 600000);
     const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ciphertext = await crypto.subtle.encrypt(
@@ -1523,20 +1551,20 @@ async function generateNewE2EKeys(email, newPassword) {
       aesKey,
       privateJwkBytes
     );
-    
+
     const pubHex = await exportPub(kp);
     const encryptedPrivateJwk = b2h(ciphertext);
     const ivHex = b2h(iv);
-    
+
     const res = await fetch('/api/e2e/register-key', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ pubKeyHex: pubHex, encryptedPrivateJwk, ivHex })
+      body: JSON.stringify({ pubKeyHex: pubHex, encryptedPrivateJwk, ivHex, kdfSaltHex, kdfIterations: 600000 })
     });
     const d = await res.json();
     if (d.success) {
-      localStorage.setItem('_e2e_private_jwk', JSON.stringify(privateJwk));
+      localStorage.setItem('_e2e_private_jwk_v3:' + encodeURIComponent(normPrefEmail(email)), JSON.stringify(privateJwk));
       console.log("[E2E] Generated and registered fresh E2E key pair.");
     }
   } catch (err) {

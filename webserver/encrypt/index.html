@@ -819,7 +819,10 @@ button {
     <div id="e2e-error" style="color: #ff5f5f; font-size: 0.8rem; display: none; margin-bottom: 8px;"></div>
     <div class="modal-actions" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
       <button class="small-btn" type="button" id="e2e-reset-btn" style="background: rgba(255,95,95,0.15); color: #ff5f5f; border: 1px solid rgba(255,95,95,0.3); display: none;">Reset Keys</button>
-      <button class="small-btn" type="button" id="e2e-submit-btn">Unlock</button>
+      <span style="display: flex; gap: 8px; align-items: center;">
+        <button class="small-btn" type="button" id="e2e-skip-btn" style="background: transparent; color: var(--t-fg2, #999); border: 1px solid var(--t-bd, #444); display: none;">Not now</button>
+        <button class="small-btn" type="button" id="e2e-submit-btn">Unlock</button>
+      </span>
     </div>
   </div>
 </div>
@@ -828,6 +831,9 @@ button {
 
 <script>
 let myEmail = null, myDisplayName = null, myNick = null, myKP = null, myLegacyKP = null;
+// True when the user picked "Not now" and the chat is running on the old
+// server-derived key — surfaced in the header so it's never silent.
+let e2eUsingLegacyIdentity = false;
 let isFullAdmin = false;
 let myHistoricalKPs = [];
 let members = [], groups = [], allMessages = [], currentMessages = [];
@@ -862,7 +868,11 @@ const h2b = h => {
 };
 const b2h = b => Array.from(new Uint8Array(b)).map(x => x.toString(16).padStart(2,'0')).join('');
 
-async function deriveEncryptionKeyFromPassword(password, email) {
+// PBKDF2 -> AES-GCM wrapping key. Newer backups use a random 32-byte salt at
+// 600k iterations; backups created before that upgrade used the email as the
+// salt at 100k. Keep both paths so every stored backup stays unlockable.
+const E2E_KDF_ITERATIONS = 600000;
+async function deriveEncryptionKeyFromPassword(password, email, saltHex, iterations) {
   const enc = new TextEncoder();
   const baseKey = await crypto.subtle.importKey(
     "raw",
@@ -871,12 +881,14 @@ async function deriveEncryptionKeyFromPassword(password, email) {
     false,
     ["deriveKey", "deriveBits"]
   );
-  const salt = enc.encode(email.toLowerCase().trim());
+  const salt = saltHex
+    ? Uint8Array.from(String(saltHex).match(/../g), x => parseInt(x, 16))
+    : enc.encode(email.toLowerCase().trim());
   return crypto.subtle.deriveKey(
     {
       name: "PBKDF2",
       salt: salt,
-      iterations: 100000,
+      iterations: iterations || 100000,
       hash: "SHA-256"
     },
     baseKey,
@@ -884,6 +896,27 @@ async function deriveEncryptionKeyFromPassword(password, email) {
     false,
     ["encrypt", "decrypt"]
   );
+}
+
+// Wrap a private JWK for the server backup: AES-GCM under a key derived from
+// the login password, fresh random salt + IV every time. The server only ever
+// sees the ciphertext plus the (non-secret) salt and iteration count — the
+// password and the private key itself never leave the browser.
+async function wrapPrivateJwk(privateJwk, password) {
+  const kdfSaltHex = b2h(crypto.getRandomValues(new Uint8Array(32)));
+  const aesKey = await deriveEncryptionKeyFromPassword(password, myEmail, kdfSaltHex, E2E_KDF_ITERATIONS);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    aesKey,
+    new TextEncoder().encode(JSON.stringify(privateJwk))
+  );
+  return {
+    encryptedPrivateJwk: b2h(ciphertext),
+    ivHex: b2h(iv),
+    kdfSaltHex,
+    kdfIterations: E2E_KDF_ITERATIONS
+  };
 }
 
 async function genKP() {
@@ -1296,7 +1329,10 @@ async function init() {
   myNick = myEmail;
 
   try {
-    // 1. Load legacy key as fallback
+    // 1. Load the legacy server-derived key as a DECRYPT-ONLY fallback so old
+    //    messages stay readable. It must never be the identity key — it is
+    //    derived on the server, so the server could read anything encrypted
+    //    to it. The real identity is the password-wrapped account key below.
     if (fetchedData && fetchedData.legacyJwk) {
       try {
         const legacyPub = await crypto.subtle.importKey(
@@ -1315,18 +1351,13 @@ async function init() {
           ['deriveKey', 'deriveBits']
         );
         myLegacyKP = { publicKey: legacyPub, privateKey: legacyPriv };
-        // The account-scoped fallback key is supplied with the authenticated
-        // session, so Secure Chat opens immediately without a second password
-        // prompt. A matching device key below still takes precedence when one
-        // is already available.
-        myKP = myLegacyKP;
       } catch (err) {
         console.error("Failed to load legacy keypair:", err);
       }
     }
 
     // 2. Check if we already have a valid password-derived key in localStorage
-    let hasValidLocalKey = Boolean(myKP);
+    let hasValidLocalKey = false;
     const privateKeyStorageKey = e2eStorageKey('private_jwk');
     const scopedLocalJwkStr = localStorage.getItem(privateKeyStorageKey);
     const legacyLocalJwkStr = localStorage.getItem('_e2e_private_jwk');
@@ -1373,29 +1404,35 @@ async function init() {
       }
     }
 
-    // 3. Unlock the account key, or create it from the login password on first
-    // use. The server backup must use the same password-derived wrapping key so
-    // it can actually be recovered on another device.
+    // 3. Restore the account key from the server backup, or create it on first
+    // use. The identity key only exists wrapped under the login password —
+    // same idea as a Signal backup: the server holds ciphertext, the browser
+    // holds the password, so any device can restore the same identity.
     if (!hasValidLocalKey) {
       const isSetup = !fetchedData.encryptedPrivateJwk;
+      let usingLegacyIdentity = false;
 
-      if (!hasValidLocalKey) {
-        const title = "Unlock Encrypted Chat";
-        const desc = "Enter your login password to unlock encrypted chat on this device.";
-        const submitText = "Unlock";
-      
+      {
+        const title = isSetup ? "Set up Secure Chat" : "Unlock Secure Chat";
+        const desc = isSetup
+          ? "Your messages get end-to-end encrypted with a key only you hold. Enter your login password to create it — it is stored on the server encrypted with your password, so any device can restore it."
+          : "Enter your login password to restore your encrypted chat identity on this device. The server stores it encrypted with your password — it can't read your messages.";
+        const submitText = isSetup ? "Set up" : "Unlock";
+
       document.getElementById('e2e-modal-title').textContent = title;
       document.getElementById('e2e-modal-desc').textContent = desc;
       document.getElementById('e2e-submit-btn').textContent = submitText;
       document.getElementById('e2e-modal').classList.add('show');
-      
+
       await new Promise((resolve) => {
         const submitBtn = document.getElementById('e2e-submit-btn');
         const resetBtn = document.getElementById('e2e-reset-btn');
+        const skipBtn = document.getElementById('e2e-skip-btn');
         const pwdInput = document.getElementById('e2e-password');
         const errDiv = document.getElementById('e2e-error');
-        
+
         resetBtn.style.display = isSetup ? 'none' : 'block';
+        skipBtn.style.display = 'inline-block';
         
         const onSubmit = async () => {
           const password = pwdInput.value;
@@ -1429,28 +1466,16 @@ async function init() {
           }
           
           try {
-            const aesKey = await deriveEncryptionKeyFromPassword(password, myEmail);
-
             if (isSetup) {
               const kp = await genKP();
               const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
-              const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
-              const iv = crypto.getRandomValues(new Uint8Array(12));
-              const ciphertext = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv },
-                aesKey,
-                privateJwkBytes
-              );
+              const wrapped = await wrapPrivateJwk(privateJwk, password);
               const pubKeyHex = await exportPub(kp);
               const registerRes = await fetch('/api/e2e/register-key', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  pubKeyHex,
-                  encryptedPrivateJwk: b2h(ciphertext),
-                  ivHex: b2h(iv)
-                })
+                body: JSON.stringify({ pubKeyHex, ...wrapped })
               });
               const registerData = await registerRes.json();
               if (!registerRes.ok || !registerData.success) {
@@ -1459,9 +1484,11 @@ async function init() {
               localStorage.setItem(privateKeyStorageKey, JSON.stringify(privateJwk));
               myKP = kp;
             } else {
+              const aesKey = await deriveEncryptionKeyFromPassword(
+                password, myEmail, fetchedData.kdfSaltHex, fetchedData.kdfIterations || 0);
               const encryptedPrivateJwk = fetchedData.encryptedPrivateJwk;
               const ivHex = fetchedData.ivHex;
-              
+
               let decryptedJwk = null;
               try {
                 const decBytes = await crypto.subtle.decrypt(
@@ -1514,6 +1541,24 @@ async function init() {
                 const unique = merged.filter((item, index) => item.pub && merged.findIndex(other => other.pub === item.pub) === index).slice(0, 5);
                 localStorage.setItem(e2eStorageKey('key_history'), JSON.stringify(unique));
                 await loadHistoricalKeypairs();
+              }
+
+              // Transparent upgrade: backups wrapped before the random-salt /
+              // 600k-iteration parameters get re-wrapped under the same login
+              // password. The identity key (and its public half) is unchanged,
+              // so this touches nothing but the stored ciphertext.
+              if (!fetchedData.kdfSaltHex || (fetchedData.kdfIterations || 0) < E2E_KDF_ITERATIONS) {
+                try {
+                  const upgraded = await wrapPrivateJwk(decryptedJwk, password);
+                  await fetch('/api/e2e/register-key', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pubKeyHex: fetchedData.pubKeyHex, ...upgraded })
+                  });
+                } catch (upgradeErr) {
+                  console.warn('KDF upgrade skipped:', upgradeErr);
+                }
               }
             }
             
@@ -1570,26 +1615,17 @@ async function init() {
           
           try {
             await archiveCurrentKeypair();
-            const aesKey = await deriveEncryptionKeyFromPassword(password, myEmail);
             const kp = await genKP();
             const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
-            const privateJwkBytes = new TextEncoder().encode(JSON.stringify(privateJwk));
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const ciphertext = await crypto.subtle.encrypt(
-              { name: 'AES-GCM', iv },
-              aesKey,
-              privateJwkBytes
-            );
-            
+            const wrapped = await wrapPrivateJwk(privateJwk, password);
+
             const pubHex = await exportPub(kp);
-            const encryptedPrivateJwk = b2h(ciphertext);
-            const ivHex = b2h(iv);
-            
+
             const res = await fetch('/api/e2e/register-key', {
               method: 'POST',
               credentials: 'include',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ pubKeyHex: pubHex, encryptedPrivateJwk, ivHex })
+              body: JSON.stringify({ pubKeyHex: pubHex, ...wrapped })
             });
             const d = await res.json();
             if (!d.success) {
@@ -1617,12 +1653,34 @@ async function init() {
           }
         };
         
+        const onSkip = () => {
+          usingLegacyIdentity = true;
+          document.getElementById('e2e-modal').classList.remove('show');
+          submitBtn.disabled = false;
+          resetBtn.disabled = false;
+          resetBtn.style.display = 'none';
+          skipBtn.style.display = 'none';
+          submitBtn.onclick = null;
+          resetBtn.onclick = null;
+          skipBtn.onclick = null;
+          pwdInput.onkeydown = null;
+          resolve();
+        };
+
         submitBtn.onclick = onSubmit;
         resetBtn.onclick = onReset;
+        skipBtn.onclick = onSkip;
         pwdInput.onkeydown = (e) => {
           if (e.key === 'Enter') onSubmit();
         };
       });
+
+      // "Not now": open anyway with the old server-derived key so nobody is
+      // locked out of their messages, but make clear this mode is weaker.
+      if (usingLegacyIdentity && myLegacyKP) {
+        myKP = myLegacyKP;
+        e2eUsingLegacyIdentity = true;
+      }
       }
     }
 
@@ -1646,7 +1704,8 @@ async function init() {
   bindEvents();
   document.getElementById('loading').style.display = 'none';
   document.getElementById('app').classList.add('ready');
-  document.getElementById('my-identity').innerHTML = '&gt; ' + (myDisplayName ? `${myDisplayName} (${esc(myEmail)})` : esc(myEmail));
+  document.getElementById('my-identity').innerHTML = '&gt; ' + (myDisplayName ? `${myDisplayName} (${esc(myEmail)})` : esc(myEmail)) +
+    (e2eUsingLegacyIdentity ? ' <span style="color:#f59e0b;font-weight:700;">· basic mode — key not restored</span>' : '');
   await refreshEverything();
   setInterval(loadMembers, 7000);
   setInterval(loadGroups, 8000);

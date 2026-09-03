@@ -352,112 +352,15 @@
   </section>
 </main>
 
+<script src="/bell/schedule.js?v=1"></script>
 <script>
   let activeLunch = 1; // 1 or 2
   let activeOverride = null;
 
-  // Woodcreek High School Bell Schedule definitions
-  const SCHEDULES = {
-    // Monday
-    1: {
-      1: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
-        { name: 'Lunch 1', start: '11:22', end: '11:52', duration: 30 },
-        { name: 'Period 3', start: '12:00', end: '13:22', duration: 82 },
-        { name: 'Period 4', start: '13:30', end: '14:52', duration: 82 },
-        { name: 'Pack', start: '14:52', end: '15:20', duration: 28 }
-      ],
-      2: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
-        { name: 'Period 3', start: '11:30', end: '12:52', duration: 82 },
-        { name: 'Lunch 2', start: '12:52', end: '13:22', duration: 30 },
-        { name: 'Period 4', start: '13:30', end: '14:52', duration: 82 },
-        { name: 'Pack', start: '14:52', end: '15:20', duration: 28 }
-      ]
-    },
-    // Tuesday
-    2: {
-      1: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
-        { name: 'Lunch 1', start: '11:22', end: '11:52', duration: 30 },
-        { name: 'Period 3', start: '12:00', end: '13:22', duration: 82 },
-        { name: 'Pack', start: '13:22', end: '13:50', duration: 28 },
-        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
-      ],
-      2: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
-        { name: 'Period 3', start: '11:30', end: '12:52', duration: 82 },
-        { name: 'Pack', start: '12:52', end: '13:20', duration: 28 },
-        { name: 'Lunch 2', start: '13:20', end: '13:50', duration: 30 },
-        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
-      ]
-    },
-    // Wednesday (Collaboration Late Start)
-    3: {
-      1: [
-        { name: 'Period 1', start: '09:30', end: '10:44', duration: 74 },
-        { name: 'Period 2', start: '10:52', end: '12:06', duration: 74 },
-        { name: 'Period 3', start: '12:14', end: '13:28', duration: 74 },
-        { name: 'Lunch', start: '13:28', end: '13:58', duration: 30 },
-        { name: 'Period 4', start: '14:06', end: '15:20', duration: 74 }
-      ],
-      2: [
-        { name: 'Period 1', start: '09:30', end: '10:44', duration: 74 },
-        { name: 'Period 2', start: '10:52', end: '12:06', duration: 74 },
-        { name: 'Period 3', start: '12:14', end: '13:28', duration: 74 },
-        { name: 'Lunch', start: '13:28', end: '13:58', duration: 30 },
-        { name: 'Period 4', start: '14:06', end: '15:20', duration: 74 }
-      ]
-    },
-    // Thursday
-    4: {
-      1: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
-        { name: 'Pack', start: '11:22', end: '11:50', duration: 28 },
-        { name: 'Lunch 1', start: '11:50', end: '12:20', duration: 30 },
-        { name: 'Period 3', start: '12:28', end: '13:50', duration: 82 },
-        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
-      ],
-      2: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Period 2', start: '10:00', end: '11:22', duration: 82 },
-        { name: 'Pack', start: '11:22', end: '11:50', duration: 28 },
-        { name: 'Period 3', start: '11:58', end: '13:20', duration: 82 },
-        { name: 'Lunch 2', start: '13:20', end: '13:50', duration: 30 },
-        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
-      ]
-    },
-    // Friday
-    5: {
-      1: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Pack', start: '09:52', end: '10:20', duration: 28 },
-        { name: 'Period 2', start: '10:28', end: '11:50', duration: 82 },
-        { name: 'Lunch 1', start: '11:50', end: '12:20', duration: 30 },
-        { name: 'Period 3', start: '12:28', end: '13:50', duration: 82 },
-        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
-      ],
-      2: [
-        { name: 'Period 1', start: '08:30', end: '09:52', duration: 82 },
-        { name: 'Pack', start: '09:52', end: '10:20', duration: 28 },
-        { name: 'Period 2', start: '10:28', end: '11:50', duration: 82 },
-        { name: 'Period 3', start: '11:58', end: '13:20', duration: 82 },
-        { name: 'Lunch 2', start: '13:20', end: '13:50', duration: 30 },
-        { name: 'Period 4', start: '13:58', end: '15:20', duration: 82 }
-      ]
-    }
-  };
-
-  // Helper: parse hh:mm string into minutes since midnight
-  function parseTimeToMinutes(str) {
-    const [h, m] = str.split(':').map(Number);
-    return h * 60 + m;
-  }
+  // Shared schedule data + time helpers (also used by the rjuhsd.school homepage)
+  const SCHEDULES = window.WHS_BELL.schedules;
+  const parseTimeToMinutes = window.WHS_BELL.parseTime;
+  const getFormattedTime = window.WHS_BELL.formatTime;
 
   // Load lunch preference
   if (localStorage.getItem('whs_lunch_preference')) {
@@ -486,14 +389,6 @@
     // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
     const d = (dayOfWeek === 0 || dayOfWeek === 6) ? 1 : dayOfWeek;
     return SCHEDULES[d] ? SCHEDULES[d][lunchNum] : SCHEDULES[1][lunchNum];
-  }
-
-  function getFormattedTime(timeStr) {
-    const [hRaw, m] = timeStr.split(':');
-    const h = parseInt(hRaw);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const displayH = h % 12 || 12;
-    return `${displayH}:${m} ${ampm}`;
   }
 
   function toggleDayAccordion(dayNum) {

@@ -761,9 +761,170 @@
 <script>
 var _attempts = [], _LIMIT = 3, _WINDOW = 60000;
 
+// Where to land after sign-in. Only our own two domains are allowed, so a
+// crafted ?next= can never send anyone elsewhere.
+function postLoginDestination() {
+  var next = '';
+  try { next = new URLSearchParams(window.location.search).get('next') || ''; } catch (_) {}
+  if (next && /^https:\/\/([a-z0-9-]+\.)*(mitch\.pro|rjuhsd\.school)(\/|$|\?)/i.test(next)) return next;
+  return '/';
+}
+
 function updateBtn() {
 
   document.getElementById('btn').disabled = !document.getElementById('agree').checked;
+}
+
+// ── Secure Chat key restore (Signal-style) ──────────────────────────────────
+// Right after a successful sign-in the password is in hand — the one moment a
+// device can silently restore the end-to-end identity from its password-
+// encrypted server backup, so Secure Chat never needs a second prompt. The
+// password and private key never leave the browser; the server only holds the
+// wrapped ciphertext. Everything here is best-effort: a failure just means
+// Secure Chat asks for the password itself later.
+function e2eNormEmail(email) {
+  email = String(email || '').toLowerCase().trim();
+  if (!email.includes('@')) return email;
+  var at = email.lastIndexOf('@');
+  var local = email.slice(0, at).split('+')[0].replace(/\./g, '');
+  var domain = email.slice(at + 1);
+  if (domain === 'student.rjuhsd.us') domain = 'student.mitch.pro';
+  return local + '@' + domain;
+}
+function e2eH2B(hex) { return new Uint8Array(String(hex).match(/../g).map(function (x) { return parseInt(x, 16); })); }
+function e2eB2H(bytes) { return Array.from(new Uint8Array(bytes)).map(function (x) { return x.toString(16).padStart(2, '0'); }).join(''); }
+async function e2eWrapKey(password, email, saltHex, iterations) {
+  var enc = new TextEncoder();
+  var baseKey = await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+  // Salt: random 32 bytes for new backups; the account email (as Secure Chat
+  // sees it) for backups created before the random-salt upgrade.
+  var salt = saltHex ? e2eH2B(saltHex) : enc.encode(email.toLowerCase().trim());
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt, iterations: iterations || 100000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function e2eCreateAndRegister(password, email, storageKey) {
+  var kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveKey', 'deriveBits']);
+  var jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+  var kdfSaltHex = e2eB2H(crypto.getRandomValues(new Uint8Array(32)));
+  var aesKey = await e2eWrapKey(password, email, kdfSaltHex, 600000);
+  var iv = crypto.getRandomValues(new Uint8Array(12));
+  var ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv },
+    aesKey,
+    new TextEncoder().encode(JSON.stringify(jwk))
+  );
+  var pubKeyHex = e2eB2H(await crypto.subtle.exportKey('raw', kp.publicKey));
+  var res = await fetch('/api/e2e/register-key', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      pubKeyHex: pubKeyHex,
+      encryptedPrivateJwk: e2eB2H(ciphertext),
+      ivHex: e2eB2H(iv),
+      kdfSaltHex: kdfSaltHex,
+      kdfIterations: 600000
+    })
+  });
+  if (!res.ok) return;
+  var d = await res.json().catch(function () { return {}; });
+  if (d.success) localStorage.setItem(storageKey, JSON.stringify(jwk));
+}
+
+async function restoreE2EKeysAfterAuth(password, allowFresh) {
+  try {
+    if (!window.crypto || !window.crypto.subtle || !password) return;
+    var meRes = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
+    if (!meRes.ok) return;
+    var me = await meRes.json();
+    var email = String(me.email || '').toLowerCase();
+    if (!email) return;
+    var scoped = encodeURIComponent(e2eNormEmail(email));
+    var storageKey = '_e2e_private_jwk_v3:' + scoped;
+    var historyKey = '_e2e_key_history_v3:' + scoped;
+
+    var keyRes = await fetch('/api/e2e/get-key', { credentials: 'include', cache: 'no-store' });
+    if (!keyRes.ok) {
+      // No backup yet — create the identity now so the account gets a
+      // password-protected key from its very first message.
+      if (keyRes.status === 404 && !localStorage.getItem(storageKey)) {
+        await e2eCreateAndRegister(password, email, storageKey);
+      }
+      return;
+    }
+    var data = await keyRes.json();
+    if (!data.success || !data.pubKeyHex || !data.encryptedPrivateJwk) return;
+
+    // Already holding the current identity on this device? Nothing to do.
+    try {
+      var existing = JSON.parse(localStorage.getItem(storageKey) || 'null');
+      if (existing && existing.x) {
+        var exPub = await crypto.subtle.importKey(
+          'jwk', { kty: 'EC', crv: 'P-256', x: existing.x, y: existing.y },
+          { name: 'ECDH', namedCurve: 'P-256' }, true, []);
+        if (e2eB2H(await crypto.subtle.exportKey('raw', exPub)) === data.pubKeyHex) return;
+      }
+    } catch (_) {}
+
+    var aesKey = await e2eWrapKey(password, email, data.kdfSaltHex, data.kdfIterations || 0);
+    var jwk = null;
+    try {
+      var plain = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: e2eH2B(data.ivHex) },
+        aesKey,
+        e2eH2B(data.encryptedPrivateJwk)
+      );
+      jwk = JSON.parse(new TextDecoder().decode(plain));
+    } catch (_) {
+      // Backup was wrapped with a different password. After a password reset
+      // the new password is verified but can't open the old wrap — start a
+      // fresh identity for it (the server archives the old key). Otherwise
+      // let Secure Chat's unlock prompt handle it.
+      if (allowFresh) await e2eCreateAndRegister(password, email, storageKey);
+      return;
+    }
+    if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.d) return;
+
+    // Only install it if the private key really belongs to the registered
+    // public key.
+    var pubKey = await crypto.subtle.importKey(
+      'jwk', { kty: 'EC', crv: 'P-256', x: jwk.x, y: jwk.y },
+      { name: 'ECDH', namedCurve: 'P-256' }, true, []);
+    if (e2eB2H(await crypto.subtle.exportKey('raw', pubKey)) !== data.pubKeyHex) return;
+    jwk.key_ops = ['deriveKey', 'deriveBits'];
+    localStorage.setItem(storageKey, JSON.stringify(jwk));
+
+    // Recover rotated keys so older messages stay readable on this device too.
+    var recovered = [];
+    for (var oldEntry of (Array.isArray(data.keyHistory) ? data.keyHistory : [])) {
+      try {
+        var oldAes = await e2eWrapKey(password, email, oldEntry.kdfSaltHex, oldEntry.kdfIterations || 0);
+        var oldBytes = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv: e2eH2B(oldEntry.ivHex) },
+          oldAes,
+          e2eH2B(oldEntry.encryptedPrivateJwk)
+        );
+        recovered.push({ pub: oldEntry.pubKeyHex, jwk: JSON.parse(new TextDecoder().decode(oldBytes)), archivedAt: oldEntry.updatedAt || 0 });
+      } catch (_) {}
+    }
+    if (recovered.length) {
+      var hist = [];
+      try { hist = JSON.parse(localStorage.getItem(historyKey) || '[]'); } catch (_) {}
+      var merged = recovered.concat(Array.isArray(hist) ? hist : []);
+      var unique = merged.filter(function (item, i) {
+        return item.pub && merged.findIndex(function (o) { return o.pub === item.pub; }) === i;
+      }).slice(0, 5);
+      localStorage.setItem(historyKey, JSON.stringify(unique));
+    }
+  } catch (err) {
+    console.warn('E2E key restore skipped:', err);
+  }
 }
 
 function _checkSpam() {
@@ -981,6 +1142,7 @@ async function submit(isResend = false) {
     });
     const d = await r.json();
     if (d.success) {
+      window._signupPassword = password;
       msg.className = 'ok';
       msg.textContent = 'Sign up started. Check your email for a 6-digit code.';
       support.style.display = 'block';
@@ -1032,6 +1194,8 @@ async function verifySignup() {
     if (d.success) {
       var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
       document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      tmsg.textContent = 'Success! Setting up encrypted chat key...';
+      await restoreE2EKeysAfterAuth(window._signupPassword || '');
       tmsg.className = 'ok';
       tmsg.innerHTML = 'Success! Welcome to mitch.pro. Redirecting...';
       setTimeout(() => window.location.href = "/", 2000);
@@ -1186,6 +1350,7 @@ async function login() {
   btn.disabled = true;
   msg.textContent = 'Logging in...';
   msg.className = '';
+  window._loginPassword = password;
   try {
     const r = await fetch('/api/login', {
       method: 'POST',
@@ -1197,7 +1362,9 @@ async function login() {
     if (d.success) {
       var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
       document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
-      window.location.href = "/";
+      msg.textContent = 'Signed in — restoring secure chat key...';
+      await restoreE2EKeysAfterAuth(password);
+      window.location.href = postLoginDestination();
     } else if (d.twofa_required) {
       window._login2faToken = d.temp_token || '';
       window._login2faType = d.twofa_type || 'email';
@@ -1245,7 +1412,9 @@ async function verifyLogin2fa() {
     if (d.success) {
       var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
       document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
-      window.location.href = "/";
+      msg.textContent = 'Verified — restoring secure chat key...';
+      await restoreE2EKeysAfterAuth(window._loginPassword || '');
+      window.location.href = postLoginDestination();
     } else {
       msg.className = 'err';
       msg.textContent = d.message || 'Invalid verification code.';
@@ -1289,6 +1458,10 @@ async function claimToken(mode) {
     if (d.success) {
       var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
       document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      tmsg.textContent = 'Success! Restoring encrypted chat key...';
+      // New password just verified — restore if the backup was wrapped with
+      // it, otherwise set up a fresh key for the new password.
+      await restoreE2EKeysAfterAuth(password, true);
       tmsg.className = 'ok';
       tmsg.innerHTML = 'Success! <a href="/" style="color:var(--t-ok, var(--t-ac))">Go to Homepage</a>';
       setTimeout(() => window.location.href = "/", 2000);

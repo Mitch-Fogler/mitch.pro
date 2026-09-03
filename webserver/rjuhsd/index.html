@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Woodcreek Hub — rjuhsd.school</title>
+  <meta name="description" content="Woodcreek High School hub on rjuhsd.school: live bell schedule, public chat, and encrypted chat — powered by mitch.pro accounts.">
+  <script src="/theme.js?v=9"></script>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/bell/schedule.js?v=1"></script>
+  <style>
+    :root { --whs-gold: #f59e0b; --whs-red: #ff5470; }
+
+    body.rjuhsd-page { min-height: 100vh; }
+
+    /* Same backdrop treatment as the rest of the network */
+    body.rjuhsd-page::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -2;
+      background: url('/home-burning-cherry.webp') center / cover no-repeat;
+      opacity: 0.45;
+      filter: blur(26px);
+      transform: scale(1.15);
+    }
+    body.rjuhsd-page::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background: radial-gradient(ellipse 70% 50% at 50% -10%, color-mix(in srgb, var(--t-ac) 14%, transparent), transparent 70%);
+    }
+
+    .rj-shell { width: min(1080px, 100%); }
+
+    /* Masthead */
+    .rj-mast {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      margin-bottom: clamp(1.25rem, 4vh, 2.25rem);
+    }
+    .rj-mark {
+      width: 2.9rem;
+      height: 2.9rem;
+      flex: 0 0 2.9rem;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: linear-gradient(140deg, var(--whs-red), #b23a67 70%, #6d2f8f);
+      box-shadow: 0 10px 30px rgba(255, 84, 112, 0.28);
+      font: 800 1.25rem/1 'Outfit', system-ui, sans-serif;
+      color: #fff;
+    }
+    .rj-id { min-width: 0; }
+    .rj-id small {
+      display: block;
+      color: var(--t-fg2);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    .rj-id strong {
+      display: block;
+      font: 800 clamp(1.15rem, 3vw, 1.45rem)/1.2 'Outfit', system-ui, sans-serif;
+      letter-spacing: -0.02em;
+      color: var(--t-fg);
+    }
+    .rj-mast .spacer { flex: 1 1 auto; }
+    .rj-signin {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-height: 2.6rem;
+      padding: 0 1.1rem;
+      border: 1px solid color-mix(in srgb, var(--t-ac) 40%, var(--t-bd));
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--t-ac) 14%, transparent);
+      color: var(--t-fg);
+      font-weight: 750;
+      font-size: 0.84rem;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background var(--t-motion, .15s) ease, border-color var(--t-motion, .15s) ease, transform var(--t-motion, .15s) ease;
+    }
+    .rj-signin:hover { transform: translateY(-1px); border-color: var(--t-ac); }
+    .rj-signin .dot {
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      background: #53e6a5;
+      box-shadow: 0 0 8px #53e6a5;
+    }
+    .rj-signin.out .dot { background: var(--whs-gold); box-shadow: 0 0 8px var(--whs-gold); }
+    .rj-signin small { color: var(--t-fg2); font-weight: 600; }
+
+    /* Live schedule — front and center */
+    .rj-live {
+      position: relative;
+      overflow: hidden;
+      padding: clamp(1.3rem, 4vw, 2rem);
+      border-radius: calc(var(--t-radius, 8px) + 10px);
+      border: 1px solid color-mix(in srgb, var(--t-ac) 30%, var(--t-bd));
+      background:
+        linear-gradient(150deg, color-mix(in srgb, var(--t-ac) 10%, transparent), color-mix(in srgb, var(--t-bg2) 88%, transparent));
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+      margin-bottom: 1.1rem;
+    }
+    .rj-live-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.9rem;
+      flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .rj-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--t-ac) 30%, transparent);
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+      color: var(--t-ac);
+      font-size: 0.66rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .rj-kicker i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--t-ac);
+      box-shadow: 0 0 8px var(--t-ac);
+      animation: rj-blink 1.4s infinite;
+    }
+    @keyframes rj-blink { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+    .rj-lunch { display: flex; gap: 0.35rem; }
+    .rj-lunch button {
+      min-height: 2.1rem;
+      padding: 0 0.85rem;
+      border: 1px solid var(--t-bd);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--t-fg2);
+      font-family: inherit;
+      font-size: 0.76rem;
+      font-weight: 750;
+      cursor: pointer;
+      transition: color var(--t-motion, .15s) ease, border-color var(--t-motion, .15s) ease, background var(--t-motion, .15s) ease;
+    }
+    .rj-lunch button.active {
+      color: var(--t-ac);
+      border-color: color-mix(in srgb, var(--t-ac) 45%, transparent);
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+    }
+    .rj-now { text-align: center; padding: 0.4rem 0 1.1rem; }
+    .rj-now-label {
+      color: var(--t-fg2);
+      font-size: 0.7rem;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-bottom: 0.3rem;
+    }
+    .rj-now-name {
+      font: 800 clamp(2rem, 6.5vw, 3.1rem)/1.05 'Outfit', system-ui, sans-serif;
+      letter-spacing: -0.03em;
+      color: var(--t-fg);
+    }
+    .rj-now-name em { font-style: normal; color: var(--t-ac); }
+    .rj-now-count {
+      margin-top: 0.35rem;
+      color: var(--whs-gold);
+      font-weight: 750;
+      font-size: 0.95rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .rj-day-name { color: var(--t-fg2); font-size: 0.8rem; font-weight: 700; }
+    .rj-periods { display: grid; gap: 0.45rem; }
+    .rj-periods.grid-2 { grid-template-columns: 1fr 1fr; }
+    .rj-period {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.7rem;
+      padding: 0.65rem 0.9rem;
+      border: 1px solid var(--t-bd);
+      border-radius: var(--t-radius, 8px);
+      background: color-mix(in srgb, var(--t-bg) 55%, transparent);
+      transition: border-color var(--t-motion, .2s) ease, background var(--t-motion, .2s) ease;
+    }
+    .rj-period.active {
+      border-color: color-mix(in srgb, var(--t-ac) 45%, transparent);
+      background: color-mix(in srgb, var(--t-ac) 10%, transparent);
+    }
+    .rj-period.active .rj-p-name { color: var(--t-ac); }
+    .rj-p-name { font-weight: 750; font-size: 0.85rem; color: var(--t-fg); }
+    .rj-p-time { color: var(--t-fg2); font-size: 0.78rem; font-variant-numeric: tabular-nums; text-align: right; }
+
+    /* App grid */
+    .rj-apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; }
+    .rj-app {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      padding: 1rem 1.05rem;
+      border: 1px solid var(--t-bd);
+      border-radius: calc(var(--t-radius, 8px) + 6px);
+      background: color-mix(in srgb, var(--t-bg2) 78%, transparent);
+      color: var(--t-fg);
+      text-decoration: none;
+      transition: transform var(--t-motion, .18s) ease, border-color var(--t-motion, .18s) ease, box-shadow var(--t-motion, .18s) ease;
+    }
+    .rj-app:hover {
+      transform: translateY(-3px);
+      border-color: color-mix(in srgb, var(--t-ac) 45%, var(--t-bd));
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3);
+    }
+    .rj-app .ico {
+      width: 2.35rem;
+      height: 2.35rem;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      border: 1px solid color-mix(in srgb, var(--t-ac) 25%, transparent);
+      background: color-mix(in srgb, var(--t-ac) 12%, transparent);
+      font-size: 1.05rem;
+    }
+    .rj-app strong { font-size: 0.88rem; letter-spacing: -0.01em; }
+    .rj-app span { color: var(--t-fg2); font-size: 0.72rem; line-height: 1.4; }
+    .rj-app .tag {
+      margin-top: auto;
+      color: var(--t-ac);
+      font-size: 0.66rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .rj-foot {
+      margin-top: 1.4rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--t-bd);
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      color: var(--t-fg2);
+      font-size: 0.74rem;
+    }
+    .rj-foot a { color: var(--t-fg2); font-weight: 650; }
+    .rj-foot a:hover { color: var(--t-ac); }
+
+    @media (max-width: 760px) {
+      .rj-apps { grid-template-columns: 1fr 1fr; }
+      .rj-periods.grid-2 { grid-template-columns: 1fr; }
+      .rj-mast { gap: 0.65rem; }
+      .rj-mast .spacer { display: none; }
+      .rj-signin { width: 100%; justify-content: center; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .rj-kicker i { animation: none; }
+      .rj-app, .rj-signin { transition: none !important; }
+    }
+  </style>
+</head>
+<body class="app-shell rjuhsd-page">
+<main class="app-main rj-shell">
+
+  <header class="rj-mast">
+    <span class="rj-mark" aria-hidden="true">W</span>
+    <div class="rj-id">
+      <small>RJUHSD · Woodcreek High School</small>
+      <strong>rjuhsd.school — student hub</strong>
+    </div>
+    <span class="spacer"></span>
+    <a id="authBtn" class="rj-signin out" href="/api/sso/bridge?back=%2F">
+      <span class="dot" aria-hidden="true"></span>
+      <span id="authLabel">Sign in with mitch.pro</span>
+    </a>
+  </header>
+
+  <!-- Live bell schedule — front and center -->
+  <section class="rj-live" aria-label="Live bell schedule">
+    <div class="rj-live-head">
+      <span class="rj-kicker"><i aria-hidden="true"></i> Live bell schedule</span>
+      <div class="rj-lunch" role="group" aria-label="Lunch assignment">
+        <button id="lunch1Btn" class="active" type="button" onclick="setLunch(1)">Lunch 1</button>
+        <button id="lunch2Btn" type="button" onclick="setLunch(2)">Lunch 2</button>
+      </div>
+    </div>
+    <div class="rj-now">
+      <div class="rj-now-label" id="nowLabel">—</div>
+      <div class="rj-now-name" id="nowName">Checking schedule…</div>
+      <div class="rj-now-count" id="nowCount"></div>
+    </div>
+    <div class="rj-day-name" id="dayName"></div>
+    <div class="rj-periods" id="periodList"></div>
+    <div style="margin-top: 0.9rem; text-align: center;">
+      <a href="/bell/" style="color: var(--t-ac); font-size: 0.8rem; font-weight: 700;">Full week schedule →</a>
+    </div>
+  </section>
+
+  <!-- The network — same account, same chats -->
+  <section class="rj-apps" aria-label="Student apps">
+    <a class="rj-app" href="/public-chat/">
+      <span class="ico" aria-hidden="true">💬</span>
+      <strong>Public Plaza</strong>
+      <span>The open school-wide channel. Live for everyone.</span>
+      <span class="tag">Pub chat · synced</span>
+    </a>
+    <a class="rj-app" href="/encrypt/">
+      <span class="ico" aria-hidden="true">🔒</span>
+      <strong>Encrypted Chat</strong>
+      <span>End-to-end encrypted DMs and groups.</span>
+      <span class="tag">E2E · synced</span>
+    </a>
+    <a class="rj-app" href="/games/">
+      <span class="ico" aria-hidden="true">🎮</span>
+      <strong>Games</strong>
+      <span>Hundreds of games, no downloads.</span>
+      <span class="tag">Play</span>
+    </a>
+    <a class="rj-app" href="https://mitch.pro/">
+      <span class="ico" aria-hidden="true">🌐</span>
+      <strong>mitch.pro</strong>
+      <span>The full network: profile, friends, and more.</span>
+      <span class="tag">One account</span>
+    </a>
+  </section>
+
+  <footer class="rj-foot">
+    <span>© 2026 rjuhsd.school · student-run hub</span>
+    <span>
+      <a href="https://woodcreek.rjuhsd.us/" target="_blank" rel="noopener">Official school site</a>
+      &nbsp;·&nbsp; <a href="/faq.html">FAQ</a>
+      &nbsp;·&nbsp; <a href="/use-agreement.html">Use Agreement</a>
+    </span>
+  </footer>
+</main>
+
+<script src="/cookie-consent.js" defer></script>
+<script>
+(function () {
+  'use strict';
+  const BELL = window.WHS_BELL;
+  const $ = id => document.getElementById(id);
+  let activeLunch = parseInt(localStorage.getItem('whs_lunch_preference'), 10) === 2 ? 2 : 1;
+  let activeOverride = null;
+
+  function setLunch(num) {
+    activeLunch = num;
+    localStorage.setItem('whs_lunch_preference', num);
+    $('lunch1Btn').classList.toggle('active', activeLunch === 1);
+    $('lunch2Btn').classList.toggle('active', activeLunch === 2);
+    renderToday();
+  }
+
+  function scheduleFor(day) {
+    if (activeOverride) return activeLunch === 1 ? activeOverride.schedule.lunch1 : activeOverride.schedule.lunch2;
+    const d = (day === 0 || day === 6) ? 1 : day;
+    return BELL.schedules[d][activeLunch];
+  }
+
+  function renderToday() {
+    const now = new Date();
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const day = now.getDay();
+    const list = $('periodList');
+    list.innerHTML = '';
+    list.classList.toggle('grid-2', true);
+
+    if (activeOverride) {
+      $('dayName').textContent = activeOverride.name + ' — ' + now.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    } else {
+      $('dayName').textContent = (day === 0 || day === 6 ? 'Weekend — showing Monday' : days[day]) + ' · ' +
+        now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+
+    scheduleFor(day).forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'rj-period';
+      row.id = 'p-' + p.name.replace(/\s/g, '-');
+      row.innerHTML = '<span class="rj-p-name"></span><span class="rj-p-time"></span>';
+      row.querySelector('.rj-p-name').textContent = p.name;
+      row.querySelector('.rj-p-time').textContent = BELL.formatTime(p.start) + ' – ' + BELL.formatTime(p.end);
+      list.appendChild(row);
+    });
+  }
+
+  function tick() {
+    const now = new Date();
+    const day = now.getDay();
+    const mins = now.getHours() * 60 + now.getMinutes();
+    const secs = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+    const schedule = scheduleFor(day);
+    const label = $('nowLabel'), name = $('nowName'), count = $('nowCount');
+
+    document.querySelectorAll('.rj-period').forEach(r => r.classList.remove('active'));
+
+    if (day === 0 || day === 6) {
+      label.textContent = 'Weekend';
+      name.innerHTML = 'No school <em>today</em>';
+      count.textContent = 'Next up: Monday, ' + BELL.formatTime(schedule[0].start);
+      return;
+    }
+
+    let active = null, next = null;
+    for (const p of schedule) {
+      const s = BELL.parseTime(p.start), e = BELL.parseTime(p.end);
+      if (mins >= s && mins < e) { active = p; break; }
+      if (mins < s) { next = p; break; }
+    }
+
+    function highlight(p) {
+      const row = document.getElementById('p-' + p.name.replace(/\s/g, '-'));
+      if (row) row.classList.add('active');
+    }
+
+    if (active) {
+      label.textContent = 'Right now';
+      name.innerHTML = '';
+      name.append(active.name);
+      const left = BELL.parseTime(active.end) * 60 - secs;
+      count.textContent = Math.floor(left / 60) + 'm ' + (left % 60) + 's remaining';
+      highlight(active);
+    } else if (next) {
+      label.textContent = 'Next up';
+      name.innerHTML = '';
+      name.append(next.name);
+      const left = BELL.parseTime(next.start) * 60 - secs;
+      count.textContent = 'starts in ' + Math.floor(left / 60) + 'm ' + (left % 60) + 's · ' + BELL.formatTime(next.start);
+      highlight(next);
+    } else {
+      const last = schedule[schedule.length - 1];
+      if (mins >= BELL.parseTime(last.end)) {
+        label.textContent = 'Done for the day';
+        name.innerHTML = 'School day <em>concluded</em>';
+        count.textContent = 'See you tomorrow';
+      } else {
+        label.textContent = 'Before school';
+        name.innerHTML = 'Classes start <em>soon</em>';
+        const left = BELL.parseTime(schedule[0].start) * 60 - secs;
+        count.textContent = 'First bell in ' + Math.floor(left / 60) + 'm ' + (left % 60) + 's';
+      }
+    }
+  }
+
+  async function checkOverrides() {
+    try {
+      const res = await fetch('/api/bell/override');
+      const data = await res.json();
+      if (data && data.override) {
+        const la = new Date(nowLA());
+        const today = la.getFullYear() + '-' + String(la.getMonth() + 1).padStart(2, '0') + '-' + String(la.getDate()).padStart(2, '0');
+        if (data.override.date === today) activeOverride = data.override;
+      }
+    } catch (_) {}
+    function nowLA() { return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })); }
+  }
+
+  // Auth state: same mitch.pro account works here
+  async function checkAuth() {
+    const btn = $('authBtn'), label = $('authLabel');
+    try {
+      const r = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
+      if (!r.ok) throw new Error();
+      const me = await r.json();
+      if (!me.email) throw new Error();
+      btn.classList.remove('out');
+      btn.href = '/public-chat/';
+      label.textContent = 'You\'re in — open the Plaza';
+    } catch (_) {
+      btn.classList.add('out');
+      btn.href = '/api/sso/bridge?back=%2F';
+      label.textContent = 'Sign in with mitch.pro';
+    }
+  }
+
+  checkOverrides().then(() => {
+    $('lunch1Btn').classList.toggle('active', activeLunch === 1);
+    $('lunch2Btn').classList.toggle('active', activeLunch === 2);
+    renderToday();
+    tick();
+    setInterval(tick, 1000);
+  });
+  checkAuth();
+})();
+</script>
+</body>
+</html>

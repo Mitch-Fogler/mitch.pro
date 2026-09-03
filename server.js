@@ -2369,6 +2369,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/submit',
   '/api/stats',
   '/api/next',
+  '/api/sso/bridge',
+  '/api/sso/exchange',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -4841,6 +4843,54 @@ function validIpLiteral(value) {
 
 function requestHost(req) {
   try { return new URL(req.url).host; } catch { return ''; }
+}
+
+// ── rjuhsd.school: second site identity on this same server ──────────────────
+// Same accounts, same chats, same data — just a school-branded front door.
+const RJUHSD_DOMAIN = 'rjuhsd.school';
+const RJUHSD_ORIGIN = 'https://rjuhsd.school';
+const MITCH_ORIGIN  = 'https://mitch.pro';
+
+function isRjuhsdHost(req) {
+  const h = String(requestHost(req)).toLowerCase().split(':')[0];
+  return h === RJUHSD_DOMAIN || h.endsWith('.' + RJUHSD_DOMAIN);
+}
+
+// Hosts we will ever redirect to from the SSO bridge (prevents open redirects).
+function ssoBackAllowed(rawBack, req) {
+  let back;
+  try { back = new URL(String(rawBack || ''), RJUHSD_ORIGIN); } catch { return null; }
+  if (back.protocol !== 'https:') return null;
+  const h = back.hostname.toLowerCase();
+  if (h !== RJUHSD_DOMAIN && !h.endsWith('.' + RJUHSD_DOMAIN) &&
+      h !== 'mitch.pro' && !h.endsWith('.mitch.pro')) return null;
+  return back;
+}
+
+// Single-use, 90-second tokens that carry a verified identity across the two
+// domains (cookies are host-scoped, so a mitch.pro session can't be read by
+// rjuhsd.school directly — the bridge hops through a token instead).
+const SSO_BRIDGE_TOKENS = new Map();
+const SSO_BRIDGE_TTL_MS = 90 * 1000;
+
+function createSsoBridgeToken(normEmail) {
+  const token = randomBytes(24).toString('base64url');
+  SSO_BRIDGE_TOKENS.set(token, { email: normalizeEmail(normEmail), expires: Date.now() + SSO_BRIDGE_TTL_MS });
+  if (SSO_BRIDGE_TOKENS.size > 500) {
+    const now = Date.now();
+    for (const [t, rec] of SSO_BRIDGE_TOKENS) {
+      if (!rec || rec.expires < now) SSO_BRIDGE_TOKENS.delete(t);
+    }
+  }
+  return token;
+}
+
+function consumeSsoBridgeToken(token) {
+  const rec = SSO_BRIDGE_TOKENS.get(String(token || ''));
+  if (!rec) return null;
+  SSO_BRIDGE_TOKENS.delete(String(token));
+  if (Date.now() > rec.expires || !rec.email) return null;
+  return rec;
 }
 
 function sameOriginRequest(req) {
@@ -9698,7 +9748,16 @@ async function handleRequest(req, server) {
         pubKeyHex: entry.pubKeyHex,
         encryptedPrivateJwk: entry.encryptedPrivateJwk,
         ivHex: entry.ivHex,
-        keyHistory: Array.isArray(entry.history) ? entry.history.slice(0, 5) : [],
+        kdfSaltHex: entry.kdfSaltHex || '',
+        kdfIterations: entry.kdfIterations || 0,
+        keyHistory: (Array.isArray(entry.history) ? entry.history.slice(0, 5) : []).map(h => ({
+          pubKeyHex: h.pubKeyHex,
+          encryptedPrivateJwk: h.encryptedPrivateJwk,
+          ivHex: h.ivHex,
+          kdfSaltHex: h.kdfSaltHex || '',
+          kdfIterations: h.kdfIterations || 0,
+          updatedAt: h.updatedAt,
+        })),
       });
     } catch (e) {
       return jsonResp(500, { success: false, message: String(e) });
@@ -10247,6 +10306,75 @@ async function handleRequest(req, server) {
 
     // /api/request-access
     // /api/login
+    // ── Cross-domain sign-in: mitch.pro ⇄ rjuhsd.school ──────────────────────
+    // The two sites share accounts, chats, and data on this server, but
+    // cookies are host-scoped. The bridge hands a verified identity across
+    // with a single-use, 90-second token instead.
+    if (path === '/api/sso/bridge' && method === 'GET') {
+      try {
+        const back = ssoBackAllowed(url.searchParams.get('back') || (RJUHSD_ORIGIN + '/'), req);
+        if (!back) return jsonResp(400, { error: 'Invalid back URL.' });
+
+        // Already signed in here? Mint a token and hop straight across.
+        if (checkPasswordCookie(req)) {
+          const cookies = getCookies(req);
+          const sid = cookies['studentId'] || cookies['id'] || '';
+          const email = sid ? emailFromSid(sid) : '';
+          if (email && !bannedInfoForEmail(email)) {
+            const token = createSsoBridgeToken(email);
+            if (back.hostname.endsWith(RJUHSD_DOMAIN)) {
+              // Cookies are host-scoped: the token must be exchanged on the
+              // school domain for a school-domain session.
+              const dest = new URL(RJUHSD_ORIGIN + '/api/sso/exchange');
+              dest.searchParams.set('token', token);
+              dest.searchParams.set('back', back.toString());
+              return new Response(null, { status: 302, headers: { Location: dest.toString() } });
+            }
+            // Bound for mitch.pro — the session already works there.
+            return new Response(null, { status: 302, headers: { Location: back.toString() } });
+          }
+        }
+
+        // Not signed in: log in on mitch.pro first, then come straight back
+        // through the bridge.
+        return new Response(null, {
+          status: 302,
+          headers: { Location: MITCH_ORIGIN + '/enroll/?next=' + encodeURIComponent(MITCH_ORIGIN + '/api/sso/bridge?back=' + encodeURIComponent(back.toString())) }
+        });
+      } catch (e) {
+        console.error('[sso-bridge] failed:', e);
+        return jsonResp(500, { error: 'Sign-in bridge failed.' });
+      }
+    }
+
+    if (path === '/api/sso/exchange' && method === 'GET') {
+      try {
+        // The token only lands a session on the school domain.
+        if (!isRjuhsdHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
+        const rec = consumeSsoBridgeToken(url.searchParams.get('token'));
+        if (!rec) {
+          return new Response(null, { status: 302, headers: { Location: '/?sso=expired' } });
+        }
+        if (bannedInfoForEmail(rec.email)) {
+          return new Response(null, { status: 302, headers: { Location: '/?sso=banned' } });
+        }
+        ensureProfileDefaults(rec.email, rec.email);
+        const session = createAuthSession(rec.email, rec.email, req);
+        const back = ssoBackAllowed(url.searchParams.get('back') || '/', req);
+        const dest = back && back.hostname.endsWith(RJUHSD_DOMAIN) ? back : new URL(RJUHSD_ORIGIN + '/');
+        const headers = new Headers({ Location: dest.toString() });
+        headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
+        headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
+        headers.append('Set-Cookie', clearCookieHeader('password', req, false));
+        headers.append('Set-Cookie', clearCookieHeader('id', req, false));
+        writeAppLog('info', 'sso', 'Cross-domain sign-in', { email: rec.email, host: requestHost(req), ip });
+        return new Response(null, { status: 302, headers });
+      } catch (e) {
+        console.error('[sso-exchange] failed:', e);
+        return jsonResp(500, { error: 'Sign-in exchange failed.' });
+      }
+    }
+
     if (path === '/api/login') {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
@@ -10858,7 +10986,19 @@ async function handleRequest(req, server) {
         if (!/^04[0-9a-f]{128}$/i.test(String(pubKeyHex)) || !/^[0-9a-f]{24}$/i.test(String(ivHex)) || !/^[0-9a-f]+$/i.test(encryptedKeyHex) || encryptedKeyHex.length % 2 !== 0 || encryptedKeyHex.length > 16384) {
           return jsonResp(400, { success: false, message: 'Invalid key payload' });
         }
-        
+        // Optional KDF metadata describing how the client wrapped the private
+        // key. Older registrations used the email as the PBKDF2 salt at 100k
+        // iterations; new wraps use a random salt at 600k. The server only
+        // stores the (non-secret) salt and iteration count.
+        let kdfSaltHex = String(body.kdfSaltHex || '').toLowerCase();
+        if (kdfSaltHex && !/^[0-9a-f]{64}$/.test(kdfSaltHex)) {
+          return jsonResp(400, { success: false, message: 'Invalid kdf salt' });
+        }
+        let kdfIterations = parseInt(body.kdfIterations, 10) || 0;
+        if (kdfIterations && (kdfIterations < 100000 || kdfIterations > 2000000)) {
+          return jsonResp(400, { success: false, message: 'Invalid kdf iterations' });
+        }
+
         const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
         const norm = normalizeEmail(email);
         const previous = e2eKeysData[norm];
@@ -10868,6 +11008,8 @@ async function handleRequest(req, server) {
             pubKeyHex: previous.pubKeyHex,
             encryptedPrivateJwk: previous.encryptedPrivateJwk,
             ivHex: previous.ivHex,
+            kdfSaltHex: previous.kdfSaltHex || '',
+            kdfIterations: previous.kdfIterations || 0,
             updatedAt: previous.updatedAt,
           });
         }
@@ -10875,6 +11017,8 @@ async function handleRequest(req, server) {
           pubKeyHex,
           encryptedPrivateJwk,
           ivHex,
+          kdfSaltHex,
+          kdfIterations,
           updatedAt: Date.now(),
           history: history.slice(0, 5),
         };
@@ -13347,11 +13491,16 @@ function loadAllGamesList() {
       let legacyJwk = null;
       let encryptedPrivateJwk = null;
       let ivHex = null;
+      let kdfSaltHex = '';
+      let kdfIterations = 0;
       let keyHistory = [];
       if (email) {
         const legacyKeys = deriveUserE2EKeys(email);
+        // Server-derived fallback key from before password-wrapped backups
+        // existed. The client only uses it to decrypt OLD messages — the real
+        // identity is the password-wrapped account key stored above.
         legacyJwk = legacyKeys.jwk;
-        
+
         const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
         const norm = normalizeEmail(email);
         const entry = e2eKeysData[norm];
@@ -13359,6 +13508,8 @@ function loadAllGamesList() {
           pubKeyHex = entry.pubKeyHex;
           encryptedPrivateJwk = entry.encryptedPrivateJwk;
           ivHex = entry.ivHex;
+          kdfSaltHex = entry.kdfSaltHex || '';
+          kdfIterations = entry.kdfIterations || 0;
           keyHistory = Array.isArray(entry.history) ? entry.history.slice(0, 5) : [];
         } else {
           pubKeyHex = legacyKeys.pubKeyHex;
@@ -13381,6 +13532,8 @@ function loadAllGamesList() {
         pubKeyHex,
         encryptedPrivateJwk,
         ivHex,
+        kdfSaltHex,
+        kdfIterations,
         keyHistory,
         premium_email: stats.premium_email || null,
         happyHour: {
@@ -17874,6 +18027,22 @@ function loadAllGamesList() {
       } catch { return new Response('Team page not found', { status: 404 }); }
     }
 
+    // rjuhsd.school — public school hub front door (same server, same
+    // accounts; the bell schedule is public info so no gate here).
+    if ((path === '/' || path === '/index.html') && isRjuhsdHost(req)) {
+      try {
+        const html = readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8');
+        return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      } catch {}
+    }
+    // Preview of the school hub from mitch.pro (same page, no DNS needed).
+    if (path === '/rjuhsd' || path === '/rjuhsd/' || path === '/rjuhsd/index.html') {
+      try {
+        const html = readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8');
+        return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      } catch { return errResp(404, 'Not found'); }
+    }
+
     // Trailing slash redirect for directories under WEBROOT
     if (path !== '/' && !path.endsWith('/')) {
       const diskPath = safeWebrootPath(path);
@@ -18082,6 +18251,7 @@ function loadAllGamesList() {
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
+      '/bell/schedule.js',
       '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/home-burning-cherry.webp',
       '/robots.txt'
     ]);
