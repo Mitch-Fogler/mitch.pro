@@ -1038,10 +1038,9 @@ body.encrypt-page .online-dot.on { animation: presence-pulse 2.2s ease-in-out in
 /* Mobile compatibility layer for the rest of the site. Every full page receives
    this stylesheet from the server, including older tools with local CSS. */
 @media (max-width: 620px) {
-  body.app-shell :where(.shell, .enroll-shell, .apply-shell, .bot-shell, .casino-main,
-    .export-shell, .feedback-shell, .invite-shell, .rank-shell, .notif-shell,
-    .plaza-main, .rj-shell, .vms-container, .connect-container, .container,
-    .appeal-container, .centered, .page) {
+  body.app-shell :where(main.shell, main.enroll-shell, main.apply-shell, main.bot-shell, main.casino-main,
+    main.export-shell, main.feedback-shell, main.invite-shell, main.rank-shell, main.notif-shell,
+    main.plaza-main, main.rj-shell, main.vms-container, .connect-container) {
     width: calc(100% - 20px) !important;
     max-width: none !important;
     margin-inline: auto !important;
@@ -1199,6 +1198,78 @@ body.encrypt-page .online-dot.on { animation: presence-pulse 2.2s ease-in-out in
     transform: none !important;
   }
   body.app-shell :where(button, a):active { opacity: .78; }
+}
+
+/* Spacing hotfix: a page gets exactly one horizontal gutter. The earlier
+   width-minus-gutter rules combined with app.css padding and doubled the
+   margins; matching nested .container elements could double them again. */
+:root { --ui-page-gutter: clamp(16px, 3vw, 32px); }
+body.app-shell { margin: 0 !important; }
+body.app-shell .app-main,
+body.app-shell main.app-main {
+  width: 100% !important;
+  max-width: 1240px !important;
+  margin-inline: auto !important;
+  padding-left: var(--ui-page-gutter) !important;
+  padding-right: var(--ui-page-gutter) !important;
+}
+body.games-page .games-shell {
+  width: 100% !important;
+  max-width: 1360px !important;
+  margin-inline: auto !important;
+  padding-left: var(--ui-page-gutter) !important;
+  padding-right: var(--ui-page-gutter) !important;
+}
+body.prefs-page .prefs-shell { max-width: 1220px !important; }
+body.bell-page .bell-shell { max-width: 1080px !important; }
+body.members-page main.app-main { max-width: 1320px !important; }
+body.friends-page .friends-shell { max-width: 1180px !important; }
+body.profile-page .wrap {
+  width: calc(100% - (var(--ui-page-gutter) * 2)) !important;
+  max-width: 980px !important;
+  margin-inline: auto !important;
+}
+body.legal-page main,
+body.legal-page .legal-shell {
+  width: calc(100% - (var(--ui-page-gutter) * 2)) !important;
+  max-width: 820px !important;
+  margin-inline: auto !important;
+}
+
+@media (max-width: 620px) {
+  :root { --ui-page-gutter: 12px; }
+  body.app-shell .app-main,
+  body.app-shell main.app-main,
+  body.games-page .games-shell {
+    width: 100% !important;
+    margin-inline: auto !important;
+    padding-left: var(--ui-page-gutter) !important;
+    padding-right: var(--ui-page-gutter) !important;
+  }
+  body.app-shell :where(main.shell, main.enroll-shell, main.apply-shell, main.bot-shell,
+    main.casino-main, main.export-shell, main.feedback-shell, main.invite-shell,
+    main.rank-shell, main.notif-shell, main.plaza-main, main.rj-shell,
+    main.vms-container) {
+    width: 100% !important;
+    margin-inline: auto !important;
+    padding-left: var(--ui-page-gutter) !important;
+    padding-right: var(--ui-page-gutter) !important;
+  }
+  body.app-shell #mainpage {
+    width: 100% !important;
+    max-width: var(--home-maxw, 1440px) !important;
+    margin-inline: auto !important;
+    padding-left: var(--ui-page-gutter) !important;
+    padding-right: var(--ui-page-gutter) !important;
+  }
+  body.profile-page .wrap,
+  body.legal-page main,
+  body.legal-page .legal-shell {
+    width: calc(100% - (var(--ui-page-gutter) * 2)) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  body.prefs-page .prefs-jump-nav { margin-inline: 0 !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
