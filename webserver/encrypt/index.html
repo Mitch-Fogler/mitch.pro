@@ -87,6 +87,20 @@ button {
   gap: 0.45rem;
 }
 
+/* Brand-as-home link: the chat topbar is hidden, so this is the way back */
+#sidebar-home {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: opacity var(--t-motion, 0.15s) ease;
+}
+#sidebar-home:hover { opacity: 0.75; }
+
 #sidebar-title {
   color: var(--t-fg);
   font-family: Outfit, system-ui, sans-serif;
@@ -720,8 +734,11 @@ button {
 <div id="app">
   <aside id="sidebar">
     <div id="sidebar-top">
-      <span class="chat-brand-mark" aria-hidden="true"></span>
-      <span id="sidebar-title"><b>Encrypted</b><small>mitch.pro communications</small></span>
+      <!-- Brand doubles as the home button — the app topbar is hidden on this page -->
+      <a id="sidebar-home" href="/" title="Back to homepage" aria-label="Back to homepage">
+        <span class="chat-brand-mark" aria-hidden="true"></span>
+        <span id="sidebar-title"><b>Encrypted</b><small>mitch.pro communications</small></span>
+      </a>
       <button id="new-group-btn" class="small-btn icon-btn" type="button"><span aria-hidden="true">＋</span><em>Group</em></button>
     </div>
     <div id="my-identity"></div>
@@ -737,6 +754,7 @@ button {
     <div class="sidebar-foot">
       <button class="small-btn" id="refresh-btn" type="button">↻ Refresh</button>
       <button class="small-btn" id="clear-all-btn" type="button">Clear</button>
+      <a class="small-btn" id="plaza-btn" href="/public-chat/" title="Public chat">Plaza</a>
       <a class="small-btn" id="profile-btn" href="/profile.html">Profile ↗</a>
     </div>
   </aside>
