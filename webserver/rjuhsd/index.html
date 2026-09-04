@@ -904,6 +904,49 @@
     }
   }
 
+  // ── SSO: sign in through a reachable mitch.pro identity origin ─────────────
+  // mitch.pro is sometimes unreachable from school networks (DNS filtering),
+  // so the button first fetches a file off mitch.pro. Only if that fails does
+  // it resolve mitch.pro through 1.1.1.1 (DoH — bypasses local DNS) and sign
+  // in through the alternate origin instead (same server, same accounts).
+  // On the identity origin the bridge is instant for people already signed in:
+  // it mints a one-time token and drops straight back here, logged in.
+  let siteInfo = null;
+
+  async function reachable(origin, timeoutMs) {
+    try {
+      const opts = { mode: 'no-cors', cache: 'no-store' };
+      if (window.AbortSignal && AbortSignal.timeout) opts.signal = AbortSignal.timeout(timeoutMs);
+      await fetch(origin + '/api/site-info', opts);
+      return true;
+    } catch (_) { return false; }
+  }
+
+  async function goSignIn() {
+    const label = $('authLabel');
+    const back = encodeURIComponent(location.origin + '/');
+    const primary = String((siteInfo && siteInfo.primary) || 'https://mitch.pro').replace(/\/+$/, '');
+    const alternate = String((siteInfo && siteInfo.alternate) || '').replace(/\/+$/, '');
+    label.textContent = 'Connecting…';
+    if (await reachable(primary, 5000)) {
+      location.href = primary + '/api/sso/bridge?back=' + back;
+      return;
+    }
+    // mitch.pro unreachable: confirm the real address still exists via
+    // 1.1.1.1 (the school network is filtering it, not the site being gone),
+    // then use the alternate origin for sign-in.
+    try {
+      const opts = { headers: { accept: 'application/dns-json' }, cache: 'no-store' };
+      if (window.AbortSignal && AbortSignal.timeout) opts.signal = AbortSignal.timeout(5000);
+      await fetch('https://cloudflare-dns.com/dns-query?name=mitch.pro&type=A', opts);
+    } catch (_) {}
+    const target = alternate || primary;
+    let via = 'mitch.pro';
+    try { via = new URL(target).hostname; } catch (_) {}
+    label.textContent = 'Signing in via ' + via + '…';
+    location.href = target + '/api/sso/bridge?back=' + back;
+  }
+
   // ── Boot ───────────────────────────────────────────────────────────────────
   // Point mitch.pro links at the network's current primary/alternate origin
   // (data/site.json), so mirrors stay correct without republishing this page.
@@ -912,6 +955,7 @@
       const r = await fetch('/api/site-info', { cache: 'no-store' });
       if (!r.ok) return;
       const site = await r.json();
+      siteInfo = site;
       const base = (site.alternate || site.primary || '').replace(/\/+$/, '');
       if (!base) return;
       document.querySelectorAll('[data-site-link]').forEach(a => {
@@ -924,6 +968,11 @@
 
   loadWeather();
   checkAuth();
+  $('authBtn').addEventListener('click', function (e) {
+    if (!$('authBtn').classList.contains('out')) return; // signed in here — normal link
+    e.preventDefault();
+    goSignIn();
+  });
   applySchool(storedSchool() || 'woodcreek');
   if (!storedSchool()) openPicker();
 })();

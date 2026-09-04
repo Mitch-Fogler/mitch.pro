@@ -10069,11 +10069,17 @@ async function handleRequest(req, server) {
           }
         }
 
-        // Not signed in: log in on this mitch.pro identity first (whichever
-        // mirror served the bridge), then come straight back through it.
+        // Not signed in on this host: the school domain doesn't serve the
+        // login UI, so hop to a mitch.pro identity origin (primary first)
+        // to sign in there — its enroll page returns to the bridge on that
+        // same origin, which carries the session back to the school site.
+        let loginOrigin = selfOrigin;
+        if (!isMitchSsoHost(requestHost(req))) {
+          loginOrigin = mitchSsoOrigins().values().next().value || MITCH_ORIGIN;
+        }
         return new Response(null, {
           status: 302,
-          headers: { Location: selfOrigin + '/enroll/?next=' + encodeURIComponent(selfOrigin + '/api/sso/bridge?back=' + encodeURIComponent(back.toString())) }
+          headers: { Location: loginOrigin + '/enroll/?next=' + encodeURIComponent(loginOrigin + '/api/sso/bridge?back=' + encodeURIComponent(back.toString())) }
         });
       } catch (e) {
         console.error('[sso-bridge] failed:', e);
