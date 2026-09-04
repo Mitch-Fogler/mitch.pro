@@ -730,17 +730,24 @@ button {
 
 @media (max-width: 860px) {
   html, .encrypt-page { height: 100dvh; overflow: hidden; }
-  /* PWA/iOS scroll lock: pin the page to the layout viewport so Safari and
-     standalone can't scroll the document out from under the chat (the "top
-     margin goes bad after typing" bug). Safe-area insets are handled inside
-     the page instead — theme.js's standalone body padding would otherwise
-     double-count them and leave the page taller than the viewport, which is
-     what made scrolling feel out of whack. */
+  /* PWA/iOS scroll lock: pin BOTH html and the page so Safari and standalone
+     can never scroll the document out from under the chat (the "top margin
+     goes bad after typing" bug). #msgs scrolls freely inside its own box.
+     Safe-area insets are handled inside the page instead — theme.js's
+     standalone body padding would otherwise double-count them and leave the
+     page taller than the viewport, which is what made scrolling feel off. */
+  html {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   body.encrypt-page {
     position: fixed;
     inset: 0;
     padding: 0 !important;
     min-height: 0;
+    overscroll-behavior: none;
   }
   .encrypt-page #app-topbar { padding-top: env(safe-area-inset-top, 0px); }
   #msgs { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
@@ -3422,23 +3429,44 @@ window.addEventListener('ws-broadcast-status', function(e) {
 // iOS doesn't shrink the layout viewport when the keyboard opens — it just
 // covers the bottom of the page, so the composer (and most of the chat)
 // disappears behind it. The page itself is position:fixed on mobile (scroll
-// lock), so iOS can't shift the document either. Track the visual viewport:
+// lock), so iOS can't scroll the document either. Track the visual viewport:
 // while the keyboard is up, shrink the page to the visible height so the
-// textbox sits just above the keys, keeping the document pinned at scroll 0
-// the whole time; when it closes, fully reset so the layout returns to
-// 100dvh with the top margin intact.
+// textbox sits just above the keys. When it goes away, hard-reset the layout
+// — and because iOS leaves a *visual-viewport pan* behind that plain
+// scrollTo(0,0) can't undo, briefly drop position:fixed to force WebKit to
+// re-anchor the page at scroll 0 with the original top margin.
 (function () {
   const vv = window.visualViewport;
-  if (!vv) return;
   const page = () => document.querySelector('.encrypt-page');
   const msgs = () => document.getElementById('msgs');
   let kbOpen = false;
+  let resetTimer = null;
+
+  function hardReset() {
+    kbOpen = false;
+    const el = page();
+    if (el) el.style.height = '';
+    // Re-anchor: dropping position:fixed for one frame makes WebKit relayout
+    // against the layout viewport, discarding the visual pan the keyboard
+    // left behind. Cheap and invisible when we're already at scroll 0.
+    if (el && document.body.classList.contains('encrypt-page')) {
+      el.style.position = 'static';
+      void document.body.offsetHeight; // force reflow
+      el.style.position = '';
+    }
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    const m = msgs();
+    if (m) m.scrollTop = m.scrollHeight;
+  }
+
   function update() {
     const el = page();
     if (!el) return;
     const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
     if (overlap > 120) {
-      kbOpen = true;
+      if (!kbOpen) kbOpen = true;
       // Keep the fixed page anchored at scroll 0 — iOS sometimes tries to
       // nudge the window anyway while the keyboard animates in.
       if (window.scrollY !== 0) window.scrollTo(0, 0);
@@ -3446,21 +3474,40 @@ window.addEventListener('ws-broadcast-status', function(e) {
       const m = msgs();
       if (m && m.classList.contains('on')) m.scrollTop = m.scrollHeight;
     } else if (kbOpen && overlap <= 1) {
-      kbOpen = false;
-      el.style.height = '';
-      if (window.scrollY !== 0) window.scrollTo(0, 0);
-      const m = msgs();
-      if (m) m.scrollTop = m.scrollHeight;
+      hardReset();
     }
   }
-  vv.addEventListener('resize', update);
-  vv.addEventListener('scroll', update);
-  window.addEventListener('orientationchange', function () {
-    kbOpen = false;
-    const el = page();
-    if (el) el.style.height = '';
-    window.scrollTo(0, 0);
+
+  if (vv) {
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+  }
+
+  // The keyboard-going-away reset. iOS doesn't always deliver a final
+  // visualViewport resize when the keyboard closes (especially in standalone
+  // PWAs), so also watch blur: after any text field loses focus and the
+  // keyboard is really gone, force everything back to how it was.
+  function keyboardOverlap() {
+    if (!vv) return 0;
+    return Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+  }
+  document.addEventListener('focusout', function (e) {
+    const t = e.target;
+    if (!t || (t.tagName !== 'INPUT' && t.tagName !== 'TEXTAREA')) return;
+    clearTimeout(resetTimer);
+    resetTimer = setTimeout(function () {
+      // Still typing somewhere else (input → attach button → …): leave it.
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+      // Keyboard genuinely down? (small delay lets the collapse animation finish)
+      if (keyboardOverlap() > 120) return;
+      // Only touch the layout if the keyboard actually moved something.
+      const el = page();
+      if (kbOpen || window.scrollY !== 0 || (el && el.style.height)) hardReset();
+    }, 400);
   });
+
+  window.addEventListener('orientationchange', hardReset);
 })();
 
 init();
