@@ -730,6 +730,20 @@ button {
 
 @media (max-width: 860px) {
   html, .encrypt-page { height: 100dvh; overflow: hidden; }
+  /* PWA/iOS scroll lock: pin the page to the layout viewport so Safari and
+     standalone can't scroll the document out from under the chat (the "top
+     margin goes bad after typing" bug). Safe-area insets are handled inside
+     the page instead — theme.js's standalone body padding would otherwise
+     double-count them and leave the page taller than the viewport, which is
+     what made scrolling feel out of whack. */
+  body.encrypt-page {
+    position: fixed;
+    inset: 0;
+    padding: 0 !important;
+    min-height: 0;
+  }
+  .encrypt-page #app-topbar { padding-top: env(safe-area-inset-top, 0px); }
+  #msgs { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
   #app.ready { flex-direction: row !important; }
   #sidebar {
     width: 100% !important;
@@ -3404,13 +3418,15 @@ window.addEventListener('ws-broadcast-status', function(e) {
   document.body.classList.toggle('chat-live', Boolean(e.detail && e.detail.connected));
 });
 
-// ── Mobile keyboard handling (iOS Safari) ────────────────────────────────
+// ── Mobile keyboard handling (iOS Safari + standalone PWA) ───────────────
 // iOS doesn't shrink the layout viewport when the keyboard opens — it just
 // covers the bottom of the page, so the composer (and most of the chat)
-// disappears behind it. Track the visual viewport: while the keyboard is up,
-// shrink the page to the visible height so the textbox sits just above the
-// keys; when it closes, fully reset (and re-zero the window scroll iOS left
-// behind) so the top margin goes back to normal instead of staying squashed.
+// disappears behind it. The page itself is position:fixed on mobile (scroll
+// lock), so iOS can't shift the document either. Track the visual viewport:
+// while the keyboard is up, shrink the page to the visible height so the
+// textbox sits just above the keys, keeping the document pinned at scroll 0
+// the whole time; when it closes, fully reset so the layout returns to
+// 100dvh with the top margin intact.
 (function () {
   const vv = window.visualViewport;
   if (!vv) return;
@@ -3423,13 +3439,16 @@ window.addEventListener('ws-broadcast-status', function(e) {
     const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
     if (overlap > 120) {
       kbOpen = true;
+      // Keep the fixed page anchored at scroll 0 — iOS sometimes tries to
+      // nudge the window anyway while the keyboard animates in.
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
       el.style.height = Math.round(vv.height) + 'px';
       const m = msgs();
       if (m && m.classList.contains('on')) m.scrollTop = m.scrollHeight;
     } else if (kbOpen && overlap <= 1) {
       kbOpen = false;
       el.style.height = '';
-      window.scrollTo(0, 0);
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
       const m = msgs();
       if (m) m.scrollTop = m.scrollHeight;
     }

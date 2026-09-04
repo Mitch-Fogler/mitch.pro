@@ -370,6 +370,9 @@
   function addWatermark() {
     if (location.pathname.endsWith('/encrypt.html')) return;
     if (location.pathname.startsWith('/encrypt')) return;
+    // rjuhsd.school is a clean school-branded hub — no mitch watermark or Discord button there.
+    if (location.hostname === 'rjuhsd.school' || location.hostname.endsWith('.rjuhsd.school')) return;
+    if (location.pathname.startsWith('/rjuhsd')) return;
     if (!document.getElementById('mitch-watermark')) {
       var wm = document.createElement('img');
       wm.id = 'mitch-watermark';
