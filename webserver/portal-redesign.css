@@ -878,6 +878,172 @@ body.app-shell.relaunch-ready .pref-section { animation: ui-rise .3s cubic-bezie
   body.encrypt-page #chat-search-toggle { display: none !important; }
 }
 
+/* Mobile compatibility layer for the rest of the site. Every full page receives
+   this stylesheet from the server, including older tools with local CSS. */
+@media (max-width: 620px) {
+  body.app-shell :where(.shell, .enroll-shell, .apply-shell, .bot-shell, .casino-main,
+    .export-shell, .feedback-shell, .invite-shell, .rank-shell, .notif-shell,
+    .plaza-main, .rj-shell, .vms-container, .connect-container, .container,
+    .appeal-container, .centered, .page) {
+    width: calc(100% - 20px) !important;
+    max-width: none !important;
+    margin-inline: auto !important;
+    padding-inline: 0 !important;
+  }
+
+  body.app-shell :where(.layout, .idea-grid, .status-grid, .stat-grid, .vms-grid,
+    .rj-grid, .features, .form-grid, .admin-grid, .market-grid, .shop-grid,
+    .requests-grid, .dashboard-grid, .two-col, .three-col) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  body.app-shell :where(.panel, .card, .glass-card, .appeal-panel, .info-card,
+    .form-panel, .auth-card, .mod-modal-card) {
+    max-width: 100% !important;
+    padding: 15px !important;
+    border-radius: 10px !important;
+  }
+
+  body.app-shell :where(.topbar, .staff-heading, .panel-head, .head-actions,
+    .plaza-head, .channel-head, .device-row, .warning-banner, .disclaimer-banner) {
+    max-width: 100% !important;
+    flex-wrap: wrap !important;
+    gap: 9px !important;
+  }
+
+  body.app-shell :where(.top-links, .panel-actions, .head-actions, .filters,
+    .tabs, .chip-row, .button-row, .actions-row) {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.app-shell :where(.top-links, .panel-actions, .head-actions, .filters,
+    .tabs, .chip-row, .button-row, .actions-row)::-webkit-scrollbar { display: none; }
+
+  body.app-shell :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    font-size: 16px !important;
+  }
+
+  body.app-shell textarea { min-height: 110px; resize: vertical; }
+  body.app-shell :where(.field-row, .form-row, .input-row, .search-row, .add-row) {
+    min-width: 0;
+    flex-wrap: wrap !important;
+  }
+
+  body.app-shell :where(table, .table-wrap, .data-table, .admin-table) {
+    display: block;
+    width: 100% !important;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body.app-shell :where(pre, .code-block) {
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  body.app-shell iframe { max-width: 100%; }
+  body.app-shell canvas:not([data-fixed-size]) { max-width: 100%; }
+  body.app-shell :where(.modal-overlay, #modal-overlay) { padding: 8px !important; }
+  body.app-shell :where(.modal, .dialog, .modal-card, .mod-modal-card) {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100dvh - 90px) !important;
+    overflow-y: auto !important;
+  }
+
+  /* Home dashboard */
+  body.app-shell #mainpage { width: 100% !important; max-width: 100% !important; padding: 0 10px 26px !important; }
+  body.app-shell .hud-topbar { display: grid !important; grid-template-columns: 1fr auto; gap: 12px !important; padding: 20px 0 14px !important; }
+  body.app-shell .hud-brand { font-size: clamp(1.65rem, 9vw, 2.15rem) !important; }
+  body.app-shell .hud-search-area { grid-column: 1 / -1; order: 3; width: 100% !important; }
+  body.app-shell .hud-system-status { grid-column: 1 / -1; gap: 5px 12px !important; overflow-x: auto; }
+  body.app-shell .hud-workspace { display: block !important; }
+  body.app-shell .hud-pane-aside { width: 100% !important; max-width: none !important; margin-top: 20px; }
+  body.app-shell .home-dayboard { padding: 12px 0 !important; }
+  body.app-shell .home-dayboard-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  body.app-shell .home-dayboard-grid > * { padding: 14px 0 !important; border-left: 0 !important; }
+  body.app-shell .home-calendar-strip,
+  body.app-shell .home-hourly-weather { overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: none; }
+  body.app-shell .home-calendar-strip > *,
+  body.app-shell .home-hourly-weather > * { min-width: 48px; }
+  body.app-shell .category-grid,
+  body.app-shell .quick-actions-grid,
+  body.app-shell .hub-actions { grid-template-columns: minmax(0, 1fr) !important; }
+  body.app-shell .site-link,
+  body.app-shell .hub-action { min-height: 52px !important; }
+  body.app-shell .site-advert-banner > div { min-width: 0 !important; }
+  body.app-shell #member-side-rail { width: min(330px, calc(100vw - 20px)) !important; }
+  body.app-shell #hud-terminal-overlay { width: calc(100vw - 16px) !important; max-width: none !important; max-height: calc(100dvh - 86px) !important; }
+  body.app-shell #_ab { bottom: calc(78px + env(safe-area-inset-bottom)) !important; }
+  body.app-shell #_ap {
+    left: 8px !important;
+    bottom: calc(126px + env(safe-area-inset-bottom)) !important;
+    width: calc(100vw - 16px) !important;
+    max-height: min(60dvh, 440px) !important;
+  }
+  body.app-shell #devtools-btn { right: 8px !important; bottom: calc(78px + env(safe-area-inset-bottom)) !important; }
+
+  /* Public and premium chat */
+  body.app-shell :where(.plaza-main, .premium-chat-page .app-main) { min-height: 0; }
+  body.app-shell .chat-shell { height: calc(100dvh - 155px) !important; min-height: 430px !important; }
+  body.app-shell :where(.channel-head, .chat-toolbar) { padding: 10px !important; }
+  body.app-shell :where(.chat-input-row, .composer-row) { padding: 8px !important; gap: 6px !important; }
+  body.app-shell :where(.chat-input-row, .composer-row) button { min-width: 44px; }
+
+  /* Notifications */
+  body.notif-page .toggle-row { align-items: center !important; gap: 12px !important; }
+  body.notif-page .toggle-switch { min-width: 48px; }
+  body.notif-page .quiet-times { display: grid !important; grid-template-columns: 1fr 1fr; align-items: end !important; }
+  body.notif-page .quiet-times label { min-width: 0; }
+
+  /* Tyler's Tabs remains a full-screen tool above the bottom navigation. */
+  body.app-shell .tabs-chrome { padding: 7px !important; gap: 6px !important; }
+  body.app-shell .tabs-brand { width: 100%; margin: 0 !important; }
+  body.app-shell .tab-controls { order: 3; width: calc(100% - 44px); }
+  body.app-shell .tab-btn { min-height: 40px !important; }
+  body.app-shell .add-tab-btn { width: 42px !important; height: 42px !important; }
+  body.app-shell .actions { width: auto !important; margin-left: auto; }
+  body.app-shell #split-btn { display: none !important; }
+  body.app-shell #view-container { min-height: 0; }
+
+  /* School and shop pages */
+  body.app-shell :where(.rj-mast, .rj-hero, .balance-panel, .wallet, .casino-main .hero) {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  body.app-shell :where(.rj-school-links, .shop-actions, .wallet-actions) {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@media (max-width: 420px) {
+  body.app-shell .quiet-times { grid-template-columns: minmax(0, 1fr) !important; }
+  body.app-shell .toggle-row { gap: 9px !important; }
+  body.app-shell .category-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  body.app-shell :where(.stats-grid, .pref-summary) { grid-template-columns: minmax(0, 1fr) !important; }
+  body.app-shell .period-row { gap: 8px; }
+  body.app-shell .period-time { font-size: 11px !important; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  body.app-shell :where(button, a, .member, .friend-item, .feature-card, .cat-card):hover {
+    transform: none !important;
+  }
+  body.app-shell :where(button, a):active { opacity: .78; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   body.app-shell *, body.app-shell *::before, body.app-shell *::after { animation: none !important; transition: none !important; }
