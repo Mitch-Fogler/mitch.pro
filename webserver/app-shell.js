@@ -24,7 +24,7 @@
     if (document.querySelector('link[href="/portal-redesign.css"], link[href^="/portal-redesign.css?"]')) return;
     var link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/portal-redesign.css?v=9';
+    link.href = '/portal-redesign.css?v=10';
     (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
   }
 

@@ -1768,3 +1768,22 @@ body.sales-page .feature-item { padding: 24px !important; border-color: #282f3d 
   body.sales-page .sales-hero { min-height: 580px; }
   body.sales-page .feature-list { grid-template-columns: 1fr; }
 }
+
+/* Chat wrapper cleanup: legacy relaunch.css paints a second translucent box
+   around sent messages. Only the actual .msg-bubble should have a surface. */
+body.encrypt-page .msg,
+body.encrypt-page .msg:has(.who.me),
+body.encrypt-page .msg.mine,
+body.encrypt-page .msg.theirs {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  color: inherit !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.encrypt-page .msg::before,
+body.encrypt-page .msg::after { display: none !important; }
