@@ -726,7 +726,7 @@ function editCurrentPost() {
   if (currentPost) openEditor(currentPost);
 }
 async function deleteCurrentPost() {
-  if (!currentPost || !confirm('Delete "' + currentPost.title + '"?')) return;
+  if (!currentPost || !(await customConfirm('Delete', 'Delete "' + currentPost.title + '"?'))) return;
   const res = await fetch('/api/blog/posts/' + encodeURIComponent(currentPost.slug), {
     method: 'DELETE',
     credentials: 'include'
@@ -806,7 +806,7 @@ async function moderateComment(id, status) {
   await loadComments();
 }
 async function deleteComment(id) {
-  if (!currentPost || !confirm('Delete this comment?')) return;
+  if (!currentPost || !(await customConfirm('Delete', 'Delete this comment?'))) return;
   const res = await fetch('/api/blog/posts/' + encodeURIComponent(currentPost.slug) + '/comments/' + encodeURIComponent(id), {
     method: 'DELETE',
     credentials: 'include'
@@ -837,7 +837,7 @@ async function loadRevisions(post = currentPost) {
   }
 }
 async function restoreRevision(id) {
-  if (!currentPost || !confirm('Restore this revision? Current content will be saved as a new revision.')) return;
+  if (!currentPost || !(await customConfirm('Restore', 'Restore this revision? Current content will be saved as a new revision.'))) return;
   const res = await fetch('/api/blog/posts/' + encodeURIComponent(currentPost.slug) + '/restore', {
     method: 'POST',
     credentials: 'include',
@@ -921,8 +921,8 @@ document.getElementById('blockFormat').addEventListener('change', function() {
   runCommand('formatBlock', this.value);
   this.value = 'p';
 });
-document.getElementById('linkBtn').addEventListener('click', () => {
-  const href = safeUrl(prompt('Link URL'), false);
+document.getElementById('linkBtn').addEventListener('click', async () => {
+  const href = safeUrl(await customPrompt('Insert Link', 'Link URL'), false);
   if (!href) return;
   runCommand('createLink', href);
   document.querySelectorAll('#postBody a').forEach(a => {
@@ -930,8 +930,8 @@ document.getElementById('linkBtn').addEventListener('click', () => {
     a.rel = 'noopener noreferrer';
   });
 });
-document.getElementById('imageBtn').addEventListener('click', () => {
-  const src = safeUrl(prompt('Image URL'), true);
+document.getElementById('imageBtn').addEventListener('click', async () => {
+  const src = safeUrl(await customPrompt('Insert Image', 'Image URL'), true);
   if (!src) return;
   runCommand('insertImage', src);
 });

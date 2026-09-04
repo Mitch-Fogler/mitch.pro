@@ -1805,7 +1805,7 @@ async function adminErase() {
 async function adminBan() {
   if (!adminHoverPx) return;
   const painter = adminHoverPx.data.painter;
-  const reason = prompt(`Ban reason for ${painter.slice(0, 16)}…?`, 'manual ban by admin');
+  const reason = await customPrompt('Ban User', `Ban reason for ${painter.slice(0, 16)}…?`, 'manual ban by admin');
   if (reason === null) return;
   const r = await fetch('/api/canvas/admin-ban', {
     method: 'POST',

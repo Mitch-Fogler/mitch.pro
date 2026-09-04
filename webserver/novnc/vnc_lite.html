@@ -79,8 +79,8 @@
 
         // When this function is called, the server requires
         // credentials to authenticate
-        function credentialsAreRequired(e) {
-            const password = prompt("Password Required:");
+        async function credentialsAreRequired(e) {
+            const password = await customPrompt('Password Required', "Password Required:");
             rfb.sendCredentials({ password: password });
         }
 

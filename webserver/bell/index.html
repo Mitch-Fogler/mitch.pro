@@ -270,10 +270,17 @@
 <body class="bell-page">
 <main class="app-main bell-shell">
   <header class="page-head app-fade-in">
-    <div class="kicker">Woodcreek WHS Schedule</div>
+    <div class="kicker">RJUHSD Bell Schedules</div>
     <h1>Bell <span>Schedules</span></h1>
-    <p class="subline">Live tracking and period schedules for Woodcreek High School (WHS).</p>
+    <p class="subline">Live tracking and period schedules for every RJUHSD school.</p>
   </header>
+
+  <section class="lunch-selector">
+    <span class="lunch-selector-label">My School</span>
+    <div class="lunch-options">
+      <select id="schoolSelect" onchange="setSchool(this.value)" style="background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.18); color: inherit; padding: 8px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; font-family: inherit;"></select>
+    </div>
+  </section>
 
   <section class="lunch-selector">
     <span class="lunch-selector-label">My Lunch Assignment</span>
@@ -352,15 +359,56 @@
   </section>
 </main>
 
-<script src="/bell/schedule.js?v=1"></script>
+<script src="/bell/schedule.js?v=2"></script>
 <script>
   let activeLunch = 1; // 1 or 2
   let activeOverride = null;
 
-  // Shared schedule data + time helpers (also used by the rjuhsd.school homepage)
-  const SCHEDULES = window.WHS_BELL.schedules;
+  // Shared time helpers (also used by the rjuhsd.school homepage)
   const parseTimeToMinutes = window.WHS_BELL.parseTime;
   const getFormattedTime = window.WHS_BELL.formatTime;
+
+  // Per-school schedule data. Woodcreek is the default (WHS_BELL); the other
+  // RJUHSD schools come from the same file's RJUHSD_BELLS.
+  const SCHOOL_NAMES = {
+    woodcreek:  'Woodcreek High School',
+    roseville:  'Roseville High School',
+    westpark:   'West Park High School',
+    granitebay: 'Granite Bay High School',
+    antelope:   'Antelope High School',
+    oakmont:    'Oakmont High School'
+  };
+  let activeSchool = 'woodcreek';
+  let SCHEDULES = window.WHS_BELL.schedules;
+
+  function setSchool(key) {
+    if (!SCHOOL_NAMES[key]) key = 'woodcreek';
+    activeSchool = key;
+    try { localStorage.setItem('bell_school', key); } catch {}
+    SCHEDULES = (window.RJUHSD_BELLS && window.RJUHSD_BELLS[key]) || window.WHS_BELL.schedules;
+    document.getElementById('schoolSelect').value = key;
+    loadTodaySchedule();
+    updateLiveTracker();
+    populateAllWeeks();
+  }
+
+  // Populate the school dropdown
+  (function initSchoolSelect() {
+    const sel = document.getElementById('schoolSelect');
+    for (const [key, name] of Object.entries(SCHOOL_NAMES)) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    }
+    let saved = null;
+    try { saved = localStorage.getItem('bell_school'); } catch {}
+    if (window.RJUHSD_BELLS && SCHOOL_NAMES[saved] && window.RJUHSD_BELLS[saved]) activeSchool = saved;
+    sel.value = activeSchool;
+    if (activeSchool !== 'woodcreek') {
+      SCHEDULES = window.RJUHSD_BELLS[activeSchool];
+    }
+  })();
 
   // Load lunch preference
   if (localStorage.getItem('whs_lunch_preference')) {

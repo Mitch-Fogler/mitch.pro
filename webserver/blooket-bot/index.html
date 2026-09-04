@@ -1018,7 +1018,7 @@
         return;
       }
       
-      if (!confirm('Are you sure you want to submit the current console logs and session info to the administrators/moderators for debugging?')) {
+      if (!(await customConfirm('Report Failure', 'Are you sure you want to submit the current console logs and session info to the administrators/moderators for debugging?'))) {
         return;
       }
       

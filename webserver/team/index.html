@@ -1074,7 +1074,7 @@ async function unsubscribeSender() {
     email = selected.from;
   }
   if (!email) return;
-  if (!confirm(`Unsubscribe ${email} from the newsletter?`)) return;
+  if (!(await customConfirm('Unsubscribe', `Unsubscribe ${email} from the newsletter?`))) return;
   const btn = document.getElementById('unsub-btn');
   btn.disabled = true;
   btn.textContent = 'Unsubscribing…';

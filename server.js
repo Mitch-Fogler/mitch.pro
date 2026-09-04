@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { createHmac, createHash, randomBytes, timingSafeEqual, createECDH } from 'crypto';
+import { createHmac, createHash, randomBytes, timingSafeEqual, createECDH, createCipheriv, createDecipheriv } from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, rmSync, readdirSync, appendFileSync } from 'fs';
 import { join, basename, resolve, sep } from 'path';
 import { spawnSync, spawn } from 'child_process';
@@ -304,6 +304,49 @@ const WHITELISTED_IPS = new Set(['66.60.183.124']);
 let ID_SECRET;
 try { ID_SECRET = readFileSync(ID_SECRET_FILE); }
 catch { ID_SECRET = randomBytes(32); writeFileSync(ID_SECRET_FILE, ID_SECRET); }
+
+// At-rest encryption for non-E2E direct messages. The private key is derived
+// from ID_SECRET and kept in memory only, so plaintext chats are never sitting
+// in dms.json in the clear — the strongest protection available without true
+// end-to-end encryption. Prefix marks sealed rows; anything else is legacy
+// plaintext and stays readable.
+const DM_AT_REST_PREFIX = 'enc1:';
+let DM_AT_REST_KEY = null;
+function dmAtRestKey() {
+  if (!DM_AT_REST_KEY) DM_AT_REST_KEY = createHmac('sha256', ID_SECRET).update('dm-at-rest-v1').digest();
+  return DM_AT_REST_KEY;
+}
+function sealAtRest(obj) {
+  try {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', dmAtRestKey(), iv);
+    const ct = Buffer.concat([cipher.update(JSON.stringify(obj), 'utf8'), cipher.final()]);
+    return DM_AT_REST_PREFIX + iv.toString('hex') + ':' + ct.toString('hex') + ':' + cipher.getAuthTag().toString('hex');
+  } catch { return null; }
+}
+function openAtRest(str) {
+  if (typeof str !== 'string' || !str.startsWith(DM_AT_REST_PREFIX)) return str;
+  try {
+    const body = str.slice(DM_AT_REST_PREFIX.length);
+    const i1 = body.indexOf(':'), i2 = body.indexOf(':', i1 + 1);
+    if (i1 < 0 || i2 < 0) return str;
+    const decipher = createDecipheriv('aes-256-gcm', dmAtRestKey(), Buffer.from(body.slice(0, i1), 'hex'));
+    decipher.setAuthTag(Buffer.from(body.slice(i2 + 1), 'hex'));
+    const plain = Buffer.concat([decipher.update(Buffer.from(body.slice(i1 + 1, i2), 'hex')), decipher.final()]).toString('utf8');
+    const obj = JSON.parse(plain);
+    return obj && typeof obj === 'object' ? obj : str;
+  } catch { return str; }
+}
+// Returns {text, image} for a stored message, unsealing at-rest rows.
+function dmContentOf(msg) {
+  if (msg && typeof msg.text === 'string' && msg.text.startsWith(DM_AT_REST_PREFIX)) {
+    const opened = openAtRest(msg.text);
+    if (opened && typeof opened === 'object' && !Array.isArray(opened)) {
+      return { text: typeof opened.text === 'string' ? opened.text : '', image: opened.image !== undefined ? opened.image : msg.image };
+    }
+  }
+  return { text: msg ? msg.text : '', image: msg ? msg.image : undefined };
+}
 
 // Session tracking
 const sessionLastSeen  = {};
@@ -1873,6 +1916,44 @@ function validPushSubscription(value) {
   return endpoint.length <= 2048 && p256dh.length >= 40 && p256dh.length <= 256 && auth.length >= 8 && auth.length <= 128;
 }
 
+// Per-user ntfy.sh topics — the fallback mobile alert channel for people who
+// don't (or can't) use PWA web push. data/ntfy_topics.json: { email: topic }.
+const NTFY_TOPICS_FILE = join(DATA_DIR, 'ntfy_topics.json');
+function loadNtfyTopics() { return loadJson(NTFY_TOPICS_FILE, {}); }
+function saveNtfyTopics(topics) { saveJson(NTFY_TOPICS_FILE, topics); }
+async function ntfyNotify(email, title, body, url) {
+  try {
+    const topic = loadNtfyTopics()[normalizeEmail(email)];
+    if (!topic || !/^[a-zA-Z0-9_-]{6,64}$/.test(topic)) return;
+    await fetch('https://ntfy.sh/' + topic, {
+      method: 'POST',
+      body: String(body || '').slice(0, 400),
+      headers: {
+        Title: String(title || 'Mitch.pro').slice(0, 120),
+        Priority: 'default',
+        Tags: 'lock',
+        ...(url ? { Click: url } : {}),
+      },
+    });
+  } catch {}
+}
+
+// Fire-and-forget web push that also prunes subscriptions the push service
+// reports as gone (410/404), so dead devices don't wedge future notifications.
+async function sendWebPushClean(subs, email, payload) {
+  const key = normalizeEmail(email);
+  const sub = subs[key];
+  if (!sub || !VAPID_PUBLIC) return;
+  try {
+    await webpush.sendNotification(sub, JSON.stringify(payload));
+  } catch (e) {
+    if (e && (e.statusCode === 410 || e.statusCode === 404)) {
+      delete subs[key];
+      savePushSubscriptions(subs);
+    }
+  }
+}
+
 function isHex(value, exactLength = 0) {
   const text = String(value || '');
   return (!exactLength || text.length === exactLength) && text.length > 0 && text.length % 2 === 0 && /^[0-9a-f]+$/i.test(text);
@@ -2374,6 +2455,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/weather',
   '/api/school-calendar',
   '/api/school-info',
+  '/api/site-info',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -4962,13 +5044,11 @@ const RJUHSD_ORIGIN = 'https://rjuhsd.school';
 // remembers it; keys are stable slugs used by /api/school-info.
 const RJUHSD_SCHOOLS = {
   woodcreek:      { name: 'Woodcreek High School',      url: 'https://woodcreek.rjuhsd.us' },
-  antelope:       { name: 'Antelope High School',       url: 'https://antelope.rjuhsd.us' },
-  granitebay:     { name: 'Granite Bay High School',    url: 'https://granitebay.rjuhsd.us' },
-  oakmont:        { name: 'Oakmont High School',        url: 'https://oakmont.rjuhsd.us' },
   roseville:      { name: 'Roseville High School',      url: 'https://roseville.rjuhsd.us' },
   westpark:       { name: 'West Park High School',      url: 'https://westpark.rjuhsd.us' },
-  pathways:       { name: 'Roseville Pathways',         url: 'https://pathways.rjuhsd.us' },
-  rosevilleadult: { name: 'Roseville Adult School',     url: 'https://rosevilleadult.rjuhsd.us' },
+  granitebay:     { name: 'Granite Bay High School',    url: 'https://granitebay.rjuhsd.us' },
+  antelope:       { name: 'Antelope High School',       url: 'https://antelope.rjuhsd.us' },
+  oakmont:        { name: 'Oakmont High School',        url: 'https://oakmont.rjuhsd.us' },
 };
 const MITCH_ORIGIN  = 'https://mitch.pro';
 
@@ -5190,13 +5270,38 @@ function authSidFromCookies(cookies) {
   return cookies['studentId'] || cookies['id'] || '';
 }
 
+// Socket peer address per Request (Bun Requests are not extensible), captured
+// once in handleRequest so getRealIp() can distinguish a direct public peer
+// from a NAT'd/proxied private one.
+const PEER_IPS = new WeakMap();
+
+function capturePeerIp(req, server) {
+  try {
+    const rip = typeof server?.requestIP === 'function' ? server.requestIP(req) : null;
+    if (rip && rip.address) PEER_IPS.set(req, rip.address);
+  } catch {}
+}
+
 function getRealIp(req) {
-  // 1. Try X-Mitch-Client-IP
+  // 0. The actual socket peer. When it is public we are talking to the client
+  //    directly — trust it and ignore spoofable headers entirely.
+  const peer = PEER_IPS.get(req);
+  if (peer && validIpLiteral(peer) && !isPrivateIp(peer)) {
+    return peer;
+  }
+
+  // 1. Try X-Mitch-Client-IP (set by a trusted local proxy, if any)
   let ip = (req.headers.get('X-Mitch-Client-IP') || '').trim();
   if (ip && validIpLiteral(ip) && !isPrivateIp(ip)) {
     return ip;
   }
-  
+
+  // 1b. Cloudflare connecting IP, when traffic arrives via CF
+  ip = (req.headers.get('CF-Connecting-IP') || '').trim();
+  if (ip && validIpLiteral(ip) && !isPrivateIp(ip)) {
+    return ip;
+  }
+
   // 2. Try X-Forwarded-For (take the first non-private IP in the list)
   const xff = req.headers.get('X-Forwarded-For');
   if (xff) {
@@ -5214,10 +5319,14 @@ function getRealIp(req) {
     return ip;
   }
 
-  // Fallback to whatever X-Mitch-Client-IP has (even if private/loopback), then X-Real-IP, then 127.0.0.1
+  // Fallback: the real socket peer even when private (truthful — e.g. the
+  // router/NAT gateway), then whatever X-Mitch-Client-IP / X-Real-IP hold,
+  // then loopback.
+  if (peer && validIpLiteral(peer)) return peer;
+
   const rawMitch = (req.headers.get('X-Mitch-Client-IP') || '').trim();
   if (rawMitch && validIpLiteral(rawMitch)) return rawMitch;
-  
+
   const rawReal = (req.headers.get('X-Real-IP') || '').trim();
   if (rawReal && validIpLiteral(rawReal)) return rawReal;
 
@@ -6944,6 +7053,8 @@ const banOpenPaths = new Set([
 ]);
 
 async function handleRequest(req, server) {
+  if (server) capturePeerIp(req, server);
+
   const url    = new URL(req.url);
   const path   = url.pathname;
   const method = req.method;
@@ -7202,6 +7313,18 @@ async function handleRequest(req, server) {
       writeAppLog('warn', 'dayboard', `${path} unavailable`, { error: String(error) });
       return jsonResp(502, { error: path === '/api/weather' ? 'weather unavailable' : (path === '/api/school-info' ? 'school info unavailable' : 'school calendar unavailable') });
     }
+  }
+
+  // Public site identity (from data/site.json) so the rjuhsd hub and other
+  // pages can link to the right primary/alternate origins.
+  if (path === '/api/site-info' && method === 'GET') {
+    let site = {};
+    try { site = JSON.parse(readFileSync(join(DATA_DIR, 'site.json'), 'utf8')); } catch {}
+    return jsonResp(200, {
+      primary: String(site.primary || 'https://mitch.pro'),
+      alternate: String(site.alternate || ''),
+      name: String(site.name || 'mitch.pro'),
+    });
   }
 
   // Temporary local/LAN superuser session for pre-deploy testing.
@@ -11896,14 +12019,11 @@ function loadAllGamesList() {
 
         // Send push notification to the other user
         const subs = loadPushSubscriptions();
-        const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
-        if (sub && VAPID_PUBLIC) {
-          webpush.sendNotification(sub, JSON.stringify({
-            title: 'Friend Request Accepted',
-            body: `${maskEmail(email)} accepted your friend request!`,
-            url: notificationUrl('/'),
-          })).catch(() => {});
-        }
+        await sendWebPushClean(subs, friendEmail, {
+          title: 'Friend Request Accepted',
+          body: `${maskEmail(email)} accepted your friend request!`,
+          url: notificationUrl('/'),
+        });
 
         return jsonResp(200, { ok: true, status: 'accepted' });
       }
@@ -11924,14 +12044,11 @@ function loadAllGamesList() {
 
       // Notify the recipient via Web Push!
       const subs = loadPushSubscriptions();
-      const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
-      if (sub && VAPID_PUBLIC) {
-        webpush.sendNotification(sub, JSON.stringify({
-          title: 'New Friend Request',
-          body: `${maskEmail(email)} sent you a friend request!`,
-          url: notificationUrl('/'),
-        })).catch(() => {});
-      }
+      await sendWebPushClean(subs, friendEmail, {
+        title: 'New Friend Request',
+        body: `${maskEmail(email)} sent you a friend request!`,
+        url: notificationUrl('/'),
+      });
 
       return jsonResp(200, { ok: true, status: 'pending' });
     }
@@ -12002,14 +12119,11 @@ function loadAllGamesList() {
 
         // Notify the requester
         const subs = loadPushSubscriptions();
-        const sub = subs[friendEmail] || subs[normalizeEmail(friendEmail)];
-        if (sub && VAPID_PUBLIC) {
-          webpush.sendNotification(sub, JSON.stringify({
-            title: 'Friend Request Accepted',
-            body: `${maskEmail(email)} accepted your friend request!`,
-            url: notificationUrl('/'),
-          })).catch(() => {});
-        }
+        await sendWebPushClean(subs, friendEmail, {
+          title: 'Friend Request Accepted',
+          body: `${maskEmail(email)} accepted your friend request!`,
+          url: notificationUrl('/'),
+        });
       }
 
       return jsonResp(200, { ok: true });
@@ -13835,7 +13949,7 @@ function loadAllGamesList() {
         dmBySender[from].count++;
         if ((m.ts || 0) >= dmBySender[from].latestTs) {
           dmBySender[from].latestTs = m.ts || 0;
-          let textToShow = m.text || '';
+          let textToShow = dmContentOf(m).text || '';
           try {
             const parsed = JSON.parse(textToShow);
             if (parsed && parsed.e2e) {
@@ -14026,8 +14140,11 @@ function loadAllGamesList() {
             }
           }
           if (maxMsg) {
+            const lastContent = dmContentOf(maxMsg);
             lastMessage = {
               ...maxMsg,
+              text: lastContent.text,
+              image: lastContent.image !== undefined ? lastContent.image : maxMsg.image,
               from: maskEmail(maxMsg.from),
               to: maskEmail(maxMsg.to),
               readBy: (maxMsg.readBy || []).map(maskEmail)
@@ -14056,6 +14173,7 @@ function loadAllGamesList() {
           friendStatus,
           pubKey,
           legacyPubKey,
+          e2eReady: !!(e2eEntry && e2eEntry.pubKeyHex) || !!liveE2eKey,
           lastMessage,
           unread
         });
@@ -14342,11 +14460,14 @@ function loadAllGamesList() {
           return existingMsg.kind !== 'group' && normalizeEmail(existingMsg.to || '') === normalizeEmail(to);
         });
         if (existing) {
+          const dupContent = dmContentOf(existing);
           return jsonResp(200, {
             success: true,
             duplicate: true,
             message: {
               ...existing,
+              text: dupContent.text,
+              image: dupContent.image !== undefined ? dupContent.image : existing.image,
               from: maskEmail(existing.from),
               to: existing.to ? maskEmail(existing.to) : undefined,
               readBy: (existing.readBy || []).map(maskEmail),
@@ -14371,6 +14492,11 @@ function loadAllGamesList() {
         if (!groupMemberNorms.includes(normalizeEmail(senderEmail)))
           return jsonResp(403, { error: 'not a member' });
         msg = { kind: 'group', groupId, groupName: group.name, from: senderEmail, text, image: safeImage, replyTo, ts: Date.now(), readBy: [senderEmail] };
+        // Non-E2E messages never touch disk in the clear: seal text+image at rest.
+        if (!encryptedEnvelope) {
+          const sealed = sealAtRest({ text, image: safeImage });
+          if (sealed) { msg.text = sealed; msg.image = null; }
+        }
         if (clientId) msg.clientId = clientId;
         if (expiry > 0) {
           msg.expiresAt = Date.now() + expiry;
@@ -14384,17 +14510,24 @@ function loadAllGamesList() {
             if (memberNorm === normalizeEmail(senderEmail)) continue;
             const recActive = (memberNorm in e2eUsers) && (Date.now() - e2eUsers[memberNorm].last_seen < 30000);
             if (!recActive && subs[memberNorm]) {
-              webpush.sendNotification(subs[memberNorm], JSON.stringify({
+              await sendWebPushClean(subs, memberNorm, {
                 title: `${maskEmail(senderEmail)} in ${group.name}`,
                 body: notifyBody,
                 url: notificationUrl('/encrypt/'),
                 tag: `group-${groupId}-${msg.ts}`,
-              })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[memberNorm]; savePushSubscriptions(subs); } });
+              });
+            } else if (!recActive) {
+              ntfyNotify(memberNorm, `${maskEmail(senderEmail)} in ${group.name}`, notifyBody, notificationUrl('/encrypt/'));
             }
           }
         }
         } else {
         msg = { kind: 'dm', from: senderEmail, to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
+        // Non-E2E messages never touch disk in the clear: seal text+image at rest.
+        if (!encryptedEnvelope) {
+          const sealed = sealAtRest({ text, image: safeImage });
+          if (sealed) { msg.text = sealed; msg.image = null; }
+        }
         if (clientId) msg.clientId = clientId;
         if (expiry > 0) {
           msg.expiresAt = Date.now() + expiry;
@@ -14403,17 +14536,22 @@ function loadAllGamesList() {
         saveJson(DMS_FILE, pruneDms(dms));
         const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
         if (!recActive && VAPID_PUBLIC && subs[to]) {
-          webpush.sendNotification(subs[to], JSON.stringify({
+          await sendWebPushClean(subs, to, {
             title: `Message from ${maskEmail(senderEmail)}`,
             body:  getNotificationBody(text, safeImage),
             url:   notificationUrl('/encrypt/'),
             tag:   `dm-${msg.ts}`,
-          })).catch(e => { if (e.statusCode === 410 || e.statusCode === 404) { delete subs[to]; savePushSubscriptions(subs); } });
+          });
+        } else if (!recActive) {
+          ntfyNotify(to, `Message from ${maskEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl('/encrypt/'));
         }
         }
         addCoins(senderEmail, 2.0);
+        const wireContent = dmContentOf(msg);
         const maskedMsg = {
         ...msg,
+        text: wireContent.text,
+        image: wireContent.image !== undefined ? wireContent.image : msg.image,
         from: maskEmail(msg.from),
         to: maskEmail(msg.to),
         readBy: (msg.readBy || []).map(maskEmail)
@@ -14482,9 +14620,14 @@ function loadAllGamesList() {
         const last = msgs[0];
         const unread = msgs.filter(m => !(m.readBy || []).some(e => normalizeEmail(e) === normalizeEmail(myEmail))).length;
         let lastMessage = null;
+        let lastText = '';
         if (last) {
+          const lastContent = dmContentOf(last);
+          lastText = lastContent.text || (lastContent.image ? 'Sent an image' : '');
           lastMessage = {
             ...last,
+            text: lastContent.text,
+            image: lastContent.image !== undefined ? lastContent.image : last.image,
             from: maskEmail(last.from),
             to: last.to ? maskEmail(last.to) : undefined,
             readBy: (last.readBy || []).map(maskEmail)
@@ -14494,10 +14637,10 @@ function loadAllGamesList() {
           ...g,
           members: (g.members || []).map(publicRef),
           createdBy: maskEmail(g.createdBy),
-          lastText: last ? (last.text || (last.image ? 'Sent an image' : '')) : '', 
-          lastTs: last ? last.ts : g.createdAt, 
+          lastText,
+          lastTs: last ? last.ts : g.createdAt,
           lastMessage,
-          unread 
+          unread
         };
       });
 
@@ -14576,12 +14719,17 @@ function loadAllGamesList() {
         filtered = filtered.slice(-limit);
       }
 
-      const resultMsgs = filtered.map(m => ({
-        ...m,
-        from: maskEmail(m.from),
-        to: maskEmail(m.to),
-        readBy: (m.readBy || []).map(maskEmail)
-      }));
+      const resultMsgs = filtered.map(m => {
+        const c = dmContentOf(m);
+        return {
+          ...m,
+          text: c.text,
+          image: c.image !== undefined ? c.image : m.image,
+          from: maskEmail(m.from),
+          to: maskEmail(m.to),
+          readBy: (m.readBy || []).map(maskEmail)
+        };
+      });
       return jsonResp(200, { messages: resultMsgs, myEmail: maskEmail(myEmail) });
 
     }
@@ -14757,6 +14905,36 @@ function loadAllGamesList() {
     // /api/push/vapid-key
     if (path === '/api/push/vapid-key') {
       return jsonResp(200, { publicKey: VAPID_PUBLIC });
+    }
+
+    // /api/ntfy/topic — set or clear this account's ntfy.sh alert topic.
+    // POST { topic: 'my-topic-name' } to set, { topic: '' } to clear.
+    if (path === '/api/ntfy/topic' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const names = loadJson(NAMES_FILE, {});
+      const myEmail = (names[sid] || '').toLowerCase();
+      if (!myEmail) return jsonResp(403, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const topic = String(body.topic || '').trim();
+      if (topic && !/^[a-zA-Z0-9_-]{6,64}$/.test(topic)) {
+        return jsonResp(400, { error: 'topic must be 6-64 letters, numbers, dashes or underscores' });
+      }
+      const topics = loadNtfyTopics();
+      const key = normalizeEmail(myEmail);
+      if (topic) topics[key] = topic; else delete topics[key];
+      saveNtfyTopics(topics);
+      return jsonResp(200, { success: true, topic: topic || null });
+    }
+    if (path === '/api/ntfy/topic' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const names = loadJson(NAMES_FILE, {});
+      const myEmail = (names[sid] || '').toLowerCase();
+      if (!myEmail) return jsonResp(403, { error: 'email not found' });
+      return jsonResp(200, { topic: loadNtfyTopics()[normalizeEmail(myEmail)] || null });
     }
 
     if (path === '/api/e2e/users') {
@@ -18184,17 +18362,25 @@ function loadAllGamesList() {
 
     // rjuhsd.school — public school hub front door (same server, same
     // accounts; the bell schedule is public info so no gate here).
+    const rjuhsdHubHtml = () => {
+      let html = readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8');
+      // The hub is served raw (no auth gate), so the site-wide head injection
+      // below never runs for it — add the shared runtime pieces here instead.
+      if (!html.includes('/popup.js')) {
+        html = html.replace('</head>',
+          '<script src="/popup.js?v=3"></script>\n<script src="/pwa-install.js" defer></script>\n<link rel="manifest" href="/manifest.json">\n<meta name="theme-color" content="#05070d">\n</head>');
+      }
+      return html;
+    };
     if ((path === '/' || path === '/index.html') && isRjuhsdHost(req)) {
       try {
-        const html = readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8');
-        return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       } catch {}
     }
     // Preview of the school hub from mitch.pro (same page, no DNS needed).
     if (path === '/rjuhsd' || path === '/rjuhsd/' || path === '/rjuhsd/index.html') {
       try {
-        const html = readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8');
-        return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       } catch { return errResp(404, 'Not found'); }
     }
 
@@ -18347,6 +18533,8 @@ function loadAllGamesList() {
             injectStr += '<link rel="stylesheet" href="/encrypt-galaxy.css">\n';
           }
           if (!isEmbeddedGameRuntime) {
+            if (!raw.includes(Buffer.from('/popup.js'))) injectStr += '<script src="/popup.js?v=3"></script>\n';
+            if (!raw.includes(Buffer.from('/pwa-install.js'))) injectStr += '<script src="/pwa-install.js" defer></script>\n';
             if (!raw.includes(Buffer.from('name="viewport"'))) injectStr += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n';
             if (!raw.includes(Buffer.from('rel="manifest"'))) injectStr += '<link rel="manifest" href="/manifest.json">\n';
             if (!raw.includes(Buffer.from('rel="apple-touch-icon"'))) injectStr += '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">\n';
@@ -18454,6 +18642,7 @@ function loadAllGamesList() {
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
+      '/popup.js', '/pwa-install.js',
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
       '/bell/schedule.js',
       '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/home-burning-cherry.webp',

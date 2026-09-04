@@ -737,7 +737,7 @@
   async function giftPremium() {
     const targetEmail = document.getElementById('gift-target-email').value.trim();
     if (!targetEmail) return showStatus('Please enter a friend\'s email address', false);
-    if (!confirm(`Are you sure you want to gift Lifetime Premium to ${targetEmail}? This costs 5,000 coins and is limited to one gift ever.`)) return;
+    if (!(await customConfirm('Gift Premium', `Are you sure you want to gift Lifetime Premium to ${targetEmail}? This costs 5,000 coins and is limited to one gift ever.`))) return;
     const recaptcha_token = await getShopCaptchaToken('gift_premium');
     try {
       const r = await fetch('/api/coins/gift-premium', {

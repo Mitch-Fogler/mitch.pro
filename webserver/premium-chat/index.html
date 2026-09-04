@@ -241,7 +241,7 @@
     }
 
     async function directDeleteMessage(msgId, room) {
-        if (!confirm("Delete this message?")) return;
+        if (!(await customConfirm('Delete', "Delete this message?"))) return;
         const r = await fetch('/api/chat/delete-message', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -367,7 +367,7 @@
         modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
 
         document.getElementById('mod-action-del-msg').onclick = async () => {
-            if (!confirm("Delete this message?")) return;
+            if (!(await customConfirm('Delete', "Delete this message?"))) return;
             const r = await fetch('/api/chat/delete-message', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -383,7 +383,7 @@
         };
 
         document.getElementById('mod-action-del-user').onclick = async () => {
-            if (!confirm(`Delete all messages from ${name} in ${room} chat?`)) return;
+            if (!(await customConfirm('Delete All', `Delete all messages from ${name} in ${room} chat?`))) return;
             const r = await fetch('/api/chat/delete-user-messages', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -399,7 +399,7 @@
         };
 
         document.getElementById('mod-action-timeout').onclick = async () => {
-            const minutes = prompt("Timeout duration in minutes (e.g. 10):", "10");
+            const minutes = await customPrompt('Timeout', "Timeout duration in minutes (e.g. 10):", "10");
             if (!minutes) return;
             const secs = Number(minutes) * 60;
             if (isNaN(secs) || secs <= 0) return alert("Invalid duration");
@@ -418,7 +418,7 @@
         };
 
         document.getElementById('mod-action-ban').onclick = async () => {
-            const isBanned = confirm(`Do you want to ban ${name} from this chatroom? (Cancel to unban/toggle off)`);
+            const isBanned = await customConfirm('Room Ban', `Do you want to ban ${name} from this chatroom? (Cancel to unban/toggle off)`);
             const r = await fetch('/api/chat/ban-user', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
@@ -434,7 +434,7 @@
         };
 
         document.getElementById('mod-action-warn').onclick = async () => {
-            const message = prompt(`Enter warning text for ${name}:`);
+            const message = await customPrompt('Warn', `Enter warning text for ${name}:`);
             if (!message) return;
             const r = await fetch('/api/chat/warn-user', {
                 method: 'POST',

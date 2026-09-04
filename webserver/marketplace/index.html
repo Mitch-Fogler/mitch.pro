@@ -555,7 +555,7 @@
   // Action listeners
   async function buyListing(id) {
     if (actionBusy) return;
-    if (!confirm('Are you sure you want to purchase this listing? Coins will be deducted immediately.')) return;
+    if (!(await customConfirm('Purchase', 'Are you sure you want to purchase this listing? Coins will be deducted immediately.'))) return;
     actionBusy = true;
     try {
     const recaptcha_token = await getMarketplaceCaptchaToken('buy_listing');
@@ -573,7 +573,7 @@
   }
 
   async function appealListing(id) {
-    const reason = prompt('Please describe the dispute or why you are appealing this trade to admins:');
+    const reason = await customPrompt('Appeal Trade', 'Please describe the dispute or why you are appealing this trade to admins:');
     if (!reason || !reason.trim()) return;
     const r = await fetch('/api/marketplace/appeal', {
       method: 'POST',
@@ -587,7 +587,7 @@
   }
 
   async function cancelListing(id) {
-    if (actionBusy || !confirm('Cancel this listing? Any listed cosmetic will return to your inventory.')) return;
+    if (actionBusy || !(await customConfirm('Cancel Listing', 'Cancel this listing? Any listed cosmetic will return to your inventory.'))) return;
     actionBusy = true;
     try {
       const r = await fetch('/api/marketplace/cancel', { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ listingId:id }) });
@@ -603,7 +603,7 @@
     const confirmMsg = action === 'resolve' 
       ? 'Resolve trade: release virtual coins/items to respective parties?' 
       : 'Undo trade: refund coins back to buyer and restore any cosmetic items back to seller?';
-    if (!confirm(confirmMsg)) return;
+    if (!(await customConfirm(action === 'resolve' ? 'Resolve Trade' : 'Undo Trade', confirmMsg))) return;
 
     const r = await fetch('/api/marketplace/mediate', {
       method: 'POST',

@@ -7,7 +7,7 @@
   <meta name="description" content="The Roseville Joint Union High School District hub on rjuhsd.school: live bell schedule, weather, school events and news, public chat, and encrypted chat — powered by mitch.pro accounts.">
   <script src="/theme.js?v=9"></script>
   <link rel="stylesheet" href="/app.css">
-  <script src="/bell/schedule.js?v=1"></script>
+  <script src="/bell/schedule.js?v=2"></script>
   <style>
     :root { --whs-gold: #f59e0b; --whs-red: #ff5470; }
 
@@ -442,7 +442,7 @@
   </section>
 
   <div class="rj-grid">
-    <!-- Live bell schedule (Woodcreek) -->
+    <!-- Live bell schedule (per school) -->
     <section class="rj-card" id="bellCard" aria-label="Live bell schedule" style="display:none;">
       <div class="rj-card-head">
         <span class="rj-kicker"><i aria-hidden="true"></i> Live bell schedule</span>
@@ -515,13 +515,13 @@
       <span>End-to-end encrypted DMs and groups.</span>
       <span class="tag">E2E · synced</span>
     </a>
-    <a class="rj-app" href="https://mitch.pro/games/">
+    <a class="rj-app" href="https://mitch.pro/games/" data-site-link="alternate/games">
       <span class="ico" aria-hidden="true">🎮</span>
       <strong>Games</strong>
       <span>Hundreds of games on mitch.pro, no downloads.</span>
       <span class="tag">Play</span>
     </a>
-    <a class="rj-app" href="https://mitch.pro/">
+    <a class="rj-app" href="https://mitch.pro/" data-site-link="alternate/">
       <span class="ico" aria-hidden="true">🌐</span>
       <strong>mitch.pro</strong>
       <span>The full network: profile, friends, and more.</span>
@@ -533,8 +533,8 @@
     <span>© 2026 rjuhsd.school · student-run hub</span>
     <span>
       <a id="footSchoolSite" target="_blank" rel="noopener">Official school site</a>
-      &nbsp;·&nbsp; <a href="https://mitch.pro/faq.html">FAQ</a>
-      &nbsp;·&nbsp; <a href="https://mitch.pro/use-agreement.html">Use Agreement</a>
+      &nbsp;·&nbsp; <a href="https://mitch.pro/faq.html" data-site-link="alternate/faq.html">FAQ</a>
+      &nbsp;·&nbsp; <a href="https://mitch.pro/use-agreement.html" data-site-link="alternate/use-agreement.html">Use Agreement</a>
     </span>
   </footer>
 </main>
@@ -559,20 +559,29 @@
   // the same slugs work for /api/school-info).
   const SCHOOLS = {
     woodcreek:      { name: 'Woodcreek High School',   url: 'https://woodcreek.rjuhsd.us',      sub: 'woodcreek.rjuhsd.us' },
-    antelope:       { name: 'Antelope High School',    url: 'https://antelope.rjuhsd.us',       sub: 'antelope.rjuhsd.us' },
-    granitebay:     { name: 'Granite Bay High School', url: 'https://granitebay.rjuhsd.us',     sub: 'granitebay.rjuhsd.us' },
-    oakmont:        { name: 'Oakmont High School',     url: 'https://oakmont.rjuhsd.us',        sub: 'oakmont.rjuhsd.us' },
     roseville:      { name: 'Roseville High School',   url: 'https://roseville.rjuhsd.us',      sub: 'roseville.rjuhsd.us' },
     westpark:       { name: 'West Park High School',   url: 'https://westpark.rjuhsd.us',       sub: 'westpark.rjuhsd.us' },
-    pathways:       { name: 'Roseville Pathways',      url: 'https://pathways.rjuhsd.us',       sub: 'pathways.rjuhsd.us' },
-    rosevilleadult: { name: 'Roseville Adult School',  url: 'https://rosevilleadult.rjuhsd.us', sub: 'rosevilleadult.rjuhsd.us' },
+    granitebay:     { name: 'Granite Bay High School', url: 'https://granitebay.rjuhsd.us',     sub: 'granitebay.rjuhsd.us' },
+    antelope:       { name: 'Antelope High School',    url: 'https://antelope.rjuhsd.us',       sub: 'antelope.rjuhsd.us' },
+    oakmont:        { name: 'Oakmont High School',     url: 'https://oakmont.rjuhsd.us',        sub: 'oakmont.rjuhsd.us' },
   };
   const SCHOOL_KEY = 'rjuhsd_school';
 
-  let activeLunch = parseInt(localStorage.getItem('whs_lunch_preference'), 10) === 2 ? 2 : 1;
+  let activeLunch = 1;
   let activeOverride = null;
   let bellTimer = null;
   let currentSchool = null;
+
+  // Lunch preference is remembered per school.
+  function lunchStorageKey(key) { return 'rjuhsd_lunch_' + key; }
+  function storedLunch(key) {
+    try { return parseInt(localStorage.getItem(lunchStorageKey(key)), 10) === 2 ? 2 : 1; }
+    catch { return 1; }
+  }
+  // The bell data for the active school (falls back to Woodcreek's).
+  function schoolBell(key) {
+    return (window.RJUHSD_BELLS && window.RJUHSD_BELLS[key]) || (window.WHS_BELL && window.WHS_BELL.schedules);
+  }
 
   // ── School picker ──────────────────────────────────────────────────────────
   function storedSchool() {
@@ -619,9 +628,9 @@
     $('schoolLinks').appendChild(official);
     $('footSchoolSite').href = s.url;
 
-    // Woodcreek has the district's live bell schedule built in; other schools
-    // get a pointer to their own site's schedule.
-    if (key === 'woodcreek' && BELL) {
+    // Every school has its own live bell schedule now.
+    activeLunch = storedLunch(key);
+    if (schoolBell(key)) {
       $('bellCard').style.display = '';
       startBell();
     } else {
@@ -746,10 +755,10 @@
     }
   }
 
-  // ── Live bell schedule (Woodcreek) ─────────────────────────────────────────
+  // ── Live bell schedule (every school) ──────────────────────────────────────
   function setLunch(num) {
     activeLunch = num;
-    localStorage.setItem('whs_lunch_preference', num);
+    try { localStorage.setItem(lunchStorageKey(currentSchool), num); } catch {}
     $('lunch1Btn').classList.toggle('active', activeLunch === 1);
     $('lunch2Btn').classList.toggle('active', activeLunch === 2);
     renderToday();
@@ -758,7 +767,8 @@
   function scheduleFor(day) {
     if (activeOverride) return activeLunch === 1 ? activeOverride.schedule.lunch1 : activeOverride.schedule.lunch2;
     const d = (day === 0 || day === 6) ? 1 : day;
-    return BELL.schedules[d][activeLunch];
+    const scheds = schoolBell(currentSchool) || {};
+    return (scheds[d] && scheds[d][activeLunch]) || (scheds[1] && scheds[1][activeLunch]) || [];
   }
 
   function renderToday() {
@@ -846,7 +856,7 @@
   }
 
   function startBell() {
-    if (bellTimer || !BELL) return;
+    if (bellTimer || !BELL || !schoolBell(currentSchool)) return;
     checkOverrides().then(() => {
       $('lunch1Btn').classList.toggle('active', activeLunch === 1);
       $('lunch2Btn').classList.toggle('active', activeLunch === 2);
@@ -895,6 +905,23 @@
   }
 
   // ── Boot ───────────────────────────────────────────────────────────────────
+  // Point mitch.pro links at the network's current primary/alternate origin
+  // (data/site.json), so mirrors stay correct without republishing this page.
+  (async function applySiteLinks() {
+    try {
+      const r = await fetch('/api/site-info', { cache: 'no-store' });
+      if (!r.ok) return;
+      const site = await r.json();
+      const base = (site.alternate || site.primary || '').replace(/\/+$/, '');
+      if (!base) return;
+      document.querySelectorAll('[data-site-link]').forEach(a => {
+        const spec = a.getAttribute('data-site-link') || '';
+        const rest = spec.replace(/^alternate\/?/, '');
+        a.href = rest ? base + '/' + rest : base + '/';
+      });
+    } catch {}
+  })();
+
   loadWeather();
   checkAuth();
   applySchool(storedSchool() || 'woodcreek');

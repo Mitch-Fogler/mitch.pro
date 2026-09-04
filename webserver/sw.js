@@ -1,11 +1,13 @@
-const CACHE_NAME = 'mitch-pro-cache-v10';
+const CACHE_NAME = 'mitch-pro-cache-v11';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
   '/apple-touch-icon.png',
   '/icon-192.png',
   '/icon-512.png',
-  '/relaunch.css'
+  '/relaunch.css',
+  '/popup.js',
+  '/pwa-install.js'
 ];
 
 self.addEventListener('install', (e) => {

@@ -1,4 +1,5 @@
-// popup.js - Reusable premium custom dialog confirmation/alert system
+// popup.js - Reusable premium custom dialog system (alert / confirm / prompt).
+// Injected site-wide except games. All dialogs return Promises and escape HTML.
 
 (function() {
   const styles = `
@@ -47,6 +48,28 @@
       line-height: 1.6;
       color: #94a3b8;
       margin-bottom: 24px;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+    .custom-popup-msg.no-margin {
+      margin-bottom: 14px;
+    }
+    .custom-popup-input {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      color: #e2e8f0;
+      background: rgba(8, 10, 15, 0.6);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 9px;
+      outline: none;
+      margin-bottom: 24px;
+      transition: border-color 0.15s ease;
+    }
+    .custom-popup-input:focus {
+      border-color: #2dd4bf;
     }
     .custom-popup-actions {
       display: flex;
@@ -85,53 +108,129 @@
     }
   `;
 
-  // Inject styles if not already present
-  if (!document.getElementById('custom-popup-styles')) {
+  function injectStyles() {
+    if (document.getElementById('custom-popup-styles')) return;
     const styleEl = document.createElement('style');
     styleEl.id = 'custom-popup-styles';
     styleEl.textContent = styles;
     document.head.appendChild(styleEl);
   }
 
-  // Define global confirmation dialog function
-  window.customConfirm = function(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
+  function esc(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Shared overlay builder. rows is HTML the caller builds from escaped parts.
+  function buildOverlay(rows, opts) {
+    opts = opts || {};
     return new Promise((resolve) => {
       const overlay = document.createElement('div');
       overlay.className = 'custom-popup-overlay';
-      
+
       overlay.innerHTML = `
         <div class="custom-popup-box">
-          <div class="custom-popup-title">${title}</div>
-          <div class="custom-popup-msg">${message}</div>
-          <div class="custom-popup-actions">
-            <button class="custom-popup-btn custom-popup-btn-cancel" id="popup-cancel-btn">${cancelText}</button>
-            <button class="custom-popup-btn custom-popup-btn-confirm" id="popup-confirm-btn">${confirmText}</button>
-          </div>
+          <div class="custom-popup-title">${esc(opts.title || 'Notice')}</div>
+          ${rows}
+          <div class="custom-popup-actions"></div>
         </div>
       `;
 
+      const actions = overlay.querySelector('.custom-popup-actions');
       document.body.appendChild(overlay);
-      
-      // Trigger animations
-      requestAnimationFrame(() => {
-        overlay.classList.add('show');
-      });
+
+      requestAnimationFrame(() => overlay.classList.add('show'));
 
       const cleanup = (val) => {
         overlay.classList.remove('show');
-        setTimeout(() => {
-          overlay.remove();
-        }, 200);
+        setTimeout(() => overlay.remove(), 200);
+        document.removeEventListener('keydown', onKey, true);
         resolve(val);
       };
 
-      overlay.querySelector('#popup-cancel-btn').onclick = () => cleanup(false);
-      overlay.querySelector('#popup-confirm-btn').onclick = () => cleanup(true);
-      
+      function addBtn(text, cls, fn) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'custom-popup-btn ' + cls;
+        b.textContent = text;
+        b.onclick = fn;
+        actions.appendChild(b);
+        return b;
+      }
+
+      function onKey(e) {
+        if (e.key === 'Escape') { e.stopPropagation(); cleanup(opts.escValue); }
+        else if (e.key === 'Enter' && opts.enterConfirm) {
+          const input = overlay.querySelector('.custom-popup-input');
+          if (input && document.activeElement === input) {
+            e.stopPropagation();
+            cleanup(input.value);
+          }
+        }
+      }
+      document.addEventListener('keydown', onKey, true);
+
+      if (opts.onOpen) opts.onOpen(overlay, addBtn, cleanup);
+
       // Close on clicking outside the box
       overlay.onclick = (e) => {
-        if (e.target === overlay) cleanup(false);
+        if (e.target === overlay) cleanup(opts.escValue);
       };
     });
+  }
+
+  window.customAlert = function(title, message, okText) {
+    injectStyles();
+    return buildOverlay(`<div class="custom-popup-msg">${esc(message)}</div>`, {
+      title,
+      onOpen(overlay, addBtn, cleanup) {
+        const ok = addBtn(okText || 'OK', 'custom-popup-btn-confirm', () => cleanup(true));
+        setTimeout(() => ok.focus(), 60);
+      }
+    });
+  };
+
+  window.customConfirm = function(title, message, confirmText = 'Confirm', cancelText = 'Cancel') {
+    injectStyles();
+    return buildOverlay(`<div class="custom-popup-msg">${esc(message)}</div>`, {
+      title,
+      escValue: false,
+      onOpen(overlay, addBtn, cleanup) {
+        addBtn(cancelText, 'custom-popup-btn-cancel', () => cleanup(false));
+        const ok = addBtn(confirmText, 'custom-popup-btn-confirm', () => cleanup(true));
+        setTimeout(() => ok.focus(), 60);
+      }
+    });
+  };
+
+  window.customPrompt = function(title, message, defaultValue = '') {
+    injectStyles();
+    return buildOverlay(
+      `<div class="custom-popup-msg no-margin">${esc(message)}</div>` +
+      `<input type="text" class="custom-popup-input" autocomplete="off" spellcheck="false">`,
+      {
+        title,
+        escValue: null,
+        enterConfirm: true,
+        onOpen(overlay, addBtn, cleanup) {
+          const input = overlay.querySelector('.custom-popup-input');
+          input.value = defaultValue == null ? '' : String(defaultValue);
+          addBtn('Cancel', 'custom-popup-btn-cancel', () => cleanup(null));
+          addBtn('OK', 'custom-popup-btn-confirm', () => cleanup(input.value));
+          setTimeout(() => { input.focus(); input.select(); }, 60);
+        }
+      }
+    );
+  };
+
+  // Native alert() has no useful return value anywhere, so it can be shimmed
+  // globally. confirm()/prompt() are synchronous and stay native unless a page
+  // has been converted to the custom*() equivalents.
+  window.alert = function(msg) {
+    return window.customAlert('Notice', String(msg == null ? '' : msg));
   };
 })();

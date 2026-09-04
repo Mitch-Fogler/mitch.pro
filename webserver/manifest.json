@@ -1,14 +1,16 @@
 {
   "name": "Mitch.pro",
   "short_name": "Mitch.pro",
-  "description": "Games, secure chat, community tools, and more from mitch.pro.",
+  "description": "Games, end-to-end encrypted chat, bell schedules, and community tools — installable and works offline.",
   "id": "/",
-  "start_url": "/",
+  "start_url": "/?utm_source=pwa",
   "scope": "/",
   "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
   "background_color": "#10140c",
   "theme_color": "#10140c",
   "orientation": "any",
+  "categories": ["social", "games", "productivity"],
   "icons": [
     {
       "src": "/icon-192.png",
@@ -21,6 +23,35 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Encrypted Chat",
+      "short_name": "Chat",
+      "description": "Open end-to-end encrypted messages",
+      "url": "/encrypt/?utm_source=pwa-shortcut",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Bell Schedule",
+      "short_name": "Bells",
+      "description": "Live RJUHSD bell schedules",
+      "url": "/bell/?utm_source=pwa-shortcut",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Games",
+      "short_name": "Games",
+      "description": "Play hundreds of games",
+      "url": "/games/?utm_source=pwa-shortcut",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

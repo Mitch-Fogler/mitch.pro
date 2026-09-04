@@ -17,7 +17,7 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=10', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
+      navigator.serviceWorker.register('/sw.js?v=11', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
     });
   }
 </script>
@@ -1606,7 +1606,7 @@ async function cancelFriendRequest(friendEmail) {
 }
 
 async function removeFriend(friendEmail) {
-  if (!confirm('Are you sure you want to remove this friend?')) return;
+  if (!(await customConfirm('Remove Friend', 'Are you sure you want to remove this friend?'))) return;
   try {
     const r = await fetch('/api/friends/remove', {
       method: 'POST',
@@ -1821,7 +1821,7 @@ async function controlVmPower() {
 async function resetFreeVm() {
   const btn = document.getElementById('vm-reset-btn');
   if (!btn) return;
-  if (!confirm('Are you sure you want to reset your sandbox? This will delete your current container and files, and create a fresh one immediately.')) {
+  if (!(await customConfirm('Reset Sandbox', 'Are you sure you want to reset your sandbox? This will delete your current container and files, and create a fresh one immediately.'))) {
     return;
   }
   
