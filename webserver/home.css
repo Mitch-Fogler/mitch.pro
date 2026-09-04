@@ -15,6 +15,7 @@
   --home-display: var(--t-display, "Space Grotesk"), var(--t-font, "DM Sans"), system-ui, sans-serif;
   --home-label-size: 0.66rem;
   --home-maxw: 1020px;
+  --home-wallpaper-opacity: 0.45;
 }
 
 /* --------------------------------------------------------------------------
@@ -39,7 +40,7 @@ html body::before {
   inset: 0;
   z-index: -1;
   background: url(/home-burning-cherry.webp) center / cover no-repeat;
-  opacity: 0.45;
+  opacity: var(--home-wallpaper-opacity, 0.45);
   filter: blur(26px);
   transform: scale(1.15);
   pointer-events: none;
@@ -847,7 +848,7 @@ html.theme-light .home-bell-cta { color: #ffffff; }
 
 /* Quick controls */
 .home-toolbar { display: flex; flex-direction: column; }
-#abToggleBar, #preferences-card {
+#abToggleBar, #preferences-card, #home-background-control {
   display: flex;
   align-items: center;
   gap: 0.55rem;
@@ -1522,4 +1523,26 @@ body.home .home-search-box:not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#
 }
 body.home #home-search-clear:not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10) {
   border: none !important;
+}
+.home-background-range {
+  width: 82px;
+  min-width: 82px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  accent-color: var(--t-ac);
+  cursor: pointer;
+}
+#mainpage #home-background-reset {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  color: var(--t-fg2);
+  background: transparent;
+  font-size: 1rem;
+}
+#mainpage #home-background-reset:hover { color: var(--t-fg); background: var(--t-bg2); }
+@media (max-width: 520px) {
+  .home-background-range { width: 70px; min-width: 70px; }
 }
