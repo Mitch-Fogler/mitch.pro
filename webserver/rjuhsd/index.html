@@ -7,7 +7,7 @@
   <meta name="description" content="The Roseville Joint Union High School District hub on rjuhsd.school: live bell schedule, weather, school events and news, public chat, and encrypted chat — powered by mitch.pro accounts.">
   <script src="/theme.js?v=9"></script>
   <link rel="stylesheet" href="/app.css">
-  <script src="/bell/schedule.js?v=2"></script>
+  <script src="/bell/schedule.js?v=3"></script>
   <style>
     :root { --whs-gold: #f59e0b; --whs-red: #ff5470; }
 
@@ -199,6 +199,10 @@
       font-weight: 750;
       cursor: pointer;
       transition: color var(--t-motion, .15s) ease, border-color var(--t-motion, .15s) ease, background var(--t-motion, .15s) ease;
+    }
+    .rj-lunch button.rj-lunch-off {
+      opacity: 0.4;
+      pointer-events: none;
     }
     .rj-lunch button.active {
       color: var(--t-ac);
@@ -447,8 +451,8 @@
       <div class="rj-card-head">
         <span class="rj-kicker"><i aria-hidden="true"></i> Live bell schedule</span>
         <div class="rj-lunch" role="group" aria-label="Lunch assignment">
-          <button id="lunch1Btn" class="active" type="button" onclick="setLunch(1)">Lunch 1</button>
-          <button id="lunch2Btn" type="button" onclick="setLunch(2)">Lunch 2</button>
+          <button id="lunch1Btn" class="active" type="button">Lunch 1</button>
+          <button id="lunch2Btn" type="button">Lunch 2</button>
         </div>
       </div>
       <div class="rj-now">
@@ -535,6 +539,7 @@
       <a id="footSchoolSite" target="_blank" rel="noopener">Official school site</a>
       &nbsp;·&nbsp; <a href="https://mitch.pro/faq.html" data-site-link="alternate/faq.html">FAQ</a>
       &nbsp;·&nbsp; <a href="https://mitch.pro/use-agreement.html" data-site-link="alternate/use-agreement.html">Use Agreement</a>
+      &nbsp;·&nbsp; <a href="https://github.com/Mitch-Fogler/mitch.pro" target="_blank" rel="noopener" title="mitch.pro is open source — view the code yourself">Open source</a>
     </span>
   </footer>
 </main>
@@ -632,6 +637,7 @@
     activeLunch = storedLunch(key);
     if (schoolBell(key)) {
       $('bellCard').style.display = '';
+      updateLunchToggle();
       startBell();
     } else {
       $('bellCard').style.display = 'none';
@@ -756,12 +762,31 @@
   }
 
   // ── Live bell schedule (every school) ──────────────────────────────────────
+  // Lunch buttons bind here (not inline onclick) — the page script is an IIFE,
+  // so inline handlers can't see setLunch and clicking silently did nothing.
+  $('lunch1Btn').addEventListener('click', function () { setLunch(1); });
+  $('lunch2Btn').addEventListener('click', function () { setLunch(2); });
+
   function setLunch(num) {
     activeLunch = num;
     try { localStorage.setItem(lunchStorageKey(currentSchool), num); } catch {}
     $('lunch1Btn').classList.toggle('active', activeLunch === 1);
     $('lunch2Btn').classList.toggle('active', activeLunch === 2);
     renderToday();
+  }
+
+  // Dim the toggle when today's schedule has a single lunch (both columns
+  // identical) so "nothing happens" at least looks intentional.
+  function updateLunchToggle() {
+    const scheds = schoolBell(currentSchool) || {};
+    const d = (new Date().getDay() === 0 || new Date().getDay() === 6) ? 1 : new Date().getDay();
+    const one = (scheds[d] && scheds[d][1]) || (scheds[1] && scheds[1][1]) || [];
+    const two = (scheds[d] && scheds[d][2]) || (scheds[1] && scheds[1][2]) || [];
+    const same = JSON.stringify(one) === JSON.stringify(two);
+    $('lunch1Btn').classList.toggle('rj-lunch-off', same);
+    $('lunch2Btn').classList.toggle('rj-lunch-off', same);
+    $('lunch1Btn').title = same ? 'Single lunch today' : '';
+    $('lunch2Btn').title = same ? 'Single lunch today' : '';
   }
 
   function scheduleFor(day) {
@@ -860,6 +885,7 @@
     checkOverrides().then(() => {
       $('lunch1Btn').classList.toggle('active', activeLunch === 1);
       $('lunch2Btn').classList.toggle('active', activeLunch === 2);
+      updateLunchToggle();
       renderToday();
       tick();
       bellTimer = setInterval(tick, 1000);

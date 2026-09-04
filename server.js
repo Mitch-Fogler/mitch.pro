@@ -290,7 +290,6 @@ const NTFY_TOPIC = (process.env.NTFY_TOPIC || '').trim();
 const SUPPORT_USER = (process.env.SUPPORT_USER || '').trim();
 const SUPPORT_PASS = (process.env.SUPPORT_PASS || '').trim();
 const GOOGLE_CLIENT_ID = '561391673402-eufe4daah7oinpq0ddb7v2l6gspr01gh.apps.googleusercontent.com';
-const NOTIFICATION_ORIGIN = 'https://mitchdog.com';
 
 const SEND_SCRIPT           = join(BASE, 'mail', 'send_email.js');
 const NOREPLY_SCRIPT        = join(BASE, 'mail', 'noreply_send.js');
@@ -1758,9 +1757,14 @@ function unsubscribeUrl(email) {
   return `${s.alternate}/unsubscribe/${token}`;
 }
 
+// Web-push payload URLs are RELATIVE paths: the service worker resolves them
+// against the origin the subscription lives on (mitch.pro, rjuhsd.school PWA,
+// or any mirror), so clicking a notification never bounces the rjuhsd PWA over
+// to another host that demands a fresh login. ntfyNotify absolutizes for its
+// own Click header.
 function notificationUrl(path = '/') {
   const clean = String(path || '/');
-  return NOTIFICATION_ORIGIN + (clean.startsWith('/') ? clean : '/' + clean);
+  return clean.startsWith('/') ? clean : '/' + clean;
 }
 
 const PROFILE_IMAGE_MIME_RE = /^image\/(?:png|jpe?g|webp|gif)$/i;
@@ -1925,6 +1929,12 @@ async function ntfyNotify(email, title, body, url) {
   try {
     const topic = loadNtfyTopics()[normalizeEmail(email)];
     if (!topic || !/^[a-zA-Z0-9_-]{6,64}$/.test(topic)) return;
+    // ntfy's Click header must be absolute (it opens in a browser), so resolve
+    // relative notification paths against the configured primary origin.
+    let clickUrl = String(url || '');
+    if (clickUrl.startsWith('/')) {
+      try { clickUrl = new URL(site().primary).origin + clickUrl; } catch {}
+    }
     await fetch('https://ntfy.sh/' + topic, {
       method: 'POST',
       body: String(body || '').slice(0, 400),
@@ -1932,7 +1942,7 @@ async function ntfyNotify(email, title, body, url) {
         Title: String(title || 'Mitch.pro').slice(0, 120),
         Priority: 'default',
         Tags: 'lock',
-        ...(url ? { Click: url } : {}),
+        ...(clickUrl ? { Click: clickUrl } : {}),
       },
     });
   } catch {}
@@ -5088,6 +5098,17 @@ function ssoBackAllowed(rawBack, req) {
   if (h === RJUHSD_DOMAIN || h.endsWith('.' + RJUHSD_DOMAIN)) return back;
   if (isMitchSsoHost(h)) return back;
   return null;
+}
+
+// Mirror the client's normEmail for E2E localStorage scoping: chat pages key
+// their cached private JWK under the student.mitch.pro form of the address.
+function e2eClientStorageEmail(email) {
+  let e = String(email || '').toLowerCase().trim();
+  const at = e.lastIndexOf('@');
+  if (at < 0) return e;
+  const local = e.slice(0, at).split('+')[0].replace(/\./g, '');
+  const domain = e.slice(at + 1) === 'student.rjuhsd.us' ? 'student.mitch.pro' : e.slice(at + 1);
+  return local + '@' + domain;
 }
 
 // Single-use, 90-second tokens that carry a verified identity across the two
@@ -10062,7 +10083,34 @@ async function handleRequest(req, server) {
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
               dest.searchParams.set('token', token);
               dest.searchParams.set('back', back.toString());
-              return new Response(null, { status: 302, headers: { Location: dest.toString() } });
+              // localStorage is per-origin, so the school site can't see the
+              // Secure Chat identity cached on mitch.pro. This hop page runs
+              // on mitch.pro first, picks up the device's cached private key,
+              // and POSTs it with the token so the exchange can hand it to the
+              // school origin — Secure Chat then needs no second password
+              // prompt after an SSO sign-in. It's the user's own key going
+              // from their own browser to their own device over HTTPS.
+              const jwkKey = '_e2e_private_jwk_v3:' + encodeURIComponent(e2eClientStorageEmail(email));
+              const hopHtml =
+                '<!doctype html><meta charset="utf-8"><title>Signing in…</title>\n' +
+                '<script>\n' +
+                '(function(){\n' +
+                '  var jwk = "";\n' +
+                '  try {\n' +
+                `    jwk = localStorage.getItem(${JSON.stringify(jwkKey)}) || localStorage.getItem("_e2e_private_jwk") || "";\n` +
+                '  } catch (e) {}\n' +
+                '  var f = document.createElement("form");\n' +
+                `  f.action = ${JSON.stringify(dest.toString())};\n` +
+                '  f.method = "POST";\n' +
+                '  function add(n, v) { var i = document.createElement("input"); i.type = "hidden"; i.name = n; i.value = v; f.appendChild(i); }\n' +
+                `  add("token", ${JSON.stringify(token)});\n` +
+                `  add("back", ${JSON.stringify(back.toString())});\n` +
+                '  if (jwk) add("e2ePrivateJwk", jwk);\n' +
+                '  document.body.appendChild(f);\n' +
+                '  f.submit();\n' +
+                '})();\n' +
+                '<\/script>\n';
+              return new Response(hopHtml, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
             }
             // Bound for mitch.pro — the session already works there.
             return new Response(null, { status: 302, headers: { Location: back.toString() } });
@@ -10087,11 +10135,18 @@ async function handleRequest(req, server) {
       }
     }
 
-    if (path === '/api/sso/exchange' && method === 'GET') {
+    if (path === '/api/sso/exchange' && (method === 'GET' || method === 'POST')) {
       try {
         // The token only lands a session on the school domain.
         if (!isRjuhsdHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
-        const rec = consumeSsoBridgeToken(url.searchParams.get('token'));
+        // The bridge hop page arrives as a form POST carrying the device's
+        // cached Secure Chat private JWK alongside the token.
+        let params = url.searchParams;
+        if (method === 'POST') {
+          const form = new URLSearchParams(await req.text());
+          params = form;
+        }
+        const rec = consumeSsoBridgeToken(params.get('token'));
         if (!rec) {
           return new Response(null, { status: 302, headers: { Location: '/?sso=expired' } });
         }
@@ -10100,15 +10155,43 @@ async function handleRequest(req, server) {
         }
         ensureProfileDefaults(rec.email, rec.email);
         const session = createAuthSession(rec.email, rec.email, req);
-        const back = ssoBackAllowed(url.searchParams.get('back') || '/', req);
+        const back = ssoBackAllowed(params.get('back') || '/', req);
         const selfOrigin = 'https://' + (requestHost(req) || RJUHSD_DOMAIN);
         const dest = back && (back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN)) ? back : new URL(selfOrigin + '/');
-        const headers = new Headers({ Location: dest.toString() });
+        const headers = new Headers();
         headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
         headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
         headers.append('Set-Cookie', clearCookieHeader('password', req, false));
         headers.append('Set-Cookie', clearCookieHeader('id', req, false));
         writeAppLog('info', 'sso', 'Cross-domain sign-in', { email: rec.email, host: requestHost(req), ip });
+
+        // A private JWK came along: validate it, then cache it in this
+        // origin's localStorage before continuing to the destination, so the
+        // Secure Chat page unlocks without a second password prompt.
+        let jwkJson = null;
+        const rawJwk = String(params.get('e2ePrivateJwk') || '').slice(0, 8192);
+        if (rawJwk) {
+          try {
+            const cand = JSON.parse(rawJwk);
+            if (cand && cand.kty === 'EC' && cand.crv === 'P-256' && cand.x && cand.y && cand.d) {
+              jwkJson = { kty: cand.kty, crv: cand.crv, x: cand.x, y: cand.y, d: cand.d, ext: true };
+            }
+          } catch {}
+        }
+        if (jwkJson && method === 'POST') {
+          const storeKey = '_e2e_private_jwk_v3:' + encodeURIComponent(e2eClientStorageEmail(rec.email));
+          headers.set('Content-Type', 'text/html; charset=utf-8');
+          const settleHtml =
+            '<!doctype html><meta charset="utf-8"><title>Signed in</title>\n' +
+            '<script>\n' +
+            '(function(){\n' +
+            '  try { localStorage.setItem(' + JSON.stringify(storeKey) + ', ' + JSON.stringify(JSON.stringify(jwkJson)) + '); } catch (e) {}\n' +
+            `  location.replace(${JSON.stringify(dest.toString())});\n` +
+            '})();\n' +
+            '<\/script>\n';
+          return new Response(settleHtml, { status: 200, headers });
+        }
+        headers.set('Location', dest.toString());
         return new Response(null, { status: 302, headers });
       } catch (e) {
         console.error('[sso-exchange] failed:', e);
@@ -14519,7 +14602,7 @@ function loadAllGamesList() {
               await sendWebPushClean(subs, memberNorm, {
                 title: `${maskEmail(senderEmail)} in ${group.name}`,
                 body: notifyBody,
-                url: notificationUrl('/encrypt/'),
+                url: notificationUrl('/encrypt/?group=' + encodeURIComponent(groupId)),
                 tag: `group-${groupId}-${msg.ts}`,
               });
             } else if (!recActive) {
@@ -14545,7 +14628,8 @@ function loadAllGamesList() {
           await sendWebPushClean(subs, to, {
             title: `Message from ${maskEmail(senderEmail)}`,
             body:  getNotificationBody(text, safeImage),
-            url:   notificationUrl('/encrypt/'),
+            // Deep-link: /encrypt/?to=<sender> opens the conversation directly.
+            url:   notificationUrl('/encrypt/?to=' + encodeURIComponent(senderEmail)),
             tag:   `dm-${msg.ts}`,
           });
         } else if (!recActive) {
@@ -18368,16 +18452,52 @@ function loadAllGamesList() {
 
     // rjuhsd.school — public school hub front door (same server, same
     // accounts; the bell schedule is public info so no gate here).
-    const rjuhsdHubHtml = () => {
-      let html = readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8');
-      // The hub is served raw (no auth gate), so the site-wide head injection
-      // below never runs for it — add the shared runtime pieces here instead.
+    // Shared head tags for pages served outside the main injection block
+    // (the rjuhsd hub and every rjuhsd-school page are served raw).
+    const injectSharedHead = (html) => {
       if (!html.includes('/popup.js')) {
         html = html.replace('</head>',
           '<script src="/popup.js?v=3"></script>\n<script src="/pwa-install.js" defer></script>\n<link rel="manifest" href="/manifest.json">\n<meta name="theme-color" content="#05070d">\n</head>');
       }
+      if (html.includes('name="viewport"') && !html.includes('viewport-fit')) {
+        html = html.replace(
+          /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
+          (m, a, content, c) => a + content + ', viewport-fit=cover' + c);
+      }
       return html;
     };
+    // The reCAPTCHA v3 loader + window.getCaptchaToken — shared between the
+    // main site injection below and the rjuhsd-school page server, which
+    // bypasses it (public-chat and encrypt call getCaptchaToken on that host).
+    const recaptchaLoaderStr = (recaptchaHost, rcKey) =>
+      `<script src="https://${recaptchaHost}/recaptcha/api.js?render=${rcKey}" async defer></script>\n` +
+      `<script>\n` +
+      `  window.getCaptchaToken = function(action) {\n` +
+      `    return new Promise(function(resolve) {\n` +
+      `      let attempts = 0;\n` +
+      `      function checkAndExecute() {\n` +
+      `        if (window.grecaptcha && window.grecaptcha.ready) {\n` +
+      `          grecaptcha.ready(function() {\n` +
+      `            grecaptcha.execute('${rcKey}', {action: action || 'page_view'}).then(function(token) {\n` +
+      `              resolve(token);\n` +
+      `            }).catch(function() {\n` +
+      `              resolve(null);\n` +
+      `            });\n` +
+      `          });\n` +
+      `        } else {\n` +
+      `          attempts++;\n` +
+      `          if (attempts < 50) {\n` +
+      `            setTimeout(checkAndExecute, 100);\n` +
+      `          } else {\n` +
+      `            resolve(null);\n` +
+      `          }\n` +
+      `        }\n` +
+      `      }\n` +
+      `      checkAndExecute();\n` +
+      `    });\n` +
+      `  };\n` +
+      `</script>\n`;
+    const rjuhsdHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isRjuhsdHost(req)) {
       try {
         return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
@@ -18436,7 +18556,16 @@ function loadAllGamesList() {
           }
         }
         try {
-          const html = readFileSync(file, 'utf8');
+          let html = injectSharedHead(readFileSync(file, 'utf8'));
+          // reCAPTCHA loader: rjuhsd.school pages bypass the main injection
+          // below, so add it here or getCaptchaToken never exists and chat
+          // sends fail with "reCAPTCHA failed". Mirrors the main block's
+          // host logic — rjuhsd.school is never the primary host.
+          const rcKey = (process.env.RECAPTCHA_SITE_KEY || '').trim();
+          const recaptchaHost = (process.env.RECAPTCHA_SCRIPT_HOST || 'www.recaptcha.net').trim();
+          if (rcKey && !html.includes('recaptcha/api.js')) {
+            html = html.replace('</head>', recaptchaLoaderStr(recaptchaHost, rcKey) + '</head>');
+          }
           return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         } catch { return errResp(404, null, null); }
       }
@@ -18541,7 +18670,16 @@ function loadAllGamesList() {
           if (!isEmbeddedGameRuntime) {
             if (!raw.includes(Buffer.from('/popup.js'))) injectStr += '<script src="/popup.js?v=3"></script>\n';
             if (!raw.includes(Buffer.from('/pwa-install.js'))) injectStr += '<script src="/pwa-install.js" defer></script>\n';
-            if (!raw.includes(Buffer.from('name="viewport"'))) injectStr += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n';
+            if (!raw.includes(Buffer.from('name="viewport"'))) {
+              injectStr += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n';
+            } else if (!raw.includes(Buffer.from('viewport-fit'))) {
+              // Page has its own viewport meta without viewport-fit — extend it
+              // so safe-area insets report correctly in the installed PWA
+              // (otherwise the Dynamic Island area stays black/unmanaged).
+              raw = Buffer.from(raw.toString('utf8').replace(
+                /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
+                (m, a, content, c) => a + content + ', viewport-fit=cover' + c));
+            }
             if (!raw.includes(Buffer.from('rel="manifest"'))) injectStr += '<link rel="manifest" href="/manifest.json">\n';
             if (!raw.includes(Buffer.from('rel="apple-touch-icon"'))) injectStr += '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">\n';
             if (!raw.includes(Buffer.from('name="theme-color"'))) injectStr += '<meta name="theme-color" content="#05070d">\n';
@@ -18559,33 +18697,7 @@ function loadAllGamesList() {
           if (loadAnalytics || loadRecaptcha) {
             injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
             if (loadRecaptcha) {
-              injectStr += `<script src="https://${recaptchaHost}/recaptcha/api.js?render=${rcKey}" async defer></script>\n`;
-              injectStr += `<script>\n` +
-                           `  window.getCaptchaToken = function(action) {\n` +
-                           `    return new Promise(function(resolve) {\n` +
-                           `      let attempts = 0;\n` +
-                           `      function checkAndExecute() {\n` +
-                           `        if (window.grecaptcha && window.grecaptcha.ready) {\n` +
-                           `          grecaptcha.ready(function() {\n` +
-                           `            grecaptcha.execute('${rcKey}', {action: action || 'page_view'}).then(function(token) {\n` +
-                           `              resolve(token);\n` +
-                           `            }).catch(function() {\n` +
-                           `              resolve(null);\n` +
-                           `            });\n` +
-                           `          });\n` +
-                           `        } else {\n` +
-                           `          attempts++;\n` +
-                           `          if (attempts < 50) {\n` +
-                           `            setTimeout(checkAndExecute, 100);\n` +
-                           `          } else {\n` +
-                           `            resolve(null);\n` +
-                           `          }\n` +
-                           `        }\n` +
-                           `      }\n` +
-                           `      checkAndExecute();\n` +
-                           `    });\n` +
-                           `  };\n` +
-                           `</script>\n`;
+              injectStr += recaptchaLoaderStr(recaptchaHost, rcKey);
             }
             if (loadAnalytics) {
               injectStr += `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaId}"></script>\n` +

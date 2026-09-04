@@ -20,15 +20,15 @@
     }
     .custom-popup-box {
       width: min(420px, calc(100vw - 32px));
-      background: linear-gradient(180deg, rgba(25, 30, 45, 0.92), rgba(15, 18, 28, 0.96));
-      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: linear-gradient(180deg, var(--t-bg2, rgba(25, 30, 45, 0.92)), var(--t-bg, rgba(15, 18, 28, 0.96)));
+      border: 1px solid var(--t-bd, rgba(148, 163, 184, 0.16));
       border-radius: 16px;
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
       padding: 24px;
       transform: scale(0.92);
       transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
-      color: #e2e8f0;
+      color: var(--t-fg, #e2e8f0);
     }
     .custom-popup-overlay.show .custom-popup-box {
       transform: scale(1);
@@ -37,7 +37,7 @@
       font-size: 16px;
       font-weight: 800;
       margin-bottom: 10px;
-      background: linear-gradient(90deg, #2dd4bf, #60a5fa);
+      background: var(--t-gr, linear-gradient(90deg, #2dd4bf, #60a5fa));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
@@ -46,7 +46,7 @@
     .custom-popup-msg {
       font-size: 13px;
       line-height: 1.6;
-      color: #94a3b8;
+      color: var(--t-fg2, #94a3b8);
       margin-bottom: 24px;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
@@ -60,16 +60,16 @@
       padding: 10px 12px;
       font-size: 13px;
       font-family: inherit;
-      color: #e2e8f0;
-      background: rgba(8, 10, 15, 0.6);
-      border: 1px solid rgba(148, 163, 184, 0.22);
+      color: var(--t-fg, #e2e8f0);
+      background: var(--t-bg3, rgba(8, 10, 15, 0.6));
+      border: 1px solid var(--t-bd, rgba(148, 163, 184, 0.22));
       border-radius: 9px;
       outline: none;
       margin-bottom: 24px;
       transition: border-color 0.15s ease;
     }
     .custom-popup-input:focus {
-      border-color: #2dd4bf;
+      border-color: var(--t-ac, #2dd4bf);
     }
     .custom-popup-actions {
       display: flex;
@@ -87,24 +87,24 @@
     }
     .custom-popup-btn-cancel {
       background: rgba(148, 163, 184, 0.08);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      color: #cbd5e1;
+      border: 1px solid var(--t-bd, rgba(148, 163, 184, 0.18));
+      color: var(--t-fg2, #cbd5e1);
     }
     .custom-popup-btn-cancel:hover {
       background: rgba(148, 163, 184, 0.15);
-      color: #fff;
+      color: var(--t-fg, #fff);
     }
     .custom-popup-btn-confirm {
-      background: #2dd4bf;
-      border: 1px solid #2dd4bf;
-      color: #0f172a;
-      box-shadow: 0 4px 12px rgba(45, 212, 191, 0.2);
+      background: var(--t-ac, #2dd4bf);
+      border: 1px solid var(--t-ac, #2dd4bf);
+      color: var(--t-bg2, #0f172a);
+      box-shadow: 0 4px 12px var(--t-gls, rgba(45, 212, 191, 0.2));
     }
     .custom-popup-btn-confirm:hover {
-      background: #22bfa9;
-      border-color: #22bfa9;
+      background: var(--t-ac2, #22bfa9);
+      border-color: var(--t-ac2, #22bfa9);
       transform: translateY(-1px);
-      box-shadow: 0 6px 16px rgba(45, 212, 191, 0.35);
+      box-shadow: 0 6px 16px var(--t-gls, rgba(45, 212, 191, 0.35));
     }
   `;
 

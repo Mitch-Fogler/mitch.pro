@@ -44,21 +44,21 @@
     s.textContent =
       '#mitchPwaBanner{position:fixed;left:50%;bottom:18px;transform:translate(-50%,20px);opacity:0;' +
       'z-index:99990;display:flex;align-items:center;gap:12px;width:min(440px,calc(100vw - 24px));' +
-      'padding:14px 16px;border-radius:16px;border:1px solid rgba(148,163,184,0.2);' +
-      'background:linear-gradient(180deg,rgba(25,30,45,0.96),rgba(15,18,28,0.98));color:#e2e8f0;' +
+      'padding:14px 16px;border-radius:16px;border:1px solid var(--t-bd,rgba(148,163,184,0.2));' +
+      'background:linear-gradient(180deg,var(--t-bg2,rgba(25,30,45,0.96)),var(--t-bg,rgba(15,18,28,0.98)));color:var(--t-fg,#e2e8f0);' +
       'box-shadow:0 18px 48px rgba(0,0,0,0.5);font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;' +
       'transition:opacity .25s ease,transform .25s ease}' +
       '#mitchPwaBanner.show{opacity:1;transform:translate(-50%,0)}' +
       '#mitchPwaBanner .mitch-pwa-ico{font-size:26px;line-height:1}' +
       '#mitchPwaBanner .mitch-pwa-copy{flex:1;min-width:0}' +
       '#mitchPwaBanner .mitch-pwa-copy b{display:block;font-size:13px;font-weight:800;letter-spacing:.3px}' +
-      '#mitchPwaBanner .mitch-pwa-copy span{display:block;font-size:11.5px;color:#94a3b8;margin-top:2px}' +
+      '#mitchPwaBanner .mitch-pwa-copy span{display:block;font-size:11.5px;color:var(--t-fg2,#94a3b8);margin-top:2px}' +
       '#mitchPwaBanner button{cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;' +
-      'border-radius:9px;padding:8px 14px;border:1px solid rgba(148,163,184,0.18);' +
-      'background:rgba(148,163,184,0.08);color:#cbd5e1}' +
-      '#mitchPwaBanner #mitchPwaInstall{background:#2dd4bf;border-color:#2dd4bf;color:#0f172a;' +
-      'box-shadow:0 4px 12px rgba(45,212,191,0.25)}' +
-      '#mitchPwaBanner #mitchPwaInstall:hover{background:#22bfa9}' +
+      'border-radius:9px;padding:8px 14px;border:1px solid var(--t-bd,rgba(148,163,184,0.18));' +
+      'background:rgba(148,163,184,0.08);color:var(--t-fg2,#cbd5e1)}' +
+      '#mitchPwaBanner #mitchPwaInstall{background:var(--t-ac,#2dd4bf);border-color:var(--t-ac,#2dd4bf);color:var(--t-bg2,#0f172a);' +
+      'box-shadow:0 4px 12px var(--t-gls,rgba(45,212,191,0.25))}' +
+      '#mitchPwaBanner #mitchPwaInstall:hover{background:var(--t-ac2,#22bfa9)}' +
       '@media(max-width:560px){#mitchPwaBanner{bottom:10px;padding:12px}}';
     document.head.appendChild(s);
   }

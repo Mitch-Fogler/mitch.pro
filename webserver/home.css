@@ -523,7 +523,10 @@ img, svg { max-width: 100%; }
   text-decoration: none;
   transition: background var(--t-motion, 0.15s) ease, transform var(--t-motion, 0.15s) ease;
 }
-.home-bell-cta:hover { background: var(--t-ac2); }
+/* Explicit hover color: the global `a:hover{color:var(--t-ac2)}` rule in
+   theme.js would otherwise paint the text the same purple as this hover
+   background, making the label vanish on dark mode. */
+.home-bell-cta:hover { background: var(--t-ac2); color: #10140c; }
 .home-bell-cta:active { transform: scale(0.98); }
 /* The light theme's accent is deep indigo — dark ink fails contrast there. */
 html.theme-light .home-bell-cta { color: #ffffff; }

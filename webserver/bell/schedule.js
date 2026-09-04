@@ -155,22 +155,29 @@
       },
       // Tuesday / Thursday — School Business + two lunches
       2: {
-        1: [p('Period 0', '07:30', '08:25'), p('Period 1', '08:30', '09:55'), p('School Business', '10:03', '10:19'), p('Period 2', '10:19', '11:44'), p('Lunch 1', '11:44', '12:14'), p('Period 3', '12:22', '13:47'), p('Period 4', '13:55', '15:20')],
-        2: [p('Period 0', '07:30', '08:25'), p('Period 1', '08:30', '09:55'), p('School Business', '10:03', '10:19'), p('Period 2', '10:19', '11:44'), p('Period 3', '11:52', '13:17'), p('Lunch 2', '13:17', '13:47'), p('Period 4', '13:55', '15:20')]
+        1: [p('Period 0', '07:30', '08:25'), p('Period 1', '08:30', '09:55'), p('Period 2', '10:03', '11:28'), p('School Business', '11:28', '11:44'), p('Lunch 1', '11:44', '12:14'), p('Period 3', '12:22', '13:47'), p('Period 4', '13:55', '15:20')],
+        2: [p('Period 0', '07:30', '08:25'), p('Period 1', '08:30', '09:55'), p('Period 2', '10:03', '11:28'), p('School Business', '11:28', '11:44'), p('Period 3', '11:52', '13:17'), p('Lunch 2', '13:17', '13:47'), p('Period 4', '13:55', '15:20')]
       },
-      // Wednesday — Panther Period all day, two lunches
-      3: {
-        1: [p('Period 1', '09:30', '10:14'), p('Panther Period 1', '10:14', '10:44'), p('Period 2', '10:52', '11:36'), p('Panther Period 2', '11:36', '12:06'), p('Lunch 1', '12:06', '12:36'), p('Period 3', '12:44', '13:28'), p('Panther Period 3', '13:28', '13:58'), p('Period 4', '14:06', '14:50'), p('Panther Period 4', '14:50', '15:20')],
-        2: [p('Period 1', '09:30', '10:14'), p('Panther Period 1', '10:14', '10:44'), p('Period 2', '10:52', '11:36'), p('Panther Period 2', '11:36', '12:06'), p('Period 3', '12:14', '12:58'), p('Panther Period 3', '12:58', '13:28'), p('Lunch 2', '13:28', '13:58'), p('Period 4', '14:06', '14:50'), p('Panther Period 4', '14:50', '15:20')]
-      },
+      // Wednesday — Panther Period all day, single lunch
+      3: one([
+        p('Period 1', '09:30', '10:14'),
+        p('Panther Period 1', '10:14', '10:44'),
+        p('Period 2', '10:52', '11:36'),
+        p('Panther Period 2', '11:36', '12:06'),
+        p('Lunch', '12:06', '12:36'),
+        p('Period 3', '12:44', '13:28'),
+        p('Panther Period 3', '13:28', '13:58'),
+        p('Period 4', '14:06', '14:50'),
+        p('Panther Period 4', '14:50', '15:20')
+      ]),
       4: null, 5: null // filled below
     },
 
     granitebay: {
       // Mon / Tue / Thu / Fri — two lunches
       1: {
-        1: [p('Period 0', '07:30', '08:20'), p('Period 1', '08:30', '09:58'), p('Period 2', '10:06', '11:38'), p('Lunch 1', '11:38', '12:08'), p('Period 3', '12:16', '13:44'), p('Period 4', '13:52', '15:20')],
-        2: [p('Period 0', '07:30', '08:20'), p('Period 1', '08:30', '09:58'), p('Period 2', '10:06', '11:38'), p('Period 3', '11:46', '13:14'), p('Lunch 2', '13:14', '13:44'), p('Period 4', '13:52', '15:20')]
+        1: [p('Period 0', '07:30', '08:20'), p('Period 1', '08:30', '09:59'), p('Period 2', '10:07', '11:36'), p('Lunch 1', '11:36', '12:06'), p('Period 3', '12:14', '13:43'), p('Period 4', '13:51', '15:20')],
+        2: [p('Period 0', '07:30', '08:20'), p('Period 1', '08:30', '09:59'), p('Period 2', '10:07', '11:36'), p('Period 3', '11:44', '13:13'), p('Lunch 2', '13:13', '13:43'), p('Period 4', '13:51', '15:20')]
       },
       2: null, 4: null, 5: null, // filled below (same as Monday)
       // Wednesday — Intervention blocks, one lunch
@@ -194,11 +201,18 @@
         2: [p('Period 1', '08:30', '10:00'), p('Period 2', '10:06', '11:36'), p('Period 3', '11:42', '13:13'), p('Lunch 2', '13:13', '13:43'), p('Period 4', '13:49', '15:20')]
       },
       2: null, 4: null, 5: null, // filled below (same as Monday)
-      // Wednesday — Titan Time, two lunches
-      3: {
-        1: [p('Period 1', '09:30', '10:15'), p('Titan Time 1', '10:15', '10:45'), p('Period 2', '10:51', '11:36'), p('Titan Time 2', '11:36', '12:06'), p('Lunch 1', '12:06', '12:36'), p('Period 3', '12:42', '13:28'), p('Titan Time 3', '13:28', '13:58'), p('Period 4', '14:04', '14:50'), p('Titan Time 4', '14:50', '15:20')],
-        2: [p('Period 1', '09:30', '10:15'), p('Titan Time 1', '10:15', '10:45'), p('Period 2', '10:51', '11:36'), p('Titan Time 2', '11:36', '12:06'), p('Period 3', '12:12', '12:58'), p('Titan Time 3', '12:58', '13:28'), p('Lunch 2', '13:28', '13:58'), p('Period 4', '14:04', '14:50'), p('Titan Time 4', '14:50', '15:20')]
-      }
+      // Wednesday — Titan Time, single lunch
+      3: one([
+        p('Period 1', '09:30', '10:15'),
+        p('Titan Time 1', '10:15', '10:45'),
+        p('Period 2', '10:51', '11:36'),
+        p('Titan Time 2', '11:36', '12:06'),
+        p('Lunch', '12:06', '12:36'),
+        p('Period 3', '12:42', '13:28'),
+        p('Titan Time 3', '13:28', '13:58'),
+        p('Period 4', '14:04', '14:50'),
+        p('Titan Time 4', '14:50', '15:20')
+      ])
     },
 
     oakmont: {

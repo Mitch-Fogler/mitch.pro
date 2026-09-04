@@ -120,7 +120,7 @@ self.addEventListener('fetch', (e) => {
 
 // Push notification listeners
 self.addEventListener('push', e => {
-  let data = { title: 'New message', body: '', url: 'https://mitch.pro/encrypt/' };
+  let data = { title: 'New message', body: '', url: '/encrypt/' };
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
   e.waitUntil(self.registration.showNotification(data.title, {
     body: data.body,
@@ -133,9 +133,27 @@ self.addEventListener('push', e => {
   }));
 });
 
+// Keep notification clicks on the origin the PWA was installed from: resolve
+// the payload URL against this SW's own scope, and if an old/absolute payload
+// points at a different host (mitch.pro, mitchdog.com, …), strip it down to
+// its path so we never navigate the rjuhsd.school PWA to a foreign origin
+// that would demand a fresh login.
+function notificationTargetUrl(raw) {
+  let u = String(raw || '/encrypt/');
+  try {
+    const resolved = new URL(u, self.registration.scope);
+    if (resolved.origin !== self.location.origin) {
+      return resolved.pathname + resolved.search + resolved.hash || '/encrypt/';
+    }
+    return resolved.href;
+  } catch {
+    return '/encrypt/';
+  }
+}
+
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const url = e.notification.data?.url || 'https://mitch.pro/encrypt/';
+  const url = notificationTargetUrl(e.notification.data?.url);
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async cs => {
     for (const c of cs) {
       if (!c.url.startsWith(self.location.origin) || !('focus' in c)) continue;

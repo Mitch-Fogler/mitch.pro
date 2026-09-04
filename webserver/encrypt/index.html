@@ -847,6 +847,7 @@ let pendingImage = null;
 let replyTo = null;
 let selectedGroupMembers = new Set();
 let pendingDmTarget = '';
+let pendingGroupTarget = '';
 let livePollTimer = null;
 let livePollBusy = false;
 let hasMoreMessages = true;
@@ -1296,6 +1297,8 @@ async function decryptMessageContent(m) {
 async function init() {
   try {
     pendingDmTarget = new URLSearchParams(location.search).get('to') || '';
+    // Deep-link from a push notification: ?group=<id> opens that group chat.
+    pendingGroupTarget = new URLSearchParams(location.search).get('group') || '';
   } catch {}
   let fetchedData = null;
   try {
@@ -1854,6 +1857,7 @@ async function loadGroups() {
     unreadGroup = {};
     groups.forEach(g => { if (g.unread) unreadGroup[g.id] = g.unread; });
     renderList();
+    maybeOpenPendingDm();
   } catch {}
 }
 
@@ -1877,7 +1881,18 @@ function lastDirectMessage(email) {
 }
 
 function maybeOpenPendingDm() {
-  if (!pendingDmTarget || activeChat) return;
+  if (activeChat) return;
+  // Group deep-link first (push notifications open ?group=<id>).
+  if (pendingGroupTarget) {
+    const gid = pendingGroupTarget;
+    const group = groups.find(g => String(g.id) === String(gid));
+    if (group) {
+      pendingGroupTarget = '';
+      selectGroup(group.id);
+      return;
+    }
+  }
+  if (!pendingDmTarget) return;
   const target = pendingDmTarget.toLowerCase();
   const member = members.find(m =>
     sameEmail(m.email, target) ||

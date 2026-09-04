@@ -1345,6 +1345,20 @@ document.getElementById('home-btn').onclick = () => {
   scheduleChunkLoad();
   requestRender();
 };
+// When the canvas is opened directly (PWA deep link, notification) there's no
+// parent page to go back to — add a real homepage link to the toolbar. Hidden
+// when embedded in the home page, which already has its own chrome.
+try {
+  if (window.top === window.self) {
+    var siteHomeLink = document.createElement('a');
+    siteHomeLink.href = '/';
+    siteHomeLink.className = 'tb-btn';
+    siteHomeLink.title = 'Back to homepage';
+    siteHomeLink.textContent = '🏠 Home';
+    siteHomeLink.style.cssText = 'display:inline-flex;align-items:center;text-decoration:none;color:var(--t-fg,#eee)';
+    document.getElementById('toolbar').appendChild(siteHomeLink);
+  }
+} catch (e) {}
 document.getElementById('ref-btn').onclick = loadPixels;
 document.getElementById('help-btn').onclick = () => {
   helpVisible = !helpVisible;

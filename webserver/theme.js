@@ -21,13 +21,13 @@
   var LIGHT = {
     name: 'Light',
     light: true,
-    bg: '#f2f4fa', bg2: '#ffffff', bg3: '#f6f7fc',
-    fg: '#0f1123', fg2: '#4b5069',
+    bg: '#eef1f9', bg2: '#ffffff', bg3: '#e7ebf7',
+    fg: '#101426', fg2: '#3f4560',
     ac: '#4f46e5', ac2: '#0891b2', ac3: '#db2777',
-    bd: 'rgba(15,18,35,0.13)', bda: 'rgba(79,70,229,0.45)',
-    gl: 'rgba(79,70,229,0.32)', gls: 'rgba(79,70,229,0.12)',
+    bd: 'rgba(16,20,42,0.16)', bda: 'rgba(79,70,229,0.5)',
+    gl: 'rgba(79,70,229,0.34)', gls: 'rgba(79,70,229,0.16)',
     gr: 'linear-gradient(135deg,#4f46e5,#0891b2,#db2777)',
-    bgr: 'radial-gradient(ellipse at 20% 10%,rgba(79,70,229,0.09) 0%,transparent 55%),radial-gradient(ellipse at 85% 85%,rgba(8,145,178,0.06) 0%,transparent 55%),linear-gradient(160deg,#eef0f8,#f7f8fd)',
+    bgr: 'radial-gradient(ellipse at 20% 10%,rgba(79,70,229,0.13) 0%,transparent 55%),radial-gradient(ellipse at 85% 85%,rgba(8,145,178,0.09) 0%,transparent 55%),linear-gradient(160deg,#eef0f8,#f7f8fd)',
     bgImg: '',
     sw: '#4f46e5',
   };
@@ -229,7 +229,17 @@
     '.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}' +
     'hr{border:none;border-top:1px solid var(--t-bd)}' +
     'a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}' +
-    'label{color:var(--t-fg2)}';
+    'label{color:var(--t-fg2)}' +
+    // Installed PWA (iOS Dynamic Island / home indicator): let the themed
+    // background extend edge-to-edge, but keep content clear of the cutouts.
+    '@supports (padding: env(safe-area-inset-top)) {' +
+      '@media (display-mode: standalone) {' +
+        'body{padding-top:env(safe-area-inset-top)!important;padding-right:env(safe-area-inset-right)!important;' +
+          'padding-bottom:env(safe-area-inset-bottom)!important;padding-left:env(safe-area-inset-left)!important}' +
+        'html{background:var(--t-bg)}' +
+        'body.home-galaxy .hud-topbar{top:calc(14px + env(safe-area-inset-top))!important}' +
+      '}' +
+    '}';
   document.head.appendChild(baseStyle);
 
   var lightStyle = document.createElement('style');
