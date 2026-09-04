@@ -26,8 +26,10 @@
     ac: '#4f46e5', ac2: '#0891b2', ac3: '#db2777',
     bd: 'rgba(16,20,42,0.16)', bda: 'rgba(79,70,229,0.5)',
     gl: 'rgba(79,70,229,0.34)', gls: 'rgba(79,70,229,0.16)',
-    gr: 'linear-gradient(135deg,#4f46e5,#0891b2,#db2777)',
-    bgr: 'radial-gradient(ellipse at 20% 10%,rgba(79,70,229,0.13) 0%,transparent 55%),radial-gradient(ellipse at 85% 85%,rgba(8,145,178,0.09) 0%,transparent 55%),linear-gradient(160deg,#eef0f8,#f7f8fd)',
+    // Light mode keeps gradients in one indigo family — the old indigo→cyan→pink
+    // sweep read as confetti. Page backdrop is a plain neutral wash.
+    gr: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+    bgr: 'linear-gradient(160deg,#f3f5fa,#e9edf6)',
     bgImg: '',
     sw: '#4f46e5',
   };

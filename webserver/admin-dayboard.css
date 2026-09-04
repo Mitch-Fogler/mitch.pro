@@ -32,7 +32,7 @@ html.theme-light .admin-calendar-agenda{border-top-color:rgba(15,18,35,.08)}
 html.theme-light .admin-calendar-agenda li{color:#374151}
 html.theme-light .admin-calendar-agenda time{background:rgba(79,70,229,.08);color:#4f46e5}
 html.theme-light .admin-calendar-agenda strong{color:#0f1123}
-html.theme-light .admin-bell-summary{border-color:rgba(79,70,229,.18);background:linear-gradient(135deg,rgba(79,70,229,.07),rgba(8,145,178,.04))}
+html.theme-light .admin-bell-summary{border-color:rgba(79,70,229,.18);background:linear-gradient(135deg,rgba(79,70,229,.07),rgba(79,70,229,.03))}
 html.theme-light .admin-bell-summary span{color:#6b7280}
 html.theme-light .admin-periods li{border-color:rgba(15,18,35,.08);background:rgba(15,18,35,.02)}
 html.theme-light .admin-periods li>i{background:#9ca3af}
