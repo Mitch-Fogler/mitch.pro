@@ -9062,6 +9062,17 @@ async function handleRequest(req, server) {
       }
 
       const app = data[norm];
+      if (app.status !== 'pending') {
+        return jsonResp(409, { error: 'Only pending VM requests can be approved.' });
+      }
+      if (isAdminEmail(app.email)) {
+        app.billing = 'admin_comped';
+        app.priceUsd = 0;
+      }
+      const existingVmids = await getExistingVmids();
+      if (existingVmids.has(vmid)) {
+        return jsonResp(409, { error: `VMID ${vmid} is already in use by ${existingVmids.get(vmid) || 'another guest'}. Choose another VMID.` });
+      }
       const securePassword = Math.random().toString(36).slice(-10);
       const result = app.tier === 'premium'
         ? await createLxcContainer(app.email, app.tier, vmid, securePassword)
@@ -9087,7 +9098,11 @@ async function handleRequest(req, server) {
       if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
 
       const data = loadJson(VM_APPS_FILE, {});
-      return jsonResp(200, { success: true, requests: data });
+      const requests = Object.fromEntries(Object.entries(data).map(([key, app]) => [
+        key,
+        isAdminEmail(app.email) ? { ...app, billing: 'admin_comped', priceUsd: 0 } : app
+      ]));
+      return jsonResp(200, { success: true, requests });
     }
 
     if (path === '/api/admin/deny-vm' && method === 'POST') {
@@ -13644,18 +13659,37 @@ function loadAllGamesList() {
 
       const data = loadJson(VM_APPS_FILE, {});
       const norm = normalizeEmail(email);
+      const existingApplication = data[norm];
+      if (existingApplication && ['pending', 'approved', 'deleted'].includes(existingApplication.status)) {
+        return jsonResp(409, {
+          error: existingApplication.status === 'pending'
+            ? 'You already have a VM request awaiting review.'
+            : 'You already have a VM assigned to this account. Contact an admin to change it.'
+        });
+      }
+      const isAdmin = isAdminEmail(email);
+      const premiumIncluded = tier === 'premium' && isPremiumEmail(email);
+      const complimentary = isAdmin || premiumIncluded;
 
       data[norm] = {
         email: email,
         tier: tier,
         os: 'linux',
         note: note,
+        billing: complimentary ? (isAdmin ? 'admin_comped' : 'premium_included') : 'standard',
+        priceUsd: complimentary ? 0 : null,
         status: 'pending',
         appliedAt: Date.now()
       };
 
       saveJson(VM_APPS_FILE, data);
-      return jsonResp(200, { success: true, message: 'Application submitted successfully. Please contact Mitch to complete approval.' });
+      return jsonResp(200, {
+        success: true,
+        complimentary,
+        message: complimentary
+          ? 'Your no-cost workspace request was submitted. Approval and capacity checks still apply.'
+          : 'Application submitted successfully. Please contact Mitch to complete approval.'
+      });
     } catch (err) {
       return jsonResp(400, { error: 'Invalid JSON payload' });
     }
@@ -13670,6 +13704,13 @@ function loadAllGamesList() {
     if (!email) return jsonResp(401, { error: 'auth required' });
 
     const isPremium = isPremiumEmail(email);
+    const isAdmin = isAdminEmail(email);
+    const access = {
+      isPremium,
+      isAdmin,
+      adminVmBenefit: isAdmin,
+      platform: 'mitch.pro Linux / Proxmox'
+    };
     const data = loadJson(VM_APPS_FILE, {});
     const norm = normalizeEmail(email);
 
@@ -13685,17 +13726,17 @@ function loadAllGamesList() {
         vmStatus: pveStatus.success ? pveStatus.status : 'unknown',
         ip: pveStatus.success ? pveStatus.ip : '',
         password: freeVm.password || 'password',
-        isPremium
+        ...access
       });
     }
 
     if (!data[norm]) {
-      return jsonResp(200, { status: 'none', isPremium });
+      return jsonResp(200, { status: 'none', ...access });
     }
 
     const app = data[norm];
     if (app.status === 'pending') {
-      return jsonResp(200, { status: 'pending', tier: app.tier, isPremium });
+      return jsonResp(200, { status: 'pending', tier: app.tier, complimentary: isAdmin || app.priceUsd === 0, ...access });
     }
 
     if (app.status === 'approved' && app.vmid) {
@@ -13707,11 +13748,12 @@ function loadAllGamesList() {
         vmStatus: pveStatus.success ? pveStatus.status : 'unknown',
         ip: pveStatus.success ? pveStatus.ip : '',
         password: app.password || 'password',
-        isPremium
+        complimentary: isAdmin || app.priceUsd === 0,
+        ...access
       });
     }
 
-    return jsonResp(200, { status: 'none', isPremium });
+    return jsonResp(200, { status: 'none', ...access });
   }
 
   // POST /api/vm/free/reset — delete current free VM and boot a fresh one
@@ -19548,11 +19590,13 @@ const activeFreeVms = new Map();
 const MAX_FREE_VMS = 10;
 
 // Proxmox integration configurations
-const PVE_URL = process.env.PVE_URL || 'https://192.168.1.10:8006/api2/json';
+// Production lives on the tartarus Linux/Proxmox host. Environment values still
+// take priority, while these defaults mirror the actual mitch.pro topology.
+const PVE_URL = process.env.PVE_URL || 'https://192.168.100.1:8006/api2/json';
 const PVE_TOKEN = process.env.PVE_TOKEN || ''; // Format: "PVEAPIToken=api-helper@pve!token-id=xxxx-xxxx-xxxx"
-const PVE_NODE = process.env.PVE_NODE || 'pve';
+const PVE_NODE = process.env.PVE_NODE || 'tartarus';
 const PVE_TEMPLATE_LINUX = parseInt(process.env.PVE_TEMPLATE_LINUX || '9000', 10);
-const PVE_LXC_TEMPLATE = process.env.PVE_LXC_TEMPLATE || 'local:vztmpl/debian-12-standard_12.12-1_amd64.tar.zst';
+const PVE_LXC_TEMPLATE = process.env.PVE_LXC_TEMPLATE || 'local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst';
 
 // Allowlist range for student/premium sandbox VMIDs. The free-VM allocator
 // scans 200-209; the approve-vm admin endpoint accepts anything in this
@@ -19685,7 +19729,7 @@ async function powerUserVm(vmid, action) {
   if (!['start', 'stop', 'reboot'].includes(action)) {
     return { success: false, error: 'Invalid power action.' };
   }
-  const type = (vmid >= 200 && vmid < 400) ? 'lxc' : 'qemu';
+  const type = getVmTypeByVmid(vmid);
   try {
     const powerUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}/status/${action}`;
     const res = await fetch(powerUrl, {
@@ -19728,7 +19772,7 @@ async function attachSshdHookToLxc(vmid) {
   const host = process.env.PVE_SSH_HOST || '192.168.100.1';
   const user = process.env.PVE_SSH_USER || 'root';
   const keyPath = process.env.PVE_SSH_KEY_PATH;
-  const port = parseInt(process.env.PVE_SSH_PORT || '22', 10);
+  const port = parseInt(process.env.PVE_SSH_PORT || '39222', 10);
   if (!keyPath) {
     // Surface diagnostic context in the error so the operator can tell
     // whether the .env loader failed to match the line, the var was
@@ -19949,7 +19993,7 @@ async function cloneUserVm(email, tier, vmid, password) {
 
 async function stopUserVm(vmid) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
-  const type = (vmid >= 200 && vmid < 400) ? 'lxc' : 'qemu';
+  const type = getVmTypeByVmid(vmid);
   try {
     const stopUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}/status/stop`;
     const res = await fetch(stopUrl, {
@@ -19969,7 +20013,7 @@ async function stopUserVm(vmid) {
 
 async function destroyUserVm(vmid) {
   if (!PVE_TOKEN) return { success: false, error: 'Proxmox token not configured.' };
-  const type = (vmid >= 200 && vmid < 400) ? 'lxc' : 'qemu';
+  const type = getVmTypeByVmid(vmid);
   try {
     const destroyUrl = `${PVE_URL}/nodes/${PVE_NODE}/${type}/${vmid}`;
     const destroyRes = await fetch(destroyUrl, {
