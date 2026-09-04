@@ -270,30 +270,50 @@
 <body class="bell-page">
 <main class="app-main bell-shell">
   <header class="page-head app-fade-in">
-    <div class="kicker">RJUHSD Bell Schedules</div>
+    <div class="kicker"><span class="kicker-dot"></span> Live · Pacific Time</div>
     <h1>Bell <span>Schedules</span></h1>
     <p class="subline">Live tracking and period schedules for every RJUHSD school.</p>
   </header>
 
-  <section class="lunch-selector">
-    <span class="lunch-selector-label">My School</span>
-    <div class="lunch-options">
-      <select id="schoolSelect" onchange="setSchool(this.value)" style="background: rgba(148,163,184,0.08); border: 1px solid rgba(148,163,184,0.18); color: inherit; padding: 8px 12px; border-radius: 8px; font-weight: 600; cursor: pointer; font-family: inherit;"></select>
+  <section class="bell-day-board" aria-label="Current schedule settings">
+    <div class="bell-day-date">
+      <span class="bell-day-eyebrow">Automatically showing</span>
+      <strong id="autoDayLabel">Today</strong>
+      <span id="autoFullDate">Pacific Time</span>
+    </div>
+    <div class="bell-day-setting">
+      <span>School</span>
+      <strong id="autoSchoolLabel">Woodcreek High</strong>
+    </div>
+    <div class="bell-day-setting">
+      <span>Lunch</span>
+      <strong id="autoLunchLabel">Lunch 1</strong>
     </div>
   </section>
 
-  <section class="lunch-selector">
-    <span class="lunch-selector-label">My Lunch Assignment</span>
-    <div class="lunch-options">
-      <button id="lunch1Btn" class="lunch-btn active" onclick="setLunch(1)">Lunch 1</button>
-      <button id="lunch2Btn" class="lunch-btn" onclick="setLunch(2)">Lunch 2</button>
-    </div>
-  </section>
+  <div class="bell-controls">
+    <section class="lunch-selector">
+      <span class="lunch-selector-label">My School</span>
+      <div class="lunch-options school-options">
+        <select id="schoolSelect" aria-label="Choose school" onchange="setSchool(this.value)"></select>
+      </div>
+    </section>
+
+    <section class="lunch-selector">
+      <span class="lunch-selector-label">My Lunch Assignment</span>
+      <div class="lunch-options">
+        <button id="lunch1Btn" type="button" class="lunch-btn active" onclick="setLunch(1)">Lunch 1</button>
+        <button id="lunch2Btn" type="button" class="lunch-btn" onclick="setLunch(2)">Lunch 2</button>
+      </div>
+    </section>
+  </div>
 
   <section id="liveTracker" class="live-tracker" style="display: none;">
-    <div class="live-tracker-title">Live Tracking</div>
+    <div class="live-tracker-title"><span class="live-signal"></span> Live now</div>
     <div id="livePeriodName" class="live-period">Period 1</div>
     <div id="liveTimeLeft" class="live-countdown">14 minutes remaining</div>
+    <div class="live-progress" aria-hidden="true"><span id="liveProgressBar"></span></div>
+    <div id="liveTimeRange" class="live-time-range"></div>
   </section>
 
   <section class="card">
@@ -305,54 +325,62 @@
   </section>
 
   <section class="days-section">
-    <h2 class="section-title">Weekly Schedule Views</h2>
+    <div class="section-heading-row">
+      <h2 class="section-title">This Week</h2>
+      <span class="auto-note">Today opens automatically</span>
+    </div>
 
     <div class="day-accordion" id="dayAccordion-1">
-      <div class="day-trigger" onclick="toggleDayAccordion(1)">
-        <span>Monday (Regular Day)</span>
+      <button class="day-trigger" type="button" aria-expanded="false" aria-controls="dayContent-1" onclick="toggleDayAccordion(1)">
+        <span class="day-name">Monday <small>Regular Day</small></span>
+        <span class="today-badge" hidden>Today</span>
         <span class="indicator">▶</span>
-      </div>
-      <div class="day-content">
+      </button>
+      <div class="day-content" id="dayContent-1">
         <div class="period-list" id="mondayList"></div>
       </div>
     </div>
 
     <div class="day-accordion" id="dayAccordion-2">
-      <div class="day-trigger" onclick="toggleDayAccordion(2)">
-        <span>Tuesday (Regular Day)</span>
+      <button class="day-trigger" type="button" aria-expanded="false" aria-controls="dayContent-2" onclick="toggleDayAccordion(2)">
+        <span class="day-name">Tuesday <small>Regular Day</small></span>
+        <span class="today-badge" hidden>Today</span>
         <span class="indicator">▶</span>
-      </div>
-      <div class="day-content">
+      </button>
+      <div class="day-content" id="dayContent-2">
         <div class="period-list" id="tuesdayList"></div>
       </div>
     </div>
 
     <div class="day-accordion" id="dayAccordion-3">
-      <div class="day-trigger" onclick="toggleDayAccordion(3)">
-        <span>Wednesday (Late Start Collaboration)</span>
+      <button class="day-trigger" type="button" aria-expanded="false" aria-controls="dayContent-3" onclick="toggleDayAccordion(3)">
+        <span class="day-name">Wednesday <small>Late Start Collaboration</small></span>
+        <span class="today-badge" hidden>Today</span>
         <span class="indicator">▶</span>
-      </div>
-      <div class="day-content">
+      </button>
+      <div class="day-content" id="dayContent-3">
         <div class="period-list" id="wednesdayList"></div>
       </div>
     </div>
 
     <div class="day-accordion" id="dayAccordion-4">
-      <div class="day-trigger" onclick="toggleDayAccordion(4)">
-        <span>Thursday (Regular Day)</span>
+      <button class="day-trigger" type="button" aria-expanded="false" aria-controls="dayContent-4" onclick="toggleDayAccordion(4)">
+        <span class="day-name">Thursday <small>Regular Day</small></span>
+        <span class="today-badge" hidden>Today</span>
         <span class="indicator">▶</span>
-      </div>
-      <div class="day-content">
+      </button>
+      <div class="day-content" id="dayContent-4">
         <div class="period-list" id="thursdayList"></div>
       </div>
     </div>
 
     <div class="day-accordion" id="dayAccordion-5">
-      <div class="day-trigger" onclick="toggleDayAccordion(5)">
-        <span>Friday (Regular Day)</span>
+      <button class="day-trigger" type="button" aria-expanded="false" aria-controls="dayContent-5" onclick="toggleDayAccordion(5)">
+        <span class="day-name">Friday <small>Regular Day</small></span>
+        <span class="today-badge" hidden>Today</span>
         <span class="indicator">▶</span>
-      </div>
-      <div class="day-content">
+      </button>
+      <div class="day-content" id="dayContent-5">
         <div class="period-list" id="fridayList"></div>
       </div>
     </div>
@@ -381,12 +409,59 @@
   let activeSchool = 'woodcreek';
   let SCHEDULES = window.WHS_BELL.schedules;
 
+  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const DAY_NUMBERS = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+  function getPacificNow() {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles',
+      weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
+    return {
+      day: DAY_NUMBERS[values.weekday],
+      year: Number(values.year), month: Number(values.month), date: Number(values.day),
+      hours: Number(values.hour), minutes: Number(values.minute), seconds: Number(values.second)
+    };
+  }
+
+  function getPacificDateLabel() {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', month: 'long', day: 'numeric', year: 'numeric'
+    }).format(new Date());
+  }
+
+  function syncDayUI({ autoOpen = false } = {}) {
+    const now = getPacificNow();
+    const isWeekend = now.day === 0 || now.day === 6;
+    const shownDay = isWeekend ? 1 : now.day;
+    document.getElementById('autoDayLabel').textContent = isWeekend ? 'Monday preview' : DAY_NAMES[now.day];
+    document.getElementById('autoFullDate').textContent = `${getPacificDateLabel()} · Pacific Time`;
+    document.getElementById('autoSchoolLabel').textContent = SCHOOL_NAMES[activeSchool];
+    document.getElementById('autoLunchLabel').textContent = `Lunch ${activeLunch}`;
+
+    for (let dayNum = 1; dayNum <= 5; dayNum++) {
+      const accordion = document.getElementById(`dayAccordion-${dayNum}`);
+      const isShownDay = dayNum === shownDay;
+      accordion.classList.toggle('is-today', isShownDay);
+      const badge = accordion.querySelector('.today-badge');
+      badge.hidden = !isShownDay;
+      badge.textContent = isWeekend ? 'Next school day' : 'Today';
+      if (autoOpen && isShownDay) {
+        accordion.classList.add('open');
+        accordion.querySelector('.day-trigger').setAttribute('aria-expanded', 'true');
+      }
+    }
+  }
+
   function setSchool(key) {
     if (!SCHOOL_NAMES[key]) key = 'woodcreek';
     activeSchool = key;
     try { localStorage.setItem('bell_school', key); } catch {}
     SCHEDULES = (window.RJUHSD_BELLS && window.RJUHSD_BELLS[key]) || window.WHS_BELL.schedules;
     document.getElementById('schoolSelect').value = key;
+    syncDayUI();
     loadTodaySchedule();
     updateLiveTracker();
     populateAllWeeks();
@@ -428,6 +503,8 @@
   function updateLunchUI() {
     document.getElementById('lunch1Btn').classList.toggle('active', activeLunch === 1);
     document.getElementById('lunch2Btn').classList.toggle('active', activeLunch === 2);
+    const lunchLabel = document.getElementById('autoLunchLabel');
+    if (lunchLabel) lunchLabel.textContent = `Lunch ${activeLunch}`;
   }
 
   function getScheduleForDay(dayOfWeek, lunchNum) {
@@ -442,6 +519,7 @@
   function toggleDayAccordion(dayNum) {
     const acc = document.getElementById(`dayAccordion-${dayNum}`);
     acc.classList.toggle('open');
+    acc.querySelector('.day-trigger').setAttribute('aria-expanded', String(acc.classList.contains('open')));
   }
 
   function populateAllWeeks() {
@@ -479,14 +557,12 @@
   }
 
   function loadTodaySchedule() {
-    const now = new Date();
-    const day = now.getDay();
+    const now = getPacificNow();
+    const day = now.day;
     const container = document.getElementById('todayScheduleContainer');
     container.innerHTML = '';
 
     // Set Header titles
-    const daysArr = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    
     if (activeOverride) {
       document.getElementById('todayDayName').textContent = `${activeOverride.name} Schedule`;
       if (activeOverride.special_event) {
@@ -496,10 +572,10 @@
         container.appendChild(eventNotice);
       }
     } else {
-      document.getElementById('todayDayName').textContent = day === 0 || day === 6 ? "Monday's Schedule (Weekend Preview)" : `${daysArr[day]}'s Schedule`;
+      document.getElementById('todayDayName').textContent = day === 0 || day === 6 ? "Monday's Schedule (Weekend Preview)" : `${DAY_NAMES[day]}'s Schedule`;
     }
     
-    document.getElementById('todayDateStr').textContent = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    document.getElementById('todayDateStr').textContent = getPacificDateLabel();
 
     // Show Monday if weekend
     const activeDayNum = (day === 0 || day === 6) ? 1 : day;
@@ -524,9 +600,11 @@
   }
 
   function updateLiveTracker() {
-    const now = new Date();
-    const day = now.getDay();
+    const now = getPacificNow();
+    const day = now.day;
     const tracker = document.getElementById('liveTracker');
+    const progressBar = document.getElementById('liveProgressBar');
+    const timeRange = document.getElementById('liveTimeRange');
 
     // Hide on weekends unless override is active for weekend preview (highly unlikely, but lets keep regular rules)
     if (day === 0 || day === 6) {
@@ -534,8 +612,8 @@
       return;
     }
 
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
-    const currentSeconds = currentMinutes * 60 + now.getSeconds();
+    const currentMinutes = now.hours * 60 + now.minutes;
+    const currentSeconds = currentMinutes * 60 + now.seconds;
     const schedule = getScheduleForDay(day, activeLunch);
     
     // Clear all highlights
@@ -570,6 +648,11 @@
       const displaySecs = diffSecs % 60;
       
       document.getElementById('liveTimeLeft').textContent = `${displayMins}m ${displaySecs}s remaining`;
+      const startMin = parseTimeToMinutes(activePeriod.start);
+      const elapsedSeconds = currentSeconds - (startMin * 60);
+      const durationSeconds = Math.max(1, (endMin - startMin) * 60);
+      progressBar.style.width = `${Math.min(100, Math.max(0, (elapsedSeconds / durationSeconds) * 100))}%`;
+      timeRange.textContent = `${getFormattedTime(activePeriod.start)}  →  ${getFormattedTime(activePeriod.end)}`;
 
       // Highlight row
       const activeRow = document.getElementById(`today-period-${activePeriod.name.replace(/ /g, '-')}`);
@@ -585,6 +668,8 @@
       
       document.getElementById('livePeriodName').innerHTML = `<span style="color: var(--gold)">Next Class:</span> ${nextPeriod.name}`;
       document.getElementById('liveTimeLeft').textContent = `Starts in ${displayMins}m ${displaySecs}s (${getFormattedTime(nextPeriod.start)})`;
+      progressBar.style.width = '0%';
+      timeRange.textContent = `Up next · ${getFormattedTime(nextPeriod.start)}  →  ${getFormattedTime(nextPeriod.end)}`;
     } else {
       // School completed for the day
       const lastPeriod = schedule[schedule.length - 1];
@@ -593,6 +678,8 @@
         tracker.style.display = 'block';
         document.getElementById('livePeriodName').textContent = 'School Day Concluded';
         document.getElementById('liveTimeLeft').textContent = 'See you tomorrow!';
+        progressBar.style.width = '100%';
+        timeRange.textContent = 'Today’s schedule is complete';
       } else {
         tracker.style.display = 'none';
       }
@@ -605,12 +692,10 @@
       const data = await res.json();
       if (data && data.override) {
         // Match today's date in local time YYYY-MM-DD
-        const now = new Date();
-        const laTimeStr = now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" });
-        const laDate = new Date(laTimeStr);
-        const yyyy = laDate.getFullYear();
-        const mm = String(laDate.getMonth() + 1).padStart(2, '0');
-        const dd = String(laDate.getDate()).padStart(2, '0');
+        const now = getPacificNow();
+        const yyyy = now.year;
+        const mm = String(now.month).padStart(2, '0');
+        const dd = String(now.date).padStart(2, '0');
         const todayStr = `${yyyy}-${mm}-${dd}`;
 
         if (data.override.date === todayStr) {
@@ -622,6 +707,7 @@
 
   // Init sequence
   checkOverrides().then(() => {
+    syncDayUI({ autoOpen: true });
     loadTodaySchedule();
     populateAllWeeks();
     updateLiveTracker();

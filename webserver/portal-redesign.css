@@ -550,6 +550,152 @@ body.bell-page .section-title { font-size: 20px !important; }
 body.bell-page .day-accordion { margin-bottom: 6px !important; border: 1px solid var(--ui-line) !important; border-radius: 8px !important; background: var(--ui-panel) !important; box-shadow: none !important; }
 body.bell-page .day-trigger { min-height: 52px !important; border-radius: 8px !important; }
 
+/* Bell schedule v2: automatic day context and a live, glanceable timeline. */
+body.bell-page .kicker-dot,
+body.bell-page .live-signal {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  display: inline-block;
+  border-radius: 50%;
+  background: #3ddc97;
+  box-shadow: 0 0 0 4px rgba(61,220,151,.12);
+  animation: bell-signal 1.8s ease-in-out infinite;
+}
+body.bell-page .bell-day-board {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(130px, .7fr));
+  margin: 18px 0 0;
+  border: 1px solid var(--ui-line);
+  border-radius: 12px;
+  color: var(--ui-text);
+  background: var(--ui-panel);
+  overflow: hidden;
+}
+body.bell-page .bell-day-date,
+body.bell-page .bell-day-setting {
+  min-width: 0;
+  min-height: 92px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 17px 20px;
+}
+body.bell-page .bell-day-date {
+  position: relative;
+  color: #fff;
+  background: linear-gradient(120deg, #5865f2 0%, #4050dd 58%, #2938b7 100%);
+  overflow: hidden;
+}
+body.bell-page .bell-day-date::after {
+  content: '';
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  right: -42px;
+  top: -72px;
+  border: 24px solid rgba(255,255,255,.09);
+  border-radius: 50%;
+}
+body.bell-page .bell-day-setting { border-left: 1px solid var(--ui-line); }
+body.bell-page .bell-day-eyebrow,
+body.bell-page .bell-day-setting > span {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 5px;
+  color: var(--ui-faint);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+body.bell-page .bell-day-date .bell-day-eyebrow { color: rgba(255,255,255,.68); }
+body.bell-page .bell-day-date strong,
+body.bell-page .bell-day-setting strong {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  font-family: 'Outfit', system-ui, sans-serif;
+  font-size: clamp(19px, 2.2vw, 27px);
+  line-height: 1.1;
+  letter-spacing: -.035em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+body.bell-page #autoFullDate { position: relative; z-index: 1; margin-top: 5px; color: rgba(255,255,255,.7); font-size: 11px; }
+body.bell-page .bell-controls { display: grid; grid-template-columns: 1.25fr .75fr; gap: 10px; }
+body.bell-page .bell-controls .lunch-selector { min-width: 0; }
+body.bell-page .school-options { min-width: 0; flex: 1; justify-content: flex-end; }
+body.bell-page #schoolSelect {
+  width: min(100%, 280px);
+  min-height: 38px;
+  padding: 0 34px 0 11px;
+  border: 1px solid var(--ui-line);
+  border-radius: 7px;
+  color: var(--ui-text);
+  background: var(--ui-panel-3);
+  font: 700 12px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+body.bell-page .live-tracker { position: relative; text-align: left !important; overflow: hidden; }
+body.bell-page .live-tracker::after {
+  content: '';
+  position: absolute;
+  width: min(340px, 45vw);
+  aspect-ratio: 1;
+  right: -110px;
+  top: -170px;
+  border: 44px solid rgba(255,255,255,.07);
+  border-radius: 50%;
+  pointer-events: none;
+}
+body.bell-page .live-tracker-title { display: flex; align-items: center; gap: 8px; color: rgba(255,255,255,.72) !important; }
+body.bell-page .live-signal { background: #fff; box-shadow: 0 0 0 4px rgba(255,255,255,.13); }
+body.bell-page .live-period { position: relative; z-index: 1; margin: 15px 0 4px !important; color: #fff !important; }
+body.bell-page .live-period span { color: rgba(255,255,255,.7) !important; font-size: .42em; letter-spacing: -.01em; vertical-align: .35em; }
+body.bell-page .live-progress { position: relative; z-index: 1; height: 7px; margin-top: 23px; border-radius: 99px; background: rgba(14,20,90,.3); overflow: hidden; }
+body.bell-page .live-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: #fff; box-shadow: 0 0 20px rgba(255,255,255,.65); transition: width .8s linear; }
+body.bell-page .live-time-range { position: relative; z-index: 1; margin-top: 9px; color: rgba(255,255,255,.7); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+body.bell-page .section-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+body.bell-page .section-heading-row .section-title { margin: 0 !important; }
+body.bell-page .auto-note { color: var(--ui-faint); font-size: 10px; font-weight: 750; }
+body.bell-page .day-accordion.is-today { border-color: rgba(88,101,242,.62) !important; box-shadow: 0 0 0 3px rgba(88,101,242,.08) !important; }
+body.bell-page .day-trigger {
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  border: 0;
+  color: var(--ui-text);
+  background: transparent;
+  text-align: left;
+}
+body.bell-page .day-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+body.bell-page .day-name small { color: var(--ui-faint); font-size: 10px; font-weight: 650; }
+body.bell-page .today-badge { padding: 4px 7px; border-radius: 5px; color: #fff; background: var(--ui-blue); font-size: 9px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+body.bell-page .day-accordion.is-today.open .day-content { border-top-color: rgba(88,101,242,.32); }
+@keyframes bell-signal { 0%, 100% { opacity: .5; transform: scale(.88); } 50% { opacity: 1; transform: scale(1); } }
+
+@media (max-width: 700px) {
+  body.bell-page .bell-day-board { grid-template-columns: 1fr 1fr; }
+  body.bell-page .bell-day-date { grid-column: 1 / -1; min-height: 100px; }
+  body.bell-page .bell-day-setting { min-height: 70px; padding: 13px 15px; }
+  body.bell-page .bell-day-setting:nth-child(2) { border-left: 0; }
+  body.bell-page .bell-controls { grid-template-columns: 1fr; gap: 0; }
+  body.bell-page .bell-controls .lunch-selector { display: flex !important; }
+  body.bell-page .school-options { width: auto; }
+  body.bell-page #schoolSelect { width: 100%; }
+  body.bell-page .live-tracker { min-height: 210px; }
+  body.bell-page .day-name { flex-direction: column; align-items: flex-start; gap: 2px; }
+  body.bell-page .auto-note { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.bell-page .kicker-dot,
+  body.bell-page .live-signal { animation: none; opacity: 1; }
+  body.bell-page .live-progress span { transition: none; }
+}
+
 /* MEMBERS — dense directory, not trading cards. */
 body.members-page { background: #0a0d13 !important; }
 body.members-page main.app-main { width: min(1280px, calc(100% - 40px)) !important; padding-bottom: 80px; }
