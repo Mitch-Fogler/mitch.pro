@@ -137,7 +137,7 @@ button, a, input, textarea, select { touch-action: manipulation; }
 
 .card::before, .action-card::before, .listing-item::before, .category-group::before { display: none !important; }
 
-button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(#theme-clean-btn),
+button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(#theme-clean-btn):not(.msg-more):not(.msg-action),
 .btn, .btn-primary, .btn-ghost, a.btn {
   border-radius: 8px !important;
   font-weight: 650 !important;
@@ -245,7 +245,7 @@ body.encrypt-page .msg:has(.who.me) {
     padding: 1.1rem max(12px, env(safe-area-inset-right, 0px)) calc(3rem + env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)) !important;
   }
   .page-head h1 { font-size: clamp(2.1rem, 12vw, 3.4rem) !important; }
-  button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(#theme-clean-btn),
+  button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(#theme-clean-btn):not(.msg-more):not(.msg-action),
   .btn, .btn-primary, .btn-ghost, a.btn, [role="button"] { min-height: 44px; }
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
   textarea, select { min-height: 44px; font-size: 16px !important; }

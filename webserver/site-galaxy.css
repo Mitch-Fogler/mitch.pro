@@ -188,7 +188,7 @@ a:hover { color: var(--t-ac2); }
 }
 
 /* Consistent square controls with rounded edges */
-button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn),
+button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action),
 .btn, .btn-primary, .btn-ghost, a.btn,
 .soft-btn, .small-btn, .tool-btn, .adm-btn, .tb-btn, .btn-secondary,
 .btn-action, .btn-buy, .btn-connect, .preset-btn, .opt-btn,
@@ -203,7 +203,7 @@ input[type='button'], input[type='submit'], input[type='reset'] {
   font-weight: 650 !important;
   transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease !important;
 }
-button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn):hover,
+button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):hover,
 .btn:hover, .btn-primary:hover, .btn-ghost:hover, a.btn:hover {
   color: var(--t-ac) !important;
   border-color: var(--t-bda) !important;

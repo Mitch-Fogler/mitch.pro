@@ -355,6 +355,11 @@
       '  color: rgba(255,255,255,0.7); border-radius: 6px; padding: 3px 7px;' +
       '  font-size: .7rem; cursor: pointer;' +
       '}' +
+      '.sw-notif-head a.sw-notif-settings {' +
+      '  background: transparent; border: 1px solid rgba(255,255,255,0.15);' +
+      '  color: rgba(255,255,255,0.7); border-radius: 6px; padding: 3px 7px;' +
+      '  font-size: .7rem; font-weight: 800; text-decoration: none; cursor: pointer;' +
+      '}' +
       '#sw-notif-list { max-height: 335px; overflow-y: auto; padding: 8px; }' +
       '.sw-notif-empty { padding: 18px 10px; text-align: center; color: rgba(255,255,255,0.5); font-size: .8rem; opacity: .65; }' +
       '.sw-notif-item {' +
@@ -425,6 +430,7 @@
       '  <div class="sw-notif-head">' +
       '    <span>Notifications</span>' +
       '    <button id="sw-notif-manage" type="button" title="Turn message alerts on or off">Alerts: …</button>' +
+      '    <a class="sw-notif-settings" href="/notifications/" title="Full notification settings">Settings</a>' +
       '    <button id="sw-notif-read-all" type="button">Read all</button>' +
       '    <button id="sw-notif-close" type="button">Close</button>' +
       '  </div>' +

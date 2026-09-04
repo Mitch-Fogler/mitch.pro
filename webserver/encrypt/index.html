@@ -10,7 +10,7 @@
     });
   }
 </script>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Encrypted Chat — mitch.pro</title>
 <script src="/theme.js?v=9"></script>
 <link rel="stylesheet" href="/app.css">
@@ -391,6 +391,8 @@ button {
   line-height: 1.5;
   display: grid;
   gap: 0.2rem;
+  /* Anchor for the overlaid ••• tools — they must not add a layout row. */
+  position: relative;
 }
 
 .msg.is-filter-hidden { display: none; }
@@ -421,29 +423,69 @@ button {
   min-width: 0;
 }
 
+/* Message tools overlay the top-right corner of the row instead of taking a
+   layout line — an extra row on every message halved how many fit on a
+   phone screen. pointer-events follow the opacity so the invisible pill
+   never blocks taps on the message text underneath. */
 .msg-tools {
-  margin-left: 58px;
+  position: absolute;
+  top: -2px;
+  right: 0;
+  margin: 0;
   display: flex;
+  align-items: center;
   gap: 0.3rem;
+  padding: 1px 4px;
   opacity: 0;
+  pointer-events: none;
+  border-radius: 8px;
+  background: transparent;
   transition: opacity var(--t-motion, 0.12s) ease;
+  z-index: 3;
 }
 
-.msg:hover .msg-tools { opacity: 1; }
+.msg:hover .msg-tools,
+.msg-tools.open { opacity: 1; pointer-events: auto; }
 
-.msg-action {
-  padding: 2px 6px;
-  font-size: 0.65rem;
-  border-radius: calc(var(--t-radius, 8px) - 3px);
+/* Own rows carry the who/time header at the top-right — drop their tools to
+   the bottom edge so the ••• never sits on top of the timestamp. */
+.msg.mine .msg-tools { top: auto; bottom: -2px; }
+
+/* The open menu needs its own backdrop to stay readable over the bubble. */
+.msg-tools.open {
+  background: color-mix(in srgb, var(--t-bg2, #fff) 94%, transparent);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.16);
 }
 
-/* Per-message ••• toggle + hidden action menu */
-.msg-more {
-  padding: 1px 7px;
-  font-size: 0.7rem;
+/* Per-message ••• toggle + hidden action menu. Needs !important: theme.js's
+   global button rule carries four :not(#id) args (specificity (4,0,1)) and
+   other global sheets set button background/border/min-height !important,
+   so no plain selector can win. */
+#msgs .msg-more, .msg-more {
+  padding: 0 8px !important;
+  font-size: 0.7rem !important;
   letter-spacing: 0.08em;
+  line-height: 1.5;
+  min-height: 0 !important;
+  height: auto;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--t-fg2, inherit) !important;
+  border-radius: calc(var(--t-radius, 8px) - 3px) !important;
+  font-weight: 500 !important;
+}
+#msgs .msg-action, .msg-action {
+  padding: 2px 8px !important;
+  font-size: 0.66rem !important;
+  min-height: 0 !important;
+  height: auto;
   line-height: 1.4;
-  border-radius: calc(var(--t-radius, 8px) - 3px);
+  background: var(--t-bg2, #fff) !important;
+  border: 1px solid var(--t-bd, rgba(0,0,0,0.12)) !important;
+  color: var(--t-fg, inherit) !important;
+  border-radius: calc(var(--t-radius, 8px) - 3px) !important;
+  font-weight: 500 !important;
 }
 .msg-menu {
   display: none;
@@ -715,7 +757,8 @@ button {
   #chat-header { flex-wrap: wrap; align-items: flex-start; }
   .header-tools { width: 100%; flex-wrap: wrap; padding-right: 0; }
   #msgSearch { flex: 1; width: auto; }
-  .msg-tools { opacity: 1; }
+  .msg-tools { opacity: 0.55; pointer-events: auto; }
+  .msg-tools.open { opacity: 1; }
   #input-row {
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
     min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
@@ -3360,6 +3403,46 @@ window.addEventListener('ws-broadcast-message', async function(e) {
 window.addEventListener('ws-broadcast-status', function(e) {
   document.body.classList.toggle('chat-live', Boolean(e.detail && e.detail.connected));
 });
+
+// ── Mobile keyboard handling (iOS Safari) ────────────────────────────────
+// iOS doesn't shrink the layout viewport when the keyboard opens — it just
+// covers the bottom of the page, so the composer (and most of the chat)
+// disappears behind it. Track the visual viewport: while the keyboard is up,
+// shrink the page to the visible height so the textbox sits just above the
+// keys; when it closes, fully reset (and re-zero the window scroll iOS left
+// behind) so the top margin goes back to normal instead of staying squashed.
+(function () {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const page = () => document.querySelector('.encrypt-page');
+  const msgs = () => document.getElementById('msgs');
+  let kbOpen = false;
+  function update() {
+    const el = page();
+    if (!el) return;
+    const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    if (overlap > 120) {
+      kbOpen = true;
+      el.style.height = Math.round(vv.height) + 'px';
+      const m = msgs();
+      if (m && m.classList.contains('on')) m.scrollTop = m.scrollHeight;
+    } else if (kbOpen && overlap <= 1) {
+      kbOpen = false;
+      el.style.height = '';
+      window.scrollTo(0, 0);
+      const m = msgs();
+      if (m) m.scrollTop = m.scrollHeight;
+    }
+  }
+  vv.addEventListener('resize', update);
+  vv.addEventListener('scroll', update);
+  window.addEventListener('orientationchange', function () {
+    kbOpen = false;
+    const el = page();
+    if (el) el.style.height = '';
+    window.scrollTo(0, 0);
+  });
+})();
 
 init();
 </script>

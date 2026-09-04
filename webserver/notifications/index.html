@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notification Settings — mitch.pro</title>
+<script src="/theme.js?v=9"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
+<script src="/sync.js"></script>
+<style>
+  .notif-page { position: relative; isolation: isolate; }
+  .notif-page::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 65% 45% at 50% -8%, color-mix(in srgb, var(--t-ac) 14%, transparent), transparent 70%),
+      radial-gradient(ellipse 40% 35% at 100% 100%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 7%, transparent), transparent 65%);
+  }
+  .notif-shell { width: min(48rem, 100%); max-width: 48rem; padding-bottom: 5rem; }
+  .page-head { margin-bottom: 1.15rem; animation: app-fade-in 0.45s ease both; }
+  .page-title {
+    margin: 0;
+    font-size: clamp(1.85rem, 4vw, 2.4rem);
+    font-weight: 800;
+    letter-spacing: -0.035em;
+    color: var(--t-fg);
+  }
+  .page-sub { margin: 0.5rem 0 0; font-size: 0.9rem; color: var(--t-fg2); line-height: 1.55; }
+  .card {
+    padding: 1.25rem 1.2rem;
+    border: 1px solid var(--t-bd);
+    border-radius: calc(var(--t-radius, 8px) + 2px);
+    background:
+      linear-gradient(160deg, color-mix(in srgb, var(--t-bg2) 92%, transparent), color-mix(in srgb, var(--t-bg3) 80%, transparent));
+    box-shadow: 0 1px 0 color-mix(in srgb, #fff 6%, transparent) inset;
+    margin-bottom: 1rem;
+  }
+  .section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin: 0 0 0.9rem;
+    font-size: 1.02rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--t-fg);
+  }
+  .section-sub { margin: -0.4rem 0 1rem; font-size: 0.82rem; color: var(--t-fg2); line-height: 1.55; }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 0.15rem;
+    border-bottom: 1px solid var(--t-bd);
+  }
+  .toggle-row:last-of-type { border-bottom: none; }
+  .toggle-label { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+  .toggle-label b { font-size: 0.92rem; font-weight: 650; color: var(--t-fg); }
+  .toggle-desc { font-size: 0.78rem; color: var(--t-fg2); line-height: 1.45; }
+  .toggle-switch { position: relative; display: inline-block; width: 48px; height: 27px; flex: none; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--t-bd);
+    border-radius: 10px;
+    transition: background var(--t-motion, 0.15s) ease;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 19px; height: 19px;
+    left: 3px; bottom: 4px;
+    background: #fff;
+    border-radius: 7px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    transition: transform var(--t-motion, 0.15s) ease;
+  }
+  .toggle-switch input:checked + .toggle-slider { background: var(--t-ac); }
+  .toggle-switch input:checked + .toggle-slider::before { transform: translateX(21px); }
+  .toggle-switch input:disabled + .toggle-slider { opacity: 0.5; }
+  .quiet-times { display: flex; align-items: center; gap: 0.6rem; padding: 0.8rem 0.15rem 0.2rem; flex-wrap: wrap; }
+  .quiet-times label { font-size: 0.85rem; color: var(--t-fg2); }
+  .quiet-times input[type="time"] {
+    padding: 6px 9px;
+    border: 1px solid var(--t-bd);
+    border-radius: 9px;
+    background: var(--t-bg2);
+    color: var(--t-fg);
+    font: inherit;
+    font-size: 0.88rem;
+  }
+  .quiet-times input[type="time"]:disabled { opacity: 0.45; }
+  .status-line { margin-top: 0.7rem; font-size: 0.82rem; font-weight: 600; color: var(--t-ac); min-height: 1.2em; }
+  .status-line.err { color: #e11d48; }
+  .device-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.45rem 0.85rem;
+    border: 1px solid var(--t-bd);
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 650;
+    color: var(--t-fg2);
+  }
+  .device-state .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--t-fg2); flex: none; }
+  .device-state.on .dot { background: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.6); }
+  .device-state.off .dot { background: #e11d48; }
+  .device-row { display: flex; align-items: center; justify-content: space-between; gap: 0.9rem; padding: 0.55rem 0; flex-wrap: wrap; }
+  .link-row { margin-top: 0.9rem; font-size: 0.84rem; color: var(--t-fg2); }
+  .link-row a { color: var(--t-ac); font-weight: 600; text-decoration: none; }
+  .link-row a:hover { text-decoration: underline; }
+  .empty-note { font-size: 0.9rem; color: var(--t-fg2); line-height: 1.6; }
+  @media (max-width: 560px) {
+    .card { padding: 1.05rem 0.95rem; }
+    .toggle-row { align-items: flex-start; }
+  }
+</style>
+</head>
+<body class="notif-page">
+<main class="app-main notif-shell">
+  <header class="page-head">
+    <h1 class="page-title">Notifications</h1>
+    <p class="page-sub">Choose which alerts reach you and when. Changes save automatically.</p>
+  </header>
+
+  <div id="loginGate" class="card" style="display:none">
+    <p class="empty-note">You're not signed in. <a href="/" style="color:var(--t-ac);font-weight:650">Head to the homepage</a> to sign in, then come back here to manage your notifications.</p>
+  </div>
+
+  <div id="prefsUI" style="display:none">
+    <div class="card">
+      <div class="section-title"><span>Alerts</span></div>
+      <p class="section-sub">Turn whole categories of alerts on or off. This applies to every device and every channel — PWA push and ntfy phone alerts alike.</p>
+
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <b>Encrypted chat messages</b>
+          <span class="toggle-desc">Direct messages sent to you on Secure Chat while you're away.</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="t-dm" data-key="dm">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <b>Group chat messages</b>
+          <span class="toggle-desc">Messages posted in any group chat you're a member of.</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="t-group" data-key="group">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <b>Friends coming online</b>
+          <span class="toggle-desc">A push alert whenever one of your friends goes from offline to online.</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="t-friends" data-key="friends_online">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <b>Unread messages email digest</b>
+          <span class="toggle-desc">Periodic email summarizing unread chat messages that piled up while you were offline.</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="t-digest" data-key="digest">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span>Quiet hours</span></div>
+      <p class="section-sub">During this daily window all push, ntfy and digest alerts are muted. Messages still arrive normally — nothing is lost, you just aren't buzzed.</p>
+      <div class="toggle-row">
+        <div class="toggle-label">
+          <b>Mute alerts during quiet hours</b>
+          <span class="toggle-desc">Uses the timezone of the device you last saved from.</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="t-quiet" data-key="quietEnabled">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div class="quiet-times">
+        <label for="quietStart">From</label>
+        <input type="time" id="quietStart" value="22:00">
+        <label for="quietEnd">to</label>
+        <input type="time" id="quietEnd" value="08:00">
+      </div>
+      <div class="status-line" id="saveStatus"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title"><span>This device</span></div>
+      <p class="section-sub">PWA push for the browser you're using right now. Toggles above control what is sent; this controls whether this device receives it.</p>
+      <div class="device-row">
+        <span class="device-state off" id="pushState"><span class="dot"></span><span id="pushStateText">Checking…</span></span>
+        <button class="btn btn-primary" id="pushToggleBtn" type="button">…</button>
+      </div>
+      <div class="link-row" id="deviceHints"></div>
+      <div class="link-row">Want alerts on your phone without PWA push? Set up a topic under <a href="/preferences/#security">Preferences → ntfy</a>.</div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var statusEl = document.getElementById('saveStatus');
+  var statusTimer = null;
+  function showStatus(msg, isErr) {
+    if (!statusEl) return;
+    statusEl.textContent = msg || '';
+    statusEl.classList.toggle('err', !!isErr);
+    clearTimeout(statusTimer);
+    if (msg && !isErr) statusTimer = setTimeout(function () { statusEl.textContent = ''; }, 2500);
+  }
+
+  // tzOffset uses the JS Date.getTimezoneOffset() convention: minutes to add
+  // to local time to get UTC (UTC-8 → 480, UTC+2 → -120). The server converts
+  // back when deciding whether it's currently quiet hours for this user.
+  function deviceTzOffset() { return new Date().getTimezoneOffset(); }
+
+  var prefs = null;
+  var saving = false;
+  var pendingSave = false;
+
+  function collectPrefs() {
+    return {
+      dm: document.getElementById('t-dm').checked,
+      group: document.getElementById('t-group').checked,
+      friends_online: document.getElementById('t-friends').checked,
+      digest: document.getElementById('t-digest').checked,
+      quietEnabled: document.getElementById('t-quiet').checked,
+      quietStart: document.getElementById('quietStart').value || '22:00',
+      quietEnd: document.getElementById('quietEnd').value || '08:00',
+      tzOffset: deviceTzOffset(),
+    };
+  }
+
+  function reflectPrefs() {
+    document.getElementById('t-dm').checked = prefs.dm !== false;
+    document.getElementById('t-group').checked = prefs.group !== false;
+    document.getElementById('t-friends').checked = prefs.friends_online !== false;
+    document.getElementById('t-digest').checked = prefs.digest !== false;
+    document.getElementById('t-quiet').checked = !!prefs.quietEnabled;
+    document.getElementById('quietStart').value = String(prefs.quietStart || '22:00');
+    document.getElementById('quietEnd').value = String(prefs.quietEnd || '08:00');
+    syncQuietInputs();
+  }
+
+  function syncQuietInputs() {
+    var on = document.getElementById('t-quiet').checked;
+    document.getElementById('quietStart').disabled = !on;
+    document.getElementById('quietEnd').disabled = !on;
+  }
+
+  function savePrefs() {
+    var payload = collectPrefs();
+    if (saving) { pendingSave = true; return; }
+    saving = true;
+    fetch('/api/me/notif-prefs', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+      body: JSON.stringify(payload),
+    }).then(function (r) {
+      if (!r.ok) return r.json().then(function (d) { throw new Error(d.error || 'Save failed'); });
+      showStatus('Saved ✓');
+    }).catch(function (e) {
+      showStatus(e.message || 'Could not save', true);
+    }).finally(function () {
+      saving = false;
+      if (pendingSave) { pendingSave = false; savePrefs(); }
+    });
+  }
+
+  // ── This-device push state ──────────────────────────────────────────────
+  function setPushState(on, note) {
+    var pill = document.getElementById('pushState');
+    var text = document.getElementById('pushStateText');
+    var btn = document.getElementById('pushToggleBtn');
+    var hints = document.getElementById('deviceHints');
+    pill.classList.toggle('on', !!on);
+    pill.classList.toggle('off', !on);
+    text.textContent = note || (on ? 'Push alerts on' : 'Push alerts off');
+    btn.textContent = on ? 'Turn off for this device' : 'Turn on for this device';
+    btn.dataset.on = on ? '1' : '0';
+    var bits = [];
+    if (!('serviceWorker' in navigator)) bits.push('This browser doesn’t support push.');
+    if ('Notification' in window && Notification.permission === 'denied') {
+      bits.push('Notifications are blocked for this site in your browser settings — unblock them to allow alerts.');
+    }
+    if (!window.isSecureContext) bits.push('Push requires a secure (https) connection.');
+    hints.innerHTML = bits.map(function (b) { return '<div>• ' + b + '</div>'; }).join('');
+  }
+
+  async function refreshPushState() {
+    try {
+      var reg = await navigator.serviceWorker.getRegistration('/');
+      var sub = reg ? await reg.pushManager.getSubscription() : null;
+      setPushState(!!sub);
+    } catch (e) {
+      setPushState(false, 'Push unavailable here');
+    }
+  }
+
+  document.getElementById('pushToggleBtn').addEventListener('click', async function () {
+    var btn = this;
+    btn.disabled = true;
+    try {
+      var reg = await navigator.serviceWorker.getRegistration('/');
+      var sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+        }).catch(function () {});
+        try { await sub.unsubscribe(); } catch (e) {}
+        setPushState(false);
+      } else if (typeof window.__enableSiteNotifications === 'function') {
+        var ok = await window.__enableSiteNotifications();
+        setPushState(!!ok);
+        if (!ok) setPushState(false, 'Permission not granted');
+      } else {
+        setPushState(false, 'Couldn’t enable push here');
+      }
+    } catch (e) {
+      setPushState(false, 'Something went wrong');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Wire toggles: change → reflect dependent UI → save.
+  ['t-dm', 't-group', 't-friends', 't-digest', 't-quiet'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', function () {
+      syncQuietInputs();
+      savePrefs();
+    });
+  });
+  ['quietStart', 'quietEnd'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', savePrefs);
+  });
+
+  // Boot: must be signed in to manage anything.
+  fetch('/api/me', { credentials: 'include', cache: 'no-store' })
+    .then(function (r) {
+      if (!r.ok) throw new Error('not signed in');
+      return r.json();
+    })
+    .then(function () {
+      document.getElementById('prefsUI').style.display = '';
+      return fetch('/api/me/notif-prefs', { credentials: 'include', cache: 'no-store' });
+    })
+    .then(function (r) { if (!r.ok) throw new Error('load failed'); return r.json(); })
+    .then(function (d) {
+      prefs = (d && d.prefs) || {};
+      reflectPrefs();
+      refreshPushState();
+    })
+    .catch(function () {
+      document.getElementById('loginGate').style.display = '';
+    });
+})();
+</script>
+</body>
+</html>

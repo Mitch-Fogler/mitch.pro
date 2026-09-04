@@ -950,7 +950,7 @@ function broadcastPresenceChanged(email, online, playing = '') {
   recipients.add(norm);
   const payload = JSON.stringify({
     type: 'presence_changed',
-    email: maskEmail(norm),
+    email: displayEmail(norm),
     online: !!online,
     playing: online ? String(playing || '').trim() : '',
     ts: Date.now(),
@@ -1000,11 +1000,12 @@ function notifyFriendsOnline(email) {
     const norm = normalizeEmail(email);
     const friends = loadJson(FRIENDS_FILE, {});
     const myList = friends[norm] || [];
-    const senderName = maskEmail(email);
+    const senderName = displayEmail(email);
     const subs = loadPushSubscriptions();
 
     for (const friend of myList) {
       const friendNorm = normalizeEmail(friend);
+      if (!notifAllowed(friendNorm, 'friends_online')) continue;
       const sub = subs[friend] || subs[friendNorm];
       if (sub && VAPID_PUBLIC) {
         webpush.sendNotification(sub, JSON.stringify({
@@ -1228,13 +1229,41 @@ function logBet(user, game, amount, outcome) {
   if (bettingFeed.length > 50) bettingFeed.pop();
 }
 
+// Email censoring is gone: the only people who ever see these addresses are
+// admins (and the user's own /api/me), and a masked address is worse than
+// useless there. The function stays as a pass-through so every existing call
+// site keeps working — it now just returns the real address.
 function maskEmail(email) {
-  if (!email || !email.includes('@')) return 'anonymous';
-  const parts = email.split('@');
-  const local = parts[0];
-  const domain = parts[1];
-  if (local.length <= 2) return `${local[0]}*@${domain}`;
-  return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
+  if (!email) return 'anonymous';
+  return String(email);
+}
+
+// Reverse lookup for internal identity keys: normalizeEmail() folds
+// "alice.fogler@mitch.pro" into "alicefogler@student.rjuhsd.us", which is
+// right for storage but wrong to show anyone — the dot is part of the actual
+// address. Map a normalized key back to the real address from the profile
+// store, falling back to whatever was passed in.
+let _displayEmailProfiles = null;
+let _displayEmailProfilesTs = 0;
+function displayEmail(normOrEmail) {
+  const raw = String(normOrEmail || '');
+  if (!raw) return '';
+  const norm = normalizeEmail(raw);
+  try {
+    // Short-lived cache: inbox endpoints call this per message, and re-reading
+    // profiles.json for each would be wasteful. 30s staleness is fine for a
+    // display-only lookup.
+    const now = Date.now();
+    if (!_displayEmailProfiles || now - _displayEmailProfilesTs > 30000) {
+      _displayEmailProfiles = loadJson(PROFILES_FILE, {});
+      _displayEmailProfilesTs = now;
+    }
+    const p = _displayEmailProfiles[norm];
+    if (p && p.email) return p.email;
+  } catch {}
+  // No profile entry: keep the display-domain convention (normalized storage
+  // keys use @student.rjuhsd.us, but the pretty address is @student.mitch.pro).
+  return raw.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro');
 }
 
 // Rate limiting
@@ -1251,6 +1280,7 @@ const RATE_LIMITS = {
   '/api/e2e/verify-password':  [5,   60],
   '/api/content':              [120, 60],
   '/api/ping':                 [120, 60],
+  '/api/me/notif-prefs':       [30,  60],
   '/api/ai':                   [20,  60],
   '/api/script':               [600, 60],
   '/api/admin/js':             [5,   60],
@@ -1925,6 +1955,53 @@ function validPushSubscription(value) {
 const NTFY_TOPICS_FILE = join(DATA_DIR, 'ntfy_topics.json');
 function loadNtfyTopics() { return loadJson(NTFY_TOPICS_FILE, {}); }
 function saveNtfyTopics(topics) { saveJson(NTFY_TOPICS_FILE, topics); }
+
+// Per-user notification preferences, managed on /notifications/.
+// data/notif_prefs.json: { [normalizedEmail]: { dm, group, friends_online,
+// digest, quietEnabled, quietStart, quietEnd, tzOffset } }. Everything
+// defaults to on, so users with no entry behave exactly as before.
+const NOTIF_PREFS_FILE = join(DATA_DIR, 'notif_prefs.json');
+const NOTIF_PREF_DEFAULTS = {
+  dm: true,             // encrypted chat direct messages (web push + ntfy)
+  group: true,          // group chat messages (web push + ntfy)
+  friends_online: true, // "friend came online" web push
+  digest: true,         // hourly unread-messages email digest
+  quietEnabled: false,  // mute all alerts during a daily window
+  quietStart: '22:00',
+  quietEnd: '08:00',
+  tzOffset: 0,          // Date.getTimezoneOffset() of the saving device
+};
+const NOTIF_BOOL_KEYS = new Set(['dm', 'group', 'friends_online', 'digest', 'quietEnabled']);
+function getNotifPrefs(norm) {
+  const all = loadJson(NOTIF_PREFS_FILE, {});
+  return { ...NOTIF_PREF_DEFAULTS, ...(all[norm] || {}) };
+}
+function notifQuietNow(p) {
+  if (!p || !p.quietEnabled) return false;
+  const parse = (s) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || ''));
+    if (!m) return null;
+    const v = Number(m[1]) * 60 + Number(m[2]);
+    return (v >= 0 && v < 1440) ? v : null;
+  };
+  const start = parse(p.quietStart);
+  const end = parse(p.quietEnd);
+  if (start === null || end === null || start === end) return false;
+  // tzOffset uses JS convention (minutes to ADD to local to get UTC), so
+  // local minutes-of-day = utc minutes-of-day - tzOffset.
+  const off = Number.isFinite(p.tzOffset) ? Math.max(-840, Math.min(840, Math.round(p.tzOffset))) : 0;
+  const now = new Date();
+  const localMin = ((now.getUTCHours() * 60 + now.getUTCMinutes() - off) % 1440 + 1440) % 1440;
+  return start < end
+    ? (localMin >= start && localMin < end)
+    : (localMin >= start || localMin < end); // window wraps midnight
+}
+// Master gate for outbound alerts: category off OR inside quiet hours.
+function notifAllowed(norm, key) {
+  const p = getNotifPrefs(norm);
+  if (p[key] === false) return false;
+  return !notifQuietNow(p);
+}
 async function ntfyNotify(email, title, body, url) {
   try {
     const topic = loadNtfyTopics()[normalizeEmail(email)];
@@ -2346,10 +2423,6 @@ function renameEmailReferences(oldNorm, newNorm, newEmail) {
   try { rebuildCoreTablesFromDocuments(); } catch {}
 }
 
-function displayEmail(email) {
-  if (!email) return '';
-  return email.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro');
-}
 function loadAdminPassphrase() {
   return loadJson(PASSPHRASE_FILE, {});
 }
@@ -4672,11 +4745,13 @@ async function dmDigestWorker() {
     for (const [recip, { senders, latestTs }] of Object.entries(unreadByRecip)) {
       const isOnline = (recip in e2eUsers) && (e2eUsers[recip].last_seen > offlineCutoff);
       if (isOnline) continue;
+      if (!notifAllowed(recip, 'digest')) continue;
       const ulog = log[recip] || {};
       // skip if no new messages since last digest
       if (ulog.dm_digest_ts && latestTs <= ulog.dm_digest_ts) continue;
       const total = Object.values(senders).reduce((a, b) => a + b, 0);
-      const names = Object.keys(senders).map(e => e.split('@')[0]).join(', ');
+      // Sender keys are normalized (dots stripped); show the real addresses.
+      const names = Object.keys(senders).map(e => displayEmail(e).split('@')[0]).join(', ');
       sendEmailBg(recip, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, makeUnreadMessagesHtml(recip, total, names));
       log[recip] = { ...ulog, dm_digest_ts: latestTs };
       changed = true;
@@ -10395,6 +10470,43 @@ async function handleRequest(req, server) {
       return jsonResp(200, { ok: true });
     }
 
+    // ── Notification preferences (managed on /notifications/) ─────────────
+    if (path === '/api/me/notif-prefs' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const uid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
+      const email = emailFromSid(uid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      const norm = normalizeEmail(email);
+      const incoming = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+      const current = getNotifPrefs(norm);
+      const next = { ...current };
+      for (const key of Object.keys(incoming)) {
+        if (NOTIF_BOOL_KEYS.has(key)) {
+          next[key] = incoming[key] === true;
+        } else if (key === 'quietStart' || key === 'quietEnd') {
+          if (!/^([01]?\d|2[0-3]):[0-5]\d$/.test(String(incoming[key] || ''))) {
+            return jsonResp(400, { error: 'quiet hours must be HH:MM' });
+          }
+          next[key] = String(incoming[key]);
+        } else if (key === 'tzOffset') {
+          const off = Number(incoming[key]);
+          if (!Number.isFinite(off)) return jsonResp(400, { error: 'bad tzOffset' });
+          next.tzOffset = Math.max(-840, Math.min(840, Math.round(off)));
+        }
+        // Unknown keys are ignored, never stored.
+      }
+      if (next.quietEnabled && next.quietStart === next.quietEnd) {
+        return jsonResp(400, { error: 'quiet hours start and end must differ' });
+      }
+      const all = loadJson(NOTIF_PREFS_FILE, {});
+      all[norm] = next;
+      saveJson(NOTIF_PREFS_FILE, all);
+      return jsonResp(200, { ok: true, prefs: next });
+    }
+
     if (path === '/api/me/notifications/read') {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const cookies = getCookies(req);
@@ -13992,6 +14104,25 @@ function loadAllGamesList() {
       return jsonResp(200, { notices });
     }
 
+    // ── Notification preferences (managed on /notifications/) ─────────────
+    if (path === '/api/me/notif-prefs' && method === 'GET') {
+      const cookies = getCookies(req);
+      const uid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
+      const email = emailFromSid(uid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      return jsonResp(200, { prefs: getNotifPrefs(normalizeEmail(email)) });
+    }
+
+    if (path === '/api/me/notif-prefs' && method === 'GET') {
+      const cookies = getCookies(req);
+      const uid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(uid)) return jsonResp(401, { error: 'Not authenticated' });
+      const email = emailFromSid(uid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      return jsonResp(200, { prefs: getNotifPrefs(normalizeEmail(email)) });
+    }
+
     if (path === '/api/me/notifications') {
       const cookies = getCookies(req);
       const uid = cookies['studentId'] || cookies['id'] || '';
@@ -14052,9 +14183,9 @@ function loadAllGamesList() {
         notices.push({
           type: 'dm',
           id: 'dm:' + from,
-          from: maskEmail(from),
+          from: displayEmail(from),
           title: `${info.count} encrypted chat message${info.count === 1 ? '' : 's'}`,
-          body: `From ${maskEmail(from)}`,
+          body: `From ${displayEmail(from)}`,
           detail: info.latestText ? `Latest: ${info.latestText}` : '',
           ts: info.latestTs,
           url: notificationUrl('/encrypt/'),
@@ -14234,9 +14365,9 @@ function loadAllGamesList() {
               ...maxMsg,
               text: lastContent.text,
               image: lastContent.image !== undefined ? lastContent.image : maxMsg.image,
-              from: maskEmail(maxMsg.from),
-              to: maskEmail(maxMsg.to),
-              readBy: (maxMsg.readBy || []).map(maskEmail)
+              from: displayEmail(maxMsg.from),
+              to: displayEmail(maxMsg.to),
+              readBy: (maxMsg.readBy || []).map(displayEmail)
             };
           }
         }
@@ -14557,9 +14688,9 @@ function loadAllGamesList() {
               ...existing,
               text: dupContent.text,
               image: dupContent.image !== undefined ? dupContent.image : existing.image,
-              from: maskEmail(existing.from),
-              to: existing.to ? maskEmail(existing.to) : undefined,
-              readBy: (existing.readBy || []).map(maskEmail),
+              from: displayEmail(existing.from),
+              to: existing.to ? displayEmail(existing.to) : undefined,
+              readBy: (existing.readBy || []).map(displayEmail),
             },
           });
         }
@@ -14598,15 +14729,15 @@ function loadAllGamesList() {
             const memberNorm = normalizeEmail(member);
             if (memberNorm === normalizeEmail(senderEmail)) continue;
             const recActive = (memberNorm in e2eUsers) && (Date.now() - e2eUsers[memberNorm].last_seen < 30000);
-            if (!recActive && subs[memberNorm]) {
+            if (!recActive && notifAllowed(memberNorm, 'group') && subs[memberNorm]) {
               await sendWebPushClean(subs, memberNorm, {
-                title: `${maskEmail(senderEmail)} in ${group.name}`,
+                title: `${displayEmail(senderEmail)} in ${group.name}`,
                 body: notifyBody,
                 url: notificationUrl('/encrypt/?group=' + encodeURIComponent(groupId)),
                 tag: `group-${groupId}-${msg.ts}`,
               });
-            } else if (!recActive) {
-              ntfyNotify(memberNorm, `${maskEmail(senderEmail)} in ${group.name}`, notifyBody, notificationUrl('/encrypt/'));
+            } else if (!recActive && notifAllowed(memberNorm, 'group')) {
+              ntfyNotify(memberNorm, `${displayEmail(senderEmail)} in ${group.name}`, notifyBody, notificationUrl('/encrypt/'));
             }
           }
         }
@@ -14624,16 +14755,16 @@ function loadAllGamesList() {
         dms.push(msg);
         saveJson(DMS_FILE, pruneDms(dms));
         const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
-        if (!recActive && VAPID_PUBLIC && subs[to]) {
+        if (!recActive && notifAllowed(to, 'dm') && VAPID_PUBLIC && subs[to]) {
           await sendWebPushClean(subs, to, {
-            title: `Message from ${maskEmail(senderEmail)}`,
+            title: `Message from ${displayEmail(senderEmail)}`,
             body:  getNotificationBody(text, safeImage),
             // Deep-link: /encrypt/?to=<sender> opens the conversation directly.
             url:   notificationUrl('/encrypt/?to=' + encodeURIComponent(senderEmail)),
             tag:   `dm-${msg.ts}`,
           });
-        } else if (!recActive) {
-          ntfyNotify(to, `Message from ${maskEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl('/encrypt/'));
+        } else if (!recActive && notifAllowed(to, 'dm')) {
+          ntfyNotify(to, `Message from ${displayEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl('/encrypt/'));
         }
         }
         addCoins(senderEmail, 2.0);
@@ -14642,9 +14773,9 @@ function loadAllGamesList() {
         ...msg,
         text: wireContent.text,
         image: wireContent.image !== undefined ? wireContent.image : msg.image,
-        from: maskEmail(msg.from),
-        to: maskEmail(msg.to),
-        readBy: (msg.readBy || []).map(maskEmail)
+        from: displayEmail(msg.from),
+        to: displayEmail(msg.to),
+        readBy: (msg.readBy || []).map(displayEmail)
         };
 
         // Broadcast to WebSocket clients
@@ -14700,7 +14831,7 @@ function loadAllGamesList() {
         // the recipient unable to find (or the sender unable to build) copies.
         const publicRef = (m) => {
           const r = resolveMemberRef(m);
-          if (!r) return maskEmail(m);
+          if (!r) return displayEmail(m);
           const p = profiles[r] || {};
           return p.username || defaultUsernameForEmail(r);
         };
@@ -14718,15 +14849,15 @@ function loadAllGamesList() {
             ...last,
             text: lastContent.text,
             image: lastContent.image !== undefined ? lastContent.image : last.image,
-            from: maskEmail(last.from),
-            to: last.to ? maskEmail(last.to) : undefined,
-            readBy: (last.readBy || []).map(maskEmail)
+            from: displayEmail(last.from),
+            to: last.to ? displayEmail(last.to) : undefined,
+            readBy: (last.readBy || []).map(displayEmail)
           };
         }
         return {
           ...g,
           members: (g.members || []).map(publicRef),
-          createdBy: maskEmail(g.createdBy),
+          createdBy: displayEmail(g.createdBy),
           lastText,
           lastTs: last ? last.ts : g.createdAt,
           lastMessage,
@@ -14815,9 +14946,9 @@ function loadAllGamesList() {
           ...m,
           text: c.text,
           image: c.image !== undefined ? c.image : m.image,
-          from: maskEmail(m.from),
-          to: maskEmail(m.to),
-          readBy: (m.readBy || []).map(maskEmail)
+          from: displayEmail(m.from),
+          to: displayEmail(m.to),
+          readBy: (m.readBy || []).map(displayEmail)
         };
       });
       return jsonResp(200, { messages: resultMsgs, myEmail: maskEmail(myEmail) });
@@ -15034,7 +15165,7 @@ function loadAllGamesList() {
       const now   = Date.now();
       const users = Object.entries(e2eUsers)
         .filter(([, u]) => now - u.last_seen < 60000)
-        .map(([n, u]) => ({ nickname: maskEmail(n), pubKey: u.pub_key }));
+        .map(([n, u]) => ({ nickname: displayEmail(n), pubKey: u.pub_key }));
       return jsonResp(200, { users });
     }
 
@@ -15336,7 +15467,7 @@ function loadAllGamesList() {
       }
       const challenges = Object.values(bsChallenges)
         .filter(c => normalizeEmail(c.to) === myNorm || normalizeEmail(c.from) === myNorm)
-        .map(c => ({ ...c, from: maskEmail(c.from), to: maskEmail(c.to) }));
+        .map(c => ({ ...c, from: displayEmail(c.from), to: displayEmail(c.to) }));
       const myGames = Object.values(bsGames).filter(g =>
         (normalizeEmail(g.player1) === myNorm || normalizeEmail(g.player2) === myNorm) && g.status !== 'over'
       );
