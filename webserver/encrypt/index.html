@@ -968,8 +968,11 @@ let conversationMotionTimer = null;
 
 const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
 const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
+// Auto-delete is a per-conversation setting owned by the server (either side
+// can change it and it deletes everyone's messages), so msgExpiry mirrors the
+// ACTIVE conversation's window rather than a localStorage global.
 let msgExpiry = 0;
-try { msgExpiry = parseInt(localStorage.getItem('_chatExpiry') || '0', 10) || 0; } catch {}
+const convExpiry = new Map(); // chatCacheKey → expiry ms (0 = off)
 
 const h2b = h => {
   const value = String(h || '').trim();
@@ -2520,6 +2523,7 @@ async function fetchConversation(chat, limit = 20) {
     const messages = (data.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
     await Promise.all(messages.map(decryptMessageContent));
     conversationCache.set(key, messages);
+    if (data.expiry !== undefined) convExpiry.set(key, Number(data.expiry) || 0);
     return messages;
   })().finally(() => conversationRequests.delete(key));
   conversationRequests.set(key, request);
@@ -2529,6 +2533,12 @@ async function fetchConversation(chat, limit = 20) {
 function showConversationImmediately(chat) {
   const cached = conversationCache.get(chatCacheKey(chat));
   currentMessages = cached ? [...cached] : [];
+  // Mirror the conversation's auto-delete setting the moment it opens (the
+  // fresh value from the server lands in reloadActiveChat right after).
+  if (convExpiry.has(chatCacheKey(chat))) {
+    msgExpiry = convExpiry.get(chatCacheKey(chat)) || 0;
+    syncExpiryButton();
+  }
   renderMessages();
   if (!cached) {
     document.getElementById('msgs').innerHTML = '<div class="conversation-loading"><i></i><span>Opening conversation</span></div>';
@@ -2555,6 +2565,10 @@ async function reloadActiveChat() {
   try {
     const msgs = await fetchConversation(chatAtStart);
     if (loadSeq !== activeChatLoadSeq || !sameChat(activeChat, chatAtStart)) return;
+    if (convExpiry.has(chatCacheKey(chatAtStart))) {
+      msgExpiry = convExpiry.get(chatCacheKey(chatAtStart)) || 0;
+      syncExpiryButton();
+    }
     const pending = currentMessages.filter(m => m.isPending && isMessageForChat(m, chatAtStart));
     const merged = new Map();
     // Preserve pending messages that the response has not seen yet, but let a
@@ -3207,16 +3221,33 @@ function onMessageAction(e) {
     const opening = !tools.classList.contains('open');
     document.querySelectorAll('.msg-tools.open').forEach(t => {
       t.classList.remove('open');
+      t.style.transform = '';
       const b = t.querySelector('.msg-more');
       if (b) b.setAttribute('aria-expanded', 'false');
     });
     tools.classList.toggle('open', opening);
     more.setAttribute('aria-expanded', String(opening));
+    // The menu opens toward the middle of the screen (leftward on own rows,
+    // leftward from the bubble edge on others'), but short bubbles near a
+    // screen edge can still push it past the viewport — nudge it back.
+    if (opening) {
+      requestAnimationFrame(() => {
+        const r = tools.getBoundingClientRect();
+        const overRight = r.right - window.innerWidth + 8;
+        const overLeft = 8 - r.left;
+        tools.style.transform = overRight > 0
+          ? `translateX(${-overRight}px)`
+          : (overLeft > 0 ? `translateX(${overLeft}px)` : '');
+      });
+    } else {
+      tools.style.transform = '';
+    }
     return;
   }
   // Clicking anywhere else closes any open message menu.
   document.querySelectorAll('.msg-tools.open').forEach(t => {
     t.classList.remove('open');
+    t.style.transform = '';
     const b = t.querySelector('.msg-more');
     if (b) b.setAttribute('aria-expanded', 'false');
   });
@@ -3333,13 +3364,31 @@ function handleImagePick() {
 }
 
 async function cycleExpiry() {
+  if (!activeChat) return toast('Select a chat first.');
   const cur = EXPIRY_OPTIONS.indexOf(msgExpiry);
   const next = EXPIRY_OPTIONS[(cur + 1) % EXPIRY_OPTIONS.length];
   if (msgExpiry === 0 && next > 0 && !(await customConfirm('Auto-Delete', 'Auto-delete permanently removes new messages for everyone after the selected time. Turn it on?'))) {
     return;
   }
+  // Persist conversation-wide: the server stamps expiresAt on every new
+  // message from BOTH sides and live-syncs the other participant's button.
+  const payload = activeChat.type === 'group'
+    ? { groupId: activeChat.id }
+    : { with: activeChat.id };
+  try {
+    const r = await fetch('/api/dm/expiry', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...payload, expiry: next })
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.success) return toast(d.error || 'Could not change auto-delete.');
+  } catch {
+    return toast('Network error while changing auto-delete.');
+  }
   msgExpiry = next;
-  try { localStorage.setItem('_chatExpiry', msgExpiry); } catch {}
+  convExpiry.set(chatCacheKey(activeChat), next);
   syncExpiryButton();
 }
 
@@ -3449,6 +3498,23 @@ function showNotif(from, text) {
 
 window.addEventListener('ws-broadcast-message', async function(e) {
   const data = e.detail;
+  if (data && data.type === 'chat_expiry') {
+    // The other side (or a group member) changed the conversation's
+    // auto-delete window — mirror it here.
+    const exp = Number(data.expiry) || 0;
+    const isForActive = activeChat && (data.groupId
+      ? (activeChat.type === 'group' && String(activeChat.id) === String(data.groupId))
+      : (activeChat.type === 'dm' && data.with && sameEmail(activeChat.id, data.with)));
+    if (isForActive) {
+      msgExpiry = exp;
+      convExpiry.set(chatCacheKey(activeChat), exp);
+      syncExpiryButton();
+      toast(exp > 0
+        ? 'Auto-delete set to ' + (EXPIRY_LABELS[EXPIRY_OPTIONS.indexOf(exp)] || 'on') + ' for this chat'
+        : 'Auto-delete turned off for this chat');
+    }
+    return;
+  }
   if (data && data.type === 'new_dm') {
     const m = data.message;
     if (!m) return;

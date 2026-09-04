@@ -952,8 +952,22 @@ body.app-shell.relaunch-ready .pref-section { animation: ui-rise .3s cubic-bezie
   }
   body.encrypt-page #chat-header .chat-title-wrap { grid-column: 3 !important; grid-row: 1 !important; }
   body.encrypt-page #chat-subtitle,
-  body.encrypt-page .encryption-status,
-  body.encrypt-page #expiry-btn { display: none !important; }
+  body.encrypt-page .encryption-status { display: none !important; }
+  /* Auto-delete stays reachable on phones: collapse it to a clock icon that
+     highlights while a window is active (full label lives in the title attr
+     and on desktop). */
+  body.encrypt-page #expiry-btn {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 42px !important;
+    min-width: 42px !important;
+    min-height: 42px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+  }
+  body.encrypt-page #expiry-btn::before { content: '⏱'; font-size: 1.05rem; }
+  body.encrypt-page #expiry-btn.on { border-color: var(--ui-green) !important; color: #66c982 !important; background: rgba(59,165,93,.12) !important; }
   body.encrypt-page .header-tools { width: auto !important; gap: 4px !important; grid-column: 4 !important; grid-row: 1 !important; padding: 0 !important; overflow: visible !important; }
   body.encrypt-page .chat-icon-btn { width: 42px !important; min-width: 42px !important; padding: 0 6px !important; font-size: 10px !important; }
   body.encrypt-page #chat-tools-menu { right: 8px !important; width: min(310px, calc(100vw - 16px)) !important; }
@@ -1140,7 +1154,13 @@ body.encrypt-page .chat-image {
 }
 body.encrypt-page .msg.mine .chat-image { margin-left: auto !important; }
 body.encrypt-page .msg-tools { top: -8px !important; right: -34px !important; }
-body.encrypt-page .msg.mine .msg-tools { inset: auto auto -5px -34px !important; }
+/* Own rows hang the ••• off the bubble's RIGHT edge and grow the menu
+   leftward (row-reverse keeps the ••• stationary while it opens). The old
+   left-anchored inset made the open menu extend off the right of the screen. */
+body.encrypt-page .msg.mine .msg-tools {
+  inset: auto -8px -5px auto !important;
+  flex-direction: row-reverse !important;
+}
 body.encrypt-page .msg-delivery {
   display: inline-flex;
   align-items: center;
@@ -1212,7 +1232,10 @@ body.encrypt-page .online-dot.on { animation: presence-pulse 2.2s ease-in-out in
   body.encrypt-page .msg-line.msg-bubble { padding: 9px 11px !important; }
   body.encrypt-page .msg .body { font-size: 13.5px; }
   body.encrypt-page .msg-tools { top: -11px !important; right: -25px !important; opacity: .62; }
-  body.encrypt-page .msg.mine .msg-tools { inset: auto auto -9px -25px !important; }
+  body.encrypt-page .msg.mine .msg-tools {
+    inset: auto -6px -9px auto !important;
+    flex-direction: row-reverse !important;
+  }
   body.encrypt-page .msg-more { min-width: 34px !important; min-height: 34px !important; }
 }
 

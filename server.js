@@ -165,6 +165,7 @@ const PROFILES_FILE          = join(DATA_DIR, 'profiles.json');
 const COIN_GIFTS_FILE        = join(DATA_DIR, 'coin_gifts.json');
 const DAILY_LOGINS_FILE      = join(DATA_DIR, 'daily_logins.json');
 const DMS_FILE               = join(DATA_DIR, 'dms.json');
+const CHAT_EXPIRY_FILE       = join(DATA_DIR, 'chat_expiry.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
 const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
 const CANVAS_HISTORY_FILE    = join(DATA_DIR, 'canvas_history.jsonl');
@@ -5679,6 +5680,29 @@ function processMemberFields(memberEmail, profile, viewerEmail) {
     displayName: p.nickname || p.displayName || username,
     email: maskEmail(memberEmail)
   };
+}
+
+// Per-conversation auto-delete windows ("Auto-delete" toggle in the chat
+// header). Stored conversation-wide so it deletes BOTH sides' messages, not
+// just the toggler's — the old per-send expiry only ever stamped the
+// sender's own messages. Keys: 'dm:<a>|<b>' (sorted norms), 'group:<id>'.
+const CHAT_EXPIRY_OPTIONS = [30000, 60000, 300000, 3600000];
+function dmExpiryKey(a, b) {
+  return 'dm:' + [normalizeEmail(a || ''), normalizeEmail(b || '')].sort().join('|');
+}
+function groupExpiryKey(groupId) {
+  return 'group:' + String(groupId || '');
+}
+function getChatExpiry(key) {
+  if (!key) return 0;
+  const v = Number(loadJson(CHAT_EXPIRY_FILE, {})[key]) || 0;
+  return CHAT_EXPIRY_OPTIONS.includes(v) ? v : 0;
+}
+function setChatExpiry(key, ms) {
+  const all = loadJson(CHAT_EXPIRY_FILE, {});
+  if (ms && CHAT_EXPIRY_OPTIONS.includes(ms)) all[key] = ms;
+  else delete all[key];
+  saveJson(CHAT_EXPIRY_FILE, all);
 }
 
 function pruneDms(dms) {
@@ -14737,6 +14761,11 @@ function loadAllGamesList() {
       const expiry = [30000, 60000, 300000, 3600000].includes(requestedExpiry)
         ? requestedExpiry
         : 0;
+      // The conversation-wide setting (set by either participant) always
+      // wins; the sender's per-send value is only a fallback for clients
+      // that haven't synced the conversation setting yet.
+      const convExpiryKey = groupId ? groupExpiryKey(groupId) : dmExpiryKey(senderEmail, to);
+      const effectiveExpiry = getChatExpiry(convExpiryKey) || expiry;
       const getNotificationBody = (t, img) => encryptedEnvelope
         ? '[Secure Message]'
         : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));
@@ -14754,8 +14783,8 @@ function loadAllGamesList() {
           if (sealed) { msg.text = sealed; msg.image = null; }
         }
         if (clientId) msg.clientId = clientId;
-        if (expiry > 0) {
-          msg.expiresAt = Date.now() + expiry;
+        if (effectiveExpiry > 0) {
+          msg.expiresAt = Date.now() + effectiveExpiry;
         }
         dms.push(msg);
         saveJson(DMS_FILE, pruneDms(dms));
@@ -14785,8 +14814,8 @@ function loadAllGamesList() {
           if (sealed) { msg.text = sealed; msg.image = null; }
         }
         if (clientId) msg.clientId = clientId;
-        if (expiry > 0) {
-          msg.expiresAt = Date.now() + expiry;
+        if (effectiveExpiry > 0) {
+          msg.expiresAt = Date.now() + effectiveExpiry;
         }
         dms.push(msg);
         saveJson(DMS_FILE, pruneDms(dms));
@@ -14987,7 +15016,12 @@ function loadAllGamesList() {
           readBy: (m.readBy || []).map(displayEmail)
         };
       });
-      return jsonResp(200, { messages: resultMsgs, myEmail: maskEmail(myEmail) });
+      // Include the conversation's auto-delete window so both sides render
+      // the same toggle state.
+      const convExpiry = groupId
+        ? getChatExpiry(groupExpiryKey(groupId))
+        : (withResolved ? getChatExpiry(dmExpiryKey(myNormEmail, withResolved)) : undefined);
+      return jsonResp(200, { messages: resultMsgs, myEmail: maskEmail(myEmail), expiry: convExpiry });
 
     }
 
@@ -15095,6 +15129,54 @@ function loadAllGamesList() {
       }
       saveJson(DM_CLEARED_FILE, cleared);
       return jsonResp(200, { success: true });
+    }
+
+    // /api/dm/expiry — set the conversation-wide auto-delete window. Either
+    // DM participant (or any group member) can change it; it applies to
+    // messages from everyone in the conversation, not just the sender's.
+    if (path === '/api/dm/expiry') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const names = loadJson(NAMES_FILE, {});
+      const myEmail = (names[sid] || '').toLowerCase();
+      if (!myEmail) return jsonResp(403, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const requested = Number(body.expiry) || 0;
+      if (requested !== 0 && !CHAT_EXPIRY_OPTIONS.includes(requested)) return jsonResp(400, { error: 'invalid expiry' });
+      const norm = normalizeEmail(myEmail);
+      let wsTargets = null; // set of normalized emails to notify
+      let key = '';
+      let wsGroupId, wsWith;
+      if (body.groupId) {
+        const groupId = String(body.groupId);
+        const group = loadJson(GROUPS_FILE, []).find(g => g.id === groupId);
+        if (!group) return jsonResp(404, { error: 'group not found' });
+        const memberNorms = (group.members || []).map(m => resolveMemberRef(m) || normalizeEmail(m));
+        if (!memberNorms.includes(norm)) return jsonResp(403, { error: 'not a member' });
+        key = groupExpiryKey(groupId);
+        wsGroupId = groupId;
+        wsTargets = new Set(memberNorms);
+      } else if (body.with) {
+        // resolveMemberRef returns '' for anything that isn't a real member
+        // (email, masked email, or username), which doubles as the exists check.
+        const peerResolved = resolveMemberRef(String(body.with));
+        if (!peerResolved || peerResolved === norm) return jsonResp(400, { error: 'invalid peer' });
+        key = dmExpiryKey(norm, peerResolved);
+        wsWith = peerResolved;
+        wsTargets = new Set([norm, peerResolved]);
+      } else {
+        return jsonResp(400, { error: 'missing target' });
+      }
+      setChatExpiry(key, requested);
+      // Live-sync the toggle on the other side(s).
+      const wsPayload = JSON.stringify({ type: 'chat_expiry', key, expiry: requested, groupId: wsGroupId, with: wsWith });
+      for (const ws of allSockets) {
+        if (ws.data && ws.data.isBroadcast && ws.data.email && wsTargets.has(normalizeEmail(ws.data.email))) {
+          try { ws.send(wsPayload); } catch {}
+        }
+      }
+      return jsonResp(200, { success: true, expiry: requested });
     }
 
     // /api/dm/report — report a message for admin review
