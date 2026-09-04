@@ -793,51 +793,10 @@ function applyHomepagePrefs() {
       
       const nudge = document.getElementById('achievement-nudge');
       if (nudge) {
-        nudge.style.display = 'block';
-        
-        let eloVal = null, cookieCount = 0;
-        try {
-          var elo = JSON.parse(localStorage.getItem('chess_elo') || 'null');
-          if (elo && elo.elo) eloVal = elo.elo;
-        } catch(e) {}
-        try {
-          var cc = localStorage.getItem('CookieClickerGame') || localStorage.getItem('cookie-clicker');
-          if (cc) {
-            var cookies = JSON.parse(cc);
-            cookieCount = cookies.cookies || cookies.cookieCount || cookies.cookieCountCount || 0;
-          }
-        } catch(e) {}
-        
-        let coolMessages = [];
-        
-        if (d.achievements && d.achievements.length > 0) {
-          coolMessages.push('🏆 You\'ve unlocked <strong>' + d.achievements.length + '/' + (d.totalAchievementsCount || 7) + '</strong> achievements! Go grab the rest for ultimate bragging rights!');
-        } else {
-          coolMessages.push('🏆 <strong>No achievements unlocked yet?</strong> Go play games and start your legendary collection!');
-        }
-        
-        if (eloVal) {
-          if (eloVal >= 1200) {
-            coolMessages.push('♟️ <strong>Grandmaster in the making!</strong> Your Chess ELO is ' + eloVal + '. Opponents are literally sweating!');
-          } else {
-            coolMessages.push('♟️ <strong>Checkmate imminent!</strong> Your ELO is currently ' + eloVal + '. Next win is just a tactic away!');
-          }
-        }
-        
-        if (cookieCount > 0) {
-          if (cookieCount >= 1000000) {
-            coolMessages.push('🍪 <strong>Absolute cookie tycoon!</strong> You\'ve baked ' + Math.floor(cookieCount).toLocaleString() + ' cookies. Grandmas are trembling!');
-          } else {
-            coolMessages.push('🍪 <strong>Smells delicious!</strong> You have baked ' + Math.floor(cookieCount).toLocaleString() + ' cookies. Keep clicking!');
-          }
-        }
-        
-        coolMessages.push('🔥 <strong>Pro-gamer tip:</strong> Happy hour is the ultimate shortcut to double your coins!');
-        coolMessages.push('✨ <strong>MitchSync active:</strong> Don\'t forget to back up your progress in the Utilities section!');
-        coolMessages.push('🎮 <strong>Level up:</strong> Customize your user color and badges in preferences to stand out!');
-        
-        const randomMsg = coolMessages[Math.floor(Math.random() * coolMessages.length)];
-        nudge.innerHTML = '⚡ ' + randomMsg;
+        const unlocked = Array.isArray(d.achievements) ? d.achievements.length : 0;
+        const total = Number(d.totalAchievementsCount || 0);
+        nudge.style.display = total ? 'block' : 'none';
+        nudge.innerHTML = '<span class="nudge-star">★</span><span><strong>' + unlocked + '</strong> of ' + total + ' achievements unlocked</span>';
       }
     } catch(e) {}
   }
@@ -3580,7 +3539,7 @@ if (document.readyState === 'loading') {
         </div>
         <div id="achievement-nudge" class="hud-nudge-card">
           <span class="nudge-star">★</span>
-          <span>Keep going! You're close to your next achievement.</span>
+          <span>Achievement progress</span>
         </div>
       </div>
 

@@ -5663,7 +5663,10 @@ function processMemberFields(memberEmail, profile, viewerEmail) {
   const profiles = profile ? null : loadJson(PROFILES_FILE, {});
   const p = profile || profiles[normTarget] || {};
   const username = p.username || defaultUsernameForEmail(normTarget);
-  const publicName = p.nickname || username || p.displayName;
+  // A saved display name must be visible to other members. Previously the
+  // generated username always won, making profile edits look like they had
+  // failed everywhere except the owner's own session.
+  const publicName = p.nickname || p.displayName || username;
 
   if (!viewerCanSee) {
     return {
@@ -12034,6 +12037,7 @@ function loadAllGamesList() {
       }
 
       saveJson(PROFILES_FILE, profiles);
+      _dmAddrIdx = null;
       return jsonResp(200, { ok: true, bonusGranted, bonusAmount: bonusGranted ? 500 : 0 });
     }
 
@@ -14382,7 +14386,7 @@ function loadAllGamesList() {
         members.push({ 
           email: processed.email, 
           handle: username,
-          profileUrl: `/profile/#${encodeURIComponent(username)}`,
+          profileUrl: `/profile/?u=${encodeURIComponent(username)}`,
           pfp: sanitizeProfileImageUrl(profile.pfp || '', { allowData: true, maxDataBytes: 120000 }),
           online: isUserPresent(email, now),
           role,
@@ -14548,7 +14552,7 @@ function loadAllGamesList() {
       const profile = profiles[norm] || {
         username: defaultUsernameForEmail(email),
         displayName: '',
-        bio: 'Welcome to my profile!',
+        bio: '',
         pfp: '',
         background: ''
       };
@@ -14587,7 +14591,7 @@ function loadAllGamesList() {
         email: actualEmail,
         username: defaultUsernameForEmail(actualEmail),
         displayName: '',
-        bio: 'Welcome to my profile!',
+        bio: '',
         pfp: '',
         background: ''
       };
@@ -18456,14 +18460,23 @@ function loadAllGamesList() {
       const norm = normalizeEmail(email);
       const friends = loadJson(FRIENDS_FILE, {});
       const myList = friends[norm] || [];
+      const profiles = loadJson(PROFILES_FILE, {});
       const now = Date.now();
       const res = myList.map(f => {
         const fNorm = normalizeEmail(f);
+        const profile = profiles[fNorm] || {};
+        const processed = processMemberFields(f, profile, email);
+        const username = normalizeUsername(profile.username || defaultUsernameForEmail(fNorm));
         const isOnline = isUserPresent(fNorm, now);
         const presence = userPresence[fNorm];
         return {
           email: f,
           maskedEmail: maskEmail(f),
+          handle: username,
+          displayName: processed.displayName,
+          bio: String(profile.bio || '').slice(0, 120),
+          pfp: sanitizeProfileImageUrl(profile.pfp || '', { allowData: true, maxDataBytes: 120000 }),
+          profileUrl: `/profile/?u=${encodeURIComponent(username)}`,
           online: isOnline,
           playing: isOnline && presence ? presence.playing : ''
         };
@@ -18796,14 +18809,13 @@ function loadAllGamesList() {
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/site-galaxy.css'))) {
             injectStr += '<link rel="stylesheet" href="/site-galaxy.css">\n';
           }
-          const galaxyShellPages = new Set([
-            '/additions', '/additions/', '/appeal', '/appeal/', '/casino-guide', '/casino-guide/',
-            '/cookies', '/cookies/', '/download-information', '/download-information/', '/faq', '/faq/',
-            '/moderator', '/moderator/', '/newsletter', '/newsletter/', '/premium-apply', '/premium-apply/',
-            '/premium-email', '/premium-email/', '/privacy', '/privacy/', '/profile', '/profile/',
-            '/report-game', '/report-game/', '/unsubscribe', '/unsubscribe/', '/use-agreement', '/use-agreement/'
-          ]);
-          if (galaxyShellPages.has(path) && !raw.includes(Buffer.from('/app-shell.js'))) {
+          if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/portal-redesign.css'))) {
+            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=3">\n';
+          }
+          // One compact navigation shell across every full page. Pages that
+          // intentionally opt out (such as the public landing page) use
+          // data-shell="off" and are respected by app-shell.js.
+          if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/app-shell.js'))) {
             injectStr += '<script src="/app-shell.js" defer></script>\n';
           }
           // Page-specific galaxy layers must come after the legacy relaunch layer.
@@ -18900,7 +18912,7 @@ function loadAllGamesList() {
     const PUBLIC_ASSETS = new Set([
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
-      '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/auth-liquid.css', '/encrypt-galaxy.css',
+      '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
@@ -19279,11 +19291,14 @@ setTimeout(() => {
   loadPianoSessions();
   loadPiccoloSessions();
 
-  // Send automated test email on startup from school email to GMAIL_USER variable
-  const testTarget = (process.env.GMAIL_USER || 'mitchell.fogler@student.rjuhsd.us').trim();
-  console.log(`[startup] Sending test startup email to ${testTarget}...`);
-  sendEmailBg(testTarget, "mitch.pro - Server Startup Test", 
-    `Hello!\n\nThe mitch.pro server has successfully restarted at ${new Date().toLocaleString()}.\n\nThis is an automated verification test email checking that emailing from the school email account is fully active and working.\n\nHave a great day!`);
+  // Startup email is opt-in. Opening a local development server must never
+  // message a real account as a side effect.
+  const testTarget = String(process.env.STARTUP_TEST_EMAIL_TO || '').trim();
+  if (process.env.SEND_STARTUP_TEST_EMAIL === '1' && testTarget) {
+    console.log(`[startup] Sending requested startup test email to ${testTarget}...`);
+    sendEmailBg(testTarget, "mitch.pro - Server Startup Test",
+      `The mitch.pro server restarted successfully at ${new Date().toLocaleString()}.`);
+  }
 
   console.log(`[startup] All systems active.`);
 }, 100);
@@ -19454,6 +19469,14 @@ async function initializeWebVM() {
   const buildDir = join(webvmDir, 'build');
 
   console.log('[webvm] Initializing WebVM integration...');
+
+  // Git checks out the Linux symlink as a small text file on Windows. Do not
+  // delete that tracked file during local UI testing; Windows cannot recreate
+  // the same symlink reliably without Developer Mode or elevated privileges.
+  if (process.platform === 'win32' && existsSync(webvmDest) && statSync(webvmDest).isFile()) {
+    console.log('[webvm] Windows checkout detected; leaving the deployment symlink placeholder intact.');
+    return;
+  }
 
   // Helper function to create the symlink
   const setupSymlink = () => {

@@ -363,6 +363,19 @@ function escText(t) {
     .replace(/'/g, '&#039;');
 }
 
+function safeFriendImage(value) {
+  const raw = String(value || '').trim();
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 140000) return raw;
+  return '';
+}
+
+function friendInitials(value) {
+  return (String(value || '?').trim().split(/[\s._-]+/).slice(0, 2).map(function(part) {
+    return part.charAt(0);
+  }).join('') || '?').toUpperCase();
+}
+
 async function fetchAllMembers() {
   try {
     const r = await fetch('/api/members?t=' + Date.now(), { credentials: 'include' });
@@ -475,7 +488,10 @@ async function loadFriends() {
     }
     grid.innerHTML = list.map(f => {
       const email = f.email;
-      const masked = f.maskedEmail;
+      const masked = f.handle ? '@' + f.handle : f.maskedEmail;
+      const name = f.displayName || f.handle || f.maskedEmail;
+      const pfp = safeFriendImage(f.pfp);
+      const profileUrl = f.profileUrl || '/profile/?u=' + encodeURIComponent(f.handle || email);
       const isOnline = f.online;
       const playing = f.playing ? ` (playing ${f.playing})` : '';
       
@@ -484,13 +500,16 @@ async function loadFriends() {
       
       return `
         <div class="friend-item">
+          <a class="friend-avatar" href="${escText(profileUrl)}">${pfp ? `<img src="${escText(pfp)}" alt="" loading="lazy" decoding="async">` : escText(friendInitials(name))}</a>
           <div class="friend-info">
+            <a class="friend-name" href="${escText(profileUrl)}">${escText(name)}</a>
             <span class="friend-email">${escText(masked)}</span>
             <span class="friend-status ${statusClass}">
               <span class="status-dot"></span>
               ${escText(statusText)}
             </span>
           </div>
+          <a class="btn-action friend-message" href="/encrypt/?to=${encodeURIComponent(f.handle || email)}">Message</a>
           <button onclick="removeFriend('${escText(email)}')" class="btn-remove" title="Remove Friend">✕</button>
         </div>
       `;

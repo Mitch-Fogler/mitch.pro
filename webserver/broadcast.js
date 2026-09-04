@@ -284,7 +284,7 @@
       : 'Message from ' + sender;
     var toast = document.createElement('div');
     toast.className = 'sw-message-toast';
-    toast.innerHTML = '<span class="sw-message-toast-icon" aria-hidden="true">&#10022;</span>' +
+    toast.innerHTML = '<span class="sw-message-toast-icon" aria-hidden="true"><img src="/icon-192.png" alt=""></span>' +
       '<span class="sw-message-toast-copy"><b>' + escText(title) + '</b><span>New encrypted message</span></span>' +
       '<a href="/encrypt/">Open</a>';
     stack.prepend(toast);

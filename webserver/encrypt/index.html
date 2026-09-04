@@ -816,8 +816,8 @@ button {
     <div id="sidebar-top">
       <!-- Brand doubles as the home button — the app topbar is hidden on this page -->
       <a id="sidebar-home" href="/" title="Back to homepage" aria-label="Back to homepage">
-        <span class="chat-brand-mark" aria-hidden="true"></span>
-        <span id="sidebar-title"><b>Encrypted</b><small>mitch.pro communications</small></span>
+        <img class="chat-brand-icon" src="/icon-192.png" alt="">
+        <span id="sidebar-title"><b>Messages</b><small>End-to-end encrypted</small></span>
       </a>
       <button id="new-group-btn" class="small-btn icon-btn" type="button"><span aria-hidden="true">＋</span><em>Group</em></button>
     </div>
@@ -828,14 +828,14 @@ button {
         <button class="tab" id="groups-tab" type="button"><span>◈</span> Groups</button>
         <button class="tab" id="reports-tab" type="button" style="display:none"><span>◇</span> Reports</button>
       </div>
-      <input id="searchInput" placeholder="search people or groups..." autocomplete="off">
+      <input id="searchInput" placeholder="Find a person or conversation" autocomplete="off">
     </div>
     <div id="user-list"></div>
     <div class="sidebar-foot">
       <button class="small-btn" id="refresh-btn" type="button">↻ Refresh</button>
       <button class="small-btn" id="clear-all-btn" type="button">Clear</button>
       <a class="small-btn" id="plaza-btn" href="/public-chat/" title="Public chat">Plaza</a>
-      <a class="small-btn" id="profile-btn" href="/profile.html">Profile ↗</a>
+      <a class="small-btn" id="profile-btn" href="/members/">Members</a>
     </div>
   </aside>
 
@@ -863,8 +863,8 @@ button {
     </header>
     <div id="no-chat">
       <div class="empty-orbit" aria-hidden="true"><span></span></div>
-      <strong>Your private universe.</strong>
-      <p>Select a person or group to start an encrypted conversation.</p>
+      <strong>Select a conversation</strong>
+      <p>Choose any member from the list to send a private message.</p>
     </div>
     <div id="msgs"></div>
     <div id="reply-preview">
@@ -887,6 +887,14 @@ button {
       <button id="delete-report-btn" class="small-btn" type="button" style="background:#ef4444; color:#fff; border-color:#ef4444;">Delete Report</button>
     </div>
   </main>
+
+  <aside id="member-profile-panel" aria-label="Conversation profile">
+    <div class="chat-profile-empty">
+      <img src="/icon-192.png" alt="">
+      <strong>Member details</strong>
+      <span>Select a person to view their profile.</span>
+    </div>
+  </aside>
 </div>
 
 <div id="group-modal">
@@ -1150,6 +1158,65 @@ function roleInfo(role) {
   if (role.includes('moderator')) return { label: 'moderator', cls: 'moderator', title: 'Moderator' };
   if (role.includes('premium')) return { label: 'premium', cls: 'premium', title: 'Premium member' };
   return { label: 'member', cls: 'member', title: 'Member' };
+}
+
+function safeProfileImage(value) {
+  const raw = String(value || '').trim();
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 140000) return raw;
+  return '';
+}
+
+function memberAvatar(member, name, className) {
+  const src = safeProfileImage(member && member.pfp);
+  const cls = className || 'member-avatar';
+  return src
+    ? `<span class="${cls}"><img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></span>`
+    : `<span class="${cls}" data-initials="${esc(initialsFor(name))}">${esc(initialsFor(name))}</span>`;
+}
+
+function renderConversationProfile(member) {
+  const panel = document.getElementById('member-profile-panel');
+  if (!panel) return;
+  if (!member) {
+    panel.innerHTML = '<div class="chat-profile-empty"><img src="/icon-192.png" alt=""><strong>Member details</strong><span>Select a person to view their profile.</span></div>';
+    return;
+  }
+  const name = member.displayName || member.handle || member.email || 'Member';
+  const handle = member.handle ? '@' + member.handle : member.email;
+  const role = roleInfo(member.role);
+  const profileRef = member.handle || member.email;
+  panel.innerHTML = `
+    <div class="chat-profile-cover"></div>
+    <div class="chat-profile-body">
+      ${memberAvatar(member, name, 'chat-profile-avatar')}
+      <div class="chat-profile-presence ${member.online ? 'online' : ''}"></div>
+      <h2>${esc(name)}</h2>
+      <div class="chat-profile-handle">${esc(handle || '')}</div>
+      <span class="chat-profile-role ${role.cls}">${esc(role.title)}</span>
+      ${member.bio ? `<p class="chat-profile-bio">${esc(member.bio)}</p>` : ''}
+      <div class="chat-profile-actions">
+        <a href="/profile/?u=${encodeURIComponent(profileRef)}">View profile</a>
+        <a href="/friends/">Manage friends</a>
+      </div>
+      <dl class="chat-profile-details">
+        <div><dt>Status</dt><dd>${member.online ? 'Online' : 'Offline'}</dd></div>
+        <div><dt>Encryption</dt><dd>${member.e2eReady ? 'Ready' : 'Legacy key'}</dd></div>
+        <div><dt>Connection</dt><dd>${member.friendStatus === 'friends' ? 'Friend' : 'Member'}</dd></div>
+      </dl>
+    </div>`;
+}
+
+function renderGroupProfile(group) {
+  const panel = document.getElementById('member-profile-panel');
+  if (!panel || !group) return;
+  const groupMembers = (group.members || []).map(function(ref) {
+    const member = memberFor(ref);
+    const name = displayNameFor(ref);
+    const profileRef = (member && (member.handle || member.email)) || ref;
+    return `<a class="chat-group-member" href="/profile/?u=${encodeURIComponent(profileRef)}">${memberAvatar(member, name, 'chat-group-avatar')}<span>${esc(name)}</span></a>`;
+  }).join('');
+  panel.innerHTML = `<div class="chat-group-panel"><span class="chat-profile-kicker">Group conversation</span><h2>${esc(group.name || 'Group chat')}</h2><p>${(group.members || []).length} members</p><div class="chat-group-list">${groupMembers}</div></div>`;
 }
 
 function directKey(email) { return normEmail(email); }
@@ -1924,6 +1991,7 @@ async function loadMembers() {
     }));
     
     members = fetchedMembers;
+    if (activeChat && activeChat.type === 'dm') renderConversationProfile(memberFor(activeChat.id));
     
     // Populate unreadDm
     unreadDm = {};
@@ -2101,7 +2169,7 @@ function renderList() {
     const badge = badgeLabels[m.badge] || '';
     const sub = last ? (sameEmail(last.from, myEmail) ? 'You: ' : '') + (last.text || (last.image ? 'Sent an image' : '')) : m.email;
     return `<button class="user-entry ${activeChat && activeChat.type === 'dm' && sameEmail(activeChat.id, m.email) ? 'active' : ''}" data-email="${esc(m.email)}">
-      <span class="dot ${m.online ? 'on' : ''}" data-initials="${esc(initialsFor(name))}"></span>
+      <span class="user-avatar ${m.online ? 'on' : ''}">${memberAvatar(m, name, 'user-avatar-image')}</span>
       <span class="entry-main">
         <span class="entry-name ${colorClass}">${esc(name)}${badge ? ' <span style="font-size:.62rem;opacity:.55">' + esc(badge) + '</span>' : ''}</span>
         <span class="entry-sub">${esc(sub).slice(0, 140)}</span>
@@ -2121,6 +2189,7 @@ async function selectDm(email) {
   document.getElementById('chat-title').innerHTML = isMe ? titleName : esc(titleName);
   document.getElementById('chat-subtitle').textContent = (member && member.online ? 'online' : 'offline') + ' - ' + email;
   document.getElementById('leave-group-btn').style.display = 'none';
+  renderConversationProfile(member);
   showChatShell();
   closeChatTools();
   showConversationImmediately(activeChat);
@@ -2137,6 +2206,7 @@ async function selectGroup(groupId) {
   document.getElementById('chat-title').textContent = group.name || 'Group chat';
   document.getElementById('chat-subtitle').textContent = (group.members || []).map(displayNameFor).join(', ');
   document.getElementById('leave-group-btn').style.display = '';
+  renderGroupProfile(group);
   showChatShell();
   closeChatTools();
   showConversationImmediately(activeChat);

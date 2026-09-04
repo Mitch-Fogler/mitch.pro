@@ -2,13 +2,13 @@
   'use strict';
 
   var NAV = [
-    { href: '/', label: 'Home', match: function (p) { return p === '/' || p === '/index.html'; } },
-    { href: '/games/', label: 'Games', match: function (p) { return p.indexOf('/games') === 0; } },
-    { href: '/public-chat/', label: 'Plaza', match: function (p) { return p.indexOf('/public-chat') === 0 || p.indexOf('/encrypt') === 0; } },
-    { href: '/shop/', label: 'Market', match: function (p) { return p.indexOf('/shop') === 0 || p.indexOf('/marketplace') === 0; } },
-    { href: '/casino/', label: 'Casino', match: function (p) { return p.indexOf('/casino') === 0; } },
-    { href: '/leaderboard/', label: 'Ranks', match: function (p) { return p.indexOf('/leaderboard') === 0; } },
-    { href: '/preferences/', label: 'Preferences', match: function (p) { return p.indexOf('/preferences') === 0; } }
+    { href: '/', label: 'Home', icon: '⌂', match: function (p) { return p === '/' || p === '/index.html'; } },
+    { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
+    { href: '/games/', label: 'Games', icon: '◆', match: function (p) { return p.indexOf('/games') === 0; } },
+    { href: '/members/', label: 'Members', icon: '●', match: function (p) { return p.indexOf('/members') === 0 || p.indexOf('/friends') === 0 || p.indexOf('/profile') === 0; } },
+    { href: '/bell/', label: 'Bell', icon: '◷', match: function (p) { return p.indexOf('/bell') === 0; } },
+    { href: '/shop/', label: 'Shop', icon: '▣', match: function (p) { return p.indexOf('/shop') === 0 || p.indexOf('/marketplace') === 0; } },
+    { href: '/preferences/', label: 'Settings', icon: '⚙', match: function (p) { return p.indexOf('/preferences') === 0; } }
   ];
 
   function ensureRelaunchStyles() {
@@ -17,6 +17,14 @@
     link.id = 'mitch-relaunch';
     link.rel = 'stylesheet';
     link.href = '/relaunch.css';
+    (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
+  }
+
+  function ensurePortalStyles() {
+    if (document.querySelector('link[href="/portal-redesign.css"], link[href^="/portal-redesign.css?"]')) return;
+    var link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = '/portal-redesign.css?v=3';
     (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
   }
 
@@ -35,7 +43,7 @@
 
   function ensureInstallMetadata() {
     var metas = {
-      'theme-color': '#10140c',
+      'theme-color': '#0b0e14',
       'mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-status-bar-style': 'black-translucent',
@@ -92,7 +100,7 @@
     var brand = document.createElement('a');
     brand.className = 'app-brand';
     brand.href = '/';
-    brand.innerHTML = 'mitch<span>.pro</span>';
+    brand.innerHTML = '<img src="/icon-192.png" alt=""><b>mitch<span>.pro</span></b>';
     brand.setAttribute('aria-label', 'mitch.pro home');
 
     var nav = document.createElement('nav');
@@ -103,13 +111,20 @@
       var item = NAV[i];
       var a = document.createElement('a');
       a.href = item.href;
-      a.textContent = item.label;
+      a.innerHTML = '<span class="app-nav-icon" aria-hidden="true">' + item.icon + '</span><span class="app-nav-label">' + item.label + '</span>';
       if (item.match(path)) a.setAttribute('aria-current', 'page');
       nav.appendChild(a);
     }
 
     bar.appendChild(brand);
     bar.appendChild(nav);
+
+    var account = document.createElement('a');
+    account.className = 'app-account-link';
+    account.href = '/profile/';
+    account.innerHTML = '<img src="/icon-192.png" alt=""><span>Profile</span>';
+    account.setAttribute('aria-label', 'Open your profile');
+    bar.appendChild(account);
     return bar;
   }
 
@@ -168,6 +183,7 @@
     ensureInstallMetadata();
     ensureFonts();
     ensureRelaunchStyles();
+    ensurePortalStyles();
     enhanceRelaunchMotion();
     if (!shouldInject()) {
       window.MitchShell = { ready: true, injected: false };

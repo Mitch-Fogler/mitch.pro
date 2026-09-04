@@ -276,7 +276,7 @@
   }
 </style>
 </head>
-<body>
+<body class="members-page">
 <main class="app-main">
   <header class="page-head">
     <h1>Members</h1>
@@ -378,6 +378,10 @@
       return '/encrypt/?to=' + encodeURIComponent(keyFor(member));
     }
 
+    function profileHref(member) {
+      return '/profile/?u=' + encodeURIComponent(member.handle || member.email || '');
+    }
+
     function renderStats(list) {
       const online = members.filter(m => m.online).length;
       const friends = members.filter(m => m.friendStatus === 'friends').length;
@@ -444,11 +448,12 @@
           '<div class="body">' +
             '<div class="name-row"><div class="name">' + esc(displayName(member)) + '</div><span class="pill role ' + role + '">' + esc(member.role || 'member') + '</span></div>' +
             '<div class="handle">' + esc(handle) + '</div>' +
-            '<div class="bio">' + esc(member.bio || 'No profile bio yet.') + '</div>' +
+            (member.bio ? '<div class="bio">' + esc(member.bio) + '</div>' : '') +
           '</div>' +
           '<div class="actions">' +
             friendButton(member) +
-            '<a href="' + esc(dmHref(member)) + '">DM</a>' +
+            '<a href="' + esc(dmHref(member)) + '">Message</a>' +
+            '<a href="' + esc(profileHref(member)) + '">Profile</a>' +
             '<button type="button" class="report-btn wide" data-action="report" data-key="' + key + '">Report Profile</button>' +
           '</div>' +
         '</article>';
