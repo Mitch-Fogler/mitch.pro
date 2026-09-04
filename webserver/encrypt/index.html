@@ -961,6 +961,8 @@ let isLoadingMore = false;
 let activeChatLoadSeq = 0;
 const conversationCache = new Map();
 const conversationRequests = new Map();
+const renderedMessageIds = new Set();
+let conversationMotionTimer = null;
 
 const EXPIRY_OPTIONS = [0, 30000, 60000, 300000, 3600000];
 const EXPIRY_LABELS  = ['off', '30s', '1m', '5m', '1h'];
@@ -2191,6 +2193,7 @@ async function selectDm(email) {
   document.getElementById('leave-group-btn').style.display = 'none';
   renderConversationProfile(member);
   showChatShell();
+  animateConversationOpen();
   closeChatTools();
   showConversationImmediately(activeChat);
   renderList();
@@ -2208,6 +2211,7 @@ async function selectGroup(groupId) {
   document.getElementById('leave-group-btn').style.display = '';
   renderGroupProfile(group);
   showChatShell();
+  animateConversationOpen();
   closeChatTools();
   showConversationImmediately(activeChat);
   setView('groups');
@@ -2273,7 +2277,18 @@ async function selectReport(index) {
   
   renderReportContext(report);
   showChatShell();
+  animateConversationOpen();
   renderList();
+}
+
+function animateConversationOpen() {
+  const main = document.getElementById('chat-main');
+  if (!main) return;
+  main.classList.remove('conversation-switch');
+  void main.offsetWidth;
+  main.classList.add('conversation-switch');
+  clearTimeout(conversationMotionTimer);
+  conversationMotionTimer = setTimeout(() => main.classList.remove('conversation-switch'), 420);
 }
 
 function renderReportContext(report) {
@@ -2617,6 +2632,7 @@ function renderMessages() {
     lastDay = day;
     return sep + messageHtml(m);
   }).join('');
+  currentMessages.forEach(m => renderedMessageIds.add(msgId(m)));
   filterCurrentMessages();
   scheduleLocalExpiry();
 }
@@ -2626,6 +2642,7 @@ function messageHtml(m) {
   const name = mine ? (myDisplayName || 'You') : displayNameFor(m.from);
   const text = String(m.text || '');
   const id = esc(msgId(m));
+  const isFresh = !renderedMessageIds.has(msgId(m));
   
   const isEncrypted = m.rawText && m.rawText.includes('"e2e":true');
   const retryBtn = (isEncrypted && !m.decrypted)
@@ -2641,8 +2658,11 @@ function messageHtml(m) {
     : '';
   const bodyText = esc(text || (m.image ? 'sent an image' : ''));
   const expiry = m.expiresAt ? ` data-expire="${m.expiresAt}"` : '';
-  const delivery = m.isPending ? '<span class="msg-delivery">sending...</span>' : '';
-  return `<div class="msg ${mine ? 'mine' : 'theirs'}${m.isPending ? ' pending' : ''}" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
+  const seen = mine && !m.isPending && (m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, myEmail))));
+  const delivery = mine
+    ? `<span class="msg-delivery ${m.isPending ? 'sending' : (seen ? 'seen' : 'sent')}"><i aria-hidden="true"></i>${m.isPending ? 'Sending' : (seen ? 'Seen' : 'Sent')}</span>`
+    : '';
+  return `<div class="msg ${mine ? 'mine' : 'theirs'}${m.isPending ? ' pending' : ''}${isFresh ? ' message-enter' : ''}" data-id="${id}" data-text="${bodyText.toLowerCase()}"${expiry}>
     <div class="msg-meta">
       <span class="who ${mine ? 'me' : 'them'}">${mine ? name : esc(name)}</span>
       <span class="ts">${fmtTime(m.ts)}</span>
@@ -2774,6 +2794,13 @@ async function send() {
   input.value = '';
   clearImage();
   clearReply();
+  const sendButton = document.getElementById('sendBtn');
+  if (sendButton) {
+    sendButton.classList.remove('send-pop');
+    void sendButton.offsetWidth;
+    sendButton.classList.add('send-pop');
+    setTimeout(() => sendButton.classList.remove('send-pop'), 360);
+  }
 
   let textToSend = sendText;
 
