@@ -6802,7 +6802,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=3" defer></script>';
+  const tag = '<script src="/broadcast.js?v=4" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -11785,7 +11785,7 @@ function loadAllGamesList() {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=3" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=4" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -18457,6 +18457,7 @@ function loadAllGamesList() {
     const injectSharedHead = (html) => {
       if (!html.includes('/popup.js')) {
         html = html.replace('</head>',
+          '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
           '<script src="/popup.js?v=3"></script>\n<script src="/pwa-install.js" defer></script>\n<link rel="manifest" href="/manifest.json">\n<meta name="theme-color" content="#05070d">\n</head>');
       }
       if (html.includes('name="viewport"') && !html.includes('viewport-fit')) {
@@ -18469,11 +18470,21 @@ function loadAllGamesList() {
     // The reCAPTCHA v3 loader + window.getCaptchaToken — shared between the
     // main site injection below and the rjuhsd-school page server, which
     // bypasses it (public-chat and encrypt call getCaptchaToken on that host).
+    // The third-party api.js is NOT loaded at page load — it's fetched the
+    // first time an action actually asks for a token, keeping it off the
+    // critical path of every page.
     const recaptchaLoaderStr = (recaptchaHost, rcKey) =>
-      `<script src="https://${recaptchaHost}/recaptcha/api.js?render=${rcKey}" async defer></script>\n` +
       `<script>\n` +
       `  window.getCaptchaToken = function(action) {\n` +
       `    return new Promise(function(resolve) {\n` +
+      `      function load() {\n` +
+      `        if (window._mitchRcLoading) return;\n` +
+      `        window._mitchRcLoading = true;\n` +
+      `        var s = document.createElement('script');\n` +
+      `        s.src = 'https://${recaptchaHost}/recaptcha/api.js?render=${rcKey}';\n` +
+      `        s.async = true;\n` +
+      `        document.head.appendChild(s);\n` +
+      `      }\n` +
       `      let attempts = 0;\n` +
       `      function checkAndExecute() {\n` +
       `        if (window.grecaptcha && window.grecaptcha.ready) {\n` +
@@ -18485,8 +18496,9 @@ function loadAllGamesList() {
       `            });\n` +
       `          });\n` +
       `        } else {\n` +
+      `          load();\n` +
       `          attempts++;\n` +
-      `          if (attempts < 50) {\n` +
+      `          if (attempts < 100) {\n` +
       `            setTimeout(checkAndExecute, 100);\n` +
       `          } else {\n` +
       `            resolve(null);\n` +
@@ -18642,7 +18654,7 @@ function loadAllGamesList() {
           const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=3" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=4" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }
@@ -18668,6 +18680,7 @@ function loadAllGamesList() {
             injectStr += '<link rel="stylesheet" href="/encrypt-galaxy.css">\n';
           }
           if (!isEmbeddedGameRuntime) {
+            if (!raw.includes(Buffer.from('fonts.googleapis.com'))) injectStr += '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n';
             if (!raw.includes(Buffer.from('/popup.js'))) injectStr += '<script src="/popup.js?v=3"></script>\n';
             if (!raw.includes(Buffer.from('/pwa-install.js'))) injectStr += '<script src="/pwa-install.js" defer></script>\n';
             if (!raw.includes(Buffer.from('name="viewport"'))) {

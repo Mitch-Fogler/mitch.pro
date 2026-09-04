@@ -57,7 +57,10 @@ html.theme-light body::after {
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(180deg, rgba(242,244,250,0.72), rgba(236,238,247,0.8));
+  /* Nearly opaque: only a whisper of the wallpaper comes through — enough to
+     keep the page from feeling flat without the pink photo blobs reading as
+     broken gradients. */
+  background: linear-gradient(180deg, rgba(242,244,250,0.93), rgba(236,238,247,0.97));
   pointer-events: none;
 }
 

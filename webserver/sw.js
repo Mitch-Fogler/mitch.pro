@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v11';
+const CACHE_NAME = 'mitch-pro-cache-v12';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -119,17 +119,37 @@ self.addEventListener('fetch', (e) => {
 });
 
 // Push notification listeners
+// True when a window client on /encrypt/ is actually on screen right now —
+// in that case the page shows its own in-app toast and a system
+// notification would be redundant (and annoying mid-conversation).
+async function isUserInEncryptChat() {
+  try {
+    const cs = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    return cs.some(c => {
+      try {
+        if (!c.url || !c.url.startsWith(self.location.origin)) return false;
+        if (!new URL(c.url).pathname.startsWith('/encrypt')) return false;
+        return c.visibilityState === 'visible';
+      } catch { return false; }
+    });
+  } catch { return false; }
+}
+
 self.addEventListener('push', e => {
   let data = { title: 'New message', body: '', url: '/encrypt/' };
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
-  e.waitUntil(self.registration.showNotification(data.title, {
-    body: data.body,
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    tag: data.tag || undefined,
-    renotify: Boolean(data.tag),
-    vibrate: [90, 45, 90],
-    data: { url: data.url }
+  e.waitUntil(isUserInEncryptChat().then(inChat => {
+    // Already inside encrypted chat on this device — stay quiet.
+    if (inChat) return;
+    return self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: data.tag || undefined,
+      renotify: Boolean(data.tag),
+      vibrate: [90, 45, 90],
+      data: { url: data.url }
+    });
   }));
 });
 
@@ -155,10 +175,13 @@ self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = notificationTargetUrl(e.notification.data?.url);
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async cs => {
+    // Hand the URL to an existing app window and let it present the target
+    // in its in-app browser sheet (Apple-style), instead of navigating the
+    // whole PWA window away from whatever the user had open.
     for (const c of cs) {
       if (!c.url.startsWith(self.location.origin) || !('focus' in c)) continue;
-      await c.focus();
-      if ('navigate' in c) return c.navigate(url);
+      try { await c.focus(); } catch {}
+      c.postMessage({ type: 'open-in-app-browser', url });
       return c;
     }
     return clients.openWindow(url);

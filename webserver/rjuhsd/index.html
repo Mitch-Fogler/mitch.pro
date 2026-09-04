@@ -416,6 +416,14 @@
       .rj-kicker i { animation: none; }
       .rj-app, .rj-signin, .rj-school-chip, .rj-picker-grid button { transition: none !important; }
     }
+
+    /* Light mode: the burning-cherry photo backdrop belongs to the dark theme —
+       under the light palette it reads as a washed pink/purple mess behind the
+       translucent cards. Drop it, soften the card shadows, and darken the gold
+       accents so they stay legible on the pale background. */
+    html.theme-light body.rjuhsd-page::before { display: none; }
+    html.theme-light body.rjuhsd-page { --whs-gold: #b45309; }
+    html.theme-light .rj-card { box-shadow: 0 14px 40px rgba(16, 20, 42, 0.10); }
   </style>
 </head>
 <body class="app-shell rjuhsd-page">

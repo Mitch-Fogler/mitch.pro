@@ -81,6 +81,73 @@
 })();
 
 // Site-wide Notifications
+// ── In-app browser sheet ─────────────────────────────────────────────────
+// Push notification clicks land here (the SW postMessages the URL): the
+// target opens inside an Apple-style sheet with its own address bar and a
+// Done button, instead of navigating the whole PWA window.
+(function setupInAppBrowser() {
+  function hostOf(url) {
+    try { return new URL(url, location.href).host; } catch (e) { return ''; }
+  }
+  function openInAppBrowser(rawUrl) {
+    if (!rawUrl) return;
+    var target;
+    try { target = new URL(rawUrl, location.href); } catch (e) { return; }
+    // Only same-origin pages can be framed; anything else opens normally.
+    if (target.origin !== location.origin) { location.assign(target.href); return; }
+    var existing = document.getElementById('mitch-iab');
+    if (existing) existing.remove();
+    var wrap = document.createElement('div');
+    wrap.id = 'mitch-iab';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-label', 'In-app browser');
+    wrap.innerHTML =
+      '<div class="mitch-iab-bar">' +
+      '  <span class="mitch-iab-lock" aria-hidden="true">&#128274;</span>' +
+      '  <b></b>' +
+      '  <button id="mitch-iab-done" type="button">Done</button>' +
+      '</div>' +
+      '<iframe class="mitch-iab-frame" title="In-app browser" src="' + target.href + '"></iframe>';
+    wrap.querySelector('.mitch-iab-bar b').textContent = hostOf(target.href);
+    document.body.appendChild(wrap);
+    requestAnimationFrame(function () { wrap.classList.add('show'); });
+    wrap.querySelector('#mitch-iab-done').onclick = function () {
+      wrap.classList.remove('show');
+      var frame = wrap.querySelector('iframe');
+      if (frame) frame.src = 'about:blank';
+      setTimeout(function () { if (wrap.parentNode) wrap.remove(); }, 240);
+    };
+  }
+  if ('serviceWorker' in navigator) {
+    try {
+      navigator.serviceWorker.addEventListener('message', function (ev) {
+        if (ev.data && ev.data.type === 'open-in-app-browser' && ev.data.url) {
+          openInAppBrowser(ev.data.url);
+        }
+      });
+    } catch (e) {}
+  }
+  var css = document.createElement('style');
+  css.id = 'mitch-iab-style';
+  css.textContent =
+    '#mitch-iab{position:fixed;inset:0;z-index:2147483640;display:flex;flex-direction:column;' +
+    'background:var(--t-bg,#0a0817);opacity:0;transition:opacity .22s ease,transform .22s ease;transform:translateY(14px);' +
+    'padding-top:env(safe-area-inset-top,0px)}' +
+    '#mitch-iab.show{opacity:1;transform:none}' +
+    '#mitch-iab .mitch-iab-bar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:10px 12px;' +
+    'padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));' +
+    'border-bottom:1px solid var(--t-bd,rgba(255,255,255,.14));background:var(--t-bg2,rgba(20,16,40,.96))}' +
+    '#mitch-iab .mitch-iab-lock{font-size:12px;opacity:.7}' +
+    '#mitch-iab .mitch-iab-bar b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+    'font:800 .82rem/1.2 var(--t-font,system-ui,sans-serif);color:var(--t-fg,#fff)}' +
+    '#mitch-iab .mitch-iab-bar button{flex:0 0 auto;padding:7px 14px;border-radius:10px;cursor:pointer;' +
+    'border:1px solid var(--t-bd,rgba(255,255,255,.16));background:var(--t-bg3,rgba(255,255,255,.08));' +
+    'color:var(--t-ac,#c9a5ff);font:800 .78rem/1 system-ui,sans-serif}' +
+    '#mitch-iab .mitch-iab-frame{flex:1;width:100%;border:0;background:#fff}';
+  document.head.appendChild(css);
+  window.__openInAppBrowser = openInAppBrowser;
+})();
+
 (function setupNotifications() {
   function escText(t) {
     var d = document.createElement('div');
@@ -119,7 +186,7 @@
     if (!keyData.publicKey) throw new Error('Notification service is not configured');
 
     var registration = await navigator.serviceWorker.getRegistration('/');
-    if (!registration) registration = await navigator.serviceWorker.register('/sw.js?v=11', { scope: '/', updateViaCache: 'none' });
+    if (!registration) registration = await navigator.serviceWorker.register('/sw.js?v=12', { scope: '/', updateViaCache: 'none' });
     await navigator.serviceWorker.ready;
     var subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
@@ -357,6 +424,7 @@
       '<div id="sw-notif-panel">' +
       '  <div class="sw-notif-head">' +
       '    <span>Notifications</span>' +
+      '    <button id="sw-notif-manage" type="button" title="Turn message alerts on or off">Alerts: …</button>' +
       '    <button id="sw-notif-read-all" type="button">Read all</button>' +
       '    <button id="sw-notif-close" type="button">Close</button>' +
       '  </div>' +
@@ -436,6 +504,46 @@
     }).catch(function(){});
   }
 
+  // ── Alerts manager: one button to turn push alerts on/off ───────────────
+  async function refreshAlertsButton() {
+    var btn = document.getElementById('sw-notif-manage');
+    if (!btn) return;
+    var on = false;
+    try {
+      var reg = await navigator.serviceWorker.getRegistration('/');
+      var sub = reg && await reg.pushManager.getSubscription();
+      on = !!sub;
+    } catch (e) {}
+    btn.textContent = on ? 'Alerts: on' : 'Alerts: off';
+    btn.dataset.state = on ? 'on' : 'off';
+    if (!('Notification' in window) || !window.isSecureContext) {
+      btn.disabled = true;
+      btn.textContent = 'Alerts: n/a';
+    }
+  }
+  async function toggleAlerts() {
+    var btn = document.getElementById('sw-notif-manage');
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      var reg = await navigator.serviceWorker.getRegistration('/');
+      var sub = reg && await reg.pushManager.getSubscription();
+      if (sub) {
+        // Off: drop the browser subscription and the server copy of it.
+        await fetch('/api/push/unsubscribe', {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+        }).catch(function () {});
+        try { await sub.unsubscribe(); } catch (e) {}
+      } else {
+        var enabled = await window.__enableSiteNotifications();
+        if (!enabled) { btn.textContent = 'Alerts: blocked'; btn.dataset.state = 'off'; btn.disabled = false; return; }
+      }
+      await refreshAlertsButton();
+    } catch (e) {}
+    btn.disabled = false;
+  }
+
   function init() {
     // Don't show on appeal page
     if (location.pathname.endsWith('/appeal.html')) return;
@@ -473,11 +581,13 @@
     document.getElementById('sw-notif-close').onclick = function() {
       panel.classList.remove('show');
     };
+    document.getElementById('sw-notif-manage').onclick = toggleAlerts;
+    refreshAlertsButton();
     document.getElementById('sw-notif-read-all').onclick = markAllNotificationsRead;
     btn.onclick = function(e) {
       e.stopPropagation();
       panel.classList.toggle('show');
-      if (panel.classList.contains('show')) loadNotifications();
+      if (panel.classList.contains('show')) { loadNotifications(); refreshAlertsButton(); }
     };
     panel.onclick = function(e) { e.stopPropagation(); };
     document.addEventListener('click', function() { panel.classList.remove('show'); });

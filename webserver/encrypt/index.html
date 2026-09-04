@@ -6,7 +6,7 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=11', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
+      navigator.serviceWorker.register('/sw.js?v=12', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
     });
   }
 </script>
@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
 <script src="/api.js"></script>
 <script src="/app-shell.js" defer></script>
-<script src="/broadcast.js?v=3"></script>
+<script src="/broadcast.js?v=4"></script>
 <script src="/popup.js?v=3"></script>
 <style>
 /* Encrypt chrome — tokens from theme.js; fonts from app.css. Crypto/E2E logic untouched. */
@@ -436,6 +436,22 @@ button {
   font-size: 0.65rem;
   border-radius: calc(var(--t-radius, 8px) - 3px);
 }
+
+/* Per-message ••• toggle + hidden action menu */
+.msg-more {
+  padding: 1px 7px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  border-radius: calc(var(--t-radius, 8px) - 3px);
+}
+.msg-menu {
+  display: none;
+  gap: 0.3rem;
+}
+.msg-tools.open { opacity: 1; }
+.msg-tools.open .msg-menu { display: flex; }
+.msg-tools.open .msg-more { opacity: 1; }
 
 .reply-box {
   margin-left: 58px;
@@ -2504,9 +2520,14 @@ function messageHtml(m) {
       ${imageHtml}
     </div>
     <div class="msg-tools">
-      <button class="msg-action" data-act="reply" data-id="${id}" type="button">reply</button>
-      <button class="msg-action" data-act="copy" data-id="${id}" type="button">copy</button>
-      <button class="msg-action" data-act="report" data-id="${id}" type="button">report</button>
+      <!-- One ••• per message; the actions live in a small menu so phone
+           screens aren't lined with reply/copy/report on every row. -->
+      <button class="msg-more" data-id="${id}" type="button" aria-label="Message options" aria-expanded="false">•••</button>
+      <div class="msg-menu">
+        <button class="msg-action" data-act="reply" data-id="${id}" type="button">reply</button>
+        <button class="msg-action" data-act="copy" data-id="${id}" type="button">copy</button>
+        <button class="msg-action" data-act="report" data-id="${id}" type="button">report</button>
+      </div>
     </div>
   </div>`;
 }
@@ -3015,6 +3036,27 @@ function onMessageAction(e) {
     }
     return;
   }
+
+  // ••• toggles the per-message action menu (one open at a time).
+  const more = e.target.closest('.msg-more');
+  if (more) {
+    const tools = more.closest('.msg-tools');
+    const opening = !tools.classList.contains('open');
+    document.querySelectorAll('.msg-tools.open').forEach(t => {
+      t.classList.remove('open');
+      const b = t.querySelector('.msg-more');
+      if (b) b.setAttribute('aria-expanded', 'false');
+    });
+    tools.classList.toggle('open', opening);
+    more.setAttribute('aria-expanded', String(opening));
+    return;
+  }
+  // Clicking anywhere else closes any open message menu.
+  document.querySelectorAll('.msg-tools.open').forEach(t => {
+    t.classList.remove('open');
+    const b = t.querySelector('.msg-more');
+    if (b) b.setAttribute('aria-expanded', 'false');
+  });
 
   const btn = e.target.closest('.msg-action');
   if (!btn) return;

@@ -30,11 +30,23 @@
   }
 
   // Only surface the banner on real pages, not inside embedded game frames.
+  // Install promotion is rjuhsd.school-only (phones only): the mitch.pro PWA
+  // stays quiet — the school app is the one people actually want installed.
   function allowedHere() {
     try {
       if (window.top !== window.self) return false;
-      return !window.location.pathname.startsWith('/games/');
+      if (window.location.pathname.startsWith('/games/')) return false;
+      var h = String(window.location.hostname).toLowerCase();
+      if (h !== 'rjuhsd.school' && !h.endsWith('.rjuhsd.school')) return false;
+      return isPhone();
     } catch (e) { return false; }
+  }
+
+  function isPhone() {
+    var ua = navigator.userAgent || '';
+    if (/Mobi|Android|iPhone|iPad|iPod/i.test(ua)) return true;
+    // iPads report as Macintosh with touch points.
+    return /MacIntel/i.test(navigator.platform || '') && navigator.maxTouchPoints > 1;
   }
 
   function injectStyles() {
@@ -70,13 +82,13 @@
     injectStyles();
 
     var copy = canAutoInstall
-      ? 'Add Mitch.pro to your home screen — full screen, offline, and message alerts.'
-      : 'On iPhone: tap Share, then "Add to Home Screen" to install Mitch.pro with alerts.';
+      ? 'Add rjuhsd.school to your home screen — full screen, offline, and message alerts.'
+      : 'On iPhone: tap Share, then "Add to Home Screen" to install rjuhsd.school with alerts.';
 
     var banner = document.createElement('div');
     banner.id = 'mitchPwaBanner';
     banner.setAttribute('role', 'dialog');
-    banner.setAttribute('aria-label', 'Install Mitch.pro app');
+    banner.setAttribute('aria-label', 'Install rjuhsd.school app');
     banner.innerHTML =
       '<span class="mitch-pwa-ico" aria-hidden="true">📲</span>' +
       '<span class="mitch-pwa-copy"><b>Install the app</b><span></span></span>' +
