@@ -13,7 +13,7 @@
 <title>mitch.pro</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="/app.css">
-<link rel="stylesheet" href="/home.css?v=3">
+<link rel="stylesheet" href="/home.css?v=4">
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -777,7 +777,7 @@ function applyHomepagePrefs() {
   }
 }
 
-const DEFAULT_HOME_BACKGROUND_TRANSPARENCY = 55;
+const DEFAULT_HOME_BACKGROUND_TRANSPARENCY = 0;
 
 function applyHomeBackgroundTransparency(value) {
   const transparency = Math.max(0, Math.min(100, Number(value) || 0));
@@ -3644,8 +3644,8 @@ if (document.readyState === 'loading') {
           </div>
           <div id="home-background-control">
             <span class="control-logo" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z"/></svg></span>
-            <span class="control-copy"><b>Background</b><small id="home-background-value">55% transparent</small></span>
-            <input class="home-background-range" id="home-background-range" type="range" min="0" max="100" step="1" value="55" aria-label="Homepage background transparency">
+            <span class="control-copy"><b>Background</b><small id="home-background-value">0% transparent</small></span>
+            <input class="home-background-range" id="home-background-range" type="range" min="0" max="100" step="1" value="0" aria-label="Homepage background transparency">
             <button id="home-background-reset" type="button" title="Reset background transparency" aria-label="Reset background transparency">↺</button>
           </div>
           <a id="preferences-card" href="/preferences/">

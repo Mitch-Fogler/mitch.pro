@@ -15,7 +15,7 @@
   --home-display: var(--t-display, "Space Grotesk"), var(--t-font, "DM Sans"), system-ui, sans-serif;
   --home-label-size: 0.66rem;
   --home-maxw: 1020px;
-  --home-wallpaper-opacity: 0.45;
+  --home-wallpaper-opacity: 1;
 }
 
 /* --------------------------------------------------------------------------
@@ -40,7 +40,7 @@ html body::before {
   inset: 0;
   z-index: -1;
   background: url(/home-burning-cherry.webp) center / cover no-repeat;
-  opacity: var(--home-wallpaper-opacity, 0.45);
+  opacity: var(--home-wallpaper-opacity, 1);
   filter: blur(26px);
   transform: scale(1.15);
   pointer-events: none;
