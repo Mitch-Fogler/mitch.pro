@@ -301,28 +301,31 @@
 </head>
 <body class="marketplace-page">
 <main class="app-main">
-  <header class="page-head app-fade-in">
-    <div class="kicker">Player exchange</div>
-    <h1>Marketplace</h1>
-    <p class="subline">Buy and sell cosmetics and services with other players.</p>
+  <header class="page-head market-hero app-fade-in">
+    <div class="market-hero-copy">
+      <div class="kicker"><span></span> Player exchange</div>
+      <h1>Player <span>Market</span></h1>
+      <p class="subline">Trade cosmetics and community services using MitchCoins.</p>
+    </div>
+    <div class="market-wallet" aria-label="Your marketplace balance">
+      <span>Available balance</span>
+      <strong><b id="myCoins">0.00</b> <small>MitchCoins</small></strong>
+      <a href="/shop/">Open shop →</a>
+    </div>
   </header>
 
   <div class="warning-banner">
-    <div class="warning-icon">!</div>
+    <div class="warning-icon" aria-hidden="true">✓</div>
     <div class="warning-text">
-      <h4>Trade safety</h4>
-      <p>mitch.pro does not verify or warrant off-site sales, real-money deals, or account sharing. Keep trades in-game. Virtual goods have no real-world value. For high-stakes trades, use a trusted mediator email.</p>
+      <h4>Trade inside mitch.pro</h4>
+      <p>Keep transactions in MitchCoins and use a trusted mediator when needed. Virtual goods have no real-world value.</p>
     </div>
-  </div>
-
-  <div class="balance-bar">
-    <span>My Balance: <strong id="myCoins">0.00</strong> Coins</span>
-    <span class="balance-hint"><i></i> Live market · 24h escrow protection</span>
+    <span class="market-protection">24h mediator protection</span>
   </div>
 
   <div class="layout">
-    <div class="card panel">
-      <div class="card-title">Create Listing</div>
+    <div class="card panel market-create-card">
+      <div class="card-title"><span><small>Sell something</small>Create listing</span><b>＋</b></div>
       <form id="createListingForm">
         <div class="form-group">
           <label>Listing Type</label>
@@ -360,8 +363,12 @@
     </div>
 
     <div>
+      <div class="market-feed-head">
+        <div><small>Community listings</small><h2>Browse the market</h2></div>
+        <span class="market-count"><b id="marketCount">0</b> listings</span>
+      </div>
       <div class="feed-tabs">
-        <button class="feed-tab active" data-tab="active">Active Market</button>
+        <button class="feed-tab active" data-tab="active">Live listings</button>
         <button class="feed-tab" data-tab="my-trades">My Transactions</button>
         <button class="feed-tab" data-tab="mediate-inbox">Mediation Inbox (<span id="mediationCount">0</span>)</button>
       </div>
@@ -369,7 +376,6 @@
       <div class="market-tools">
         <label><span>⌕</span><input id="marketSearch" type="search" placeholder="Search listings, sellers, and items" autocomplete="off"></label>
         <select id="marketSort" aria-label="Sort marketplace"><option value="newest">Newest first</option><option value="price-low">Price: low to high</option><option value="price-high">Price: high to low</option></select>
-        <span class="market-count"><b id="marketCount">0</b> listings</span>
       </div>
 
       <div id="listingsFeed" class="listings-grid">
@@ -473,7 +479,7 @@
 
     items.forEach(l => {
       const card = document.createElement('div');
-      card.className = 'listing-item';
+      card.className = `listing-item listing-${l.type === 'cosmetic' ? 'cosmetic' : 'service'}`;
 
       let itemLabel = l.type === 'cosmetic' ? String(l.itemId || '').replace(/_/g, ' ').toUpperCase() : 'CUSTOM LISTING';
       let displayTag = l.type === 'cosmetic' ? `<span class="item-display-badge">Cosmetic</span>` : `<span class="item-display-badge" style="border-color: color-mix(in srgb, var(--t-ac) 35%, transparent); color: var(--primary);">Text Trade</span>`;
@@ -523,6 +529,7 @@
       }
 
       card.innerHTML = `
+        <div class="listing-art" aria-hidden="true"><span>${l.type === 'cosmetic' ? '◆' : '↗'}</span></div>
         <div>
           ${statusTag}
           <div class="listing-header">
