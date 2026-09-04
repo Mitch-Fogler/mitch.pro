@@ -8436,13 +8436,16 @@ async function handleRequest(req, server) {
   if (path === "/ssh/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
     const cookies = getCookies(req);
     const sid = cookies['studentId'] || cookies['id'] || '';
+    const isAuthenticated = !!sid && validId(sid) && !isRevoked(sid);
     const myEmail = (emailFromSid(sid) || '').toLowerCase();
     const isAdmin = isAnyAdminId(sid);
     const success = server.upgrade(req, { 
       data: { 
         isSSH: true, 
         email: myEmail || 'guest', 
-        requirePassphraseAuth: !isAdmin,
+        // Signed-in members authenticate with their normal site session. Only
+        // the sessionless break-glass console requires an admin passphrase.
+        requirePassphraseAuth: !isAuthenticated && !isAdmin,
         sid: sid
       } 
     });
@@ -8471,20 +8474,7 @@ async function handleRequest(req, server) {
     const emailNorm = normalizeEmail(email);
     const isUserAdmin = isAnyAdminId(sid) || emailNorm === 'admin@mitch.pro';
     if (!isUserAdmin) {
-      let allowedIp = '';
-      if (activeFreeVms.has(emailNorm)) {
-        const freeVm = activeFreeVms.get(emailNorm);
-        const ipSuffix = freeVm.vmid >= 300 ? (freeVm.vmid - 200) : freeVm.vmid;
-        allowedIp = `10.0.0.${ipSuffix}`;
-      }
-      if (targetIp !== allowedIp) {
-        const appsData = loadJson(VM_APPS_FILE, {});
-        const userApp = appsData[emailNorm];
-        if (userApp && userApp.status === 'approved' && userApp.vmid) {
-          const ipSuffix = userApp.vmid >= 300 ? (userApp.vmid - 200) : userApp.vmid;
-          allowedIp = `10.0.0.${ipSuffix}`;
-        }
-      }
+      const allowedIp = await getVmConnectionIpForEmail(emailNorm);
       if (targetIp !== allowedIp) {
         console.warn(`[vnc-security] Blocked VNC connection attempt by ${email} to unauthorized host ${targetIp}`);
         return jsonResp(403, { error: 'Access Denied: You can only connect to your own VM.' });
@@ -19184,23 +19174,7 @@ Bun.serve({
             const isUserAdmin = isAnyAdminId(ws.data.sid) || emailNorm === 'admin@mitch.pro';
             
             if (!isUserAdmin) {
-              let allowedIp = '';
-              // 1. Check if it's the user's active Free VM
-              if (activeFreeVms.has(emailNorm)) {
-                const freeVm = activeFreeVms.get(emailNorm);
-                const ipSuffix = freeVm.vmid >= 300 ? (freeVm.vmid - 200) : freeVm.vmid;
-                allowedIp = `10.0.0.${ipSuffix}`;
-              }
-              
-              // 2. Check if it's the user's approved Premium VM
-              if (hostIp !== allowedIp) {
-                const appsData = loadJson(VM_APPS_FILE, {});
-                const userApp = appsData[emailNorm];
-                if (userApp && userApp.status === 'approved' && userApp.vmid) {
-                  const ipSuffix = userApp.vmid >= 300 ? (userApp.vmid - 200) : userApp.vmid;
-                  allowedIp = `10.0.0.${ipSuffix}`;
-                }
-              }
+              const allowedIp = await getVmConnectionIpForEmail(emailNorm);
               
               if (hostIp !== allowedIp) {
                 console.warn(`[ssh-security] Blocked SSH connection attempt by ${ws.data.email} to unauthorized host ${hostIp}`);
@@ -19722,6 +19696,30 @@ async function getUserVmStatus(vmid) {
     console.error(`[proxmox] Error getting ${type} status:`, err);
     return { success: false, error: err.message };
   }
+}
+
+async function getVmConnectionIpForEmail(email) {
+  const norm = normalizeEmail(email);
+  let vmid = null;
+
+  if (activeFreeVms.has(norm)) {
+    vmid = Number(activeFreeVms.get(norm).vmid);
+  } else {
+    const appsData = loadJson(VM_APPS_FILE, {});
+    const app = appsData[norm];
+    if (app && app.status === 'approved' && app.vmid) vmid = Number(app.vmid);
+  }
+
+  if (!isVmIdInRange(vmid)) return '';
+
+  // KVM guests use DHCP, so their actual address is not necessarily derived
+  // from the VMID. Resolve it through the guest agent before authorizing the
+  // SSH/VNC bridge. LXC guests retain the deterministic address fallback.
+  const status = await getUserVmStatus(vmid);
+  if (status.success && /^10\.0\.0\.\d{1,3}$/.test(status.ip || '')) return status.ip;
+
+  const ipSuffix = vmid >= 300 ? vmid - 200 : vmid;
+  return `10.0.0.${ipSuffix}`;
 }
 
 async function powerUserVm(vmid, action) {
