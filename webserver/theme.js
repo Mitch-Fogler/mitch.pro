@@ -8,30 +8,30 @@
 
   var DARK = {
     name: 'Dark',
-    bg: '#171918', bg2: '#202321', bg3: '#2b2f2c',
-    fg: '#f1f0e9', fg2: '#adafa6',
-    ac: '#f29b85', ac2: '#ffc1ae', ac3: '#c87862',
-    bd: '#383c37', bda: '#b87563',
-    gl: 'rgba(242,155,133,0.2)', gls: 'rgba(242,155,133,0.10)',
-    gr: 'linear-gradient(135deg,#f29b85,#e7ac8c)',
-    bgr: 'none',
+    bg: '#070510', bg2: 'rgba(22,13,44,0.7)', bg3: 'rgba(42,23,76,0.74)',
+    fg: '#faf7ff', fg2: '#b4a9c9',
+    ac: '#b86cff', ac2: '#e47cff', ac3: '#8257ff',
+    bd: 'rgba(224,198,255,0.16)', bda: 'rgba(194,126,255,0.48)',
+    gl: 'rgba(180,94,255,0.35)', gls: 'rgba(180,94,255,0.14)',
+    gr: 'linear-gradient(135deg,#7957f1,#ca57f5 56%,#ff5fa7)',
+    bgr: 'linear-gradient(180deg,rgba(5,4,17,.24),rgba(5,4,17,.83)),url(/home-burning-cherry.webp)',
     bgImg: '',
-    sw: '#f29b85',
+    sw: '#b86cff',
   };
   var LIGHT = {
     name: 'Light',
     light: true,
-    bg: '#f3f1e9', bg2: '#fffef9', bg3: '#e8e7dd',
-    fg: '#252b26', fg2: '#626a5e',
-    ac: '#a34330', ac2: '#813523', ac3: '#ba634d',
-    bd: '#d6d8cb', bda: '#b97460',
-    gl: 'rgba(163,67,48,0.2)', gls: 'rgba(163,67,48,0.10)',
+    bg: '#eef1f9', bg2: '#ffffff', bg3: '#e7ebf7',
+    fg: '#101426', fg2: '#3f4560',
+    ac: '#4f46e5', ac2: '#0891b2', ac3: '#db2777',
+    bd: 'rgba(16,20,42,0.16)', bda: 'rgba(79,70,229,0.5)',
+    gl: 'rgba(79,70,229,0.34)', gls: 'rgba(79,70,229,0.16)',
     // Light mode keeps gradients in one indigo family — the old indigo→cyan→pink
     // sweep read as confetti. Page backdrop is a plain neutral wash.
-    gr: 'linear-gradient(135deg,#a34330,#ba634d)',
-    bgr: 'none',
+    gr: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
+    bgr: 'linear-gradient(160deg,#f3f5fa,#e9edf6)',
     bgImg: '',
-    sw: '#a34330',
+    sw: '#4f46e5',
   };
   var T = { dark: DARK, light: LIGHT };
   var LEGACY_LIGHT = { daylight: 1, paper: 1, arctic: 1, blossom: 1 };

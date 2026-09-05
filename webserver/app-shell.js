@@ -24,7 +24,7 @@
     if (document.querySelector('link[href="/portal-redesign.css"], link[href^="/portal-redesign.css?"]')) return;
     var link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/portal-redesign.css?v=12';
+    link.href = '/portal-redesign.css?v=13';
     (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
   }
 
@@ -100,7 +100,7 @@
     var brand = document.createElement('a');
     brand.className = 'app-brand';
     brand.href = '/';
-    brand.innerHTML = '<span class="brand-monogram" aria-hidden="true">m.</span><b>mitch<span>.pro</span></b>';
+    brand.innerHTML = '<img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><b>mitch<span>.pro</span></b>';
     brand.setAttribute('aria-label', 'mitch.pro home');
 
     var nav = document.createElement('nav');

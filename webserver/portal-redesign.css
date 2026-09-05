@@ -1,37 +1,38 @@
 :root {
-  --t-bg: #171918;
-  --t-bg2: #202321;
-  --t-bg3: #2b2f2c;
-  --t-fg: #f1f0e9;
-  --t-fg2: #adafa6;
-  --t-ac: #f29b85;
-  --t-ac2: #ffc1ae;
-  --t-ac3: #c87862;
-  --t-bd: #383c37;
-  --t-bda: #b87563;
-  --t-gl: #f29b8533;
-  --t-gls: #f29b851a;
-  --t-gr: linear-gradient(135deg, #f29b85, #e7ac8c);
+  --t-bg: #070510;
+  --t-bg2: #160d2c;
+  --t-bg3: #2a174c;
+  --t-fg: #faf7ff;
+  --t-fg2: #b4a9c9;
+  --t-ac: #b86cff;
+  --t-ac2: #e47cff;
+  --t-ac3: #8257ff;
+  --t-bd: #39244f;
+  --t-bda: #a367d9;
+  --t-gl: #b86cff33;
+  --t-gls: #b86cff1a;
+  --t-gr: linear-gradient(135deg, #b86cff, #ff5fa7);
   --t-font: Figtree, 'Segoe UI', system-ui, sans-serif;
-  --ui-bg: var(--t-bg, #171918);
-  --ui-rail: var(--t-bg2, #202321);
-  --ui-panel: var(--t-bg2, #202321);
-  --ui-panel-2: var(--t-bg3, #2b2f2c);
-  --ui-panel-3: var(--t-bg3, #2b2f2c);
-  --ui-line: var(--t-bd, #383c37);
-  --ui-line-soft: var(--t-bd, #383c37);
-  --ui-text: var(--t-fg, #f1f0e9);
-  --ui-muted: var(--t-fg2, #adafa6);
-  --ui-faint: var(--t-fg2, #adafa6);
-  --ui-blue: var(--t-ac, #f29b85);
-  --ui-blue-2: var(--t-ac2, #ffc1ae);
+  --ui-bg: var(--t-bg, #070510);
+  --ui-rail: var(--t-bg2, #160d2c);
+  --ui-panel: var(--t-bg2, #160d2c);
+  --ui-panel-2: var(--t-bg3, #2a174c);
+  --ui-panel-3: var(--t-bg3, #2a174c);
+  --ui-line: var(--t-bd, #39244f);
+  --ui-line-soft: var(--t-bd, #39244f);
+  --ui-text: var(--t-fg, #faf7ff);
+  --ui-muted: var(--t-fg2, #b4a9c9);
+  --ui-faint: var(--t-fg2, #b4a9c9);
+  --ui-blue: var(--t-ac, #b86cff);
+  --ui-blue-2: var(--t-ac2, #e47cff);
   --ui-green: #8eb99b;
   --ui-red: #ee9685;
   --ui-yellow: #dbc28b;
   --ui-radius: 12px;
   --ui-shadow: 0 18px 50px #0002;
-  --design-serif: Georgia, 'Times New Roman', serif;
+  --design-serif: Figtree, 'Segoe UI', sans-serif;
 }
+.site-logo { width: 35px; height: 35px; object-fit: contain; border-radius: 8px; flex-shrink: 0; }
 html:has(body.mitch-design) { background: var(--t-bg) !important; }
 html body.mitch-design {
   --t-bg: inherit !important;
@@ -93,7 +94,7 @@ body.mitch-design .portal-eyebrow::before { display: none; }
 body.mitch-design .portal-shell .library-grid { padding: 0; }
 body.mitch-design .library-copy h2 { font-size: 28px; }
 body.mitch-design .feedback-shell .intro { background: transparent; border: 0; padding-left: 0; }
-body.mitch-design .feedback-shell .intro h1 { font-weight: 550; font-size: clamp(32px, 4vw, 52px); }
+body.mitch-design .feedback-shell .intro h1 { font-weight: 750; font-size: clamp(32px, 4vw, 52px); }
 body.mitch-design *, body.mitch-design *::before, body.mitch-design *::after { box-sizing: border-box; }
 body.mitch-design ::selection { background: var(--t-ac) !important; color: var(--t-bg) !important; }
 body.mitch-design :focus-visible { outline: 2px solid var(--t-ac) !important; outline-offset: 4px; }
@@ -120,9 +121,9 @@ body.mitch-design #app-topbar::before { display: none !important; }
 body.mitch-design #app-topbar .app-brand { display: flex; align-items: center; gap: 10px; min-width: fit-content; color: var(--t-fg) !important; font-size: 19px; letter-spacing: -.045em; }
 body.mitch-design #app-topbar .app-brand b { font: inherit; font-weight: 750; }
 body.mitch-design #app-topbar .app-brand b span { color: var(--t-fg2); }
-.brand-monogram { display: inline-grid; place-items: center; flex: 0 0 auto; width: 35px; height: 35px; background: var(--t-ac); color: var(--t-bg); font: bold 26px/1 Georgia, serif; letter-spacing: -.09em; border-radius: 9px 9px 9px 2px; padding-right: 2px; }
+.brand-monogram { display: inline-grid; place-items: center; flex: 0 0 auto; width: 35px; height: 35px; background: var(--t-ac); color: var(--t-bg); font: bold 26px/1 Figtree, sans-serif; letter-spacing: -.09em; border-radius: 9px 9px 9px 2px; padding-right: 2px; }
 body.mitch-design #app-topbar .app-nav { display: flex; align-self: stretch; align-items: stretch; flex: 1; gap: 24px; padding: 0; border: 0; background: none; border-radius: 0; overflow-x: auto; scrollbar-width: none; }
-body.mitch-design #app-topbar .app-nav a { position: relative; display: inline-flex; align-items: center; min-height: 73px; padding: 0 !important; border: 0 !important; border-radius: 0 !important; color: var(--t-fg2) !important; background: transparent !important; font-size: 13px; font-weight: 550; box-shadow: none !important; white-space: nowrap; }
+body.mitch-design #app-topbar .app-nav a { position: relative; display: inline-flex; align-items: center; min-height: 73px; padding: 0 !important; border: 0 !important; border-radius: 0 !important; color: var(--t-fg2) !important; background: transparent !important; font-size: 13px; font-weight: 750; box-shadow: none !important; white-space: nowrap; }
 body.mitch-design #app-topbar .app-nav a:hover, body.mitch-design #app-topbar .app-nav a[aria-current] { color: var(--t-fg) !important; }
 body.mitch-design #app-topbar .app-nav a[aria-current]::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--t-ac); }
 body.mitch-design #app-topbar .app-account-link { display: inline-flex; align-items: center; gap: 9px; padding: 9px 12px; min-width: fit-content; color: var(--t-fg) !important; background: var(--t-bg2); border: 1px solid var(--t-bd); border-radius: 7px; font-size: 12px; }
@@ -195,7 +196,7 @@ body.mitch-design.encrypt-page #app-topbar { display: none !important; }
 body.mitch-design.encrypt-page #loading { text-transform: none; letter-spacing: 0; opacity: 1; font-size: 15px; }
 .chat-signin { max-width: 440px; padding: 30px; text-align: center; }
 .chat-signin .brand-monogram { margin: 0 auto 24px; }
-.chat-signin h1 { font: 400 44px/1.1 Georgia, serif; color: var(--t-fg); margin: 0 0 20px; }
+.chat-signin h1 { font: 400 44px/1.1 Figtree, sans-serif; color: var(--t-fg); margin: 0 0 20px; }
 .chat-signin p { color: var(--t-fg2); margin-bottom: 28px; }
 .chat-signin a { display: block; margin-top: 18px; font-size: 13px; }
 body.mitch-design.encrypt-page #app.ready { display: grid !important; }
