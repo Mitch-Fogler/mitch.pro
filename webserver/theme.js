@@ -14,7 +14,7 @@
     bd: 'rgba(224,198,255,0.16)', bda: 'rgba(194,126,255,0.48)',
     gl: 'rgba(180,94,255,0.35)', gls: 'rgba(180,94,255,0.14)',
     gr: 'linear-gradient(135deg,#7957f1,#ca57f5 56%,#ff5fa7)',
-    bgr: 'linear-gradient(180deg,rgba(5,4,17,.24),rgba(5,4,17,.83)),url(/home-burning-cherry.webp)',
+    bgr: 'linear-gradient(180deg,rgba(5,4,17,0.85),rgba(5,4,17,0.95))',
     bgImg: '',
     sw: '#b86cff',
   };
@@ -192,9 +192,18 @@
     { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp' }
   ];
 
+  function isHomePage() {
+    var p = location.pathname || '/';
+    return p === '/' || p === '/index.html';
+  }
+
   function getEffectiveBgImg() {
     var custom = getBgImgCookie();
     if (custom) return custom;
+    var isLight = document.documentElement.classList.contains('theme-light');
+    if (isHomePage() && !isLight) {
+      return '/home-burning-cherry.webp';
+    }
     return '';
   }
 
@@ -221,12 +230,16 @@
 
   function applyBgImg(url) {
     var h = document.documentElement, r = h.style;
+    var isLight = h.classList.contains('theme-light');
     if (url) {
       // User wallpaper: paint dim gradient + image, honoring the pos/size
       // preferences. Painted via the background shorthand (see baseStyle),
       // so position/size ride inside the value.
+      var dimGradient = isLight
+        ? 'linear-gradient(rgba(240,243,250,var(--t-bg-dim-light,0.85)),rgba(240,243,250,var(--t-bg-dim-light,0.85)))'
+        : 'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5)))';
       r.setProperty('--t-bg-img-layer',
-        'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5))),url(' + JSON.stringify(url) + ') var(--t-bg-pos,center) / var(--t-bg-size,cover) var(--t-bg-repeat,no-repeat)');
+        dimGradient + ',url(' + JSON.stringify(url) + ') var(--t-bg-pos,center) / var(--t-bg-size,cover) var(--t-bg-repeat,no-repeat)');
     } else {
       // Page-owned --t-bgr (stylesheets) wins over the theme-owned default.
       r.setProperty('--t-bg-img-layer', 'var(--t-bgr, var(--t-bgr-theme, none))');
