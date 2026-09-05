@@ -22,7 +22,8 @@ html:not(.theme-light) .encrypt-page {
   position: relative;
   isolation: isolate;
   padding: 0 14px 14px;
-  background: #05040d url('/home-burning-cherry.webp') center / cover fixed no-repeat;
+  background: #05040d;
+  --t-bgr: url('/home-burning-cherry.webp') center / cover no-repeat;
 }
 
 .encrypt-page::before {
@@ -497,7 +498,7 @@ html:not(.theme-light) .encrypt-page {
   #msgSearch { min-width: 0; }
   #msgs { padding: 16px 12px 24px; }
   .msg { max-width: 88%; }
-  #input-row { margin: 0 8px calc(8px + env(safe-area-inset-bottom)); border-radius: 17px; }
+  #input-row { margin: 0 8px 8px; border-radius: 17px; }
 }
 
 @media (max-width: 520px) {
@@ -796,7 +797,9 @@ html:not(.theme-light) .encrypt-page {
   #chat-tools-menu { top: 64px; right: 7px; width: calc(100vw - 14px); }
   .chat-menu-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .msg, .msg.mine, .msg.theirs { max-width: 90%; }
-  #input-row { width: calc(100% - 12px); margin-bottom: calc(6px + env(safe-area-inset-bottom)); }
+  /* theme.js's standalone rule already pads <body> by the safe-area inset —
+     another env() here double-counts it (~34px dead space on iPhone). */
+  #input-row { width: calc(100% - 12px); margin-bottom: 6px; }
   #sendBtn { min-width: 46px; }
 }
 

@@ -29,11 +29,6 @@ body:not(.home-galaxy):not(.encrypt-page):not(.enroll-page):not(.auth-claim-page
   min-height: 100vh;
   color: var(--t-fg) !important;
   background-color: var(--t-bg) !important;
-  background-image: var(--t-bg-img-layer, none) !important;
-  background-position: center !important;
-  background-size: cover !important;
-  background-repeat: no-repeat !important;
-  background-attachment: fixed !important;
   font-family: var(--t-font) !important;
 }
 
@@ -188,7 +183,7 @@ a:hover { color: var(--t-ac2); }
 }
 
 /* Consistent square controls with rounded edges */
-button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action),
+button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):not(.bg-chip),
 .btn, .btn-primary, .btn-ghost, a.btn,
 .soft-btn, .small-btn, .tool-btn, .adm-btn, .tb-btn, .btn-secondary,
 .btn-action, .btn-buy, .btn-connect, .preset-btn, .opt-btn,
@@ -203,7 +198,7 @@ input[type='button'], input[type='submit'], input[type='reset'] {
   font-weight: 650 !important;
   transition: transform .18s ease, border-color .18s ease, background .18s ease, box-shadow .18s ease !important;
 }
-button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):hover,
+button:not(#sw-notif-btn):not(#theme-btn):not(#_ab):not(.hub-action):not(.home-access-link):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):not(.bg-chip):hover,
 .btn:hover, .btn-primary:hover, .btn-ghost:hover, a.btn:hover {
   color: var(--t-ac) !important;
   border-color: var(--t-bda) !important;

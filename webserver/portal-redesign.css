@@ -53,7 +53,6 @@ html body.mitch-design {
   margin: 0;
   color: var(--t-fg) !important;
   background-color: var(--t-bg) !important;
-  background-image: var(--t-bg-img-layer, none) !important;
   font-family: var(--t-font, Figtree, system-ui, sans-serif) !important;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;

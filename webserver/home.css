@@ -15,7 +15,6 @@
   --home-display: var(--t-display, "Space Grotesk"), var(--t-font, "DM Sans"), system-ui, sans-serif;
   --home-label-size: 0.66rem;
   --home-maxw: 1020px;
-  --home-wallpaper-opacity: 1;
 }
 
 /* --------------------------------------------------------------------------
@@ -30,29 +29,13 @@ body {
   line-height: 1.5;
   overflow-x: clip;
 }
-/* Home background: burning cherry wallpaper sits on its own fixed layer
-   behind all content, heavily blurred and faint — an ambient wash that the
-   transparent browser window breathes through. The theme's galaxy background
-   is never painted or downloaded on this page. */
-html body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  background: url(/home-burning-cherry.webp) center / cover no-repeat;
-  opacity: var(--home-wallpaper-opacity, 1);
-  filter: blur(26px);
-  transform: scale(1.15);
-  pointer-events: none;
-}
-html,
-html body {
-  background: transparent !important;
-  background-image: none !important;
-  background-attachment: initial !important;
-}
-/* Light mode: a pale wash over the wallpaper (stacked above ::before) so the
-   dark ink text keeps its contrast against the dark artwork. */
+/* Home background: the burning-cherry wallpaper is declared page-owned via
+   --t-bgr and painted by theme.js's shared fixed html::before layer (blurred
+   there). The pale light-mode wash below keeps dark ink text readable over
+   the dark artwork. */
+/* Light mode: a pale wash over the wallpaper (stacked above the shared
+   html::before layer) so the dark ink text keeps its contrast against the
+   dark artwork. */
 html.theme-light body::after {
   content: "";
   position: fixed;

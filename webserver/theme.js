@@ -51,7 +51,12 @@
 
   function getBgImgCookie() {
     var m = document.cookie.match(/(?:^|; )bgimg=([^;]*)/);
-    return m ? decodeURIComponent(m[1]) : '';
+    var v = m ? decodeURIComponent(m[1]) : '';
+    // The official wallpapers were SVGs once; anyone still pointing at one gets
+    // silently moved to its .webp replacement (same art, rasterized).
+    var migrated = v.replace(/^\/backgrounds\/(bg-[a-z0-9-]+)\.svg$/, '/backgrounds/$1.webp');
+    if (migrated !== v) { setBgImgCookie(migrated); v = migrated; }
+    return v;
   }
   function setBgImgCookie(url) {
     document.cookie = 'bgimg=' + encodeURIComponent(url || '') + ';path=/;max-age=31536000';
@@ -134,6 +139,7 @@
     r.setProperty('--t-bg-size', bgSize);
     r.setProperty('--t-bg-repeat', bgRepeat);
     r.setProperty('--t-bg-pos', bgPos);
+    r.setProperty('--t-bg-blur', clamp(getPref('bgblur', '8'), 0, 40).toFixed(0) + 'px');
     r.setProperty('--t-font', fontMap[font] || fontMap.system);
     r.setProperty('--t-radius', radiusMap[radius] || radiusMap.soft);
     r.setProperty('--t-ui-scale', densityMap[density] || '1');
@@ -173,20 +179,79 @@
     document.documentElement.setAttribute('data-material-pref', pref);
   }
 
+  // Official mitch.pro wallpapers — offered as one-tap chips in preferences.
+  // The live list comes from /api/backgrounds/list (the server reads the
+  // backgrounds/ directory, so dropping in or removing a .webp is enough);
+  // this manifest is only the offline fallback.
+  var THEME_BGS = [
+    { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp' },
+    { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp' },
+    { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp' },
+    { id: 'brine', name: 'Brine', url: '/backgrounds/bg-brine-deep.webp' },
+    { id: 'neon-grid', name: 'Neon Grid', url: '/backgrounds/bg-neon-grid.webp' },
+    { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp' }
+  ];
+
   function getEffectiveBgImg() {
     var custom = getBgImgCookie();
     if (custom) return custom;
     return '';
   }
 
+  // Body backgrounds are forced transparent (inline author-important beats
+  // stylesheet author-important, e.g. site-galaxy's background-color rule) so
+  // the fixed html::before wallpaper layer is visible underneath. Idempotent —
+  // other code mutates body.style, so re-assert on every applyBgImg call.
+  function setBodyTransparent() {
+    var b = document.body;
+    if (!b) return;
+    b.style.setProperty('background-color', 'transparent', 'important');
+    b.style.setProperty('background-image', 'none', 'important');
+    b.style.setProperty('background-attachment', 'fixed', 'important');
+    document.documentElement.style.setProperty('background', 'var(--t-bg)', 'important');
+  }
+  function clearBodyTransparent() {
+    var b = document.body;
+    if (!b) return;
+    b.style.removeProperty('background-color');
+    b.style.removeProperty('background-image');
+    b.style.removeProperty('background-attachment');
+    document.documentElement.style.removeProperty('background');
+  }
+
   function applyBgImg(url) {
-    var r = document.documentElement.style;
+    var h = document.documentElement, r = h.style;
     if (url) {
+      // User wallpaper: paint dim gradient + image, honoring the pos/size
+      // preferences. Painted via the background shorthand (see baseStyle),
+      // so position/size ride inside the value.
       r.setProperty('--t-bg-img-layer',
-        'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5))),url(' + JSON.stringify(url) + ')');
+        'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5))),url(' + JSON.stringify(url) + ') var(--t-bg-pos,center) / var(--t-bg-size,cover) var(--t-bg-repeat,no-repeat)');
     } else {
-      r.setProperty('--t-bg-img-layer', 'var(--t-bgr, none)');
+      // Page-owned --t-bgr (stylesheets) wins over the theme-owned default.
+      r.setProperty('--t-bg-img-layer', 'var(--t-bgr, var(--t-bgr-theme, none))');
     }
+    var resolved = '';
+    try { resolved = getComputedStyle(h).getPropertyValue('--t-bg-img-layer'); } catch (_) {}
+    // Pages declare --t-bgr on <body>, and custom properties never inherit
+    // upward — so if the html-level var chain resolved to nothing, lift the
+    // body's computed value inline onto <html> as a literal layer value.
+    if (!/url\(/.test(resolved) && document.body) {
+      try {
+        var fromBody = getComputedStyle(document.body).getPropertyValue('--t-bgr');
+        if (/url\(/.test(fromBody)) { r.setProperty('--t-bg-img-layer', fromBody); resolved = fromBody; }
+        // Pages also declare --t-bg-layer-opacity on <body> next to --t-bgr —
+        // same inheritance problem (the html::before layer can't see it).
+        // Lift it too when the page set a non-default value.
+        var bodyOp = getComputedStyle(document.body).getPropertyValue('--t-bg-layer-opacity').trim();
+        if (bodyOp && bodyOp !== '1' && !h.style.getPropertyValue('--t-bg-layer-opacity')) {
+          r.setProperty('--t-bg-layer-opacity', bodyOp);
+        }
+      } catch (_) {}
+    }
+    var active = /url\(/.test(resolved);
+    h.toggleAttribute('data-bglayer', active);
+    if (active) setBodyTransparent(); else clearBodyTransparent();
     scheduleAdaptive();
   }
 
@@ -211,6 +276,25 @@
   function clearAdaptive() {
     var r = document.documentElement.style;
     for (var i = 0; i < ADAPT_TOKENS.length; i++) r.removeProperty(ADAPT_TOKENS[i]);
+    // applyTheme set these inline just before we cleared them, and the :root
+    // blocks in portal-redesign.css / site-galaxy.css are dark-only fallbacks —
+    // without this restore every bail-out (light mode, manual accent, adapt
+    // off, sampler failure) would land on dark purple tokens over the light
+    // palette. Restore the active theme's values, then let a manual accent sit
+    // back on top.
+    var t = T[normalize(getCookie())];
+    if (t) {
+      r.setProperty('--t-bg2', t.bg2);
+      r.setProperty('--t-bg3', t.bg3);
+      r.setProperty('--t-ac',  t.ac);
+      r.setProperty('--t-ac2', t.ac2);
+      r.setProperty('--t-ac3', t.ac3);
+      r.setProperty('--t-bda', t.bda);
+      r.setProperty('--t-gl',  t.gl);
+      r.setProperty('--t-gls', t.gls);
+      r.setProperty('--t-gr',  t.gr);
+    }
+    applyCustomizationPrefs();
     document.documentElement.removeAttribute('data-adapt');
   }
 
@@ -274,7 +358,7 @@
   }
 
   function sampleImagePalette(img) {
-    var SIZE = 32;
+    var SIZE = 48;
     var canvas = document.createElement('canvas');
     canvas.width = SIZE; canvas.height = SIZE;
     var ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -282,18 +366,23 @@
     ctx.drawImage(img, 0, 0, SIZE, SIZE);
     var data = ctx.getImageData(0, 0, SIZE, SIZE).data;
 
-    // 24 hue bins, weighted toward saturated mid-luminance pixels — this
-    // ignores the dark overlay gradient that sits on top of the wallpaper.
-    var BINS = 24, BIN = 360 / BINS;
+    // Hue bins weighted toward saturated mid-luminance pixels — ignores the
+    // dark overlay gradient that sits on top of the wallpaper. Weight also
+    // falls off toward the edges so the cover/center crop the user actually
+    // sees dominates.
+    var BINS = 36, BIN = 360 / BINS;
     var bins = [];
-    for (var i = 0; i < BINS; i++) bins.push({ w: 0, sinSum: 0, cosSum: 0, chroma: 0 });
-    var meanL = 0, meanN = 0;
+    for (var i = 0; i < BINS; i++) bins.push({ w: 0, sinSum: 0, cosSum: 0, chroma: 0, lSum: 0 });
     for (var p = 0; p < data.length; p += 4) {
+      var px = (p / 4) % SIZE;
+      var py = Math.floor(p / 4 / SIZE);
+      var dx = (px + 0.5) / SIZE - 0.5;
+      var dy = (py + 0.5) / SIZE - 0.5;
+      var centerW = 1 - 0.35 * Math.min(1, Math.sqrt(dx * dx + dy * dy) * 2);
       var hsl = rgbToHsl(data[p], data[p + 1], data[p + 2]);
       var h = hsl[0], s = hsl[1], l = hsl[2];
-      meanL += l; meanN++;
       if (s < 0.14 || l < 0.05 || l > 0.95) continue;
-      var w = s * (1 - Math.abs(l - 0.42) * 1.6);
+      var w = s * (1 - Math.abs(l - 0.42) * 1.6) * centerW;
       if (w <= 0) continue;
       var rad = h * Math.PI / 180;
       var bin = bins[Math.min(BINS - 1, Math.floor(h / BIN))];
@@ -301,23 +390,56 @@
       bin.sinSum += Math.sin(rad) * w;
       bin.cosSum += Math.cos(rad) * w;
       bin.chroma += s * w;
+      bin.lSum += l * w;
     }
-    if (!meanN) throw Error('empty sample');
-    meanL /= meanN;
 
-    var best = null;
+    var best = null, bestIdx = -1;
     for (var b = 0; b < BINS; b++) {
       if (bins[b].w <= 0) continue;
-      if (!best || bins[b].w > best.w) best = bins[b];
+      if (!best || bins[b].w > best.w) { best = bins[b]; bestIdx = b; }
     }
     if (!best) throw Error('no usable color');
-    var H = Math.atan2(best.sinSum, best.cosSum) * 180 / Math.PI;
-    var S = clamp(best.chroma / best.w * 1.15, 0.5, 0.86);
-    var Lac = clamp(0.66 - (meanL - 0.30) * 0.25, 0.52, 0.72);
+    // Merge the winning bin with its neighbours when they carry comparable
+    // weight — gradients smear a hue across adjacent bins and the circular
+    // mean alone still flickers between them.
+    var agg = { w: 0, sinSum: 0, cosSum: 0, chroma: 0, lSum: 0 };
+    for (var n = -1; n <= 1; n++) {
+      var nb = bins[(bestIdx + n + BINS) % BINS];
+      if (n !== 0 && nb.w < best.w * 0.45) continue;
+      agg.w += nb.w;
+      agg.sinSum += nb.sinSum;
+      agg.cosSum += nb.cosSum;
+      agg.chroma += nb.chroma;
+      agg.lSum += nb.lSum;
+    }
+    var H = Math.atan2(agg.sinSum, agg.cosSum) * 180 / Math.PI;
+    // meanL is weighted over the same accepted pixels (not the whole image —
+    // a mostly-dark wallpaper used to drag the accent lightness the wrong way).
+    var meanL = agg.lSum / agg.w;
+    var S = clamp(agg.chroma / agg.w * 1.05, 0.42, 0.75);
+    var Lac = clamp(0.62 - (meanL - 0.34) * 0.22, 0.55, 0.68);
+
+    // Contrast floor against the page base so the accent never turns to mud
+    // on a wallpaper whose luminance sits close to --t-bg.
+    var bgHex = document.documentElement.style.getPropertyValue('--t-bg') ||
+      getComputedStyle(document.documentElement).getPropertyValue('--t-bg') || '';
+    if (/^#[0-9a-f]{6}$/i.test(bgHex)) {
+      var bgL = (0.2126 * parseInt(bgHex.slice(1, 3), 16) +
+        0.7152 * parseInt(bgHex.slice(3, 5), 16) +
+        0.0722 * parseInt(bgHex.slice(5, 7), 16)) / 255;
+      var accHex = hslToHex(H, S, Lac);
+      var acLum = (0.2126 * parseInt(accHex.slice(1, 3), 16) +
+        0.7152 * parseInt(accHex.slice(3, 5), 16) +
+        0.0722 * parseInt(accHex.slice(5, 7), 16)) / 255;
+      if (Math.abs(bgL - acLum) < 0.30) {
+        var mid = bgL > 0.5 ? bgL - 0.30 : bgL + 0.30;
+        Lac = clamp(mid, 0.52, 0.70);
+      }
+    }
 
     var ac = hslToHex(H, S, Lac);
-    var ac2 = hslToHex(H + 14, Math.min(S + 0.06, 0.9), Lac + 0.09);
-    var ac3 = hslToHex(H + 320, S * 0.92, Lac - 0.06);
+    var ac2 = hslToHex(H + 18, S * 0.9, Math.min(Lac + 0.10, 0.8));
+    var ac3 = hslToHex(H - 30, S * 0.85, Math.max(Lac - 0.08, 0.3));
     return { ac: ac, ac2: ac2, ac3: ac3 };
   }
 
@@ -408,7 +530,7 @@
     r.setProperty('--t-gl',  t.gl);
     r.setProperty('--t-gls', t.gls);
     r.setProperty('--t-gr',  t.gr);
-    r.setProperty('--t-bgr', t.bgr);
+    r.setProperty('--t-bgr-theme', t.bgr);
     r.setProperty('--t-display', "'Figtree', system-ui, sans-serif");
     applyCustomizationPrefs();
     applyBgImg(getEffectiveBgImg());
@@ -417,6 +539,10 @@
   }
 
   applyTheme(getCookie());
+  // applyTheme ran while <body> didn't exist yet (script is in <head>) —
+  // re-assert the wallpaper layer's body transparency once it does.
+  if (document.body) { applyBgImg(getEffectiveBgImg()); }
+  else { document.addEventListener('DOMContentLoaded', function () { applyBgImg(getEffectiveBgImg()); }); }
 
   var baseStyle = document.createElement('style');
   baseStyle.textContent =
@@ -425,6 +551,21 @@
       'background-image:var(--t-bg-img-layer,none)!important;' +
       'background-size:var(--t-bg-size,cover)!important;background-position:var(--t-bg-pos,center)!important;' +
       'background-repeat:var(--t-bg-repeat,no-repeat)!important;background-attachment:fixed!important;}' +
+    // Unified wallpaper layer: a fixed, blurred pseudo-element below all
+    // content. Engaged via [data-bglayer] when a url() resolves into
+    // --t-bg-img-layer (custom bgimg cookie or a page-declared --t-bgr); body
+    // is forced transparent by JS so the layer shows through. scale(1.12)
+    // hides the blur's edge fringing.
+    'html[data-bglayer]{background:var(--t-bg)!important}' +
+    'html[data-bglayer]::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;' +
+      'opacity:var(--t-bg-layer-opacity,1);' +
+      // Shorthand, not background-image: page-owned --t-bgr values carry their
+      // own position/size (e.g. "url(x) center top / cover"), which is only
+      // valid as a full background value.
+      'background:var(--t-bg-img-layer,none);' +
+      'filter:blur(var(--t-bg-blur,18px));transform:scale(1.12)}' +
+    'html[data-bglayer][data-noblur]::before{filter:none;transform:none}' +
+    'html[data-bglayer][data-blur-drag]::before{transition:none}' +
     'input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);' +
       'padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}' +
     'input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}' +
@@ -585,59 +726,6 @@
       wm.style.cssText = 'position:fixed;right:15px;bottom:15px;width:32px;height:32px;opacity:0.7;pointer-events:none;z-index:999998;';
       document.body.appendChild(wm);
     }
-
-    if (document.getElementById('discord-server-btn')) return;
-    var isHome = window.location.pathname === '/' || window.location.pathname.endsWith('/index.html');
-
-    if (isHome) {
-      var discordBtn = document.createElement('button');
-      discordBtn.id = 'discord-server-btn';
-      discordBtn.type = 'button';
-      discordBtn.title = 'Discord server';
-      discordBtn.textContent = 'Discord';
-      discordBtn.style.cssText =
-        'position:fixed;right:55px;bottom:15px;z-index:999999;' +
-        'height:32px;border-radius:8px;border:1px solid rgba(88,101,242,0.45);' +
-        'background:rgba(88,101,242,0.92)!important;color:#fff!important;font-size:11px;' +
-        'font-weight:900;letter-spacing:.02em;padding:0 10px!important;cursor:pointer;' +
-        'box-shadow:0 8px 24px rgba(0,0,0,0.35);' +
-        'display:block;';
-
-      var discordPanel = document.createElement('div');
-      discordPanel.id = 'discord-server-panel';
-      discordPanel.style.cssText =
-        'display:none;position:fixed;right:15px;bottom:56px;z-index:999999;' +
-        'width:min(280px,calc(100vw - 30px));background:rgba(10,10,14,0.96);' +
-        'border:1px solid rgba(88,101,242,0.35);border-radius:10px;padding:12px;' +
-        'box-shadow:0 18px 50px rgba(0,0,0,0.55);color:var(--t-fg);' +
-        'font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.45;' +
-        '';
-      discordPanel.innerHTML =
-        '<div style="font-size:12px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#cfd4ff;margin-bottom:6px;">Discord Server</div>' +
-        '<div style="color:var(--t-fg2);margin-bottom:10px;">Join here through a different device if you are using your chromebook.</div>' +
-        '<a href="https://discord.gg/nrBCnK7KM5" target="_blank" rel="noopener noreferrer" style="display:block;text-align:center;text-decoration:none;background:rgba(88,101,242,0.22);border:1px solid rgba(88,101,242,0.45);border-radius:8px;padding:8px 10px;color:#fff;font-weight:900;">https://discord.gg/nrBCnK7KM5</a>';
-
-      discordBtn.onclick = function(e) {
-        e.stopPropagation();
-        discordPanel.style.display = discordPanel.style.display === 'none' ? 'block' : 'none';
-      };
-      discordPanel.onclick = function(e) { e.stopPropagation(); };
-      document.addEventListener('click', function() { discordPanel.style.display = 'none'; });
-
-      document.body.appendChild(discordBtn);
-      document.body.appendChild(discordPanel);
-    } else {
-      var discordLink = document.createElement('a');
-      discordLink.id = 'discord-server-btn';
-      discordLink.href = 'https://discord.gg/nrBCnK7KM5';
-      discordLink.target = '_blank';
-      discordLink.rel = 'noopener noreferrer';
-      discordLink.textContent = 'Discord';
-      discordLink.style.cssText = 'position:fixed;right:55px;bottom:18px;z-index:999999;font-size:10px;font-weight:800;color:#fff;text-decoration:none;opacity:0.7;transition:opacity 0.2s;';
-      discordLink.onmouseenter = function() { this.style.opacity = '1'; };
-      discordLink.onmouseleave = function() { this.style.opacity = '0.7'; };
-      document.body.appendChild(discordLink);
-    }
   }
   if (document.body) { addWatermark(); }
   else { document.addEventListener('DOMContentLoaded', addWatermark); }
@@ -646,11 +734,82 @@
     apply: function (name) { applyTheme(normalize(name)); },
     get: getCookie,
     themes: T,
+    backgrounds: THEME_BGS,
     setBg: function(url) { setBgImgCookie(url); applyBgImg(url); },
+    setBlur: function(px) {
+      setPref('bgblur', clamp(Number(px) || 0, 0, 40));
+      applyCustomizationPrefs();
+    },
     applyMaterial: applyMaterialMode,
     adapt: function () { applyAdaptiveTheme(); },
     canUseGlass: canUseGlass
   };
+
+  // Drag-to-blur: press an empty area of the page and drag vertically to
+  // change the wallpaper blur live. Mouse/pen only — a vertical drag on
+  // touch IS a scroll, so hijacking it would break every page. Disabled via
+  // the theme_bgdrag=off pref.
+  (function dragToBlur() {
+    var HUD = null;
+    function hud() {
+      if (HUD) return HUD;
+      HUD = document.createElement('div');
+      HUD.id = 'bg-blur-hud';
+      HUD.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:10000;' +
+        'padding:7px 13px;border-radius:999px;border:1px solid var(--t-bda,rgba(255,255,255,.2));' +
+        'background:rgba(10,10,16,.82);color:var(--t-fg,#fff);font:800 11px/1 system-ui,sans-serif;' +
+        'letter-spacing:.04em;pointer-events:none;opacity:0;transition:opacity .25s;';
+      (document.body || document.documentElement).appendChild(HUD);
+      return HUD;
+    }
+    var active = false, startY = 0, startBlur = 8, pid = -1;
+    function emptyTarget(el) {
+      if (!el || el.nodeType !== 1) return false;
+      if (el.closest && el.closest('a,button,input,select,textarea,label,summary,[contenteditable],img,canvas,video,' +
+        '.msg,.card,.chip,.portal-shell,.prefs-page,#msgs,#sidebar,nav,header,footer,table,pre,code')) return false;
+      return (el.textContent || '').trim() === '';
+    }
+    document.addEventListener('pointerdown', function(e) {
+      if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
+      if (e.button !== 0) return;
+      if (getPref('bgdrag', 'on') === 'off') return;
+      if (!document.documentElement.hasAttribute('data-bglayer')) return;
+      if (!emptyTarget(e.target)) return;
+      var cur = clamp(getPref('bgblur', '8'), 0, 40);
+      if (cur === 0) return;
+      active = true; startY = e.clientY; startBlur = cur; pid = e.pointerId;
+    });
+    document.addEventListener('pointermove', function(e) {
+      if (!active || e.pointerId !== pid) return;
+      var dy = e.clientY - startY;
+      if (Math.abs(dy) < 8) return;
+      try { e.target.setPointerCapture(pid); } catch (_) {}
+      document.documentElement.setAttribute('data-blur-drag', '1');
+      var px = clamp(Math.round(startBlur - dy / 6), 0, 40);
+      document.documentElement.style.setProperty('--t-bg-blur', px + 'px');
+      var h = hud();
+      h.textContent = 'Blur ' + px + 'px';
+      h.style.opacity = '1';
+    });
+    function end(e) {
+      if (!active || (e.pointerId !== undefined && e.pointerId !== pid)) return;
+      active = false;
+      document.documentElement.removeAttribute('data-blur-drag');
+      if (e.type === 'pointerup' || e.type === 'pointercancel') {
+        var px = clamp(getPref('bgblur', '8'), 0, 40);
+        try {
+          var inline = document.documentElement.style.getPropertyValue('--t-bg-blur');
+          if (inline) px = clamp(parseInt(inline, 10) || 0, 0, 40);
+        } catch (_) {}
+        setPref('bgblur', px);
+        applyCustomizationPrefs();
+        if (HUD) HUD.style.opacity = '0';
+      }
+      pid = -1;
+    }
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
+  })();
 
   // Pointer-follow tilt on liquid-glass pages
   (function ensureLiquidGlassJs() {

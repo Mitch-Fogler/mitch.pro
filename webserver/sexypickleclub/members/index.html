@@ -5,26 +5,19 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Members — Sexy Pickle Club</title>
   <meta name="description" content="The roster of the Sexy Pickle Club: co-owners Mitch and Lochlann, and every member of the brine.">
-  <script src="/theme.js?v=9"></script>
+  <script src="/theme.js?v=10"></script>
   <link rel="stylesheet" href="/app.css"><script src="/api.js"></script>
 
   <style>
-    /* Same wallpaper treatment as the club landing (mitch.pro's front page) */
-    html body.pickle-page::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -1;
-      background: url(/home-burning-cherry.webp) center / cover no-repeat;
-      opacity: 0.45;
-      filter: blur(26px);
-      transform: scale(1.15);
-      pointer-events: none;
+    /* Same wallpaper treatment as the club landing — painted (and blurred)
+       by theme.js's shared html::before layer. */
+    html body.pickle-page {
+      --t-bgr: url(/home-burning-cherry.webp) center / cover no-repeat;
+      --t-bg-layer-opacity: 0.45;
     }
-    html, html body {
-      background: transparent !important;
-      background-image: none !important;
-      background-attachment: initial !important;
+    /* Light mode: the cherry photo is a dark print — use the light theme's wash */
+    html.theme-light body.pickle-page {
+      --t-bgr: linear-gradient(160deg, #f3f5fa, #e9edf6);
     }
     html.theme-light body.pickle-page::after {
       content: "";

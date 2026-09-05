@@ -142,6 +142,12 @@ const BLOG_CONTRIBUTORS_FILE  = join(DATA_DIR, 'blog_contributors.json');
 const BLOG_DELETE_LOG_FILE    = join(DATA_DIR, 'blog_delete_log.json');
 const BLOG_COMMENTS_FILE      = join(DATA_DIR, 'blog_comments.json');
 const BLOG_UPLOAD_DIR         = join(WEBROOT, 'blog', 'uploads');
+// Custom user wallpapers live OUTSIDE the webroot (the static cache preloads
+// and immutable-caches everything in webroot); served via /api/bg/<id>.<ext>.
+const BG_UPLOAD_DIR           = join(DATA_DIR, 'backgrounds');
+const BACKGROUNDS_FILE        = join(DATA_DIR, 'backgrounds.json');
+const BG_MAX_BYTES            = 2_500_000;
+const BG_MAX_PER_USER         = 3;
 const NAMES_FILE             = join(DATA_DIR, 'names.json');
 const BLACKLIST_FILE         = join(DATA_DIR, 'blacklist.json');
 const USER_STATS_FILE        = join(DATA_DIR, 'user_stats.json');
@@ -1380,6 +1386,8 @@ const RATE_LIMITS = {
   '/api/blog/write':          [6,   60],
   '/api/blog/comment':        [10,  60],
   '/api/blog/upload':         [10,  60],
+  '/api/backgrounds/upload':  [6, 120],
+  '/api/backgrounds/delete':  [20,  60],
   '/api/blog/subscription':   [20,  60],
   '/api/newsletter-signup':    [3,   60],
   '/api/newsletter/unsubscribe-direct': [10, 600],
@@ -2639,6 +2647,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/school-calendar',
   '/api/school-info',
   '/api/site-info',
+  '/api/backgrounds/list',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -7325,6 +7334,37 @@ async function handleRequest(req, server) {
   if (csrfFailure) return csrfFailure;
 
   // Global rate limit check for all APIs
+  // Public capability URL for user-uploaded wallpapers — fires on every page
+  // load, so deliberately before rate limiting and auth. Unguessable 96-bit
+  // id; the path is always rebuilt from the stored metadata record, never
+  // from user input.
+  {
+    const bgMatch = method === 'GET' && /^\/api\/bg\/([0-9a-f]{24})\.(png|jpg|webp)$/.exec(path);
+    if (bgMatch) {
+      const lib = bgLibrary();
+      let rec = null;
+      let ownerNorm = '';
+      for (const [norm, items] of Object.entries(lib)) {
+        const hit = (Array.isArray(items) ? items : []).find(item => item.id === bgMatch[1]);
+        if (hit) { rec = hit; ownerNorm = norm; break; }
+      }
+      const ext = rec ? bgMimeExt(rec.mime) : '';
+      if (!rec || ext !== bgMatch[2] || !/^[0-9a-f]{24}\.[a-z0-9]+$/.test(rec.file)) {
+        return new Response(null, { status: 404 });
+      }
+      const dir = join(BG_UPLOAD_DIR, createHash('sha256').update(ownerNorm).digest('hex').slice(0, 32));
+      return new Response(Bun.file(join(dir, rec.file)), {
+        headers: {
+          'Content-Type': rec.mime,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': PICKLE_ORIGIN,
+          'Vary': 'Origin',
+          'Cross-Origin-Resource-Policy': 'cross-origin'
+        }
+      });
+    }
+  }
+
   if (path.startsWith('/api/')) {
     const rl = checkRateLimit(req, path);
     if (rl) return rl;
@@ -7876,6 +7916,127 @@ async function handleRequest(req, server) {
     writeFileSync(fullPath, bytes);
     logAdminAction(email, 'upload_blog_image', { filename, mime, bytes: bytes.length });
     return jsonResp(200, { ok: true, url: `/blog/uploads/${filename}` });
+  }
+
+  /* ── Custom user backgrounds ──────────────────────────────────────────────
+     JSON+base64 uploads like /api/blog/upload, stored per-user outside the
+     webroot. Bytes are served from a public unguessable capability URL
+     (/api/bg/<24hex>.<ext> — same trust model as /blog/uploads) because the
+     bgimg cookie is host-only: sexypickleclub.com could never fetch an
+     auth-gated file, and the adaptive sampler needs an anonymous-loadable,
+     CORS-readable image to canvas-sample it. */
+
+  function bgUserDir(norm) {
+    const dir = join(BG_UPLOAD_DIR, createHash('sha256').update(norm).digest('hex').slice(0, 32));
+    try { mkdirSync(dir, { recursive: true }); } catch {}
+    return dir;
+  }
+
+  function bgMimeExt(mime) {
+    return { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[String(mime || '').toLowerCase()] || '';
+  }
+
+  function bgLibrary() { return loadJson(BACKGROUNDS_FILE, {}); }
+
+  /* GET /api/backgrounds/list — the official wallpaper chips. Reads
+     webserver/backgrounds/ directly so the directory is the source of truth:
+     drop a *.webp in there (or swap one out, or delete it) and the chips in
+     preferences follow on the next load — no manifest to edit. Re-scans when
+     the directory's mtime changes. */
+  let bgListCache = null;
+  let bgListCacheMtime = -1;
+  if (path === '/api/backgrounds/list' && method === 'GET') {
+    try {
+      const dir = join(WEBROOT, 'backgrounds');
+      const mtime = statSync(dir).mtimeMs;
+      if (!bgListCache || mtime !== bgListCacheMtime) {
+        bgListCache = readdirSync(dir)
+          .filter(f => f.endsWith('.webp'))
+          .sort()
+          .map(f => ({
+            id: f.replace(/\.webp$/, '').replace(/^bg-/, ''),
+            name: f.replace(/\.webp$/, '').replace(/^bg-/, '').replace(/-/g, ' ')
+                   .replace(/\b\w/g, c => c.toUpperCase()),
+            url: `/backgrounds/${f}`
+          }));
+        bgListCacheMtime = mtime;
+      }
+      return jsonResp(200, { ok: true, items: bgListCache });
+    } catch (e) {
+      console.error('[backgrounds] list failed:', e?.message || e);
+      return jsonResp(200, { ok: true, items: [] });
+    }
+  }
+
+  if (path === '/api/backgrounds/upload' && method === 'POST') {
+    const writeLimit = checkRateLimit(req, '/api/backgrounds/upload'); if (writeLimit) return writeLimit;
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    let uploadBody = {};
+    try {
+      const raw = await readRequestTextLimited(req, 3_500_000);
+      uploadBody = raw ? JSON.parse(raw) : {};
+    } catch {
+      return jsonResp(400, { error: 'bad json' });
+    }
+    const mime = String(uploadBody.mime || '').toLowerCase();
+    const data = String(uploadBody.data || '');
+    const ext = bgMimeExt(mime);
+    if (!ext) return jsonResp(400, { error: 'unsupported image type' });
+    const prefix = `data:${mime};base64,`;
+    if (!data.startsWith(prefix)) return jsonResp(400, { error: 'invalid image data' });
+    const payload = data.slice(prefix.length);
+    if (!/^[a-z0-9+/=\s]+$/i.test(payload)) return jsonResp(400, { error: 'invalid image data' });
+    const bytes = Buffer.from(payload.replace(/\s+/g, ''), 'base64');
+    if (!bytes.length || bytes.length > BG_MAX_BYTES) return jsonResp(413, { error: 'image too large' });
+    const norm = normalizeEmail(email);
+    const id = randomBytes(12).toString('hex');
+    const filename = `${id}.${ext}`;
+    writeFileSync(join(bgUserDir(norm), filename), bytes);
+    const lib = bgLibrary();
+    const items = Array.isArray(lib[norm]) ? lib[norm] : [];
+    items.push({ id, file: filename, mime, bytes: bytes.length, name: String(uploadBody.name || '').slice(0, 80), ts: Date.now() });
+    while (items.length > BG_MAX_PER_USER) {
+      const evicted = items.shift();
+      try { unlinkSync(join(bgUserDir(norm), evicted.file)); } catch {}
+    }
+    lib[norm] = items;
+    await saveJson(BACKGROUNDS_FILE, lib);
+    return jsonResp(200, { ok: true, url: `/api/bg/${id}.${ext}`, id });
+  }
+
+  if (path === '/api/backgrounds/mine' && method === 'GET') {
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    const norm = normalizeEmail(email);
+    const items = (bgLibrary()[norm] || []).map(item => ({
+      id: item.id,
+      url: `/api/bg/${item.file}`,
+      mime: item.mime,
+      bytes: item.bytes,
+      name: item.name || '',
+      ts: item.ts
+    }));
+    return jsonResp(200, { ok: true, items });
+  }
+
+  if (path === '/api/backgrounds/delete' && method === 'POST') {
+    const writeLimit = checkRateLimit(req, '/api/backgrounds/delete'); if (writeLimit) return writeLimit;
+    const { email } = authedEmailForRequest();
+    if (!email) return jsonResp(401, { error: 'not logged in' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+    const norm = normalizeEmail(email);
+    const wantId = String(body.id || '');
+    if (!/^[0-9a-f]{24}$/.test(wantId)) return jsonResp(400, { error: 'bad id' });
+    const lib = bgLibrary();
+    const items = Array.isArray(lib[norm]) ? lib[norm] : [];
+    const idx = items.findIndex(item => item.id === wantId);
+    if (idx === -1) return jsonResp(404, { error: 'not found' });
+    const [removed] = items.splice(idx, 1);
+    try { unlinkSync(join(bgUserDir(norm), removed.file)); } catch {}
+    lib[norm] = items;
+    await saveJson(BACKGROUNDS_FILE, lib);
+    return jsonResp(200, { ok: true });
   }
 
   if (path === '/api/blog/posts' && method === 'GET') {
