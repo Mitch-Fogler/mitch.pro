@@ -5243,10 +5243,21 @@ function sameOriginRequest(req) {
   return false;
 }
 
+// Endpoints exempt from the same-origin CSRF check. /api/sso/exchange is the
+// cross-domain hop target of the SSO bridge: the bridge page form-POSTs from
+// another origin (mitch.pro → rjuhsd.school / sexypickleclub.com) with no
+// custom headers, so the header check would always block it. It doesn't need
+// CSRF protection anyway — the single-use, 90-second token minted server-side
+// for an authenticated session IS the authorization.
+const CSRF_EXEMPT_PATHS = new Set([
+  '/api/sso/exchange',
+]);
+
 function csrfFailureIfUnsafe(req, path, method) {
   if (process.env.NODE_ENV === 'test') return null;
   if (!path.startsWith('/api/')) return null;
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
+  if (CSRF_EXEMPT_PATHS.has(path)) return null;
   // Fail closed: require same-origin Origin/Referer plus a custom header simple forms cannot set.
   const requestedWith = (req.headers.get('X-Mitch-Requested-With') || '').trim();
   if (requestedWith !== '1') return jsonResp(403, { error: 'csrf_blocked' });
