@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { createHmac, createHash, randomBytes, timingSafeEqual, createECDH, createCipheriv, createDecipheriv } from 'crypto';
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, rmSync, readdirSync, appendFileSync } from 'fs';
-import { join, basename, resolve, sep } from 'path';
+import { join, basename, extname, resolve, sep } from 'path';
 import { spawnSync, spawn } from 'child_process';
 import os from 'os';
 import webpush from 'web-push';
@@ -7339,7 +7339,7 @@ async function handleRequest(req, server) {
   // id; the path is always rebuilt from the stored metadata record, never
   // from user input.
   {
-    const bgMatch = method === 'GET' && /^\/api\/bg\/([0-9a-f]{24})\.(png|jpg|webp)$/.exec(path);
+    const bgMatch = method === 'GET' && /^\/api\/bg\/([0-9a-f]{24})\.(png|jpg|webp|webm)$/.exec(path);
     if (bgMatch) {
       const lib = bgLibrary();
       let rec = null;
@@ -7814,6 +7814,20 @@ async function handleRequest(req, server) {
     
     const targetUrl = `https://cinejoy.to${subPath}${url.search}`;
 
+    function getPiaNetworkAddress() {
+      try {
+        const targetIface = process.env.PIA_INTERFACE || 'eth1';
+        const ifaces = os.networkInterfaces();
+        const list = ifaces[targetIface] || [];
+        for (const item of list) {
+          if (item.family === 'IPv4' && !item.internal) {
+            return item.address;
+          }
+        }
+      } catch {}
+      return null;
+    }
+
     function getPiaProxyUrl() {
       if (process.env.PIA_PROXY_URL) return process.env.PIA_PROXY_URL;
       if (process.env.PIA_VPN_PROXY) return process.env.PIA_VPN_PROXY;
@@ -7839,15 +7853,21 @@ async function handleRequest(req, server) {
       headers.set('Host', 'cinejoy.to');
       headers.set('Referer', 'https://cinejoy.to/');
       
-      const piaProxy = getPiaProxyUrl();
+      const eth1Ip = getPiaNetworkAddress();
       const fetchOpts = {
         method: req.method,
         headers: headers,
         body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null,
         redirect: 'follow'
       };
-      if (piaProxy) {
-        fetchOpts.proxy = piaProxy;
+      
+      if (eth1Ip) {
+        fetchOpts.localAddress = eth1Ip;
+      } else {
+        const piaProxy = getPiaProxyUrl();
+        if (piaProxy) {
+          fetchOpts.proxy = piaProxy;
+        }
       }
       
       let upstreamRes;
@@ -7856,6 +7876,7 @@ async function handleRequest(req, server) {
       } catch (err) {
         console.error('[pirate-voyage-proxy] PIA fetch attempt failed:', err?.message || err);
         delete fetchOpts.proxy;
+        delete fetchOpts.localAddress;
         upstreamRes = await fetch(targetUrl, fetchOpts);
       }
 
@@ -8055,31 +8076,86 @@ async function handleRequest(req, server) {
   }
 
   function bgMimeExt(mime) {
-    return { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[String(mime || '').toLowerCase()] || '';
+    return {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/webp': 'webp',
+      'video/mp4': 'mp4',
+      'image/gif': 'gif',
+      'video/webm': 'webm'
+    }[String(mime || '').toLowerCase()] || '';
+  }
+
+  const bgConverting = new Set();
+
+  function convertBackgroundsToWebm(dir) {
+    try {
+      if (!existsSync(dir)) return;
+      const files = readdirSync(dir);
+      for (const f of files) {
+        const ext = extname(f).toLowerCase();
+        if (ext === '.mp4' || ext === '.gif') {
+          const inputPath = join(dir, f);
+          const baseName = basename(f, ext);
+          const outputPath = join(dir, `${baseName}.webm`);
+          if (existsSync(outputPath) && statSync(outputPath).size > 0) {
+            try { unlinkSync(inputPath); } catch {}
+            continue;
+          }
+          if (bgConverting.has(inputPath)) continue;
+          bgConverting.add(inputPath);
+          console.log(`[backgrounds] Starting async conversion for ${f} -> ${baseName}.webm...`);
+          const proc = spawn('ffmpeg', [
+            '-y',
+            '-i', inputPath,
+            '-c:v', 'libvpx',
+            '-quality', 'realtime',
+            '-cpu-used', '8',
+            '-b:v', '2M',
+            '-an',
+            outputPath
+          ], { stdio: 'ignore' });
+          proc.on('exit', (code) => {
+            bgConverting.delete(inputPath);
+            if (code === 0 && existsSync(outputPath) && statSync(outputPath).size > 0) {
+              console.log(`[backgrounds] Successfully converted ${f} -> ${baseName}.webm`);
+              try { unlinkSync(inputPath); } catch {}
+              bgListCacheMtime = -1;
+            } else {
+              console.error(`[backgrounds] Failed to convert ${f} to .webm (exit code ${code})`);
+            }
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[backgrounds] convert error:', err?.message || err);
+    }
   }
 
   function bgLibrary() { return loadJson(BACKGROUNDS_FILE, {}); }
 
   /* GET /api/backgrounds/list — the official wallpaper chips. Reads
      webserver/backgrounds/ directly so the directory is the source of truth:
-     drop a *.webp in there (or swap one out, or delete it) and the chips in
-     preferences follow on the next load — no manifest to edit. Re-scans when
+     drop a *.webp or *.webm in there (or *.mp4 / *.gif which auto-convert to *.webm)
+     and the chips in preferences follow on the next load. Re-scans when
      the directory's mtime changes. */
   let bgListCache = null;
   let bgListCacheMtime = -1;
   if (path === '/api/backgrounds/list' && method === 'GET') {
     try {
       const dir = join(WEBROOT, 'backgrounds');
+      convertBackgroundsToWebm(dir);
       const mtime = statSync(dir).mtimeMs;
       if (!bgListCache || mtime !== bgListCacheMtime) {
         bgListCache = readdirSync(dir)
-          .filter(f => f.endsWith('.webp'))
+          .filter(f => f.endsWith('.webp') || f.endsWith('.webm'))
           .sort()
           .map(f => ({
-            id: f.replace(/\.webp$/, '').replace(/^bg-/, ''),
-            name: f.replace(/\.webp$/, '').replace(/^bg-/, '').replace(/-/g, ' ')
+            id: f.replace(/\.(webp|webm)$/, '').replace(/^bg-/, ''),
+            name: f.replace(/\.(webp|webm)$/, '').replace(/^bg-/, '').replace(/-/g, ' ')
                    .replace(/\b\w/g, c => c.toUpperCase()),
-            url: `/backgrounds/${f}`
+            url: `/backgrounds/${f}`,
+            type: f.endsWith('.webm') ? 'video' : 'image'
           }));
         bgListCacheMtime = mtime;
       }
@@ -8096,7 +8172,7 @@ async function handleRequest(req, server) {
     if (!email) return jsonResp(401, { error: 'not logged in' });
     let uploadBody = {};
     try {
-      const raw = await readRequestTextLimited(req, 3_500_000);
+      const raw = await readRequestTextLimited(req, 25_000_000);
       uploadBody = raw ? JSON.parse(raw) : {};
     } catch {
       return jsonResp(400, { error: 'bad json' });
@@ -8104,27 +8180,46 @@ async function handleRequest(req, server) {
     const mime = String(uploadBody.mime || '').toLowerCase();
     const data = String(uploadBody.data || '');
     const ext = bgMimeExt(mime);
-    if (!ext) return jsonResp(400, { error: 'unsupported image type' });
+    if (!ext) return jsonResp(400, { error: 'unsupported image/video type' });
     const prefix = `data:${mime};base64,`;
     if (!data.startsWith(prefix)) return jsonResp(400, { error: 'invalid image data' });
     const payload = data.slice(prefix.length);
     if (!/^[a-z0-9+/=\s]+$/i.test(payload)) return jsonResp(400, { error: 'invalid image data' });
     const bytes = Buffer.from(payload.replace(/\s+/g, ''), 'base64');
-    if (!bytes.length || bytes.length > BG_MAX_BYTES) return jsonResp(413, { error: 'image too large' });
+    if (!bytes.length || bytes.length > 25_000_000) return jsonResp(413, { error: 'image too large' });
     const norm = normalizeEmail(email);
     const id = randomBytes(12).toString('hex');
-    const filename = `${id}.${ext}`;
-    writeFileSync(join(bgUserDir(norm), filename), bytes);
+    const uDir = bgUserDir(norm);
+    let finalExt = ext;
+    let finalMime = mime;
+    let filename = `${id}.${ext}`;
+    const initialPath = join(uDir, filename);
+    writeFileSync(initialPath, bytes);
+
+    if (ext === 'mp4' || ext === 'gif') {
+      const webmPath = join(uDir, `${id}.webm`);
+      let res = spawnSync('ffmpeg', ['-y', '-i', initialPath, '-c:v', 'libvpx', '-quality', 'realtime', '-cpu-used', '8', '-b:v', '2M', '-an', webmPath], { stdio: 'ignore' });
+      if (res.status !== 0 || !existsSync(webmPath) || statSync(webmPath).size === 0) {
+        res = spawnSync('ffmpeg', ['-y', '-i', initialPath, webmPath], { stdio: 'ignore' });
+      }
+      if (res.status === 0 && existsSync(webmPath) && statSync(webmPath).size > 0) {
+        try { unlinkSync(initialPath); } catch {}
+        finalExt = 'webm';
+        finalMime = 'video/webm';
+        filename = `${id}.webm`;
+      }
+    }
+
     const lib = bgLibrary();
     const items = Array.isArray(lib[norm]) ? lib[norm] : [];
-    items.push({ id, file: filename, mime, bytes: bytes.length, name: String(uploadBody.name || '').slice(0, 80), ts: Date.now() });
+    items.push({ id, file: filename, mime: finalMime, bytes: statSync(join(uDir, filename)).size, name: String(uploadBody.name || '').slice(0, 80), ts: Date.now() });
     while (items.length > BG_MAX_PER_USER) {
       const evicted = items.shift();
-      try { unlinkSync(join(bgUserDir(norm), evicted.file)); } catch {}
+      try { unlinkSync(join(uDir, evicted.file)); } catch {}
     }
     lib[norm] = items;
     await saveJson(BACKGROUNDS_FILE, lib);
-    return jsonResp(200, { ok: true, url: `/api/bg/${id}.${ext}`, id });
+    return jsonResp(200, { ok: true, url: `/api/bg/${id}.${finalExt}`, id });
   }
 
   if (path === '/api/backgrounds/mine' && method === 'GET') {
@@ -20243,6 +20338,8 @@ function isPrivateIP(ip, ipType) {
 }
 
 // ── Start server ──────────────────────────────────────────────────────────────
+
+try { convertBackgroundsToWebm(join(WEBROOT, 'backgrounds')); } catch {}
 
 console.log(`Starting server on http://${HOST}:${PORT}...`);
 
