@@ -71,6 +71,17 @@ await page.goto('http://127.0.0.1:4317/encrypt/');
 await page.locator('#app.ready').waitFor();
 await page.locator('.user-entry').first().click();
 await page.screenshot({ path: `${out}/chat-conversation-desktop.png` });
+for (const width of [1920, 2560]) {
+  await page.setViewportSize({ width, height: 1440 });
+  const layout = await page.evaluate(() => {
+    const box = id => document.querySelector(id).getBoundingClientRect();
+    const avatar = box('.user-entry .user-avatar');
+    return { width: box('#app').width, right: box('#chat-main').right, avatar: avatar.width, overflow: document.documentElement.scrollWidth > innerWidth };
+  });
+  if (layout.width < width - 2 || layout.right < width - 2 || layout.avatar > 30 || layout.overflow) throw new Error(`Wide chat layout failed: ${JSON.stringify(layout)}`);
+}
+await page.screenshot({ path: `${out}/chat-conversation-wide.png` });
+await page.setViewportSize({ width: 1440, height: 1000 });
 await page.getByRole('button', { name: 'Details', exact: true }).click();
 if (!(await page.locator('#member-profile-panel').isVisible())) throw new Error('Details panel did not open');
 await page.keyboard.press('Escape');
