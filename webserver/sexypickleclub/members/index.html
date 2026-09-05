@@ -6,7 +6,7 @@
   <title>Members — Sexy Pickle Club</title>
   <meta name="description" content="The roster of the Sexy Pickle Club: co-owners Mitch and Lochlann, and every member of the brine.">
   <script src="/theme.js?v=9"></script>
-  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/app.css"><script src="/api.js"></script>
 
   <style>
     /* Same wallpaper treatment as the club landing (mitch.pro's front page) */
@@ -212,6 +212,16 @@
     }
     .sp-applicant .actions .reject { color: #ff8194; }
     .sp-note { color: var(--t-fg2); font-size: 0.8rem; text-align: center; }
+    #ownersBlock { margin-top: 1.6rem; }
+    #ownersBlock h3 { margin: 0 0 0.3rem; }
+    #ownersBlock form { display: flex; gap: 0.5rem; justify-content: center; margin: 0.7rem 0 1rem; flex-wrap: wrap; }
+    #ownersBlock input[type="email"] {
+      min-width: 0; flex: 1 1 14rem; max-width: 20rem;
+      padding: 0.45rem 0.7rem; font-size: 0.85rem;
+      color: var(--t-fg); background: var(--t-card, rgba(255,255,255,.04));
+      border: 1px solid color-mix(in srgb, var(--t-fg2) 35%, transparent);
+      border-radius: 8px;
+    }
 
     @media (prefers-reduced-motion: reduce) {
       .sp-head, .sp-member { animation: none !important; }
@@ -265,6 +275,15 @@
       <h2>Applicant Pool 🫙</h2>
       <p class="sp-note" id="applicantCounts"></p>
       <div id="applicantList"></div>
+      <div id="ownersBlock">
+        <h3>Co-Owners 👑</h3>
+        <p class="sp-note">Appoint by email — they don't need an account yet. Their co-owner powers start the first time they sign in.</p>
+        <form id="ownerForm">
+          <input type="email" id="ownerEmail" placeholder="someone@example.com" autocomplete="email" required>
+          <button type="submit" class="approve">Appoint</button>
+        </form>
+        <div id="ownerList"></div>
+      </div>
     </section>
   </main>
 
@@ -338,8 +357,55 @@
         } catch (e) { alert(e.message); }
       };
     });
+    // Appointed co-owners (also founder-only — same 403 gate).
+    const ownerList = document.getElementById('ownerList');
+    if (ownerList) {
+      const co = d.coowners || [];
+      ownerList.innerHTML = co.map(o =>
+        '<div class="sp-applicant" data-key="' + esc(o.email) + '">' +
+          '<span class="who"><b>' + esc(o.display) + '</b><small>Co-Owner' +
+            (o.memberNumber ? ' · Jar #' + esc(o.memberNumber) : '') + '</small></span>' +
+          '<span class="status-chip approved">co-owner</span>' +
+          '<span class="actions"><button type="button" class="reject" data-unowner>Remove</button></span>' +
+        '</div>'
+      ).join('') || '<p class="sp-note">No appointed co-owners yet — the founders run the brine alone.</p>';
+      ownerList.querySelectorAll('button[data-unowner]').forEach(btn => {
+        btn.onclick = async () => {
+          const key = btn.closest('.sp-applicant').dataset.key;
+          if (!confirm('Remove this co-owner?')) return;
+          try {
+            const r = await fetch('/api/pickle-club/owners', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: key, action: 'remove' }),
+            });
+            const res = await r.json().catch(() => ({}));
+            if (!r.ok) throw Error(res.error || 'Remove failed');
+            loadApplicants();
+          } catch (e) { alert(e.message); }
+        };
+      });
+    }
   }
   loadApplicants();
+
+  // Appoint a co-owner by raw email — works even if they've never signed in.
+  const ownerForm = document.getElementById('ownerForm');
+  if (ownerForm) {
+    ownerForm.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const input = document.getElementById('ownerEmail');
+      try {
+        const r = await fetch('/api/pickle-club/owners', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: input.value.trim(), action: 'appoint' }),
+        });
+        const res = await r.json().catch(() => ({}));
+        if (!r.ok) throw Error(res.error || 'Appoint failed');
+        input.value = '';
+        loadApplicants();
+      } catch (e) { alert(e.message); }
+    };
+  }
 })();
 </script>
 <script src="/cookie-consent.js" defer></script>

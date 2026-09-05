@@ -1723,17 +1723,17 @@ body.home .hud-topbar {
   gap: 22px !important;
   margin-top: 24px;
   padding: clamp(28px, 5vw, 58px) !important;
-  border: 1px solid #29314a;
+  border: 1px solid color-mix(in srgb, var(--t-ac, #b86cff) 24%, #29314a);
   border-radius: 18px;
   text-align: left !important;
   background:
-    radial-gradient(circle at 90% 0%, rgba(111,124,255,.34), transparent 34%),
-    linear-gradient(125deg, rgba(25,31,70,.96), rgba(12,16,31,.96));
+    radial-gradient(circle at 90% 0%, var(--t-bda, rgba(111,124,255,.34)), transparent 34%),
+    linear-gradient(125deg, var(--t-bg3, rgba(25,31,70,.96)), var(--t-bg, rgba(12,16,31,.96)));
 }
 body.home .hud-logo-area { flex-direction: row !important; align-items: center !important; }
-body.home .hud-logo-mark { width: 54px !important; height: 54px !important; border: 2px solid rgba(255,255,255,.2); border-radius: 15px !important; box-shadow: 0 14px 30px rgba(0,0,0,.3); }
-body.home .hud-kicker { color: #9ca6ff !important; }
-body.home .hud-brand { color: #fff !important; font-size: clamp(3.2rem, 7vw, 6.5rem) !important; line-height: .82 !important; letter-spacing: -.07em !important; }
+body.home .hud-logo-mark { width: 54px !important; height: 54px !important; border: 2px solid color-mix(in srgb, var(--t-ac, #b86cff) 45%, rgba(255,255,255,.2)); border-radius: 15px !important; box-shadow: 0 14px 30px rgba(0,0,0,.3); }
+body.home .hud-kicker { color: var(--t-ac, #9ca6ff) !important; }
+body.home .hud-brand { background: var(--t-gr, linear-gradient(135deg,#fff,#c9b6ff)); -webkit-background-clip: text !important; background-clip: text !important; color: transparent !important; -webkit-text-fill-color: transparent !important; font-size: clamp(3.2rem, 7vw, 6.5rem) !important; line-height: .82 !important; letter-spacing: -.07em !important; }
 body.home .home-greeting { margin-top: 10px !important; color: #aeb6c8 !important; }
 body.home .hud-system-status { align-self: start; justify-content: flex-end !important; color: #dfe3ec; }
 body.home .hud-search-area { grid-column: 1 / -1; max-width: none !important; }
@@ -1858,7 +1858,7 @@ html.theme-light body.home .hud-topbar {
 }
 html.theme-light body.home .hud-logo-mark { border-color: #cdd2e2 !important; box-shadow: 0 10px 24px rgba(30,31,34,.12); }
 html.theme-light body.home .hud-kicker { color: #4854c7 !important; }
-html.theme-light body.home .hud-brand { color: #14162b !important; }
+html.theme-light body.home .hud-brand { background: none !important; -webkit-background-clip: initial !important; background-clip: initial !important; color: #14162b !important; -webkit-text-fill-color: #14162b !important; }
 html.theme-light body.home .home-greeting { color: #5c6470 !important; }
 html.theme-light body.home .hud-system-status { color: #3a4150; }
 html.theme-light body.home .home-search-box { border-color: var(--ui-line) !important; background: #ffffff; }
