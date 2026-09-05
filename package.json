@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "preview:ui": "bun tools/preview-ui.js",
+    "test:ui": "node tools/review-ui.mjs",
     "start": "bun server.js",
     "test:unit": "bun tests/test_daily_login_unit.js",
     "test:integration": "bun tests/test_runner.js",
@@ -17,6 +19,8 @@
     "nodemailer": "^8.0.5",
     "ssh2": "^1.17.0",
     "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
   }
 }
-

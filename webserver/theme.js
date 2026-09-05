@@ -8,30 +8,30 @@
 
   var DARK = {
     name: 'Dark',
-    bg: '#070510', bg2: 'rgba(22,13,44,0.7)', bg3: 'rgba(42,23,76,0.74)',
-    fg: '#faf7ff', fg2: '#b4a9c9',
-    ac: '#b86cff', ac2: '#e47cff', ac3: '#8257ff',
-    bd: 'rgba(224,198,255,0.16)', bda: 'rgba(194,126,255,0.48)',
-    gl: 'rgba(180,94,255,0.35)', gls: 'rgba(180,94,255,0.14)',
-    gr: 'linear-gradient(135deg,#7957f1,#ca57f5 56%,#ff5fa7)',
-    bgr: 'linear-gradient(180deg,rgba(5,4,17,.24),rgba(5,4,17,.83)),url(/home-burning-cherry.webp)',
+    bg: '#171918', bg2: '#202321', bg3: '#2b2f2c',
+    fg: '#f1f0e9', fg2: '#adafa6',
+    ac: '#f29b85', ac2: '#ffc1ae', ac3: '#c87862',
+    bd: '#383c37', bda: '#b87563',
+    gl: 'rgba(242,155,133,0.2)', gls: 'rgba(242,155,133,0.10)',
+    gr: 'linear-gradient(135deg,#f29b85,#e7ac8c)',
+    bgr: 'none',
     bgImg: '',
-    sw: '#b86cff',
+    sw: '#f29b85',
   };
   var LIGHT = {
     name: 'Light',
     light: true,
-    bg: '#eef1f9', bg2: '#ffffff', bg3: '#e7ebf7',
-    fg: '#101426', fg2: '#3f4560',
-    ac: '#4f46e5', ac2: '#0891b2', ac3: '#db2777',
-    bd: 'rgba(16,20,42,0.16)', bda: 'rgba(79,70,229,0.5)',
-    gl: 'rgba(79,70,229,0.34)', gls: 'rgba(79,70,229,0.16)',
+    bg: '#f3f1e9', bg2: '#fffef9', bg3: '#e8e7dd',
+    fg: '#252b26', fg2: '#626a5e',
+    ac: '#a34330', ac2: '#813523', ac3: '#ba634d',
+    bd: '#d6d8cb', bda: '#b97460',
+    gl: 'rgba(163,67,48,0.2)', gls: 'rgba(163,67,48,0.10)',
     // Light mode keeps gradients in one indigo family — the old indigo→cyan→pink
     // sweep read as confetti. Page backdrop is a plain neutral wash.
-    gr: 'linear-gradient(135deg,#4f46e5,#7c3aed)',
-    bgr: 'linear-gradient(160deg,#f3f5fa,#e9edf6)',
+    gr: 'linear-gradient(135deg,#a34330,#ba634d)',
+    bgr: 'none',
     bgImg: '',
-    sw: '#4f46e5',
+    sw: '#a34330',
   };
   var T = { dark: DARK, light: LIGHT };
   var LEGACY_LIGHT = { daylight: 1, paper: 1, arctic: 1, blossom: 1 };
@@ -96,7 +96,7 @@
       futuristic: '"Trebuchet MS","Segoe UI",system-ui,sans-serif'
     };
     var radiusMap = { sharp: '3px', soft: '8px', round: '14px', bubble: '22px' };
-    var densityMap = { compact: '.75', normal: '.85', comfy: '.95', huge: '1.10' };
+    var densityMap = { compact: '.9', normal: '1', comfy: '1.05', huge: '1.10' };
     r.setProperty('--t-bg-dim', dim.toFixed(2));
     r.setProperty('--t-bg-size', bgSize);
     r.setProperty('--t-bg-repeat', bgRepeat);
@@ -224,10 +224,10 @@
     'input,textarea,select{background:var(--t-bg2);color:var(--t-fg);border:1px solid var(--t-bd);' +
       'padding:7px 11px;border-radius:var(--t-radius,8px);font-family:inherit;font-size:.9rem;transition:border-color var(--t-motion,.15s),box-shadow var(--t-motion,.15s)}' +
     'input:focus,textarea:focus,select:focus{outline:none;border-color:var(--t-ac);box-shadow:0 0 0 3px var(--t-gls)}' +
-    'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.msg-more):not(.msg-action){background:var(--t-bg2);color:var(--t-ac);' +
+    'body:not(.mitch-design) button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.msg-more):not(.msg-action){background:var(--t-bg2);color:var(--t-ac);' +
       'border:1px solid var(--t-bda);padding:7px 16px;border-radius:var(--t-radius,8px);cursor:pointer;' +
       'font-family:inherit;font-size:.88rem;font-weight:500;transition:all var(--t-motion,.15s)}' +
-    'button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.msg-more):not(.msg-action):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}' +
+    'body:not(.mitch-design) button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.msg-more):not(.msg-action):hover{background:var(--t-bg3);box-shadow:0 0 8px var(--t-gls)}' +
     '.theme-no-motion *{animation-duration:0s!important;transition-duration:0s!important;scroll-behavior:auto!important}' +
     'hr{border:none;border-top:1px solid var(--t-bd)}' +
     'a{color:var(--t-ac)}a:hover{color:var(--t-ac2)}' +
@@ -306,6 +306,7 @@
     // a dark amber and drop the glow so usernames stay legible.
     '.theme-light .name.gold_glow,.theme-light .entry-name.gold_glow,.theme-light .display-name.gold_glow,.theme-light .author.gold_glow{color:#b45309!important;text-shadow:none!important;}' +
     '.theme-light .badge-premium,.theme-light .badge-shop,.theme-light .premium-label{color:#b45309!important;}';
+  lightStyle.textContent = lightStyle.textContent.replaceAll('.theme-light button:not', '.theme-light body:not(.mitch-design) button:not');
   document.head.appendChild(lightStyle);
 
   function buildToggle() {

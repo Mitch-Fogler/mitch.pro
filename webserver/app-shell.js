@@ -24,7 +24,7 @@
     if (document.querySelector('link[href="/portal-redesign.css"], link[href^="/portal-redesign.css?"]')) return;
     var link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/portal-redesign.css?v=11';
+    link.href = '/portal-redesign.css?v=12';
     (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
   }
 
@@ -100,7 +100,7 @@
     var brand = document.createElement('a');
     brand.className = 'app-brand';
     brand.href = '/';
-    brand.innerHTML = '<img src="/icon-192.png" alt=""><b>mitch<span>.pro</span></b>';
+    brand.innerHTML = '<span class="brand-monogram" aria-hidden="true">m.</span><b>mitch<span>.pro</span></b>';
     brand.setAttribute('aria-label', 'mitch.pro home');
 
     var nav = document.createElement('nav');
@@ -111,7 +111,7 @@
       var item = NAV[i];
       var a = document.createElement('a');
       a.href = item.href;
-      a.innerHTML = '<span class="app-nav-icon" aria-hidden="true">' + item.icon + '</span><span class="app-nav-label">' + item.label + '</span>';
+      a.textContent = item.label;
       if (item.match(path)) a.setAttribute('aria-current', 'page');
       nav.appendChild(a);
     }
@@ -122,7 +122,7 @@
     var account = document.createElement('a');
     account.className = 'app-account-link';
     account.href = '/profile/';
-    account.innerHTML = '<img src="/icon-192.png" alt=""><span>Profile</span>';
+    account.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg><span>My account</span>';
     account.setAttribute('aria-label', 'Open your profile');
     bar.appendChild(account);
     return bar;
@@ -179,12 +179,14 @@
   }
 
   function inject() {
+    document.body.classList.add('mitch-design');
+    document.body.dataset.page = currentPath().split('/')[1] || 'home';
     ensureViewport();
     ensureInstallMetadata();
     ensureFonts();
     ensureRelaunchStyles();
     ensurePortalStyles();
-    enhanceRelaunchMotion();
+    enhanceInterface();
     if (!shouldInject()) {
       window.MitchShell = { ready: true, injected: false };
       return;
@@ -198,6 +200,49 @@
     }
     bindScrollState(bar);
     window.MitchShell = { ready: true, injected: true };
+  }
+
+  function enhanceInterface() {
+    var main = document.querySelector('main, #mainpage');
+    if (main) {
+      if (!main.id) main.id = 'main-content';
+      main.setAttribute('tabindex', '-1');
+      var skip = document.createElement('a');
+      skip.href = '#' + main.id;
+      skip.className = 'skip-link';
+      skip.textContent = 'Skip to content';
+      document.body.prepend(skip);
+    }
+    var search = document.getElementById('home-search');
+    if (search) {
+      search.setAttribute('aria-label', 'Search pages');
+      document.addEventListener('keydown', function (event) {
+        if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.target.closest('input, textarea, select, [contenteditable]')) {
+          event.preventDefault();
+          search.focus();
+          search.scrollIntoView({ block: 'center' });
+        }
+        if (event.key === 'Escape' && document.activeElement === search) {
+          search.value = '';
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+          search.blur();
+        }
+      });
+    }
+    var details = document.getElementById('chat-details-btn');
+    if (details) {
+      details.addEventListener('click', function () {
+        var open = document.body.classList.toggle('chat-details-open');
+        details.setAttribute('aria-expanded', String(open));
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && document.body.classList.contains('chat-details-open')) {
+          document.body.classList.remove('chat-details-open');
+          details.setAttribute('aria-expanded', 'false');
+          details.focus();
+        }
+      });
+    }
   }
 
   if (document.readyState === 'loading') {

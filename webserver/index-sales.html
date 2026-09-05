@@ -22,6 +22,8 @@
 
   <script src="/theme.js?v=9"></script>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/welcome.css?v=1">
+  <script src="/app-shell.js" defer></script>
   <script src="/api.js"></script>
 
   <style>
@@ -292,19 +294,28 @@
 </head>
 <body class="app-shell sales-page" data-shell="off">
   <header class="sales-top">
-    <a class="brand" href="/" id="nav-logo" aria-label="mitch.pro home">mitch.pro</a>
+    <a class="brand" href="/" id="nav-logo" aria-label="mitch.pro home"><span class="brand-monogram" aria-hidden="true">m.</span> mitch.pro</a>
+    <nav aria-label="Explore"><a href="#features">What’s here</a><a href="/bell/">Bell schedule</a><a href="/faq/">Help</a></nav>
     <a class="btn-ghost" href="/enroll/" id="nav-login">Log In</a>
   </header>
 
   <main>
     <section class="sales-hero" aria-label="Welcome">
-      <div class="brand-hero" id="hero-title">mitch.pro</div>
-      <h1>Your school day, games, and people in one place.</h1>
-      <p class="lede" id="hero-desc">Check today’s schedule, jump into games, and message the community without digging through separate apps.</p>
+      <div class="brand-hero" id="hero-title">MADE FOR THE EVERYDAY</div>
+      <h1>Your people.<br>Your plans.<br><em>Your place.</em></h1>
+      <p class="lede" id="hero-desc">A corner of the internet for catching up, taking a break, and keeping track of the school day.</p>
       <div class="sales-cta-row">
         <a class="btn-primary" href="/enroll/" id="hero-cta">Request access</a>
         <a class="btn-ghost" href="/bell/">Bell schedule</a>
       </div>
+      <aside class="welcome-directory" aria-label="Discover mitch.pro">
+        <span class="welcome-directory-label">GOOD TO HAVE AROUND</span>
+        <a href="/encrypt/"><span>01</span><div><strong>A private conversation</strong><small>End-to-end encrypted messages</small></div><b aria-hidden="true">↗</b></a>
+        <a href="/game-portal/"><span>02</span><div><strong>A well-earned break</strong><small>Arcade, strategy &amp; multiplayer</small></div><b aria-hidden="true">↗</b></a>
+        <a href="/bell/"><span>03</span><div><strong>A little less guessing</strong><small>Your school’s bell schedule</small></div><b aria-hidden="true">↗</b></a>
+        <a href="/members/"><span>04</span><div><strong>A familiar face</strong><small>Friends &amp; community</small></div><b aria-hidden="true">↗</b></a>
+        <span class="welcome-directory-signature">See you in there. <i>m.</i></span>
+      </aside>
     </section>
 
     <section class="sales-section" id="features" aria-labelledby="features-heading">
@@ -317,7 +328,7 @@
         </article>
         <article class="feature-item" id="feat-chat">
           <h3>Encrypted chat</h3>
-          <p>Public rooms, premium lounge, and E2E direct messages using Web Crypto.</p>
+          <p>Private messages for your conversations. Public rooms for the whole community.</p>
         </article>
         <article class="feature-item" id="feat-hub">
           <h3>Campus tools</h3>

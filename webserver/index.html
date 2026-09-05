@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 
-<html><head>
+<html lang="en"><head>
 <meta charset="utf-8">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -14,6 +14,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/home.css?v=4">
+<link rel="stylesheet" href="/home-redesign.css?v=1">
+<script src="/app-shell.js" defer></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -2544,7 +2546,7 @@ function initHudTerminal() {
             
             container.innerHTML = '<iframe width="560" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ?autoplay=1&mute=0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen style="border:3px solid var(--t-ac);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.8);"></iframe>' +
               '<h2 style="margin-top:20px;letter-spacing:0.05em;color:var(--t-ac);">You have been rolled.</h2>' +
-              '<button id="close-rickroll" style="margin-top:15px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:8px 16px;border-radius:8px;cursor:pointer;">Return to Orbit</button>';
+              '<button id="close-rickroll" style="margin-top:15px;background:rgba(255,255,255,0.08);color:#fff;border:1px solid rgba(255,255,255,0.2);padding:8px 16px;border-radius:8px;cursor:pointer;">Back to mitch.pro</button>';
             
             document.body.appendChild(container);
             
@@ -3335,6 +3337,11 @@ if (document.readyState === 'loading') {
 </head>
 
 <body data-shell="off" class="home">
+<nav class="home-masthead" aria-label="Primary">
+  <a class="home-wordmark" href="/" aria-label="mitch.pro home"><span class="brand-monogram" aria-hidden="true">m.</span>mitch<span>.pro</span></a>
+  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/encrypt/">Chat</a><a href="/game-portal/">Games</a><a href="/members/">People</a><a href="/bell/">Schedule</a></div>
+  <a class="home-account-link" href="/profile/">My account <span aria-hidden="true">↗</span></a>
+</nav>
 
 <!-- ══════════════════ Members & friends rail ══════════════════ -->
 <div id="member-side-rail" class="is-collapsed" aria-expanded="false">
@@ -3400,7 +3407,7 @@ if (document.readyState === 'loading') {
       <img class="hud-logo-mark" src="/icon-192.png" alt="">
       <div>
         <span class="hud-kicker">MITCH<span>.PRO</span></span>
-        <h1 class="hud-brand" id="home-brand">Orbit</h1>
+        <h1 class="hud-brand" id="home-brand">Your day.<br>Your corner of the internet.</h1>
         <p class="home-greeting"><span id="greeting-text"></span> <span id="greeting-email"></span></p>
       </div>
     </div>
@@ -3465,9 +3472,24 @@ if (document.readyState === 'loading') {
     </div>
   </header>
 
+  <section class="home-features" aria-label="Start here">
+    <a class="home-feature feature-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');">
+      <span class="feature-eyebrow">01 / ENCRYPTED CHAT</span>
+      <h2>Keep it<br><em>between you.</em></h2>
+      <span class="feature-bottom">Direct messages &amp; group conversations <b aria-hidden="true">↗</b></span>
+      <svg class="feature-chat-art" viewBox="0 0 200 160" fill="none" aria-hidden="true"><path d="M28 25h109a12 12 0 0 1 12 12v61a12 12 0 0 1-12 12H75l-28 22v-22H28a12 12 0 0 1-12-12V37a12 12 0 0 1 12-12Z"/><path d="M43 51h77M43 70h51"/><rect x="110" y="87" width="60" height="50" rx="9"/><path d="M129 88V77a13 13 0 0 1 26 0v11M142 107v12"/></svg>
+    </a>
+    <a class="home-feature feature-games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');">
+      <span class="feature-eyebrow">02 / THE ARCADE</span>
+      <h2>Make your<br><em>next move.</em></h2>
+      <span class="feature-bottom">Find something worth playing <b aria-hidden="true">↗</b></span>
+      <div class="feature-game-art" aria-hidden="true"><span>♞</span></div>
+    </a>
+  </section>
+
   <!-- Live dayboard: weather · calendar · bells -->
   <section class="home-dayboard" aria-labelledby="home-dayboard-title">
-    <h2 id="home-dayboard-title" class="home-dayboard-sr">Live Roseville and Woodcreek dashboard</h2>
+    <h2 id="home-dayboard-title" class="home-dayboard-sr">Around Woodcreek <span class="dayboard-location">Roseville, California</span></h2>
     <div class="home-dayboard-grid">
       <article class="home-day-card home-weather-card" id="home-weather-card">
         <header class="home-card-head">
@@ -3599,9 +3621,7 @@ if (document.readyState === 'loading') {
     <!-- Aside: command deck -->
     <aside class="hud-pane-aside">
       <div class="command-deck-heading">
-        <span class="deck-orbit"><i></i></span>
-        <span><b>Command Deck</b><small>Live account controls</small></span>
-        <em>ONLINE</em>
+        <span><b>Your account</b><small>Rewards &amp; activity</small></span>
       </div>
 
       <!-- Daily streak -->
