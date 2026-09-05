@@ -169,7 +169,7 @@ html.theme-light #app-topbar.app-topbar {
 
 #site-topbar {
   top: 12px !important;
-  right: 101px !important;
+  right: 124px !important; /* clears the Profile chip (~91px wide + 20px edge) */
   gap: 6px !important;
   z-index: 1300 !important;
 }
@@ -247,7 +247,9 @@ body.encrypt-page {
 }
 
 body.encrypt-page #app-topbar { position: relative; height: 58px; min-height: 58px; }
-body.encrypt-page #site-topbar { top: 10px !important; }
+/* broadcast.js relocates the topbar into .sidebar-top as position:relative —
+   the global fixed offsets would shift it 124px left onto the brand text. */
+body.encrypt-page #site-topbar { top: auto !important; right: auto !important; }
 body.encrypt-page #app {
   width: 100% !important;
   height: calc(100vh - 58px) !important;
@@ -281,6 +283,14 @@ body.encrypt-page #sidebar-top {
 body.encrypt-page .chat-brand-icon { width: 34px !important; height: 34px !important; border-radius: 9px !important; }
 body.encrypt-page #sidebar-title b { font-size: 15px !important; letter-spacing: -.025em; }
 body.encrypt-page #sidebar-title small { color: #707b8e !important; font-size: 9px !important; letter-spacing: .08em !important; }
+body.encrypt-page #sidebar-home { min-width: 0; }
+body.encrypt-page #sidebar-title { min-width: 0; overflow: hidden; }
+body.encrypt-page #sidebar-title small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Desktop sidebar is only 286px — the brand link already goes home, and the
+   extra ⌂ button collides with the relocated notification bell. Mobile keeps it. */
+@media (min-width: 861px) {
+  body.encrypt-page #sidebar-home-action { display: none !important; }
+}
 
 body.encrypt-page #my-identity {
   margin: 10px 10px 2px !important;
@@ -530,6 +540,7 @@ html:not(.theme-light) body.bell-page { background: #0b0e13 !important; color: #
 body.bell-page .bell-shell { width: min(1020px, calc(100% - 40px)) !important; padding-bottom: 80px !important; }
 body.bell-page .page-head { display: grid; grid-template-columns: 1fr auto; align-items: end; padding: 50px 0 22px !important; border-bottom: 3px solid currentColor; }
 body.bell-page .page-head h1 { font-size: clamp(3.3rem, 8vw, 6.8rem) !important; line-height: .83 !important; letter-spacing: -.08em !important; }
+html:not(.theme-light) body.bell-page .page-head h1 { color: #f5f5f4 !important; } /* the page's own ink color is near-black and vanishes on the dark background */
 body.bell-page .kicker { color: var(--ui-blue) !important; font-size: 10px !important; font-weight: 900 !important; letter-spacing: .18em !important; }
 body.bell-page .subline { max-width: 280px; text-align: right; }
 body.bell-page .lunch-selector { margin: 16px 0 0 !important; padding: 10px 12px !important; border: 1px solid var(--ui-line) !important; border-radius: 8px !important; background: var(--ui-panel) !important; box-shadow: none !important; }
@@ -614,14 +625,12 @@ body.bell-page .bell-day-date strong,
 body.bell-page .bell-day-setting strong {
   position: relative;
   z-index: 1;
-  overflow: hidden;
   font-family: 'Outfit', system-ui, sans-serif;
   font-size: clamp(19px, 2.2vw, 27px);
   line-height: 1.1;
   letter-spacing: -.035em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
+body.bell-page .bell-day-setting strong { white-space: normal; } /* school name wraps instead of ellipsizing */
 body.bell-page #autoFullDate { position: relative; z-index: 1; margin-top: 5px; color: rgba(255,255,255,.7); font-size: 11px; }
 body.bell-page .bell-controls { display: grid; grid-template-columns: 1.25fr .75fr; gap: 10px; }
 body.bell-page .bell-controls .lunch-selector { min-width: 0; }
@@ -694,6 +703,19 @@ body.bell-page .day-accordion.is-today.open .day-content { border-top-color: rgb
   body.bell-page .kicker-dot,
   body.bell-page .live-signal { animation: none; opacity: 1; }
   body.bell-page .live-progress span { transition: none; }
+}
+
+/* Tablet (701–860px): the two-column giant header doesn't fit — stack it like
+   mobile. Below 701px the @700 block already handles it. */
+@media (max-width: 860px) and (min-width: 701px) {
+  body.bell-page .page-head { display: block; }
+  body.bell-page .page-head h1 { font-size: clamp(2.7rem, 12.5vw, 4.6rem) !important; line-height: .9 !important; }
+  body.bell-page .subline { max-width: none; text-align: left; margin-top: 12px; }
+  body.bell-page .bell-day-board { grid-template-columns: 1fr; }
+  body.bell-page .bell-day-date { min-height: 88px; }
+  body.bell-page .bell-day-setting { border-left: 0; border-top: 1px solid var(--ui-line); min-height: 70px; padding: 13px 15px; }
+  body.bell-page .bell-controls { grid-template-columns: 1fr; gap: 0; }
+  body.bell-page #schoolSelect { width: 100%; }
 }
 
 /* MEMBERS — dense directory, not trading cards. */
@@ -1810,3 +1832,174 @@ body.encrypt-page .msg.theirs {
 }
 body.encrypt-page .msg::before,
 body.encrypt-page .msg::after { display: none !important; }
+
+/* ==========================================================================
+   LIGHT THEME — the redesign hardcodes dark surfaces above; remap them when
+   the user runs html.theme-light. Tokens (--ui-*) already flip, so most of
+   this is just re-pointing the hardcoded hexes at them.
+   ========================================================================== */
+
+/* Topbar chips + bell/logout buttons */
+html.theme-light #app-topbar .app-account-link { color: #1e1f22; border-color: var(--ui-line); background: #ffffff; }
+html.theme-light #app-topbar .app-account-link:hover { border-color: #b9bec8; background: #f2f3f6; }
+html.theme-light #sw-notif-btn,
+html.theme-light #site-logout-btn { color: #5c6470 !important; border-color: var(--ui-line) !important; background: #ffffff !important; }
+html.theme-light #sw-notif-btn:hover,
+html.theme-light #site-logout-btn:hover { color: #1e1f22 !important; background: #eef0f4 !important; transform: none; }
+html.theme-light #sw-notif-panel { box-shadow: 0 24px 60px rgba(30,31,34,.16) !important; }
+
+/* Home hero: home.css strips the dark panel in light mode, which stranded the
+   white text. Give it a proper light panel and dark text. */
+html.theme-light body.home .hud-topbar {
+  border: 1px solid var(--ui-line) !important;
+  background:
+    radial-gradient(circle at 90% 0%, rgba(88,101,242,.12), transparent 36%),
+    linear-gradient(125deg, #ffffff, #eef0fa) !important;
+}
+html.theme-light body.home .hud-logo-mark { border-color: #cdd2e2 !important; box-shadow: 0 10px 24px rgba(30,31,34,.12); }
+html.theme-light body.home .hud-kicker { color: #4854c7 !important; }
+html.theme-light body.home .hud-brand { color: #14162b !important; }
+html.theme-light body.home .home-greeting { color: #5c6470 !important; }
+html.theme-light body.home .hud-system-status { color: #3a4150; }
+html.theme-light body.home .home-search-box { border-color: var(--ui-line) !important; background: #ffffff; }
+html.theme-light body.home .hud-main-link { border-color: var(--ui-line) !important; color: #1e1f22 !important; background: #ffffff; }
+html.theme-light body.home #mainpage .home-access-rail .home-access-link { color: #5c6470 !important; }
+
+/* Encrypt page: un-force the dark surfaces. */
+html.theme-light body.encrypt-page { background: var(--ui-bg) !important; color: var(--ui-text); }
+html.theme-light body.encrypt-page #app { background: var(--ui-bg) !important; }
+html.theme-light body.encrypt-page #sidebar,
+html.theme-light body.encrypt-page #sidebar-top { background: var(--ui-panel) !important; }
+html.theme-light body.encrypt-page #sidebar-title small { color: #5c6470 !important; }
+html.theme-light body.encrypt-page .tabs { background: #eceef2 !important; }
+html.theme-light body.encrypt-page .tab.active { color: #1e1f22 !important; background: #dcdfe6 !important; }
+html.theme-light body.encrypt-page #searchInput,
+html.theme-light body.encrypt-page #msgSearch,
+html.theme-light body.encrypt-page #groupName,
+html.theme-light body.encrypt-page #groupMemberSearch {
+  border-color: var(--ui-line) !important;
+  color: #1e1f22 !important;
+  background: #ffffff !important;
+}
+html.theme-light body.encrypt-page #user-list { background: transparent; }
+html.theme-light body.encrypt-page .user-entry:hover { background: #f2f3f6 !important; }
+html.theme-light body.encrypt-page .user-entry.active { background: #e2e5ee !important; }
+html.theme-light body.encrypt-page .entry-sub { color: #5c6470 !important; }
+html.theme-light body.encrypt-page .sidebar-foot { border-top-color: var(--ui-line-soft) !important; background: var(--ui-panel-2) !important; }
+html.theme-light body.encrypt-page .small-btn,
+html.theme-light body.encrypt-page .tool-btn { border-color: var(--ui-line) !important; color: #3a4150 !important; background: #ffffff !important; }
+html.theme-light body.encrypt-page .small-btn:hover,
+html.theme-light body.encrypt-page .tool-btn:hover { color: #1e1f22 !important; background: #eef0f4 !important; }
+html.theme-light body.encrypt-page .chat-home-action { color: #3a4150 !important; }
+html.theme-light body.encrypt-page #chat-main,
+html.theme-light body.encrypt-page #chat-header,
+html.theme-light body.encrypt-page #msgs,
+html.theme-light body.encrypt-page #no-chat { background: var(--ui-panel) !important; }
+html.theme-light body.encrypt-page #chat-header { border-bottom-color: var(--ui-line-soft) !important; box-shadow: 0 3px 10px rgba(30,31,34,.06) !important; }
+html.theme-light body.encrypt-page #chat-title::before { color: #808894; }
+html.theme-light body.encrypt-page #chat-subtitle { color: #5c6470 !important; }
+html.theme-light body.encrypt-page .message-row:hover { background: #f2f3f6 !important; }
+html.theme-light body.encrypt-page .message-bubble,
+html.theme-light body.encrypt-page .msg-bubble { color: #1e1f22 !important; }
+html.theme-light body.encrypt-page #no-chat { color: #5c6470 !important; }
+html.theme-light body.encrypt-page #no-chat strong { color: #1e1f22 !important; }
+html.theme-light body.encrypt-page .empty-orbit { background: #e9ebf0 !important; }
+html.theme-light body.encrypt-page #reply-preview,
+html.theme-light body.encrypt-page #image-preview { border-color: var(--ui-line) !important; background: #f2f3f6 !important; }
+html.theme-light body.encrypt-page #input-row { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.encrypt-page #msgInput { color: #1e1f22 !important; }
+html.theme-light body.encrypt-page #attachBtn { color: #5c6470 !important; background: #e9ebf0 !important; }
+html.theme-light body.encrypt-page #member-profile-panel { border-left-color: var(--ui-line-soft) !important; background: var(--ui-panel-2) !important; }
+html.theme-light body.encrypt-page #member-profile-panel .chat-profile-card,
+html.theme-light body.encrypt-page #member-profile-panel > * { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.encrypt-page .chat-profile-empty { border-color: var(--ui-line) !important; }
+html.theme-light body.encrypt-page .modal-card { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; box-shadow: 0 30px 100px rgba(30,31,34,.25) !important; }
+html.theme-light body.encrypt-page #msgs { scrollbar-color: #c9cdd4 transparent; }
+
+/* Members / Friends / Profile / Games / Prefs / Marketplace: the redesign
+   hardcodes dark surfaces per page — remap them to the light tokens. The
+   branded indigo heroes (games-hero, market-hero, live-tracker) stay as-is. */
+
+html.theme-light body.members-page,
+html.theme-light body.friends-page,
+html.theme-light body.prefs-page,
+html.theme-light body.marketplace-page { background: var(--ui-bg) !important; }
+html.theme-light body.profile-page { background: var(--ui-bg) !important; }
+html.theme-light body.games-page { background: var(--ui-bg) !important; }
+
+/* Members */
+html.theme-light body.members-page .toolbar { background: var(--ui-panel) !important; box-shadow: 0 1px 0 rgba(30,31,34,.04) !important; }
+html.theme-light body.members-page .toolbar input,
+html.theme-light body.members-page .toolbar select { border-color: var(--ui-line) !important; color: #1e1f22 !important; background: #ffffff !important; }
+html.theme-light body.members-page .pill { border-color: var(--ui-line) !important; background: var(--ui-panel-2) !important; }
+html.theme-light body.members-page .member { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.members-page .member:hover { border-color: #4f5bd5 !important; }
+html.theme-light body.members-page .cover { border-right-color: var(--ui-line-soft); background: var(--ui-panel-2) !important; }
+html.theme-light body.members-page .avatar { border-color: var(--ui-panel) !important; }
+html.theme-light body.members-page .actions button,
+html.theme-light body.members-page .actions a { border-color: var(--ui-line) !important; color: #1e1f22 !important; background: #ffffff !important; }
+html.theme-light body.members-page .actions button:hover,
+html.theme-light body.members-page .actions a:hover { background: #eef0f4 !important; }
+html.theme-light body.members-page .dialog { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; box-shadow: 0 30px 90px rgba(30,31,34,.2) !important; }
+
+/* Friends */
+html.theme-light body.friends-page .page-head { border-bottom-color: var(--ui-line-soft); }
+html.theme-light body.friends-page > main > .card { background: var(--ui-panel) !important; }
+html.theme-light body.friends-page .section-title { color: var(--ui-text) !important; }
+html.theme-light body.friends-page .add-box { border-color: var(--ui-line); background: var(--ui-panel); }
+html.theme-light body.friends-page .add-input { border-color: var(--ui-line) !important; color: #1e1f22 !important; background: #ffffff !important; }
+html.theme-light body.friends-page .requests-section > div { border-color: var(--ui-line); background: var(--ui-panel); }
+html.theme-light body.friends-page .friend-item { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+
+/* Profile */
+html.theme-light body.profile-page .wrap { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; box-shadow: 0 24px 70px rgba(30,31,34,.10) !important; }
+html.theme-light body.profile-page .avatar { border-color: var(--ui-line) !important; }
+html.theme-light body.profile-page .email-line { color: var(--ui-muted) !important; }
+html.theme-light body.profile-page .bio { color: #3a4150 !important; }
+html.theme-light body.profile-page .stat-card { border-color: var(--ui-line) !important; background: var(--ui-panel-2) !important; }
+html.theme-light body.profile-page .stat-val { color: var(--ui-text) !important; }
+html.theme-light body.profile-page .stat-lbl { color: var(--ui-muted) !important; }
+html.theme-light body.profile-page .divider { background: var(--ui-line) !important; }
+html.theme-light body.profile-page .edit-section input,
+html.theme-light body.profile-page .edit-section textarea { border-color: var(--ui-line) !important; color: #1e1f22 !important; background: #ffffff !important; }
+
+/* Games (hero stays indigo; fix the surrounding chrome) */
+html.theme-light body.games-page .command-bar { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; box-shadow: 0 12px 32px rgba(30,31,34,.10) !important; }
+html.theme-light body.games-page #search-wrap { border-color: var(--ui-line) !important; background: #ffffff !important; }
+html.theme-light body.games-page #searchInput { color: #1e1f22 !important; }
+html.theme-light body.games-page .section-head { border-bottom-color: var(--ui-line-soft) !important; }
+html.theme-light body.games-page .feature-card,
+html.theme-light body.games-page .cat-card { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.games-page .feature-card:hover,
+html.theme-light body.games-page .cat-card:hover { border-color: #5664ef !important; background: var(--ui-panel-2) !important; box-shadow: 0 16px 30px rgba(30,31,34,.12) !important; }
+html.theme-light body.games-page #links a,
+html.theme-light body.games-page .game-link { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+
+/* Preferences */
+html.theme-light body.prefs-page .page-head { border-bottom-color: var(--ui-line-soft); }
+html.theme-light body.prefs-page .status-pill { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.prefs-page .prefs-jump-nav { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.prefs-page .prefs-jump-nav::before { color: var(--ui-muted); }
+html.theme-light body.prefs-page .prefs-jump-nav a { color: var(--ui-muted) !important; }
+html.theme-light body.prefs-page .prefs-jump-nav a:hover { color: var(--ui-text) !important; background: var(--ui-panel-2) !important; }
+html.theme-light body.prefs-page .pref-section { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.prefs-page .section-sub { color: var(--ui-muted) !important; }
+html.theme-light body.prefs-page .field { border-color: var(--ui-line) !important; background: var(--ui-panel-2) !important; }
+html.theme-light body.prefs-page input,
+html.theme-light body.prefs-page select,
+html.theme-light body.prefs-page textarea { border-color: var(--ui-line) !important; color: #1e1f22 !important; background: #ffffff !important; }
+
+/* Marketplace (hero stays indigo) */
+html.theme-light body.marketplace-page .market-wallet { border-color: var(--ui-line); background: var(--ui-panel-2); }
+html.theme-light body.marketplace-page .market-wallet strong { color: var(--ui-text); }
+html.theme-light body.marketplace-page .warning-banner { border-color: var(--ui-line) !important; background: var(--ui-panel) !important; }
+html.theme-light body.marketplace-page .warning-text h4 { color: var(--ui-text) !important; }
+html.theme-light body.marketplace-page .warning-text p { color: var(--ui-muted) !important; }
+html.theme-light body.marketplace-page .market-count { border-color: var(--ui-line); color: var(--ui-muted); background: var(--ui-panel); }
+html.theme-light body.marketplace-page .market-count b { color: var(--ui-text); }
+html.theme-light body.marketplace-page .feed-tabs { background: #eceef2; }
+html.theme-light body.marketplace-page .feed-tab.active { color: #1e1f22 !important; background: #dcdfe6 !important; }
+html.theme-light body.marketplace-page .market-tools label { border-color: var(--ui-line); background: #ffffff; }
+html.theme-light body.marketplace-page .market-tools input { color: #1e1f22 !important; }
+html.theme-light body.marketplace-page .listing-art { border-color: var(--ui-line); color: #4854c7; background: #eef0fa; }
+html.theme-light body.marketplace-page .card-title small { color: var(--ui-muted); }
