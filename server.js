@@ -7765,6 +7765,13 @@ async function handleRequest(req, server) {
     }
   }
 
+  if (path.startsWith('/_app/')) {
+    const ref = req.headers.get('referer') || '';
+    if (ref.includes('pirate-voyage') || ref.includes('cinejoy')) {
+      return Response.redirect(`/proxy/pirate-voyage${path}${url.search}`, 307);
+    }
+  }
+
   // ── Pirate Voyage PIA-Proxied Reverse Proxy (Premium Only) ──
   if (path.startsWith('/proxy/pirate-voyage') || path.startsWith('/pirate-voyage')) {
     const cookies = getCookies(req);
@@ -7890,8 +7897,31 @@ async function handleRequest(req, server) {
 
       if (contentType.includes('text/html')) {
         let htmlText = await upstreamRes.text();
+        htmlText = htmlText.replace(/\s+integrity="[^"]*"/gi, '');
+        htmlText = htmlText.replace(/\s+integrity='[^']*'/gi, '');
+        htmlText = htmlText.replace(/<script[^>]*static\.cloudflareinsights\.com[^>]*>.*?<\/script>/gi, '');
+        htmlText = htmlText.replaceAll('navigator.serviceWorker.register', 'void');
         htmlText = htmlText.replaceAll('https://cinejoy.to', '/proxy/pirate-voyage');
+        htmlText = htmlText.replaceAll('="/_app/', '="/proxy/pirate-voyage/_app/');
+        htmlText = htmlText.replaceAll("='/_app/", "='/proxy/pirate-voyage/_app/");
+        htmlText = htmlText.replaceAll('"/_app/', '"/proxy/pirate-voyage/_app/');
+        htmlText = htmlText.replaceAll("'/_app/", "'/proxy/pirate-voyage/_app/");
+        if (htmlText.includes('<head>')) {
+          htmlText = htmlText.replace('<head>', '<head><base href="/proxy/pirate-voyage/">');
+        }
         return new Response(htmlText, {
+          status: upstreamRes.status,
+          headers: resHeaders
+        });
+      }
+
+      if (contentType.includes('javascript') || contentType.includes('json')) {
+        let jsText = await upstreamRes.text();
+        jsText = jsText.replaceAll('https://cinejoy.to', '/proxy/pirate-voyage');
+        jsText = jsText.replaceAll('"/_app/', '"/proxy/pirate-voyage/_app/');
+        jsText = jsText.replaceAll("'/_app/", "'/proxy/pirate-voyage/_app/");
+        jsText = jsText.replaceAll('navigator.serviceWorker.register', 'void');
+        return new Response(jsText, {
           status: upstreamRes.status,
           headers: resHeaders
         });
@@ -8170,13 +8200,18 @@ async function handleRequest(req, server) {
     const writeLimit = checkRateLimit(req, '/api/backgrounds/upload'); if (writeLimit) return writeLimit;
     const { email } = authedEmailForRequest();
     if (!email) return jsonResp(401, { error: 'not logged in' });
+    
+    const isPremium = isPremiumEmail(email);
+    const maxStorageBytes = isPremium ? 1_000_000_000 : 100_000_000;
+    
     let uploadBody = {};
     try {
-      const raw = await readRequestTextLimited(req, 25_000_000);
+      const raw = await readRequestTextLimited(req, Math.ceil(maxStorageBytes * 1.38));
       uploadBody = raw ? JSON.parse(raw) : {};
     } catch {
-      return jsonResp(400, { error: 'bad json' });
+      return jsonResp(400, { error: 'bad json or payload too large' });
     }
+    
     const mime = String(uploadBody.mime || '').toLowerCase();
     const data = String(uploadBody.data || '');
     const ext = bgMimeExt(mime);
@@ -8186,40 +8221,37 @@ async function handleRequest(req, server) {
     const payload = data.slice(prefix.length);
     if (!/^[a-z0-9+/=\s]+$/i.test(payload)) return jsonResp(400, { error: 'invalid image data' });
     const bytes = Buffer.from(payload.replace(/\s+/g, ''), 'base64');
-    if (!bytes.length || bytes.length > 25_000_000) return jsonResp(413, { error: 'image too large' });
+    if (!bytes.length) return jsonResp(400, { error: 'empty file' });
+    
     const norm = normalizeEmail(email);
-    const id = randomBytes(12).toString('hex');
-    const uDir = bgUserDir(norm);
-    let finalExt = ext;
-    let finalMime = mime;
-    let filename = `${id}.${ext}`;
-    const initialPath = join(uDir, filename);
-    writeFileSync(initialPath, bytes);
-
-    if (ext === 'mp4' || ext === 'gif') {
-      const webmPath = join(uDir, `${id}.webm`);
-      let res = spawnSync('ffmpeg', ['-y', '-i', initialPath, '-c:v', 'libvpx', '-quality', 'realtime', '-cpu-used', '8', '-b:v', '2M', '-an', webmPath], { stdio: 'ignore' });
-      if (res.status !== 0 || !existsSync(webmPath) || statSync(webmPath).size === 0) {
-        res = spawnSync('ffmpeg', ['-y', '-i', initialPath, webmPath], { stdio: 'ignore' });
-      }
-      if (res.status === 0 && existsSync(webmPath) && statSync(webmPath).size > 0) {
-        try { unlinkSync(initialPath); } catch {}
-        finalExt = 'webm';
-        finalMime = 'video/webm';
-        filename = `${id}.webm`;
-      }
-    }
-
     const lib = bgLibrary();
     const items = Array.isArray(lib[norm]) ? lib[norm] : [];
-    items.push({ id, file: filename, mime: finalMime, bytes: statSync(join(uDir, filename)).size, name: String(uploadBody.name || '').slice(0, 80), ts: Date.now() });
-    while (items.length > BG_MAX_PER_USER) {
-      const evicted = items.shift();
-      try { unlinkSync(join(uDir, evicted.file)); } catch {}
+    const currentUsage = items.reduce((sum, item) => sum + Number(item.bytes || 0), 0);
+    
+    if (currentUsage + bytes.length > maxStorageBytes) {
+      const errorMsg = isPremium
+        ? 'Storage quota exceeded (1GB limit for Premium).'
+        : 'Storage quota exceeded (100MB limit for free tier). Upgrade to Premium for 1GB!';
+      return jsonResp(413, { error: errorMsg });
     }
+
+    const id = randomBytes(12).toString('hex');
+    const uDir = bgUserDir(norm);
+    const filename = `${id}.${ext}`;
+    const filePath = join(uDir, filename);
+    writeFileSync(filePath, bytes);
+
+    items.push({
+      id,
+      file: filename,
+      mime: mime,
+      bytes: bytes.length,
+      name: String(uploadBody.name || '').slice(0, 80),
+      ts: Date.now()
+    });
     lib[norm] = items;
     await saveJson(BACKGROUNDS_FILE, lib);
-    return jsonResp(200, { ok: true, url: `/api/bg/${id}.${finalExt}`, id });
+    return jsonResp(200, { ok: true, url: `/api/bg/${id}.${ext}`, id });
   }
 
   if (path === '/api/backgrounds/mine' && method === 'GET') {

@@ -1,8 +1,5 @@
 body.home { --home-maxw: 1280px; --home-border: var(--t-bd); --home-gap: 32px; --home-radius: 10px; --home-radius-sm: 7px; --home-btn-bg: var(--t-bg2); --home-btn-bg-hover: var(--t-bg3); }
-html body.home { background-color: var(--t-bg) !important; --t-bgr: url('/home-burning-cherry.webp') center top / cover no-repeat; }
-/* Light mode: the burning-cherry photo is a dark print — ink text can't live on
-   it. Swap to the light theme's plain wash so the page reads normally. */
-html.theme-light body.home { --t-bgr: linear-gradient(160deg, #f3f5fa, #e9edf6); }
+html body.home { background-color: var(--t-bg) !important; }
 html body.home::before, html body.home::after { display: none !important; }
 .home-masthead { min-height: 78px; display: flex; align-items: center; gap: 48px; padding: 0 max(28px, calc((100vw - 1280px) / 2)); border-bottom: 1px solid var(--t-bd); }
 .home-wordmark { display: flex; align-items: center; gap: 9px; color: var(--t-fg); font-size: 21px; font-weight: 750; letter-spacing: -.06em; white-space: nowrap; }
