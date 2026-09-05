@@ -77,6 +77,9 @@ codepen-temp/
 expressions.txt
 plan.md
 scratch/
+artifacts/ui-review/
+test-results/
+playwright-report/
 v3-test/
 
 # Massive Third-Party Game Libraries (Managed on host to keep git repository under 50MB)

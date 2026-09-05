@@ -809,14 +809,14 @@ button {
 </head>
 <body class="encrypt-page">
 
-<div id="loading">connecting...</div>
+<div id="loading" role="status">Connecting to your messages…</div>
 
 <div id="app">
   <aside id="sidebar">
     <div id="sidebar-top">
       <!-- Brand doubles as the home button — the app topbar is hidden on this page -->
       <a id="sidebar-home" href="/" title="Back to homepage" aria-label="Back to homepage">
-        <img class="chat-brand-icon" src="/icon-192.png" alt="">
+        <span class="brand-monogram" aria-hidden="true">m.</span>
         <span id="sidebar-title"><b>Messages</b><small>End-to-end encrypted</small></span>
       </a>
       <a id="sidebar-home-action" class="small-btn chat-home-action" href="/" aria-label="Go to homepage">⌂ <span>Home</span></a>
@@ -829,7 +829,7 @@ button {
         <button class="tab" id="groups-tab" type="button"><span>◈</span> Groups</button>
         <button class="tab" id="reports-tab" type="button" style="display:none"><span>◇</span> Reports</button>
       </div>
-      <input id="searchInput" placeholder="Find a person or conversation" autocomplete="off">
+      <input id="searchInput" type="search" aria-label="Find a person or conversation" placeholder="Find a conversation…" autocomplete="off">
     </div>
     <div id="user-list"></div>
     <div class="sidebar-foot">
@@ -850,6 +850,7 @@ button {
       </div>
       <div class="encryption-status"><i></i><span>END-TO-END<br>ENCRYPTED</span></div>
       <div class="header-tools">
+        <button id="chat-details-btn" class="tool-btn" type="button" aria-expanded="false" aria-controls="member-profile-panel">Details</button>
         <button id="expiry-btn" class="tool-btn" type="button" title="Set auto-delete for new messages in this session">Auto-delete: off</button>
         <button id="chat-search-toggle" class="tool-btn chat-icon-btn" type="button" aria-expanded="false" aria-controls="chat-tools-menu">Search</button>
         <button id="chat-more-btn" class="tool-btn chat-icon-btn" type="button" aria-expanded="false" aria-controls="chat-tools-menu" aria-label="Conversation options">•••</button>
@@ -864,9 +865,11 @@ button {
       </div>
     </header>
     <div id="no-chat">
-      <div class="empty-orbit" aria-hidden="true"><span></span></div>
-      <strong>Select a conversation</strong>
-      <p>Choose any member from the list to send a private message.</p>
+      <div class="chat-empty-art" aria-hidden="true"><svg viewBox="0 0 160 140" fill="none"><rect x="19" y="22" width="96" height="71" rx="12"/><path d="M38 93v18l23-18M40 45h52M40 58h35"/><rect x="84" y="73" width="55" height="45" rx="9"/><path d="M100 73v-8a12 12 0 0 1 24 0v8M112 91v10"/></svg></div>
+      <span class="chat-empty-label">JUST BETWEEN YOU</span>
+      <strong>A little more private.</strong>
+      <p>Pick a conversation to catch up, make plans, or share what’s on your mind.</p>
+      <button class="small-btn" type="button" onclick="document.getElementById('searchInput').focus()">Find someone to talk to <span aria-hidden="true">↗</span></button>
     </div>
     <div id="msgs"></div>
     <div id="reply-preview">
@@ -881,7 +884,7 @@ button {
     <div id="input-row">
       <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
       <button id="attachBtn" type="button" title="Attach an image" aria-label="Attach an image">＋</button>
-      <input type="text" id="msgInput" placeholder="type a message..." autocomplete="off">
+      <input type="text" id="msgInput" aria-label="Message" placeholder="Write a message…" autocomplete="off">
       <button id="sendBtn" type="button" disabled><span>Send</span><b aria-hidden="true">↗</b></button>
     </div>
     <div id="report-actions-row" style="display:none; padding:10px 14px; gap:8px; border-top:1px solid var(--t-bd); align-items:center; background:rgba(0,0,0,0.15); font-family:inherit;">
@@ -1486,7 +1489,7 @@ async function init() {
     console.error("Fetch /api/me error:", err);
   }
   if (!myEmail) {
-    document.getElementById('loading').textContent = 'not signed in';
+    document.getElementById('loading').innerHTML = '<div class="chat-signin"><span class="brand-monogram" aria-hidden="true">m.</span><h1>Your conversations<br>are waiting.</h1><p>Sign in to open encrypted chat.</p><a class="btn-primary" href="/enroll/">Sign in</a><a href="/">Back to mitch.pro</a></div>';
     return;
   }
 

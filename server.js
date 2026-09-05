@@ -19417,7 +19417,7 @@ function loadAllGamesList() {
             injectStr += '<link rel="stylesheet" href="/site-galaxy.css">\n';
           }
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/portal-redesign.css'))) {
-            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=10">\n';
+            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=12">\n';
           }
           // One compact navigation shell across every full page. Pages that
           // intentionally opt out (such as the public landing page) use
@@ -19520,6 +19520,7 @@ function loadAllGamesList() {
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
       '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/auth-liquid.css', '/encrypt-galaxy.css',
+      '/home-redesign.css', '/welcome.css',
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',

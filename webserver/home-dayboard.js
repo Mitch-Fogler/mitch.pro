@@ -55,6 +55,7 @@
       var response = await fetch('/api/weather', { credentials: 'include', cache: 'no-store' });
       if (!response.ok) throw new Error('weather unavailable');
       var data = await response.json(), current = data.current || {}, daily = data.daily || {}, code = +current.weather_code;
+      if (![current.temperature_2m, current.apparent_temperature, current.wind_speed_10m, daily.temperature_2m_max?.[0], daily.temperature_2m_min?.[0]].every(function (value) { return value != null && Number.isFinite(Number(value)); })) throw new Error('incomplete forecast');
       el('home-weather-condition').textContent = weatherText(code);
       el('home-weather-icon').innerHTML = weatherIcon(code);
       el('home-weather-temp').textContent = Math.round(+current.temperature_2m) + '°';
@@ -67,7 +68,7 @@
       var now = localParts();
       var target = now.key + 'T' + pad(now.hour) + ':00';
       var start = Math.max(0, times.indexOf(target));
-      var rows = [0, 2, 4, 6].map(function (step, index) {
+      var rows = [0, 2, 4, 6].filter(function (step) { return times[start + step] && temps[start + step] != null && Number.isFinite(Number(temps[start + step])); }).map(function (step, index) {
         var at = Math.min(start + step, times.length - 1);
         var item = document.createElement('span');
         item.innerHTML = '<small>' + hourLabel(times[at], index) + '</small><i>' + weatherIcon(+codes[at]) + '</i><b>' + Math.round(+temps[at]) + '°</b>';
@@ -77,10 +78,15 @@
       el('home-weather-state').classList.remove('offline');
       el('home-weather-state').innerHTML = '<i></i> LIVE';
     } catch (_) {
+      el('home-weather-temp').textContent = '—';
+      el('home-weather-feels').textContent = '—';
+      el('home-weather-range').textContent = '—';
+      el('home-weather-wind').textContent = '—';
+      el('home-hourly-weather').replaceChildren();
       el('home-weather-condition').textContent = 'Forecast unavailable';
       el('home-weather-updated').textContent = 'Weather service will retry';
       el('home-weather-state').classList.add('offline');
-      el('home-weather-state').innerHTML = '<i></i> RETRYING';
+      el('home-weather-state').innerHTML = '<i></i> OFFLINE';
     }
   }
 

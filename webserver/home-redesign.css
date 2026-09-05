@@ -1,0 +1,145 @@
+body.home { --home-maxw: 1280px; --home-border: var(--t-bd); --home-gap: 32px; --home-radius: 10px; --home-radius-sm: 7px; --home-btn-bg: var(--t-bg2); --home-btn-bg-hover: var(--t-bg3); }
+html body.home { background-color: var(--t-bg) !important; background-image: var(--t-bg-img-layer, none) !important; }
+html body.home::before, html body.home::after { display: none !important; }
+.home-masthead { min-height: 78px; display: flex; align-items: center; gap: 48px; padding: 0 max(28px, calc((100vw - 1280px) / 2)); border-bottom: 1px solid var(--t-bd); }
+.home-wordmark { display: flex; align-items: center; gap: 9px; color: var(--t-fg); font-size: 21px; font-weight: 750; letter-spacing: -.06em; white-space: nowrap; }
+.home-wordmark > span:last-child { color: var(--t-fg2); margin-left: -9px; }
+.home-masthead-links { display: flex; align-self: stretch; align-items: stretch; gap: 28px; flex: 1; }
+.home-masthead-links a { display: flex; align-items: center; font-size: 13px; color: var(--t-fg2); border-bottom: 2px solid transparent; }
+.home-masthead-links a[aria-current] { border-color: var(--t-ac); color: var(--t-fg); }
+.home-account-link { font-size: 12px; color: var(--t-fg); white-space: nowrap; display: inline-flex; align-items: center; gap: 24px; }
+body.home #mainpage { width: min(1280px, calc(100% - 64px)); max-width: 1280px; margin: auto; padding: 0 0 70px !important; }
+body.home #mainpage .hud-topbar { display: grid; grid-template-columns: 1fr minmax(260px, 360px); align-items: end; justify-items: stretch; gap: 18px 30px; padding: 48px 0 30px; margin: 0; text-align: left; border: 0 !important; background: none !important; border-radius: 0 !important; box-shadow: none !important; backdrop-filter: none !important; }
+body.home .hud-logo-area { display: flex; flex-direction: row; align-items: start; gap: 0; grid-row: 1 / 3; }
+body.home .hud-logo-mark { display: none; }
+body.home .hud-kicker { display: block; margin: 0 0 16px; color: var(--t-ac); font-size: 10px; font-weight: 650; letter-spacing: .2em; }
+body.home .hud-brand { font-size: clamp(32px, 4.2vw, 58px); font-weight: 550; line-height: 1.06; letter-spacing: -.055em; max-width: 680px; }
+body.home .home-greeting { margin-top: 17px; font-size: 13px; color: var(--t-fg2); }
+body.home .hud-system-status { justify-content: end; gap: 12px; grid-column: 2; grid-row: 1; }
+body.home #greeting-clock { font-size: 14px; }
+body.home #home-games-day { font-size: 10px; letter-spacing: .03em; }
+body.home .status-user-view { display: none; }
+body.home .hud-search-area { grid-column: 2; grid-row: 2; max-width: none; }
+body.home .home-search-box { min-height: 50px; border-radius: 8px; }
+body.home #home-search { font-size: 13px; border: 0 !important; background: none !important; padding: 12px 0; }
+body.home #home-search:focus-visible { outline-offset: 8px; }
+body.home .hero-links { grid-column: 1 / -1; justify-content: start; border-top: 1px solid var(--t-bd); padding-top: 16px; margin-top: 12px; }
+body.home .hud-primary-nav { display: none; }
+body.home .home-access-rail { justify-content: start; gap: 14px; }
+body.home #mainpage .home-access-rail .home-access-link { padding: 6px 10px; font-size: 11px; }
+body.home .home-access-copy b { font-size: 11px; }
+body.home .home-access-copy small { font-size: 10px; }
+.home-features { display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px; }
+.dayboard-location { margin-left: 12px; color: var(--t-fg2); font-size: 11px; font-weight: 400; letter-spacing: 0; }
+.home-feature { position: relative; display: flex; flex-direction: column; justify-content: space-between; min-height: 294px; padding: 30px; border-radius: 12px; overflow: hidden; transition: transform .18s ease; text-decoration: none; }
+.home-feature:hover { transform: translateY(-3px); }
+body.home .feature-chat { background: #edaa93; color: #302a23; }
+body.home .feature-games { background: #dce0c8; color: #2a3328; }
+.feature-eyebrow { position: relative; z-index: 1; font-size: 10px; font-weight: 700; letter-spacing: .13em; }
+body.home .home-feature h2 { position: relative; z-index: 1; margin: 25px 0; color: inherit; font-size: clamp(34px, 3.7vw, 50px); font-weight: 550; letter-spacing: -.055em; line-height: 1.04; }
+.home-feature h2 em { font-family: Georgia, serif; font-weight: 400; }
+.feature-bottom { display: flex; align-items: center; justify-content: space-between; position: relative; z-index: 1; font-size: 11px; font-weight: 550; gap: 10px; }
+.feature-bottom b { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid currentColor; border-radius: 50%; font-size: 20px; font-weight: 400; }
+.feature-chat-art { position: absolute; width: 210px; height: 170px; right: 16px; top: 70px; stroke: #714b3e; stroke-width: 1.4; opacity: .75; transform: rotate(-8deg); }
+.feature-chat-art rect { fill: #edaa93; }
+.feature-game-art { position: absolute; right: 0; bottom: 72px; width: 174px; height: 174px; display: grid; place-items: center; background: conic-gradient(#b1bca5 25%, transparent 0 50%, #b1bca5 0 75%, transparent 0) 0 0 / 58px 58px; transform: rotate(12deg) translateX(30px); }
+.feature-game-art span { font-family: Georgia, serif; font-size: 122px; color: #334b3c; line-height: 1; transform: rotate(-12deg); text-shadow: 3px 4px #dce0c8; }
+body.home .home-dayboard { margin: 34px 0 0; border: 0; padding: 0; }
+body.home .home-dayboard-sr { position: static; width: auto; height: auto; margin: 0 0 18px; font-size: 17px; font-weight: 600; letter-spacing: -.025em; }
+body.home .home-dayboard-grid { grid-template-columns: .9fr 1fr 1.3fr; gap: 18px; align-items: stretch; }
+body.home .home-dayboard-grid > .home-day-card { min-width: 0; padding: 22px; background: var(--t-bg2); border: 1px solid var(--t-bd); border-radius: 12px; }
+body.home .home-card-head { min-height: 42px; margin-bottom: 22px; gap: 10px; }
+body.home .home-card-head small { color: var(--t-fg2); font-size: 10px; }
+body.home .home-card-head h3 { font-size: 17px; margin-top: 4px; }
+body.home .home-weather-now strong { font-size: 60px; font-weight: 450; letter-spacing: -.07em; }
+body.home .home-weather-now b { font-size: 12px; margin-top: 7px; }
+body.home .home-weather-icon { width: 52px; height: 52px; color: #dbc28b; }
+body.home .home-weather-metrics { justify-content: space-between; gap: 8px; margin-top: 26px; padding-top: 18px; }
+body.home .home-weather-metrics small { font-size: 9px; }
+body.home .home-weather-metrics b { font-size: 13px; margin-top: 6px; }
+body.home .home-hourly-weather { gap: 19px; margin-top: 20px; }
+body.home .home-day-card > footer { font-size: 10px; }
+body.home .home-live-pill { font-size: 9px; }
+body.home .home-live-pill i { animation: none; background: #8eb99b; }
+body.home .home-calendar-days span { min-height: 28px; font-size: 11px; }
+body.home .home-calendar-week span { font-size: 8px; }
+body.home .home-calendar-days span.today { background: var(--t-ac); color: var(--t-bg); border-radius: 6px; }
+body.home .home-calendar-agenda { margin-top: 18px; }
+body.home .home-calendar-agenda > div { gap: 10px; flex-wrap: wrap; }
+body.home .home-calendar-agenda > div small { font-size: 10px; }
+body.home .home-calendar-agenda a { font-size: 10px; }
+body.home .home-official-link { font-size: 9px; max-width: 78px; text-align: right; }
+body.home .home-bell-hero { display: flex; flex-wrap: wrap; gap: 12px; }
+body.home .home-bell-hero strong { display: block; margin-top: 10px; font-size: 19px; max-width: 260px; line-height: 1.2; letter-spacing: -.03em; }
+body.home .home-bell-hero small { font-size: 11px; }
+body.home .home-bell-cta { margin-top: 15px; font-size: 11px; }
+body.home #mainpage .home-day-card button { min-height: 30px; }
+body.home .home-periods li { padding-block: 9px; }
+body.home .home-periods li strong { font-size: 11px; }
+body.home .home-periods li small { font-size: 8px; }
+body.home .home-periods li time { font-size: 10px; }
+body.home .hud-workspace { grid-template-columns: minmax(0, 1fr) 290px; gap: 30px; margin-top: 38px; }
+body.home .hud-pane-aside { padding: 24px; align-self: start; background: var(--t-bg2); border: 1px solid var(--t-bd); border-radius: 12px; }
+body.home .command-deck-heading { display: flex; padding-bottom: 20px; border-bottom: 1px solid var(--t-bd); margin-bottom: 20px; }
+body.home .command-deck-heading b { display: block; font-size: 16px; }
+body.home .command-deck-heading small { display: block; font-size: 11px; color: var(--t-fg2); }
+body.home .site-advert-banner { padding: 20px 0; border: 0; border-top: 1px solid var(--t-bd); border-bottom: 1px solid var(--t-bd); border-radius: 0; background: transparent; box-shadow: none; }
+body.home .site-advert-banner h3 { font-size: 21px; }
+body.home .site-advert-banner p { font-size: 12px; }
+body.home .hub-action-rail { gap: 10px; margin-bottom: 24px; }
+body.home .hub-action { padding: 14px !important; border-radius: 8px; }
+body.home .hub-action .action-copy b { font-size: 12px; }
+body.home .hub-action .action-copy small { font-size: 10px; }
+body.home .home-links-panel { margin-top: 28px; }
+body.home .home-links-panel > .panel-heading h3 { font-size: 26px; }
+body.home .panel-heading .section-index { color: var(--t-ac); font-size: 9px; letter-spacing: .15em; }
+body.home .category-group { border: 0 !important; border-top: 1px solid var(--t-bd) !important; padding: 22px 0; background: transparent !important; border-radius: 0 !important; box-shadow: none !important; }
+body.home .category-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 18px; }
+body.home .site-link { min-height: 47px; padding: 10px 0; border: 0; border-bottom: 1px solid var(--t-bd); border-radius: 0; background: none; font-size: 12px; }
+body.home .site-link:hover { color: var(--t-ac); background: var(--t-bg2); }
+body.home .site-link .icon { background: none; color: var(--t-fg2); }
+body.home .site-link::before, body.home .site-link::after { display: none; }
+body.home .category-desc { color: var(--t-fg2); font-size: 11px; }
+body.home #_ab { background: var(--t-bg2) !important; color: var(--t-ac) !important; border: 1px solid var(--t-bd); box-shadow: none; }
+@media (max-width: 1100px) {
+  .home-masthead { gap: 28px; }
+  body.home #mainpage { width: calc(100% - 48px); }
+  body.home .home-dayboard-grid { grid-template-columns: 1fr 1fr; }
+  body.home .home-bell-card { grid-column: 1 / -1; }
+  body.home .home-periods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 24px; }
+  body.home .hud-workspace { grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; }
+  .feature-chat-art { width: 155px; right: -10px; top: 90px; opacity: .45; }
+  .feature-game-art { right: -30px; opacity: .65; }
+  body.home .category-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .home-masthead { padding: 16px 20px 0; flex-wrap: wrap; gap: 14px; }
+  .home-wordmark { flex: 1; }
+  .home-masthead-links { order: 2; flex-basis: 100%; gap: 28px; overflow-x: auto; }
+  .home-masthead-links a { min-height: 42px; white-space: nowrap; font-size: 12px; }
+  body.home #mainpage { width: calc(100% - 36px); }
+  body.home #mainpage .hud-topbar { grid-template-columns: 1fr; padding: 30px 0 24px; gap: 20px; }
+  body.home .hud-logo-area { grid-row: auto; }
+  body.home .hud-system-status { grid-column: 1; grid-row: auto; justify-content: start; }
+  body.home .hud-search-area { grid-column: 1; grid-row: auto; }
+  body.home .hero-links { margin: 0; padding-top: 12px; }
+  body.home .hud-brand { font-size: clamp(32px, 7.3vw, 52px); }
+  .home-features { gap: 14px; grid-template-columns: 1fr; }
+  .home-feature { min-height: 260px; padding: 26px; }
+  body.home .home-feature h2 { font-size: 43px; }
+  .feature-chat-art { width: 190px; right: 4px; top: 54px; opacity: .6; }
+  .feature-game-art { right: 0; bottom: 60px; }
+  body.home .home-dayboard-grid { grid-template-columns: 1fr; gap: 14px; }
+  body.home .home-dayboard-grid > .home-day-card { padding: 22px; }
+  body.home .home-bell-card { grid-column: auto; }
+  body.home .hud-workspace { grid-template-columns: 1fr; }
+  body.home .hud-pane-aside { max-width: none; }
+  body.home .home-periods { display: block; }
+}
+@media (max-width: 380px) {
+  .home-account-link { gap: 8px; font-size: 11px; }
+  body.home .home-feature h2 { font-size: 38px; }
+  .feature-chat-art { right: -40px; opacity: .35; }
+  .feature-game-art { right: -35px; opacity: .5; }
+  .feature-bottom { font-size: 10px; }
+}
