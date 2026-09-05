@@ -200,6 +200,12 @@ body.mitch-design.encrypt-page #loading { text-transform: none; letter-spacing: 
 .chat-signin p { color: var(--t-fg2); margin-bottom: 28px; }
 .chat-signin a { display: block; margin-top: 18px; font-size: 13px; }
 body.mitch-design.encrypt-page #app.ready { display: grid !important; }
+body.mitch-design.encrypt-page { width: 100%; max-width: none !important; }
+body.mitch-design.encrypt-page :is(#app, #app-topbar, #chat-main, #msgs, #input-row) { max-width: none !important; }
+body.mitch-design.encrypt-page #msgs { width: 100% !important; margin-inline: 0 !important; }
+body.mitch-design.encrypt-page .user-entry .user-avatar { position: relative; display: grid; place-items: center; width: 30px !important; height: 30px !important; min-width: 30px; flex: 0 0 30px !important; font-size: 12px; }
+body.mitch-design.encrypt-page .user-entry :is(.user-avatar-image, .entry-avatar, .dot) { display: block; width: 30px !important; height: 30px !important; max-width: 30px !important; flex: 0 0 30px !important; object-fit: cover; border-radius: 9px !important; font-size: 12px; }
+body.mitch-design.encrypt-page #user-list .user-entry { min-height: 56px; padding: 8px 10px !important; gap: 10px; }
 body.mitch-design.encrypt-page #app { flex: 1; width: 100%; min-height: 0; margin: 0 !important; padding: 0 !important; grid-template-columns: 310px minmax(0, 1fr); gap: 0 !important; background: var(--t-bg) !important; border: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: hidden; }
 body.mitch-design.encrypt-page #sidebar { width: auto !important; min-width: 0 !important; min-height: 0; height: 100%; display: flex; flex-direction: column; background: var(--t-bg2) !important; border-right: 1px solid var(--t-bd) !important; backdrop-filter: none !important; }
 body.mitch-design.encrypt-page #sidebar-top { min-height: 86px; flex-shrink: 0; padding: 18px !important; gap: 10px; background: none !important; border-bottom: 1px solid var(--t-bd) !important; }

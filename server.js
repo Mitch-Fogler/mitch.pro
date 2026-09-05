@@ -19803,7 +19803,7 @@ function loadAllGamesList() {
             injectStr += '<link rel="stylesheet" href="/site-galaxy.css">\n';
           }
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/portal-redesign.css'))) {
-            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=13">\n';
+            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=14">\n';
           }
           // One compact navigation shell across every full page. Pages that
           // intentionally opt out (such as the public landing page) use
