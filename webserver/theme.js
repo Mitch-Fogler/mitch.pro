@@ -184,6 +184,7 @@
   // backgrounds/ directory, so dropping in or removing a .webp is enough);
   // this manifest is only the offline fallback.
   var THEME_BGS = [
+    { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp' },
     { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp' },
     { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp' },
     { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp' },
@@ -200,11 +201,7 @@
   function getEffectiveBgImg() {
     var custom = getBgImgCookie();
     if (custom) return custom;
-    var isLight = document.documentElement.classList.contains('theme-light');
-    if (isHomePage() && !isLight) {
-      return '/home-burning-cherry.webp';
-    }
-    return '';
+    return '/backgrounds/wallhaven-black-mountain.webp';
   }
 
   // Body backgrounds are forced transparent (inline author-important beats
@@ -232,7 +229,7 @@
     var h = document.documentElement, r = h.style;
     var isLight = h.classList.contains('theme-light');
     var videoEl = document.getElementById('mitch-bg-video');
-    var isVideo = url && (/\.webm($|\?)/i.test(url) || /^data:video\/webm/i.test(url));
+    var isVideo = url && (/\.(webm|mp4)($|\?)/i.test(url) || /^data:video\/(webm|mp4)/i.test(url));
 
     if (isVideo) {
       if (!videoEl) {
@@ -775,7 +772,7 @@
     get: getCookie,
     themes: T,
     backgrounds: THEME_BGS,
-    setBg: function(url) { setBgImgCookie(url); applyBgImg(url); },
+    setBg: function(url) { setBgImgCookie(url); applyBgImg(url || getEffectiveBgImg()); },
     setBlur: function(px) {
       setPref('bgblur', clamp(Number(px) || 0, 0, 40));
       applyCustomizationPrefs();

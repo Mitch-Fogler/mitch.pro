@@ -498,7 +498,7 @@ html:not(.theme-light) .encrypt-page {
   #msgSearch { min-width: 0; }
   #msgs { padding: 16px 12px 24px; }
   .msg { max-width: 88%; }
-  #input-row { margin: 0 8px 8px; border-radius: 17px; }
+  #input-row { margin: 0 8px max(8px, env(safe-area-inset-bottom, 8px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 8px)); border-radius: 17px; }
 }
 
 @media (max-width: 520px) {
