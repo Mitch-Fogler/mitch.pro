@@ -6,7 +6,7 @@
   <title>Members — Sexy Pickle Club</title>
   <meta name="description" content="The roster of the Sexy Pickle Club: co-owners Mitch and Lochlann, and every member of the brine.">
   <script src="/theme.js?v=9"></script>
-  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/app.css"><script src="/api.js"></script>
 
   <style>
     /* Same wallpaper treatment as the club landing (mitch.pro's front page) */
@@ -169,6 +169,60 @@
     }
     .sp-foot a { font-weight: 600; }
 
+    /* Founder-only applicant pool */
+    .sp-applicants { margin-top: 1rem; }
+    .sp-applicant {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.7rem 0.9rem;
+      border: 1px solid var(--t-bd);
+      border-radius: 12px;
+      background: color-mix(in srgb, var(--t-bg2) 85%, transparent);
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .sp-applicant .who { display: flex; flex-direction: column; min-width: 0; }
+    .sp-applicant .who b { font-size: 0.92rem; }
+    .sp-applicant .who small { color: var(--t-fg2); font-size: 0.72rem; }
+    .sp-applicant .status-chip {
+      padding: 0.14rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--sp) 35%, transparent);
+      color: var(--sp);
+      font-size: 0.62rem;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .sp-applicant .status-chip.pending { border-color: color-mix(in srgb, #ffb454 45%, transparent); color: #ffb454; }
+    .sp-applicant .status-chip.rejected { border-color: color-mix(in srgb, #ff6f85 45%, transparent); color: #ff6f85; }
+    .sp-applicant .actions { display: flex; gap: 0.4rem; }
+    .sp-applicant .actions button {
+      min-height: 2rem;
+      padding: 0.3rem 0.8rem;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .sp-applicant .actions .approve {
+      border-color: color-mix(in srgb, var(--sp) 45%, transparent);
+      background: color-mix(in srgb, var(--sp) 14%, transparent);
+      color: var(--sp);
+    }
+    .sp-applicant .actions .reject { color: #ff8194; }
+    .sp-note { color: var(--t-fg2); font-size: 0.8rem; text-align: center; }
+    #ownersBlock { margin-top: 1.6rem; }
+    #ownersBlock h3 { margin: 0 0 0.3rem; }
+    #ownersBlock form { display: flex; gap: 0.5rem; justify-content: center; margin: 0.7rem 0 1rem; flex-wrap: wrap; }
+    #ownersBlock input[type="email"] {
+      min-width: 0; flex: 1 1 14rem; max-width: 20rem;
+      padding: 0.45rem 0.7rem; font-size: 0.85rem;
+      color: var(--t-fg); background: var(--t-card, rgba(255,255,255,.04));
+      border: 1px solid color-mix(in srgb, var(--t-fg2) 35%, transparent);
+      border-radius: 8px;
+    }
+
     @media (prefers-reduced-motion: reduce) {
       .sp-head, .sp-member { animation: none !important; }
     }
@@ -184,6 +238,7 @@
     <nav>
       <a href="/">Home</a>
       <a href="/barrel/">The Barrel</a>
+      <a href="/bulletin/">Bulletin</a>
     </nav>
   </header>
 
@@ -214,12 +269,145 @@
         </article>
       </div>
     </section>
+    <!-- Founder-only: the applicant pool. Stays hidden unless
+         /api/pickle-club/applicants says otherwise. -->
+    <section class="sp-section sp-applicants" id="applicantsSection" aria-label="Applicant pool" hidden>
+      <h2>Applicant Pool 🫙</h2>
+      <p class="sp-note" id="applicantCounts"></p>
+      <div id="applicantList"></div>
+      <div id="ownersBlock">
+        <h3>Co-Owners 👑</h3>
+        <p class="sp-note">Appoint by email — they don't need an account yet. Their co-owner powers start the first time they sign in.</p>
+        <form id="ownerForm">
+          <input type="email" id="ownerEmail" placeholder="someone@example.com" autocomplete="email" required>
+          <button type="submit" class="approve">Appoint</button>
+        </form>
+        <div id="ownerList"></div>
+      </div>
+    </section>
   </main>
 
   <footer class="sp-foot">
     <p>&copy; 2026 sexypickleclub.com &middot; a mitch.pro society &middot; <a href="/">Home</a></p>
   </footer>
 
+<script>
+// Defensive by design: this page was static for its whole life. Every fetch
+// is wrapped so the roster still renders even if the API is down or 403s.
+(async function () {
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+  // Jar numbers + membership chips on the founder cards.
+  try {
+    const r = await fetch('/api/pickle-club/features', { credentials: 'include', cache: 'no-store' });
+    if (r.ok) {
+      const d = await r.json();
+      const chips = { mitch: 1, lochlann: 2 };
+      document.querySelectorAll('.sp-member').forEach(card => {
+        const name = (card.querySelector('h3') || {}).textContent || '';
+        const jar = chips[String(name).trim().toLowerCase()];
+        if (jar) {
+          const role = card.querySelector('.role');
+          if (role) role.textContent = 'Co-Owner · Jar #' + jar;
+        }
+      });
+    }
+  } catch {}
+
+  // Applicant pool — founders only (everyone else gets a 403 and no UI).
+  const section = document.getElementById('applicantsSection');
+  const list = document.getElementById('applicantList');
+  const counts = document.getElementById('applicantCounts');
+  if (!section || !list) return;
+  async function loadApplicants() {
+    let d = null;
+    try {
+      const r = await fetch('/api/pickle-club/applicants', { credentials: 'include', cache: 'no-store' });
+      if (!r.ok) return; // 403 → non-founder, keep the section hidden
+      d = await r.json();
+    } catch { return; }
+    if (!d) return;
+    section.hidden = false;
+    const c = d.counts || {};
+    counts.textContent = (c.pending || 0) + ' pending · ' + (c.approved || 0) + ' approved · ' + (c.rejected || 0) + ' declined';
+    list.innerHTML = (d.applicants || []).map(a =>
+      '<div class="sp-applicant" data-key="' + esc(a.key) + '">' +
+        '<span class="who"><b>' + esc(a.name) + '</b><small>' + esc(a.display) +
+          (a.status === 'approved' && a.memberNumber ? ' · Jar #' + esc(a.memberNumber) : '') + '</small></span>' +
+        '<span class="status-chip ' + esc(a.status) + '">' + esc(a.status) + '</span>' +
+        '<span class="actions">' +
+          (a.status === 'approved'
+            ? '<button type="button" class="reject" data-decide="rejected">Revoke</button>'
+            : '<button type="button" class="approve" data-decide="approved">Approve</button>' +
+              (a.status === 'pending' ? '<button type="button" class="reject" data-decide="rejected">Decline</button>' : '')) +
+        '</span>' +
+      '</div>'
+    ).join('') || '<p class="sp-note">The pool is empty. The brine awaits new cucumbers.</p>';
+    list.querySelectorAll('button[data-decide]').forEach(btn => {
+      btn.onclick = async () => {
+        const key = btn.closest('.sp-applicant').dataset.key;
+        try {
+          const r = await fetch('/api/pickle-club/decide', {
+            method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: key, decision: btn.dataset.decide }),
+          });
+          const res = await r.json().catch(() => ({}));
+          if (!r.ok) throw Error(res.error || 'Decision failed');
+          loadApplicants();
+        } catch (e) { alert(e.message); }
+      };
+    });
+    // Appointed co-owners (also founder-only — same 403 gate).
+    const ownerList = document.getElementById('ownerList');
+    if (ownerList) {
+      const co = d.coowners || [];
+      ownerList.innerHTML = co.map(o =>
+        '<div class="sp-applicant" data-key="' + esc(o.email) + '">' +
+          '<span class="who"><b>' + esc(o.display) + '</b><small>Co-Owner' +
+            (o.memberNumber ? ' · Jar #' + esc(o.memberNumber) : '') + '</small></span>' +
+          '<span class="status-chip approved">co-owner</span>' +
+          '<span class="actions"><button type="button" class="reject" data-unowner>Remove</button></span>' +
+        '</div>'
+      ).join('') || '<p class="sp-note">No appointed co-owners yet — the founders run the brine alone.</p>';
+      ownerList.querySelectorAll('button[data-unowner]').forEach(btn => {
+        btn.onclick = async () => {
+          const key = btn.closest('.sp-applicant').dataset.key;
+          if (!confirm('Remove this co-owner?')) return;
+          try {
+            const r = await fetch('/api/pickle-club/owners', {
+              method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: key, action: 'remove' }),
+            });
+            const res = await r.json().catch(() => ({}));
+            if (!r.ok) throw Error(res.error || 'Remove failed');
+            loadApplicants();
+          } catch (e) { alert(e.message); }
+        };
+      });
+    }
+  }
+  loadApplicants();
+
+  // Appoint a co-owner by raw email — works even if they've never signed in.
+  const ownerForm = document.getElementById('ownerForm');
+  if (ownerForm) {
+    ownerForm.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const input = document.getElementById('ownerEmail');
+      try {
+        const r = await fetch('/api/pickle-club/owners', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: input.value.trim(), action: 'appoint' }),
+        });
+        const res = await r.json().catch(() => ({}));
+        if (!r.ok) throw Error(res.error || 'Appoint failed');
+        input.value = '';
+        loadApplicants();
+      } catch (e) { alert(e.message); }
+    };
+  }
+})();
+</script>
 <script src="/cookie-consent.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Club Bulletin — Sexy Pickle Club</title>
+  <meta name="description" content="The Sexy Pickle Club Bulletin: official announcements, awards, and pickled wisdom from the co-founders.">
+  <script src="/theme.js?v=9"></script><link rel="stylesheet" href="/app.css"><script src="/api.js"></script><script src="/app-shell.js" defer></script>
+  <!-- Pickle pages bypass the server's site-wide head injection, so the shared
+       shell stylesheets the Plaza gets automatically are linked here instead. -->
+  <link rel="stylesheet" href="/relaunch.css"><link rel="stylesheet" href="/site-galaxy.css"><link rel="stylesheet" href="/portal-redesign.css?v=10">
+  <style>
+    /* Same wallpaper treatment as the club landing */
+    html body.pickle-page::before{content:"";position:fixed;inset:0;z-index:-1;background:url(/home-burning-cherry.webp) center/cover no-repeat;opacity:.45;filter:blur(26px);transform:scale(1.15);pointer-events:none}
+    html,html body{background:transparent!important;background-image:none!important;background-attachment:initial!important}
+    html.theme-light body.pickle-page::after{content:"";position:fixed;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(242,244,250,.72),rgba(236,238,247,.8));pointer-events:none}
+    body.pickle-page{--sp:#7ac74f}
+    body.pickle-page .sp-page::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse 80% 55% at 50% -15%,color-mix(in srgb,var(--sp) 20%,transparent),transparent 70%)}
+
+    .bulletin-main{width:min(820px,100%)}
+    .bulletin-head{display:flex;align-items:flex-end;justify-content:space-between;gap:1.25rem}
+    .bulletin-kicker{margin-bottom:.55rem;color:var(--sp);font-size:.68rem;font-weight:750;letter-spacing:.1em;text-transform:uppercase}
+    .post{position:relative;padding:1.15rem 1.25rem;margin-bottom:.9rem;border:1px solid color-mix(in srgb,var(--sp) 22%,var(--t-bd));border-radius:calc(var(--t-radius,8px) + 8px);background:color-mix(in srgb,var(--t-bg2) 88%,transparent);box-shadow:0 14px 40px rgba(0,0,0,.28)}
+    .post.pinned{border-color:color-mix(in srgb,var(--sp) 55%,var(--t-bd))}
+    .post-pin{position:absolute;top:.8rem;right:.9rem;color:var(--sp);font-size:.7rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+    .post h3{margin:0 0 .45rem;font-size:1.15rem;letter-spacing:-.02em;padding-right:3.5rem}
+    .post .meta{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;color:var(--t-fg2);font-size:.7rem;font-weight:700;margin-bottom:.6rem}
+    .post .meta .author-chip{padding:.1rem .5rem;border:1px solid color-mix(in srgb,var(--sp) 35%,var(--t-bd));border-radius:999px;background:color-mix(in srgb,var(--sp) 10%,transparent);color:var(--sp)}
+    .post .body{color:color-mix(in srgb,var(--t-fg) 86%,var(--t-fg2));font-size:.9rem;line-height:1.6;overflow-wrap:anywhere}
+    .post .body img{max-width:100%;border-radius:10px}
+    .post .body a{color:var(--sp)}
+    .post .foot{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin-top:.75rem}
+    .post .foot .reactions{width:auto;margin-top:0}
+    .post .foot .react-row{display:flex;gap:.25rem}
+    .post .foot .react-row button,.post .foot .reactions button{width:auto!important;min-height:1.55rem!important;margin:0!important;padding:.12rem .5rem!important;border-color:color-mix(in srgb,var(--sp) 30%,var(--t-bd))!important;border-radius:999px!important;background:color-mix(in srgb,var(--sp) 10%,transparent)!important;color:var(--t-fg)!important;font-size:.72rem!important;cursor:pointer}
+    .post .foot .reactions button.mine{border-color:var(--sp)!important;background:color-mix(in srgb,var(--sp) 22%,transparent)!important}
+    .post .post-tools{margin-left:auto;display:flex;gap:.3rem}
+    .post .post-tools button{width:auto!important;min-height:1.6rem!important;margin:0!important;padding:.2rem .5rem!important;border-color:var(--t-bd)!important;background:transparent!important;color:var(--t-fg2)!important;font-size:.68rem!important;cursor:pointer}
+    .post .post-tools button.danger{color:#ff8294!important}
+    .empty-posts{display:grid;place-items:center;padding:3rem 1rem;color:var(--t-fg2);text-align:center}
+    .empty-posts span{display:block;font-size:1.8rem;margin-bottom:.4rem}
+    .composer{margin-bottom:1.2rem;padding:1rem 1.1rem;border:1px dashed color-mix(in srgb,var(--sp) 45%,var(--t-bd));border-radius:calc(var(--t-radius,8px) + 8px);background:color-mix(in srgb,var(--t-bg2) 70%,transparent)}
+    .composer h3{margin:0 0 .6rem;font-size:.95rem;color:var(--sp)}
+    .composer input,.composer textarea{width:100%;margin-bottom:.55rem}
+    .composer textarea{min-height:7rem;resize:vertical}
+    .composer .composer-row{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap}
+    .composer label{display:inline-flex;align-items:center;gap:.35rem;color:var(--t-fg2);font-size:.78rem;font-weight:700}
+    .bulletin-toast{position:fixed;right:1rem;bottom:1.35rem;z-index:1000;padding:.7rem .9rem;border:1px solid rgba(255,111,133,.25);border-radius:12px;background:color-mix(in srgb,var(--t-bg) 92%,#400);box-shadow:0 16px 40px rgba(0,0,0,.35);color:#ff9aaa;font-size:.8rem;opacity:0;transform:translateY(8px);pointer-events:none;transition:.2s}
+    .bulletin-toast.show{opacity:1;transform:none}
+    @media(max-width:700px){
+      .bulletin-head{align-items:flex-start;flex-direction:column}
+      .post{padding:.95rem .85rem}
+      .post h3{padding-right:0}
+    }
+  </style>
+</head>
+<body class="plaza-page pickle-page">
+<main class="app-main bulletin-main">
+  <header class="page-head bulletin-head"><div><div class="bulletin-kicker">Sexy Pickle Club · Official word</div><h1>Club Bulletin 📌</h1><p class="page-sub">Announcements, awards, and pickled wisdom — straight from the co-founders.</p></div></header>
+  <section class="composer" id="composer" hidden>
+    <h3>📌 Publish to the Bulletin</h3>
+    <form id="postForm">
+      <input id="postTitle" maxlength="140" placeholder="Headline — keep it crunchy" required>
+      <textarea id="postBody" maxlength="20000" placeholder="The body of the announcement. HTML is allowed; nastiness is not." required></textarea>
+      <div class="composer-row">
+        <label><input type="checkbox" id="postPinned"> Pin to the top</label>
+        <button type="submit" id="postBtn">Publish</button>
+      </div>
+    </form>
+  </section>
+  <section id="postList" aria-live="polite">
+    <div class="empty-posts"><div><span>📌</span>Loading the Bulletin…</div></div>
+  </section>
+</main>
+<div class="bulletin-toast" id="bullToast" role="status"></div>
+<script>
+(function(){
+  const list=document.getElementById('postList'),composer=document.getElementById('composer');
+  const REACTIONS=['🥒','😂','🔥','💀','💚','📌'];
+  let founder=false,myNorm='',posts=[],loaded=false;
+  const esc=v=>String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  function toast(text){const el=document.getElementById('bullToast');el.textContent=text;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),3200)}
+  function rel(ts){const s=Math.max(1,Math.round((Date.now()-(ts||0))/1000));if(s<60)return s+'s ago';const m=Math.round(s/60);if(m<60)return m+'m ago';const h=Math.round(m/60);if(h<24)return h+'h ago';return new Date(ts||0).toLocaleDateString([],{month:'short',day:'numeric'})}
+  function reactionsHtml(p){
+    const rx=p.reactions&&typeof p.reactions==='object'?p.reactions:{};
+    const mine=Array.isArray(p.myReactions)?p.myReactions:[];
+    const chips=Object.entries(rx).filter(([,c])=>c>0).map(([e,c])=>`<button type="button" data-react="${esc(e)}" class="${mine.includes(e)?'mine':''}">${esc(e)} ${c}</button>`).join('');
+    const picker='<span class="react-row">'+REACTIONS.filter(e=>!rx[e]).map(e=>`<button type="button" data-react="${e}" title="React ${e}">${e}</button>`).join('')+'</span>';
+    return `<span class="reactions">${chips}${picker}</span>`;
+  }
+  function postHtml(p){
+    const tools=(founder||p.mine)?`<span class="post-tools"><button type="button" data-del="${esc(p.id)}" class="danger">Delete</button></span>`:'';
+    return `<article class="post${p.pinned?' pinned':''}" data-id="${esc(p.id)}">${p.pinned?'<span class="post-pin">📌 Pinned</span>':''}<h3>${esc(p.title)}</h3><div class="meta"><span class="author-chip">👑 ${esc(p.author)}</span><span>${rel(p.ts)}</span>${p.updatedAt>p.ts?'<span>· edited</span>':''}</div><div class="body">${p.html}</div><div class="foot">${reactionsHtml(p)}${tools}</div></article>`;
+  }
+  function renderAll(){
+    if(!posts.length){list.innerHTML='<div class="empty-posts"><div><span>🫙</span>The Bulletin is empty. The co-founders are still fermenting their first post.</div></div>';return}
+    list.innerHTML=posts.map(postHtml).join('');
+    list.querySelectorAll('.foot [data-react]').forEach(b=>{b.onclick=()=>react(b.closest('.post').dataset.id,String(b.dataset.react))});
+    list.querySelectorAll('[data-del]').forEach(b=>{b.onclick=()=>del(b.dataset.del)});
+  }
+  function findPost(id){return posts.find(p=>p.id===String(id))}
+  async function load(){try{const r=await fetch('/api/pickle-bulletin/state',{credentials:'include',cache:'no-store'});if(!r.ok)throw Error();const d=await r.json();posts=d.posts||[];if(!loaded){loaded=true;try{localStorage.setItem('sp_bulletin_seen',String(d.now||Date.now()))}catch(_){}}renderAll()}catch(_){if(!loaded)list.innerHTML='<div class="empty-posts"><div><span>!</span>Could not load the Bulletin.</div></div>'}}
+  async function react(id,emoji){try{const r=await fetch('/api/pickle-bulletin/react',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,emoji})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Reaction failed');const p=findPost(id);if(p){p.reactions=d.reactions||{};p.myReactions=d.myReactions||[]}renderAll()}catch(e){toast(e.message)}}
+  async function del(id){if(!(await customConfirm('Delete post','Remove this Bulletin post?')))return;try{const r=await fetch('/api/pickle-bulletin/delete',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Delete failed');posts=posts.filter(p=>p.id!==String(id));renderAll()}catch(e){toast(e.message)}}
+  document.getElementById('postForm').onsubmit=async e=>{e.preventDefault();const title=document.getElementById('postTitle').value.trim(),html=document.getElementById('postBody').value,pinned=document.getElementById('postPinned').checked;if(!title||!html.trim())return;const btn=document.getElementById('postBtn');btn.disabled=true;try{const r=await fetch('/api/pickle-bulletin/post',{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,html,pinned})});const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.error||'Publish failed');document.getElementById('postTitle').value='';document.getElementById('postBody').value='';document.getElementById('postPinned').checked=false;toast('Published to the Bulletin 📌')}catch(e){toast(e.message)}finally{btn.disabled=false}};
+  // Live updates over the shared /ws socket — pickle_bulletin_* only.
+  function connect(){let ws;try{ws=new WebSocket((location.protocol==='https:'?'wss:':'ws:')+'//'+location.host+'/ws')}catch(_){return}ws.onmessage=e=>{try{const d=JSON.parse(e.data);if(d.type==='pickle_bulletin_new'){if(!posts.some(p=>p.id===String(d.post.id))){posts.unshift(d.post);renderAll()}}else if(d.type==='pickle_bulletin_react'){const p=findPost(d.id);if(p){p.reactions=d.reactions||{};const mine=(p.myReactions||[]).filter(e=>d.reactions[e]!==undefined);p.myReactions=mine;renderAll()}}else if(d.type==='pickle_bulletin_delete'){posts=posts.filter(p=>p.id!==String(d.id));renderAll()}}catch(_){}};ws.onclose=()=>setTimeout(connect,8000)}
+  (async()=>{try{const r=await fetch('/api/me',{credentials:'include',cache:'no-store'});if(r.ok){const me=await r.json();if(me.email){const m=await fetch('/api/pickle-club/membership',{credentials:'include',cache:'no-store'}).catch(()=>null);if(m&&m.ok){const md=await m.json();founder=!!md.isFounder}}}}catch(_){}
+    if(founder)composer.hidden=false;
+    await load();connect();
+    setInterval(()=>{if(document.visibilityState!=='hidden')load()},20000)})();
+})();
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body></html>
