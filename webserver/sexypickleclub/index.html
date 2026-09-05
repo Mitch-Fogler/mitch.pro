@@ -331,6 +331,13 @@
           <p class="brine-name" id="brineName">Click to get brined</p>
           <button type="button" class="btn-ghost" id="brineNameBtn">Generate my brine name</button>
         </article>
+        <!-- Founder-only entry point: revealed by the clubhouse script when
+             /api/pickle-club/features says the viewer is a founder/co-owner. -->
+        <article class="sp-item" id="founderCard" hidden>
+          <h3><span class="sp-emoji" aria-hidden="true">👑</span>Founder Tools</h3>
+          <p>Approve new members, appoint co-owners by email, and publish to the Bulletin.</p>
+          <a class="sp-item-link" href="/members/">Open the Applicant Pool →</a>
+        </article>
       </div>
     </section>
 
@@ -445,6 +452,11 @@
     } catch {}
     if (!features) return;
     document.getElementById('clubhouse').hidden = false;
+
+    // Founders/co-owners get a visible path to the Applicant Pool (it only
+    // lives on /members/ and shows nothing for non-founders).
+    const founderCard = document.getElementById('founderCard');
+    if (founderCard && features.membership && features.membership.isFounder) founderCard.hidden = false;
 
     // Pickle of the Day
     const potd = features.potd || {};

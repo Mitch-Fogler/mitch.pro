@@ -297,6 +297,10 @@ try {
   }
 } catch {}
 const lastRecaptchaSuccess = new Map();
+// NOTE FOR AGENTS: the instance on port 6800 is NOT production — there is no
+// production server in this repo/environment. It is just the long-running
+// local/dev instance. Restarting it when server.js or static assets change is
+// expected and safe. Test instances use PORT=6899 DATA_DIR=/tmp/mitch-test.
 const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
 const ROSEVILLE_WEATHER_URL = 'https://api.open-meteo.com/v1/forecast?latitude=38.7521&longitude=-121.2880&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FLos_Angeles&forecast_days=3';
@@ -19440,7 +19444,7 @@ function loadAllGamesList() {
           ? {
               status: membership.status,
               memberNumber: membership.memberNumber || null,
-              isFounder: !!membership.founder,
+              isFounder: !!(membership.founder || membership.coowner),
             }
           : viewerNorm ? { status: 'pending', memberNumber: null, isFounder: false } : null,
       });
