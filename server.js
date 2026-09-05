@@ -4880,8 +4880,10 @@ function errResp(code, message, explain) {
     502: 'Upstream error. Try again in a moment.',
     503: 'The service is temporarily unavailable. Try again shortly.',
   };
-  const title  = titles[code]  || message || 'Error';
-  const detail = details[code] || explain || message || 'An unexpected error occurred.';
+  // An explicit message/explain pair overrides the canned copy (used by the
+  // per-site 404s — rjuhsd.school and sexypickleclub.com).
+  const title  = message || titles[code] || 'Error';
+  const detail = explain || details[code] || message || 'An unexpected error occurred.';
   return new Response(errorPage(code, title, detail),
     { status: code, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
@@ -5143,6 +5145,17 @@ function isRjuhsdHost(req) {
   return h === RJUHSD_DOMAIN || h.endsWith('.' + RJUHSD_DOMAIN);
 }
 
+// ── sexypickleclub.com: third site identity (the joke front door) ────────────
+// Same server, same accounts — a pickle-branded landing that links into the
+// mitch.pro network. Public landing only; every other page path 404s here.
+const PICKLE_DOMAIN = 'sexypickleclub.com';
+const PICKLE_ORIGIN = 'https://sexypickleclub.com';
+
+function isPickleHost(req) {
+  const h = String(requestHost(req)).toLowerCase().split(':')[0];
+  return h === PICKLE_DOMAIN || h.endsWith('.' + PICKLE_DOMAIN);
+}
+
 // Hosts we will ever redirect to from the SSO bridge (prevents open redirects).
 // mitch.pro identities come from site.json (primary + alternate), so mirrors
 // like mitchdog.com work as sign-in origins too.
@@ -5172,6 +5185,7 @@ function ssoBackAllowed(rawBack, req) {
   if (back.protocol !== 'https:') return null;
   const h = back.hostname.toLowerCase();
   if (h === RJUHSD_DOMAIN || h.endsWith('.' + RJUHSD_DOMAIN)) return back;
+  if (h === PICKLE_DOMAIN || h.endsWith('.' + PICKLE_DOMAIN)) return back;
   if (isMitchSsoHost(h)) return back;
   return null;
 }
@@ -7653,14 +7667,19 @@ async function handleRequest(req, server) {
   
   const isAsset = path.includes('.') && !path.endsWith('.html');
 
-  if (!isExempt && !isAsset && path !== '/ws' && path !== '/' && !checkPasswordCookie(req)) {
+  if (!isExempt && !isAsset && path !== '/ws' && path !== '/' && !checkPasswordCookie(req) && !isPickleHost(req)) {
     if (path.startsWith('/api/')) {
       return jsonResp(403, { error: 'password required', message: 'Please set a password at /enroll/ to continue.' });
     }
     // rjuhsd.school has no /enroll/ — send visitors through the SSO bridge so
     // they sign in on mitch.pro and land back on the school site.
+    // sexypickleclub.com is exempt entirely: its pages are public and the
+    // pickle webroot server below gates the symlinked apps itself.
     if (isRjuhsdHost(req)) {
       return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(RJUHSD_ORIGIN + path), 302);
+    }
+    if (isPickleHost(req)) {
+      return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(PICKLE_ORIGIN + path), 302);
     }
     return Response.redirect('/enroll/', 302);
   }
@@ -10184,9 +10203,11 @@ async function handleRequest(req, server) {
           const email = sid ? emailFromSid(sid) : '';
           if (email && !bannedInfoForEmail(email)) {
             const token = createSsoBridgeToken(email);
-            if (back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN)) {
+            const backIsRjuhsd = back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN);
+            const backIsPickle = back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN);
+            if (backIsRjuhsd || backIsPickle) {
               // Cookies are host-scoped: the token must be exchanged on the
-              // school domain for a school-domain session.
+              // destination domain for a session there.
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
               dest.searchParams.set('token', token);
               dest.searchParams.set('back', back.toString());
@@ -10200,6 +10221,9 @@ async function handleRequest(req, server) {
               const jwkKey = '_e2e_private_jwk_v3:' + encodeURIComponent(e2eClientStorageEmail(email));
               const hopHtml =
                 '<!doctype html><meta charset="utf-8"><title>Signing in…</title>\n' +
+                // The <body> element must exist before this script runs — an
+                // inline script inside <head> sees document.body as null.
+                '<body></body>\n' +
                 '<script>\n' +
                 '(function(){\n' +
                 '  var jwk = "";\n' +
@@ -10244,8 +10268,8 @@ async function handleRequest(req, server) {
 
     if (path === '/api/sso/exchange' && (method === 'GET' || method === 'POST')) {
       try {
-        // The token only lands a session on the school domain.
-        if (!isRjuhsdHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
+        // The token only lands a session on a non-mitch.pro site host.
+        if (!isRjuhsdHost(req) && !isPickleHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
         // The bridge hop page arrives as a form POST carrying the device's
         // cached Secure Chat private JWK alongside the token.
         let params = url.searchParams;
@@ -10264,7 +10288,10 @@ async function handleRequest(req, server) {
         const session = createAuthSession(rec.email, rec.email, req);
         const back = ssoBackAllowed(params.get('back') || '/', req);
         const selfOrigin = 'https://' + (requestHost(req) || RJUHSD_DOMAIN);
-        const dest = back && (back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN)) ? back : new URL(selfOrigin + '/');
+        const backOk = back && (
+          back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN) ||
+          back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN));
+        const dest = backOk ? back : new URL(selfOrigin + '/');
         const headers = new Headers();
         headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
         headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
@@ -18773,6 +18800,101 @@ function loadAllGamesList() {
         return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       } catch {}
     }
+    // sexypickleclub.com — a pickle-branded landing (webserver/sexypickleclub/)
+    // with its own webroot, mirroring the rjuhsd.school pattern below. The hub
+    // is the site's front door; the shared apps (public-chat, encrypt) are
+    // symlinked into the pickle webroot, and everything else 404s with themed
+    // copy. Non-page asset paths fall through to the shared webroot handling.
+    // Shared between the pickle and rjuhsd webroot servers below: pages that
+    // are public everywhere else in the network stay public on these hosts.
+    const HTML_OPEN = new Set(['/roblox', '/enroll', '/claim', '/password',
+                                '/appeal', '/unsubscribe', '/admin',
+                                '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
+                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
+    const pickleHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'sexypickleclub', 'index.html'), 'utf8'));
+    if ((path === '/' || path === '/index.html') && isPickleHost(req)) {
+      try {
+        return new Response(pickleHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      } catch {}
+    }
+    // Preview of the pickle club from mitch.pro (same page, no DNS needed).
+    if (path === '/sexypickleclub' || path === '/sexypickleclub/' || path === '/sexypickleclub/index.html') {
+      try {
+        return new Response(pickleHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      } catch { return errResp(404, 'Not found'); }
+    }
+    if (isPickleHost(req) && path !== '/' && path !== '/index.html') {
+      const PICKLE_WEBROOT = join(WEBROOT, 'sexypickleclub');
+      const isPagePath = path.endsWith('/') || /\.html?$/i.test(path);
+      if (isPagePath) {
+        // Normalize: /foo.html → /foo/ and redirect directory misses to /foo/
+        let rel = path === '/index.html' ? '/' : path;
+        if (!rel.endsWith('/')) {
+          const asDir = '/' + rel.replace(/^\/+/, '').replace(/\.html?$/i, '');
+          let isDir = false;
+          try { isDir = statSync(join(PICKLE_WEBROOT, asDir.replace(/^\//, ''))).isDirectory(); } catch {}
+          if (isDir) return Response.redirect(rel + '/' + (url.search || ''), 302);
+          rel = asDir + '/';
+        }
+        if (rel.includes('..')) return errResp(404, null, null);
+        const file = join(PICKLE_WEBROOT, rel.replace(/^\//, ''), 'index.html');
+        let stat = null;
+        try { stat = statSync(file); } catch {}
+        if (!stat || stat.isDirectory()) {
+          return errResp(404, "This page isn't part of the Sexy Pickle Club.",
+            'The whole club lives on one page — ' + PICKLE_DOMAIN + "/ — and the rest of the network is over on mitch.pro. Sign in from the front door and you're in.");
+        }
+        // Gate: same policy as the shared webroot, except the pickle site is
+        // standalone and public — its own pages (the landing, /members) are
+        // open; only the symlinked apps (public-chat, encrypt) keep their
+        // normal gating. Signed-out users go through the SSO bridge instead
+        // of /enroll/ (not on this site).
+        const pageBase = ('/' + rel.replace(/^\/+/, '').replace(/\/+$/, ''));
+        const open = pageBase === '' || pageBase === '/members'
+          || HTML_OPEN.has(pageBase) || HTML_OPEN.has(pageBase + '/index');
+        if (!open) {
+          const cookies = getCookies(req);
+          const sid = cookies['studentId'] || cookies['id'] || '';
+          const ban = bannedInfoForSid(sid);
+          if (ban) return bannedResponse(ban);
+          if (!checkPasswordCookie(req)) {
+            return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(PICKLE_ORIGIN + rel), 302);
+          }
+        }
+        try {
+          let html = injectSharedHead(readFileSync(file, 'utf8'));
+          // reCAPTCHA loader: sexypickleclub.com pages bypass the main
+          // injection below, so add it here or getCaptchaToken never exists
+          // and chat sends fail with "reCAPTCHA failed".
+          const rcKey = (process.env.RECAPTCHA_SITE_KEY || '').trim();
+          const recaptchaHost = (process.env.RECAPTCHA_SCRIPT_HOST || 'www.recaptcha.net').trim();
+          if (rcKey && !html.includes('recaptcha/api.js')) {
+            html = html.replace('</head>', recaptchaLoaderStr(recaptchaHost, rcKey) + '</head>');
+          }
+          return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        } catch { return errResp(404, null, null); }
+      }
+      // Site-local assets (the portrait logo, member photos) are served from
+      // the pickle webroot when a file exists there; everything else falls
+      // through to the shared webroot handling below.
+      const pickleAsset = safeWebrootPath(join('sexypickleclub', path.replace(/^\/+/, '')));
+      if (pickleAsset) {
+        try {
+          const st = statSync(pickleAsset);
+          if (st.isFile()) {
+            const ext = (pickleAsset.split('.').pop() || '').toLowerCase();
+            const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', avif: 'image/avif', gif: 'image/gif', svg: 'image/svg+xml', ico: 'image/x-icon' };
+            return new Response(Bun.file(pickleAsset), {
+              headers: {
+                'Content-Type': MIME[ext] || 'application/octet-stream',
+                'Cache-Control': 'public, max-age=86400'
+              }
+            });
+          }
+        } catch {}
+      }
+      // Remaining non-page paths fall through to the shared webroot handling.
+    }
     // Preview of the school hub from mitch.pro (same page, no DNS needed).
     if (path === '/rjuhsd' || path === '/rjuhsd/' || path === '/rjuhsd/index.html') {
       try {
@@ -18785,10 +18907,6 @@ function loadAllGamesList() {
     // them exists in that directory (shared runtime assets like /theme.js fall
     // through to the main webroot below) — so /games/, /casino/ and the rest of
     // mitch.pro are simply not part of rjuhsd.school and 404.
-    const HTML_OPEN = new Set(['/roblox', '/enroll', '/claim', '/password',
-                                '/appeal', '/unsubscribe', '/admin',
-                                '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
-                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
     if (isRjuhsdHost(req) && path !== '/') {
       const RJUHSD_WEBROOT = join(WEBROOT, 'rjuhsd');
       const isPagePath = path.endsWith('/') || /\.html?$/i.test(path);

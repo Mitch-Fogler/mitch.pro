@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Members — Sexy Pickle Club</title>
+  <meta name="description" content="The roster of the Sexy Pickle Club: co-owners Mitch and Lochlann, and every member of the brine.">
+  <script src="/theme.js?v=9"></script>
+  <link rel="stylesheet" href="/app.css">
+
+  <style>
+    /* Same wallpaper treatment as the club landing (mitch.pro's front page) */
+    html body.pickle-page::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: url(/home-burning-cherry.webp) center / cover no-repeat;
+      opacity: 0.45;
+      filter: blur(26px);
+      transform: scale(1.15);
+      pointer-events: none;
+    }
+    html, html body {
+      background: transparent !important;
+      background-image: none !important;
+      background-attachment: initial !important;
+    }
+    html.theme-light body.pickle-page::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(180deg, rgba(242,244,250,0.72), rgba(236,238,247,0.8));
+      pointer-events: none;
+    }
+    body.pickle-page { --sp: #7ac74f; }
+    body.pickle-page .sp-page::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background: radial-gradient(ellipse 80% 55% at 50% -15%, color-mix(in srgb, var(--sp) 20%, transparent), transparent 70%);
+    }
+
+    .sp-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      width: min(1080px, 100%);
+      margin: 0 auto;
+      padding: 1.15rem clamp(1rem, 4vw, 1.5rem);
+    }
+    .sp-top .sp-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-family: Outfit, system-ui, sans-serif;
+      font-weight: 800;
+      font-size: 1.2rem;
+      letter-spacing: -0.03em;
+      color: var(--t-fg);
+      text-decoration: none;
+      min-width: 0;
+    }
+    /* Portrait-style club logo — swap in /pickle-logo.jpg when imported */
+    .sp-logo {
+      width: 2.6rem;
+      height: 3.4rem;
+      flex: 0 0 auto;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid color-mix(in srgb, var(--sp) 45%, var(--t-bd));
+      box-shadow: 0 6px 20px rgba(122, 199, 79, 0.25);
+      background: #12240f;
+    }
+    .sp-top nav a {
+      color: var(--t-fg2);
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-decoration: none;
+      margin-left: 1rem;
+    }
+    .sp-top nav a:hover { color: var(--t-fg); }
+
+    .sp-head {
+      width: min(720px, 100%);
+      margin: 0 auto;
+      padding: clamp(2rem, 6vh, 3.5rem) clamp(1rem, 4vw, 1.5rem) clamp(1.5rem, 4vh, 2.5rem);
+      text-align: center;
+      animation: app-fade-in 0.55s ease both;
+    }
+    .sp-head h1 {
+      margin: 0 0 0.6rem;
+      font-family: Outfit, system-ui, sans-serif;
+      font-size: clamp(2rem, 6vw, 3.1rem);
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+    .sp-head p {
+      margin: 0 auto;
+      max-width: 40ch;
+      color: var(--t-fg2);
+      font-size: clamp(1rem, 2.4vw, 1.1rem);
+      line-height: 1.55;
+    }
+
+    .sp-section {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: clamp(1.5rem, 4vh, 2.5rem) clamp(1rem, 4vw, 1.5rem);
+    }
+    .sp-section h2 {
+      margin: 0 0 1rem;
+      font-size: clamp(1.2rem, 3vw, 1.5rem);
+      text-align: center;
+      letter-spacing: -0.02em;
+    }
+    .sp-roster { display: grid; gap: 1rem; justify-content: center; }
+    @media (min-width: 560px) { .sp-roster { grid-template-columns: 1fr 1fr; } }
+
+    .sp-member {
+      max-width: 26rem;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.5rem 1.4rem;
+      text-align: center;
+      border: 1px solid color-mix(in srgb, var(--sp) 35%, var(--t-bd));
+      border-radius: calc(var(--t-radius, 8px) + 8px);
+      background: color-mix(in srgb, var(--t-bg2) 88%, transparent);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      animation: app-fade-in 0.5s ease both;
+    }
+    .sp-member:nth-child(2) { animation-delay: 0.06s; }
+    .sp-member .photo {
+      width: clamp(132px, 34vw, 168px);
+      aspect-ratio: 3 / 4;
+      object-fit: cover;
+      border-radius: 14px;
+      border: 1px solid color-mix(in srgb, var(--sp) 45%, var(--t-bd));
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      margin-bottom: 1rem;
+      background: #12240f;
+    }
+    .sp-member h3 { margin: 0 0 0.2rem; font-size: 1.3rem; letter-spacing: -0.02em; }
+    .sp-member .role {
+      display: inline-block;
+      margin: 0.35rem 0 0.7rem;
+      padding: 0.22rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid color-mix(in srgb, var(--sp) 35%, transparent);
+      background: color-mix(in srgb, var(--sp) 12%, transparent);
+      color: var(--sp);
+      font-size: 0.68rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    .sp-member p { margin: 0; color: var(--t-fg2); font-size: 0.88rem; line-height: 1.55; }
+
+    .sp-foot {
+      text-align: center;
+      padding: 1.5rem 1rem 2.5rem;
+      color: var(--t-fg2);
+      font-size: 0.8rem;
+    }
+    .sp-foot a { font-weight: 600; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sp-head, .sp-member { animation: none !important; }
+    }
+  </style>
+</head>
+<body class="app-shell pickle-page" data-shell="off">
+  <header class="sp-top">
+    <a class="sp-brand" href="/" aria-label="Sexy Pickle Club home">
+      <img class="sp-logo" src="/pickle-logo.jpg" alt="Sexy Pickle Club portrait logo"
+           onerror="this.onerror=null;this.src='/pickle-portrait.svg';">
+      <span>Sexy Pickle Club</span>
+    </a>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/public-chat/">The Barrel</a>
+    </nav>
+  </header>
+
+  <main class="sp-page">
+    <section class="sp-head">
+      <h1>The Members</h1>
+      <p>Keepers of the brine. Two co-owners, one barrel, zero mild cucumbers.</p>
+    </section>
+
+    <section class="sp-section" aria-label="Co-owners">
+      <h2>Co-Owners</h2>
+      <div class="sp-roster">
+        <article class="sp-member">
+          <!-- Drop the real photo at /mitch.jpg in webserver/sexypickleclub/ -->
+          <img class="photo" src="/mitch.jpg" alt="Mitch, co-owner of the Sexy Pickle Club"
+               onerror="this.onerror=null;this.src='/mitch.svg';">
+          <h3>Mitch</h3>
+          <span class="role">Co-Owner</span>
+          <p>Founder of the brine. Keeps the barrel sealed, the crunch ratings honest, and the club's keys (all of them — including the encryption ones).</p>
+        </article>
+        <article class="sp-member">
+          <!-- Drop the real photo at /lochlann.jpg in webserver/sexypickleclub/ -->
+          <img class="photo" src="/lochlann.jpg" alt="Lochlann, co-owner of the Sexy Pickle Club"
+               onerror="this.onerror=null;this.src='/lochlann.svg';">
+          <h3>Lochlann</h3>
+          <span class="role">Co-Owner</span>
+          <p>Co-owner of the brine. Taste-tests every batch, judges every crunch, and has never once approved a mild cucumber.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="sp-foot">
+    <p>&copy; 2026 sexypickleclub.com &middot; a mitch.pro society &middot; <a href="/">Home</a></p>
+  </footer>
+
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400" width="300" height="400" role="img" aria-label="Sexy Pickle Club portrait placeholder">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d3a1f"/>
+      <stop offset="1" stop-color="#0d1f10"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8fce5a"/>
+      <stop offset="1" stop-color="#5f9e3a"/>
+    </linearGradient>
+    <linearGradient id="suit" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff6fa5"/>
+      <stop offset="1" stop-color="#e8487f"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="400" rx="18" fill="url(#bg)"/>
+  <ellipse cx="150" cy="420" rx="190" ry="120" fill="#16301a"/>
+  <!-- pickle body -->
+  <ellipse cx="150" cy="235" rx="62" ry="118" fill="url(#skin)"/>
+  <!-- bumps -->
+  <g fill="#4c822e" opacity="0.55">
+    <circle cx="122" cy="180" r="4.5"/><circle cx="168" cy="160" r="4"/>
+    <circle cx="185" cy="225" r="5"/><circle cx="120" cy="255" r="4"/>
+    <circle cx="148" cy="300" r="4.5"/><circle cx="175" cy="285" r="3.5"/>
+    <circle cx="132" cy="330" r="3.5"/>
+  </g>
+  <!-- face -->
+  <g>
+    <circle cx="132" cy="150" r="5.5" fill="#12240f"/>
+    <circle cx="168" cy="150" r="5.5" fill="#12240f"/>
+    <path d="M136 172 Q150 184 164 172" stroke="#12240f" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+  <!-- bikini top -->
+  <g fill="url(#suit)" stroke="#c23368" stroke-width="2">
+    <path d="M104 210 L134 222 L106 238 Z"/>
+    <path d="M196 210 L166 222 L194 238 Z"/>
+  </g>
+  <path d="M104 210 Q150 190 196 210" stroke="#c23368" stroke-width="2.5" fill="none"/>
+  <!-- sparkles -->
+  <g fill="#b8e986" opacity="0.8">
+    <path d="M62 96 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 Z"/>
+    <path d="M242 130 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3 Z"/>
+    <path d="M226 320 l3 8 8 3 -8 3 -3 8 -3 -8 -8 -3 8 -3 Z"/>
+  </g>
+  <text x="150" y="376" text-anchor="middle" font-family="Outfit, system-ui, sans-serif" font-size="13" font-weight="700" letter-spacing="3" fill="#b8e986" opacity="0.85">PORTRAIT COMING SOON</text>
+</svg>

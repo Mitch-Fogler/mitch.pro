@@ -1762,7 +1762,7 @@ body.sales-page .sales-top { width: min(1240px, 100%); padding: 20px clamp(18px,
 body.sales-page .sales-top .brand { display: flex; align-items: center; gap: 9px; font-size: 15px; }
 body.sales-page .sales-top .brand::before { content: ''; width: 30px; height: 30px; border-radius: 9px; background: url('/icon-192.png') center/cover; }
 body.sales-page .sales-hero { width: min(1180px, 100%); min-height: min(680px, calc(100dvh - 80px)); display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding-inline: clamp(18px,6vw,76px); text-align: left; }
-body.sales-page .sales-hero .brand-hero { font-size: clamp(5rem, 14vw, 11rem); line-height: .74; letter-spacing: -.085em; background: linear-gradient(110deg,#fff 20%,#8993ff 78%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+body.sales-page .sales-hero .brand-hero { font-size: clamp(5rem, 14vw, 11rem); line-height: .74; letter-spacing: -.085em; padding-bottom: .18em; /* keep descenders inside the gradient-clip box */ background: linear-gradient(110deg,#fff 20%,#8993ff 78%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
 body.sales-page .sales-hero h1 { max-width: 700px; color: #fff; font-size: clamp(1.6rem,3vw,2.8rem); }
 body.sales-page .sales-hero .lede { max-width: 52ch; margin-inline: 0; color: #929cad; }
 body.sales-page .sales-cta-row { justify-content: flex-start; }

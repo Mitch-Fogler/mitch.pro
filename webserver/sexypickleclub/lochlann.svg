@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="300" height="300" role="img" aria-label="Lochlann placeholder portrait">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f2f3c"/>
+      <stop offset="1" stop-color="#0f1a22"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7cc25e"/>
+      <stop offset="1" stop-color="#4f8f35"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="300" rx="18" fill="url(#bg)"/>
+  <!-- co-owner's pickle portrait -->
+  <ellipse cx="150" cy="330" rx="120" ry="90" fill="#16261f"/>
+  <ellipse cx="150" cy="172" rx="54" ry="98" fill="url(#skin)"/>
+  <g fill="#3f7527" opacity="0.55">
+    <circle cx="128" cy="126" r="4"/><circle cx="172" cy="110" r="3.5"/>
+    <circle cx="180" cy="184" r="4.5"/><circle cx="122" cy="212" r="3.5"/>
+    <circle cx="148" cy="244" r="4"/>
+  </g>
+  <!-- laurel: co-owner -->
+  <g stroke="#b8e986" stroke-width="4" fill="none" stroke-linecap="round">
+    <path d="M100 96 Q92 130 104 158"/>
+    <path d="M200 96 Q208 130 196 158"/>
+  </g>
+  <g fill="#b8e986">
+    <ellipse cx="102" cy="106" rx="9" ry="4.5" transform="rotate(-30 102 106)"/>
+    <ellipse cx="97" cy="128" rx="9" ry="4.5" transform="rotate(-10 97 128)"/>
+    <ellipse cx="101" cy="150" rx="9" ry="4.5" transform="rotate(12 101 150)"/>
+    <ellipse cx="198" cy="106" rx="9" ry="4.5" transform="rotate(30 198 106)"/>
+    <ellipse cx="203" cy="128" rx="9" ry="4.5" transform="rotate(10 203 128)"/>
+    <ellipse cx="199" cy="150" rx="9" ry="4.5" transform="rotate(-12 199 150)"/>
+  </g>
+  <g>
+    <circle cx="134" cy="140" r="5" fill="#0e2016"/>
+    <circle cx="166" cy="140" r="5" fill="#0e2016"/>
+    <path d="M138 160 Q150 170 162 160" stroke="#0e2016" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="150" y="278" text-anchor="middle" font-family="Outfit, system-ui, sans-serif" font-size="12" font-weight="700" letter-spacing="3" fill="#b8e986" opacity="0.85">PHOTO COMING SOON</text>
+</svg>

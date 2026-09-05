@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 300" width="300" height="300" role="img" aria-label="Mitch placeholder portrait">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#233c22"/>
+      <stop offset="1" stop-color="#101f11"/>
+    </linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8fce5a"/>
+      <stop offset="1" stop-color="#5f9e3a"/>
+    </linearGradient>
+  </defs>
+  <rect width="300" height="300" rx="18" fill="url(#bg)"/>
+  <!-- founder's pickle portrait -->
+  <ellipse cx="150" cy="330" rx="120" ry="90" fill="#16301a"/>
+  <ellipse cx="150" cy="172" rx="54" ry="98" fill="url(#skin)"/>
+  <g fill="#4c822e" opacity="0.55">
+    <circle cx="126" cy="130" r="4"/><circle cx="170" cy="112" r="3.5"/>
+    <circle cx="178" cy="182" r="4.5"/><circle cx="124" cy="210" r="3.5"/>
+    <circle cx="150" cy="242" r="4"/>
+  </g>
+  <!-- crown: founder -->
+  <path d="M112 78 L126 98 L150 70 L174 98 L188 78 L182 108 L118 108 Z" fill="#f5c451" stroke="#c99a2e" stroke-width="2.5"/>
+  <circle cx="150" cy="72" r="5" fill="#e8487f"/>
+  <g>
+    <circle cx="134" cy="140" r="5" fill="#12240f"/>
+    <circle cx="166" cy="140" r="5" fill="#12240f"/>
+    <path d="M138 160 Q150 170 162 160" stroke="#12240f" stroke-width="4" fill="none" stroke-linecap="round"/>
+  </g>
+  <text x="150" y="278" text-anchor="middle" font-family="Outfit, system-ui, sans-serif" font-size="12" font-weight="700" letter-spacing="3" fill="#b8e986" opacity="0.85">PHOTO COMING SOON</text>
+</svg>

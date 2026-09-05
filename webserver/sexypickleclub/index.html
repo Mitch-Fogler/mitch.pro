@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sexy Pickle Club — sexypickleclub.com</title>
+  <meta name="description" content="The Sexy Pickle Club: an exclusive society of brined and beautiful individuals. Sign in with your mitch.pro account — same login, same chats, substantially more dill.">
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Sexy Pickle Club" />
+  <meta property="og:description" content="Some pickles are just sexier than others. Sign in with mitch.pro and claim your place in the brine." />
+  <meta property="og:image" content="/pickle-portrait.svg" />
+
+  <script src="/theme.js?v=9"></script>
+  <link rel="stylesheet" href="/app.css">
+
+  <style>
+    /* Same burning-cherry wallpaper treatment as mitch.pro's front page */
+    html body.pickle-page::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: url(/home-burning-cherry.webp) center / cover no-repeat;
+      opacity: 0.45;
+      filter: blur(26px);
+      transform: scale(1.15);
+      pointer-events: none;
+    }
+    html, html body {
+      background: transparent !important;
+      background-image: none !important;
+      background-attachment: initial !important;
+    }
+    html.theme-light body.pickle-page::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background: linear-gradient(180deg, rgba(242,244,250,0.72), rgba(236,238,247,0.8));
+      pointer-events: none;
+    }
+    body.pickle-page { --sp: #7ac74f; }
+
+    body.pickle-page .sp-page::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 80% 55% at 50% -15%, color-mix(in srgb, var(--sp) 20%, transparent), transparent 70%),
+        radial-gradient(ellipse 45% 40% at 100% 80%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 10%, transparent), transparent 65%);
+    }
+
+    /* Top bar — same shape as mitch.pro's sales-top, plus the portrait logo */
+    .sp-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      width: min(1080px, 100%);
+      margin: 0 auto;
+      padding: 1.15rem clamp(1rem, 4vw, 1.5rem);
+    }
+    .sp-top .sp-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-family: Outfit, system-ui, sans-serif;
+      font-weight: 800;
+      font-size: 1.2rem;
+      letter-spacing: -0.03em;
+      color: var(--t-fg);
+      text-decoration: none;
+      min-width: 0;
+    }
+    /* Portrait-style club logo. Drop the real photo at /pickle-logo.jpg in
+       webserver/sexypickleclub/ and it replaces the placeholder everywhere. */
+    .sp-logo {
+      width: 2.6rem;
+      height: 3.4rem;
+      flex: 0 0 auto;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid color-mix(in srgb, var(--sp) 45%, var(--t-bd));
+      box-shadow: 0 6px 20px rgba(122, 199, 79, 0.25);
+      background: #12240f;
+    }
+    .sp-top nav { display: flex; align-items: center; gap: 0.6rem; }
+    .sp-top nav a {
+      color: var(--t-fg2);
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-decoration: none;
+    }
+    .sp-top nav a:hover { color: var(--t-fg); }
+
+    /* Hero */
+    .sp-hero {
+      width: min(720px, 100%);
+      margin: 0 auto;
+      padding: clamp(2.5rem, 9vh, 5.5rem) clamp(1rem, 4vw, 1.5rem) clamp(2.5rem, 7vh, 4.5rem);
+      text-align: center;
+      animation: app-fade-in 0.55s ease both;
+    }
+    .sp-hero .sp-portrait {
+      width: clamp(120px, 26vw, 176px);
+      aspect-ratio: 3 / 4;
+      object-fit: cover;
+      border-radius: 18px;
+      border: 1px solid color-mix(in srgb, var(--sp) 45%, var(--t-bd));
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      margin-bottom: 1.4rem;
+    }
+    .sp-hero .brand-hero {
+      display: block;
+      font-family: Outfit, system-ui, sans-serif;
+      font-size: clamp(2.4rem, 8vw, 4.4rem);
+      font-weight: 800;
+      letter-spacing: -0.045em;
+      line-height: 1;
+      color: var(--t-fg);
+      margin: 0 0 1.15rem;
+    }
+    .sp-hero .brand-hero em { font-style: normal; color: var(--sp); }
+    .sp-hero h1 {
+      margin: 0 0 0.85rem;
+      font-size: clamp(1.35rem, 3.5vw, 1.85rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+    .sp-hero .lede {
+      margin: 0 auto 1.75rem;
+      max-width: 38ch;
+      color: var(--t-fg2);
+      font-size: clamp(1rem, 2.4vw, 1.15rem);
+      line-height: 1.55;
+    }
+    .sp-cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      justify-content: center;
+    }
+    .sp-cta-row .btn-primary, .sp-cta-row .btn-ghost { min-height: 2.85rem; padding: 0.7rem 1.35rem; font-weight: 700; }
+    body.pickle-page .btn-ghost:not(.btn-primary) {
+      background: color-mix(in srgb, var(--t-bg) 62%, transparent) !important;
+      border: 1px solid var(--t-bd) !important;
+      border-radius: 8px !important;
+    }
+
+    /* Sections — same rhythm as mitch.pro's sales page */
+    .sp-section {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: clamp(2.5rem, 7vh, 4rem) clamp(1rem, 4vw, 1.5rem);
+    }
+    .sp-section h2 { margin: 0 0 0.55rem; font-size: clamp(1.45rem, 3vw, 1.85rem); text-align: center; }
+    .sp-section > .sub {
+      margin: 0 auto 1.75rem;
+      max-width: 42ch;
+      text-align: center;
+      color: var(--t-fg2);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .sp-list { display: grid; gap: 0.85rem; }
+    @media (min-width: 720px) { .sp-list { grid-template-columns: 1fr 1fr; } }
+    .sp-item {
+      padding: 1.15rem 1.2rem;
+      border: 1px solid var(--t-bd);
+      border-radius: calc(var(--t-radius, 8px) + 2px);
+      background: color-mix(in srgb, var(--t-bg2) 88%, transparent);
+      animation: app-fade-in 0.5s ease both;
+    }
+    .sp-item:nth-child(2) { animation-delay: 0.05s; }
+    .sp-item:nth-child(3) { animation-delay: 0.1s; }
+    .sp-item:nth-child(4) { animation-delay: 0.15s; }
+    .sp-item h3 { margin: 0 0 0.35rem; font-size: 1.02rem; }
+    .sp-item h3 .sp-emoji { margin-right: 0.4rem; }
+    .sp-item p { margin: 0; color: var(--t-fg2); font-size: 0.88rem; line-height: 1.5; }
+
+    /* Bottom CTA + footer */
+    .sp-bottom {
+      width: min(560px, 100%);
+      margin: 0 auto 2rem;
+      padding: 2rem 1.25rem;
+      text-align: center;
+    }
+    .sp-bottom h2 { margin: 0 0 0.45rem; font-size: 1.55rem; }
+    .sp-bottom p { margin: 0 0 1.25rem; color: var(--t-fg2); font-size: 0.95rem; }
+    .sp-foot {
+      text-align: center;
+      padding: 1.5rem 1rem 2.5rem;
+      color: var(--t-fg2);
+      font-size: 0.8rem;
+    }
+    .sp-foot a { font-weight: 600; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sp-hero, .sp-item { animation: none !important; }
+    }
+  </style>
+</head>
+<body class="app-shell pickle-page" data-shell="off">
+  <header class="sp-top">
+    <a class="sp-brand" href="/" aria-label="Sexy Pickle Club home">
+      <img class="sp-logo" src="/pickle-logo.jpg" alt="Sexy Pickle Club portrait logo"
+           onerror="this.onerror=null;this.src='/pickle-portrait.svg';">
+      <span>Sexy Pickle Club</span>
+    </a>
+    <nav>
+      <a href="/members/">Members</a>
+      <a id="navLogin" class="btn-ghost" href="/api/sso/bridge?back=%2F">Sign in with mitch.pro</a>
+    </nav>
+  </header>
+
+  <main class="sp-page">
+    <section class="sp-hero" aria-label="Welcome">
+      <img class="sp-portrait" src="/pickle-logo.jpg" alt="The club portrait — a pickle in a bikini"
+           onerror="this.onerror=null;this.src='/pickle-portrait.svg';">
+      <div class="brand-hero">Sexy <em>Pickle</em> Club</div>
+      <h1>Some pickles are just sexier than others.</h1>
+      <p class="lede" id="heroDesc">An exclusive society of the brined and beautiful. Membership is free, the dress code is crisp-with-a-little-crunch, and your mitch.pro account is the whole key.</p>
+      <div class="sp-cta-row">
+        <a class="btn-primary" id="heroCta" href="/api/sso/bridge?back=%2F">Sign in with mitch.pro</a>
+        <a class="btn-ghost" href="/members/">Meet the members</a>
+      </div>
+    </section>
+
+    <section class="sp-section" aria-labelledby="perksHeading">
+      <h2 id="perksHeading">Full barrel privileges</h2>
+      <p class="sub">One account for every room in the club.</p>
+      <div class="sp-list">
+        <article class="sp-item">
+          <h3><span class="sp-emoji" aria-hidden="true">🫙</span>The Barrel</h3>
+          <p>Open chat for every member, live for everyone. Bring your best brine takes.</p>
+        </article>
+        <article class="sp-item">
+          <h3><span class="sp-emoji" aria-hidden="true">🔒</span>The Brine Cellar</h3>
+          <p>End-to-end encrypted DMs and groups — secret handshakes, actually secret.</p>
+        </article>
+        <article class="sp-item">
+          <h3><span class="sp-emoji" aria-hidden="true">🎮</span>Game Room</h3>
+          <p>Hundreds of games on mitch.pro, no downloads. Crunch time, literally.</p>
+        </article>
+        <article class="sp-item">
+          <h3><span class="sp-emoji" aria-hidden="true">🥒</span>One account, total cucumber</h3>
+          <p>Your mitch.pro login is the entire membership. Nothing else to join, nothing else to remember.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="sp-bottom">
+      <h2>Think you're brined enough?</h2>
+      <p>Sign in with mitch.pro and find out.</p>
+      <a class="btn-primary" id="ctaSignin" href="/api/sso/bridge?back=%2F">Sign in with mitch.pro</a>
+    </section>
+  </main>
+
+  <footer class="sp-foot">
+    <p>&copy; 2026 sexypickleclub.com &middot; a mitch.pro society &middot; <a href="https://mitch.pro/faq.html" data-site-link="alternate/faq.html">FAQ</a> &middot; <a href="https://mitch.pro/use-agreement.html" data-site-link="alternate/use-agreement.html">Use Agreement</a> &middot; <a href="https://github.com/Mitch-Fogler/mitch.pro" target="_blank" rel="noopener" title="mitch.pro is open source — view the code yourself">Open source</a></p>
+  </footer>
+
+<script src="/cookie-consent.js" defer></script>
+<script>
+(function () {
+  'use strict';
+  let siteInfo = null;
+  function $id(id) { return document.getElementById(id); }
+
+  // ── Auth state: show the member's name once signed in ─────────────────────
+  async function checkAuth() {
+    try {
+      const r = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
+      if (r.ok) {
+        const me = await r.json();
+        const name = (me && (me.name || me.email || '')).toString();
+        if (name) {
+          const who = name.split('@')[0];
+          [$id('navLogin'), $id('heroCta'), $id('ctaSignin')].forEach(a => {
+            if (!a) return;
+            a.textContent = 'Welcome, ' + who;
+            a.setAttribute('href', '/members/');
+          });
+          const lede = $id('heroDesc');
+          if (lede) lede.textContent = 'The brine has been expecting you, ' + who + '. The Barrel is open, the Cellar is unlocked, and the crunch ratings have been updated.';
+        }
+      }
+    } catch {}
+  }
+
+  // ── SSO: sign in through a reachable mitch.pro identity origin ─────────────
+  async function reachable(origin, timeoutMs) {
+    try {
+      const opts = { mode: 'no-cors', cache: 'no-store' };
+      if (window.AbortSignal && AbortSignal.timeout) opts.signal = AbortSignal.timeout(timeoutMs);
+      await fetch(origin + '/api/site-info', opts);
+      return true;
+    } catch (_) { return false; }
+  }
+
+  async function goSignIn(e) {
+    // Signed out only: let the browser follow the bridge link as-is when the
+    // primary origin is reachable (it's the same host for the club).
+    const primary = String((siteInfo && siteInfo.primary) || 'https://mitch.pro').replace(/\/+$/, '');
+    if (await reachable(primary, 4000)) return; // same-server bridge handles it
+    e.preventDefault();
+    const alternate = String((siteInfo && siteInfo.alternate) || '').replace(/\/+$/, '');
+    const target = alternate || primary;
+    location.href = target + '/api/sso/bridge?back=' + encodeURIComponent(location.origin + '/');
+  }
+
+  // ── Boot ───────────────────────────────────────────────────────────────────
+  // Point mitch.pro links at the network's current primary/alternate origin
+  // (data/site.json), so mirrors stay correct without republishing this page.
+  (async function applySiteLinks() {
+    try {
+      const r = await fetch('/api/site-info', { cache: 'no-store' });
+      if (!r.ok) return;
+      const site = await r.json();
+      siteInfo = site;
+      const base = (site.alternate || site.primary || '').replace(/\/+$/, '');
+      if (!base) return;
+      document.querySelectorAll('[data-site-link]').forEach(a => {
+        const spec = a.getAttribute('data-site-link') || '';
+        const rest = spec.replace(/^alternate\/?/, '');
+        a.href = rest ? base + '/' + rest : base + '/';
+      });
+    } catch {}
+  })();
+
+  checkAuth();
+  ['navLogin', 'heroCta', 'ctaSignin'].forEach(id => {
+    const a = $id(id);
+    if (a) a.addEventListener('click', goSignIn);
+  });
+})();
+</script>
+</body>
+</html>
