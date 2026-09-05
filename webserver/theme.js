@@ -76,6 +76,39 @@
     var n = parseInt(m[1], 16);
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
   }
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var max = Math.max(r, g, b), min = Math.min(r, g, b), h = 0, s = 0;
+    var l = (max + min) / 2;
+    if (max !== min) {
+      var d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) h = ((g - b) / d + (g < b ? 6 : 0));
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+    }
+    return [h, s, l];
+  }
+  function hslToHex(h, s, l) {
+    h = ((h % 360) + 360) % 360;
+    s = clamp(s, 0, 1); l = clamp(l, 0, 1);
+    var c = (1 - Math.abs(2 * l - 1)) * s;
+    var x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    var m = l - c / 2;
+    var rgb;
+    if (h < 60) rgb = [c, x, 0];
+    else if (h < 120) rgb = [x, c, 0];
+    else if (h < 180) rgb = [0, c, x];
+    else if (h < 240) rgb = [0, x, c];
+    else if (h < 300) rgb = [x, 0, c];
+    else rgb = [c, 0, x];
+    var to = function (v) {
+      var n = Math.round((v + m) * 255);
+      return ('0' + clamp(n, 0, 255).toString(16)).slice(-2);
+    };
+    return '#' + to(rgb[0]) + to(rgb[1]) + to(rgb[2]);
+  }
   function applyCustomizationPrefs() {
     var r = document.documentElement.style;
     var dim = clamp(getPref('dim', '0.50'), 0, 0.85);
@@ -154,6 +187,176 @@
     } else {
       r.setProperty('--t-bg-img-layer', 'var(--t-bgr, none)');
     }
+    scheduleAdaptive();
+  }
+
+  /* ── Background-adaptive accent (dark mode) ────────────────────────────────
+     Samples the active wallpaper (the url() inside --t-bg-img-layer / --t-bgr)
+     on a tiny canvas, finds its dominant saturated hue, and tints the accent
+     tokens to match — so the UI picks up the background's color. Skipped in
+     light mode, when the user set a manual accent, or when theme_adapt=off. */
+
+  var ADAPT_CACHE = {};
+  var adaptTimer = null;
+  // Tokens this feature owns — applyTheme only resets --t-*, so clearAdaptive
+  // must remove ALL of them (including the bg2/bg3 nudges and --ui-* writes)
+  // or they'd survive a dark → light → dark round trip.
+  var ADAPT_TOKENS = ['--t-ac', '--t-ac2', '--t-ac3', '--t-bda', '--t-gl', '--t-gls', '--t-gr', '--t-bg2', '--t-bg3', '--ui-blue', '--ui-blue-2'];
+
+  function scheduleAdaptive() {
+    clearTimeout(adaptTimer);
+    adaptTimer = setTimeout(applyAdaptiveTheme, 250);
+  }
+
+  function clearAdaptive() {
+    var r = document.documentElement.style;
+    for (var i = 0; i < ADAPT_TOKENS.length; i++) r.removeProperty(ADAPT_TOKENS[i]);
+    document.documentElement.removeAttribute('data-adapt');
+  }
+
+  function adaptiveImageUrl() {
+    try {
+      var style = getComputedStyle(document.documentElement);
+      var cands = [style.getPropertyValue('--t-bg-img-layer'), style.getPropertyValue('--t-bgr')];
+      for (var i = 0; i < cands.length; i++) {
+        var m = /url\((['"]?)([^'")]+)\1\)/.exec(cands[i] || '');
+        if (m && m[2]) return m[2].trim();
+      }
+    } catch (_) {}
+    return '';
+  }
+
+  function applyAdaptiveTheme(force) {
+    var root = document.documentElement;
+    if (getPref('adapt', 'on') === 'off' && !force) { clearAdaptive(); return; }
+    if (root.classList.contains('theme-light')) { clearAdaptive(); return; }
+    // A manual accent is the user's explicit choice — never override it.
+    if (/^#[0-9a-f]{6}$/i.test(getPref('accent', ''))) { clearAdaptive(); return; }
+
+    var url = adaptiveImageUrl();
+    if (!url) { clearAdaptive(); return; }
+    var mode = root.classList.contains('theme-light') ? 'light' : 'dark';
+    var cacheKey = mode + '|' + url;
+
+    var cached = ADAPT_CACHE[cacheKey];
+    if (cached) {
+      if (cached.failed) { clearAdaptive(); return; }
+      writeAdaptiveTokens(cached.tokens);
+      return;
+    }
+
+    // Cross-origin wallpapers taint the canvas — pre-reject instead of trying.
+    var abs = null;
+    try { abs = new URL(url, location.href); } catch (_) {}
+    if (!abs || abs.origin !== location.origin) {
+      ADAPT_CACHE[cacheKey] = { failed: true };
+      clearAdaptive();
+      return;
+    }
+
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function () {
+      try {
+        var tokens = sampleImagePalette(img);
+        ADAPT_CACHE[cacheKey] = { tokens: tokens };
+        writeAdaptiveTokens(tokens);
+      } catch (_) {
+        ADAPT_CACHE[cacheKey] = { failed: true };
+        clearAdaptive();
+      }
+    };
+    img.onerror = function () {
+      ADAPT_CACHE[cacheKey] = { failed: true };
+      clearAdaptive();
+    };
+    img.src = abs.href;
+  }
+
+  function sampleImagePalette(img) {
+    var SIZE = 32;
+    var canvas = document.createElement('canvas');
+    canvas.width = SIZE; canvas.height = SIZE;
+    var ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw Error('no 2d context');
+    ctx.drawImage(img, 0, 0, SIZE, SIZE);
+    var data = ctx.getImageData(0, 0, SIZE, SIZE).data;
+
+    // 24 hue bins, weighted toward saturated mid-luminance pixels — this
+    // ignores the dark overlay gradient that sits on top of the wallpaper.
+    var BINS = 24, BIN = 360 / BINS;
+    var bins = [];
+    for (var i = 0; i < BINS; i++) bins.push({ w: 0, sinSum: 0, cosSum: 0, chroma: 0 });
+    var meanL = 0, meanN = 0;
+    for (var p = 0; p < data.length; p += 4) {
+      var hsl = rgbToHsl(data[p], data[p + 1], data[p + 2]);
+      var h = hsl[0], s = hsl[1], l = hsl[2];
+      meanL += l; meanN++;
+      if (s < 0.14 || l < 0.05 || l > 0.95) continue;
+      var w = s * (1 - Math.abs(l - 0.42) * 1.6);
+      if (w <= 0) continue;
+      var rad = h * Math.PI / 180;
+      var bin = bins[Math.min(BINS - 1, Math.floor(h / BIN))];
+      bin.w += w;
+      bin.sinSum += Math.sin(rad) * w;
+      bin.cosSum += Math.cos(rad) * w;
+      bin.chroma += s * w;
+    }
+    if (!meanN) throw Error('empty sample');
+    meanL /= meanN;
+
+    var best = null;
+    for (var b = 0; b < BINS; b++) {
+      if (bins[b].w <= 0) continue;
+      if (!best || bins[b].w > best.w) best = bins[b];
+    }
+    if (!best) throw Error('no usable color');
+    var H = Math.atan2(best.sinSum, best.cosSum) * 180 / Math.PI;
+    var S = clamp(best.chroma / best.w * 1.15, 0.5, 0.86);
+    var Lac = clamp(0.66 - (meanL - 0.30) * 0.25, 0.52, 0.72);
+
+    var ac = hslToHex(H, S, Lac);
+    var ac2 = hslToHex(H + 14, Math.min(S + 0.06, 0.9), Lac + 0.09);
+    var ac3 = hslToHex(H + 320, S * 0.92, Lac - 0.06);
+    return { ac: ac, ac2: ac2, ac3: ac3 };
+  }
+
+  function writeAdaptiveTokens(tokens) {
+    var r = document.documentElement.style;
+    // Same alphas as the manual-accent block in applyCustomizationPrefs(), so
+    // adaptive and hand-picked accents are visually interchangeable.
+    r.setProperty('--t-ac', tokens.ac);
+    r.setProperty('--t-ac2', tokens.ac2);
+    r.setProperty('--t-ac3', tokens.ac3);
+    r.setProperty('--t-bda', hexToRgba(tokens.ac, 0.55));
+    r.setProperty('--t-gl', hexToRgba(tokens.ac, 0.48));
+    r.setProperty('--t-gls', hexToRgba(tokens.ac, 0.15));
+    r.setProperty('--t-gr', 'linear-gradient(135deg,' + tokens.ac + ',' + tokens.ac3 + ')');
+
+    // Nudge the translucent surfaces 12% toward the accent (never the opaque
+    // page base or the wallpaper itself).
+    blendSurface('--t-bg2', tokens.ac);
+    blendSurface('--t-bg3', tokens.ac);
+
+    // portal-redesign.css keeps its own --ui-* palette that never reads --t-*;
+    // an inline style on <html> beats both its :root and .theme-light blocks.
+    r.setProperty('--ui-blue', tokens.ac);
+    r.setProperty('--ui-blue-2', tokens.ac2);
+    document.documentElement.setAttribute('data-adapt', '1');
+  }
+
+  function blendSurface(prop, accentHex) {
+    var cur = document.documentElement.style.getPropertyValue(prop) ||
+      getComputedStyle(document.documentElement).getPropertyValue(prop) || '';
+    var m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(cur);
+    if (!m) return;
+    var a = parseInt(accentHex.slice(1, 3), 16);
+    var g = parseInt(accentHex.slice(3, 5), 16);
+    var b = parseInt(accentHex.slice(5, 7), 16);
+    var mix = function (cStr, ac) { return Math.round(Number(cStr) * 0.88 + ac * 0.12); };
+    var out = 'rgba(' + mix(m[1], a) + ',' + mix(m[2], g) + ',' + mix(m[3], b) +
+      (m[4] !== undefined ? ',' + m[4] : '') + ')';
+    document.documentElement.style.setProperty(prop, out);
   }
 
   var SUN_SVG =
@@ -209,6 +412,7 @@
     r.setProperty('--t-display', "'Figtree', system-ui, sans-serif");
     applyCustomizationPrefs();
     applyBgImg(getEffectiveBgImg());
+    applyAdaptiveTheme();
     syncToggleBtn();
   }
 
@@ -444,6 +648,7 @@
     themes: T,
     setBg: function(url) { setBgImgCookie(url); applyBgImg(url); },
     applyMaterial: applyMaterialMode,
+    adapt: function () { applyAdaptiveTheme(); },
     canUseGlass: canUseGlass
   };
 
@@ -626,5 +831,5 @@
 
   if (document.body) { applyVFX(); applyCustomCSS(); applyQuickAccess(); }
   else { document.addEventListener('DOMContentLoaded', function(){ applyVFX(); applyCustomCSS(); applyQuickAccess(); }); }
-  window.addEventListener('themecustomize', function() { applyVFX(); applyCustomCSS(); applyQuickAccess(); });
+  window.addEventListener('themecustomize', function() { applyAdaptiveTheme(); applyVFX(); applyCustomCSS(); applyQuickAccess(); });
 })();

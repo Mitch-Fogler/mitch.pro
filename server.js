@@ -196,6 +196,72 @@ const PICKLE_GROUPS_FILE     = join(DATA_DIR, 'pickle_groups.json');
 const PICKLE_DM_CLEARED_FILE = join(DATA_DIR, 'pickle_dm_cleared.json');
 const PICKLE_VOTES_FILE      = join(DATA_DIR, 'pickle_votes.json');
 const PICKLE_CRUNCH_FILE     = join(DATA_DIR, 'pickle_crunch.json');
+// Membership roster (pending/approved/rejected by the co-founders) and the
+// founders-only Club Bulletin.
+const PICKLE_MEMBERS_FILE    = join(DATA_DIR, 'pickle_members.json');
+const PICKLE_BULLETIN_FILE   = join(DATA_DIR, 'pickle_bulletin.json');
+// Co-owners appointed by the founders (by email, even before that person has
+// an account). { [normEmail]: { appointedAt, appointedBy, memberNumber } }.
+const PICKLE_OWNERS_FILE     = join(DATA_DIR, 'pickle_owners.json');
+
+// Sexy Pickle Club co-founders: the only accounts that approve members and
+// publish to the Club Bulletin. Founders are implicitly approved members
+// (Jar #1 / #2) and never get a roster record.
+const PICKLE_FOUNDERS = new Set(['mitch@student.rjuhsd.us', 'lochlann@student.rjuhsd.us', 'admin@mitch.pro']);
+
+function pickleCoOwners() { return loadJson(PICKLE_OWNERS_FILE, {}); }
+
+// Founders + appointed co-owners: full founder powers (approve, bulletin, owners).
+function isPickleFounderEmail(norm) {
+  return PICKLE_FOUNDERS.has(norm) || !!pickleCoOwners()[norm];
+}
+
+function isPickleFounderId(sid) {
+  if (!sid || !validId(sid) || isRevoked(sid)) return false;
+  const email = emailFromSid(sid);
+  return !!email && isPickleFounderEmail(normalizeEmail(email));
+}
+
+function pickleMembershipFor(normEmail) {
+  if (!normEmail) return null;
+  if (PICKLE_FOUNDERS.has(normEmail)) {
+    // Founders are implicitly approved; the Jar number follows founder order.
+    const order = [...PICKLE_FOUNDERS].indexOf(normEmail);
+    return { status: 'approved', memberNumber: order + 1, founder: true };
+  }
+  const coowner = pickleCoOwners()[normEmail];
+  if (coowner) return { status: 'approved', memberNumber: coowner.memberNumber || null, coowner: true };
+  const rec = loadJson(PICKLE_MEMBERS_FILE, {})[normEmail];
+  return rec || null;
+}
+
+function pickleJarFor(email, membersCache) {
+  const norm = normalizeEmail(email || '');
+  if (!norm) return null;
+  if (PICKLE_FOUNDERS.has(norm)) return [...PICKLE_FOUNDERS].indexOf(norm) + 1;
+  const coowner = pickleCoOwners()[norm];
+  if (coowner) return coowner.memberNumber || null;
+  const rec = (membersCache || loadJson(PICKLE_MEMBERS_FILE, {}))[norm];
+  return rec && rec.status === 'approved' ? (rec.memberNumber || null) : null;
+}
+
+// Auto-register a signed-in visitor as a pending member on first visit.
+// Idempotent; never resurrects a rejected application (that's what
+// /api/pickle-club/join is for).
+function ensurePickleMember(sid) {
+  if (!sid || !validId(sid) || isRevoked(sid)) return null;
+  const email = emailFromSid(sid);
+  if (!email) return null;
+  const norm = normalizeEmail(email);
+  if (PICKLE_FOUNDERS.has(norm) || pickleCoOwners()[norm]) return pickleMembershipFor(norm);
+  const all = loadJson(PICKLE_MEMBERS_FILE, {});
+  if (!all[norm]) {
+    all[norm] = { status: 'pending', requestedAt: Date.now(), approvedAt: 0, approvedBy: '', memberNumber: 0, note: '' };
+    saveJson(PICKLE_MEMBERS_FILE, all);
+    return all[norm];
+  }
+  return all[norm];
+}
 const MARKETPLACE_FILE       = join(DATA_DIR, 'marketplace.json');
 const COSMETICS_FILE         = join(DATA_DIR, 'cosmetics.json');
 const EMOJIS_FILE            = join(DATA_DIR, 'emojis.json');
@@ -231,6 +297,10 @@ try {
   }
 } catch {}
 const lastRecaptchaSuccess = new Map();
+// NOTE FOR AGENTS: the instance on port 6800 is NOT production — there is no
+// production server in this repo/environment. It is just the long-running
+// local/dev instance. Restarting it when server.js or static assets change is
+// expected and safe. Test instances use PORT=6899 DATA_DIR=/tmp/mitch-test.
 const PORT = Number(process.env.PORT || 6800);
 const HOST = "0.0.0.0";
 const ROSEVILLE_WEATHER_URL = 'https://api.open-meteo.com/v1/forecast?latitude=38.7521&longitude=-121.2880&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FLos_Angeles&forecast_days=3';
@@ -1346,6 +1416,15 @@ const RATE_LIMITS = {
   '/api/pickle-chat/presence': [10,  60],
   '/api/pickle-club/vote':     [5,   60],
   '/api/pickle-club/crunch':   [5,   60],
+  '/api/pickle-club/membership': [60, 60],
+  '/api/pickle-club/join':     [3,  300],
+  '/api/pickle-club/applicants': [30, 60],
+  '/api/pickle-club/decide':   [30,  60],
+  '/api/pickle-club/owners':   [30,  60],
+  '/api/pickle-bulletin/state':  [120, 60],
+  '/api/pickle-bulletin/post':   [5,  300],
+  '/api/pickle-bulletin/react':  [30,  10],
+  '/api/pickle-bulletin/delete': [10,  60],
   // Direct/group chat is authenticated and CSRF-protected. Allow normal
   // conversational bursts while retaining a firm abuse ceiling.
   '/api/dm/send':              [20,  10],
@@ -12817,7 +12896,8 @@ function loadAllGamesList() {
         msg: {
           ...msg,
           email: maskEmail(msg.email || ''),
-          color: publicActiveColor(msg.email || msg.name || '', msg.color)
+          color: publicActiveColor(msg.email || msg.name || '', msg.color),
+          jar: pickleJarFor(msg.email || '')
         }
       });
       for (const ws of allSockets) {
@@ -12923,6 +13003,212 @@ function loadAllGamesList() {
       const data = loadJson(PICKLE_CRUNCH_FILE, {});
       data[normalizeEmail(email)] = rating;
       saveJson(PICKLE_CRUNCH_FILE, data);
+      return jsonResp(200, { ok: true });
+    }
+
+    // ── SPC membership status layer ──────────────────────────────────────────
+    // Signing in makes you a pending member; the co-founders approve/reject
+    // from the Applicants panel on /members/. Nobody is locked out — pending
+    // members keep full Barrel/Cellar access and are just marked Non-Member.
+    if (path === '/api/pickle-club/join' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      const norm = normalizeEmail(email);
+      if (isPickleFounderEmail(norm)) return jsonResp(200, { ok: true, status: 'approved', isFounder: true });
+      const all = loadJson(PICKLE_MEMBERS_FILE, {});
+      const rec = all[norm];
+      if (rec && rec.status === 'approved') return jsonResp(200, { ok: true, status: 'approved' });
+      // New application, or a rejected one reapplies (fresh timestamp, note cleared).
+      all[norm] = {
+        status: 'pending',
+        requestedAt: Date.now(),
+        approvedAt: 0,
+        approvedBy: '',
+        memberNumber: 0,
+        note: '',
+      };
+      saveJson(PICKLE_MEMBERS_FILE, all);
+      return jsonResp(200, { ok: true, status: 'pending' });
+    }
+
+    if (path === '/api/pickle-club/decide' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isPickleFounderId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const actorEmail = emailFromSid(sid);
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const target = normalizeEmail(String(body.email || ''));
+      const decision = String(body.decision || '');
+      if (!target || !['approved', 'rejected'].includes(decision)) {
+        return jsonResp(400, { error: 'email and decision (approved|rejected) required' });
+      }
+      if (isPickleFounderEmail(target)) return jsonResp(400, { error: 'founders and co-owners are always approved' });
+      const all = loadJson(PICKLE_MEMBERS_FILE, {});
+      const rec = all[target] || { status: 'pending', requestedAt: Date.now(), approvedAt: 0, approvedBy: '', memberNumber: 0, note: '' };
+      rec.status = decision;
+      rec.note = String(body.note || '').slice(0, 300);
+      if (decision === 'approved') {
+        if (!rec.memberNumber) {
+          let max = PICKLE_FOUNDERS.size; // founders hold Jar #1..#N
+          for (const r of Object.values(all)) max = Math.max(max, r.memberNumber || 0);
+          for (const o of Object.values(pickleCoOwners())) max = Math.max(max, o.memberNumber || 0);
+          rec.memberNumber = max + 1;
+        }
+        rec.approvedAt = Date.now();
+        rec.approvedBy = normalizeEmail(actorEmail || '');
+      }
+      all[target] = rec;
+      saveJson(PICKLE_MEMBERS_FILE, all);
+      logAdminAction(actorEmail, 'pickle_member_' + decision, { email: target, note: rec.note });
+      return jsonResp(200, { ok: true, status: rec.status, memberNumber: rec.memberNumber || null });
+    }
+
+    // Appoint/remove co-owners. Founders only. Works by raw email, even when
+    // the person has never signed in — their founder powers activate the
+    // first time they do (ensurePickleMember short-circuits for co-owners).
+    if (path === '/api/pickle-club/owners' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isPickleFounderId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const actorEmail = emailFromSid(sid);
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const target = normalizeEmail(String(body.email || ''));
+      const action = String(body.action || '');
+      if (!target || !['appoint', 'remove'].includes(action)) {
+        return jsonResp(400, { error: 'email and action (appoint|remove) required' });
+      }
+      if (PICKLE_FOUNDERS.has(target)) return jsonResp(400, { error: 'that account is already a co-founder' });
+      const owners = pickleCoOwners();
+      if (action === 'appoint') {
+        if (!owners[target]) {
+          // An existing approved member keeps the Jar number they already
+          // hold; everyone else takes the next number after all holders.
+          const roster = loadJson(PICKLE_MEMBERS_FILE, {})[target];
+          let memberNumber = roster && roster.status === 'approved' ? (roster.memberNumber || 0) : 0;
+          if (!memberNumber) {
+            let max = PICKLE_FOUNDERS.size; // founders hold Jar #1..#N
+            for (const r of Object.values(loadJson(PICKLE_MEMBERS_FILE, {}))) max = Math.max(max, r.memberNumber || 0);
+            for (const o of Object.values(owners)) max = Math.max(max, o.memberNumber || 0);
+            memberNumber = max + 1;
+          }
+          owners[target] = { appointedAt: Date.now(), appointedBy: normalizeEmail(actorEmail || ''), memberNumber };
+          saveJson(PICKLE_OWNERS_FILE, owners);
+        }
+      } else {
+        if (!owners[target]) return jsonResp(404, { error: 'not a co-owner' });
+        delete owners[target];
+        saveJson(PICKLE_OWNERS_FILE, owners);
+      }
+      logAdminAction(actorEmail, 'pickle_owner_' + action, { email: target });
+      return jsonResp(200, { ok: true, action, coowners: Object.keys(owners) });
+    }
+
+    // ── SPC Club Bulletin — founders publish, everyone reacts ────────────────
+    // Reactions mirror The Barrel exactly: { emoji: [normEmail, ...] } on the
+    // post; clients only ever see counts (plus their own picks).
+    if (path === '/api/pickle-bulletin/post' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      if (!isPickleFounderId(sid)) return jsonResp(403, { error: 'only the co-founders publish to the Bulletin' });
+      const email = emailFromSid(sid);
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const title = String(body.title || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+      if (!title) return jsonResp(400, { error: 'title required' });
+      const html = sanitizeBlogHtml(String(body.html || body.text || ''), String(body.text || '').slice(0, 20000));
+      if (!html.trim()) return jsonResp(400, { error: 'empty post' });
+      const norm = normalizeEmail(email);
+      const profiles = loadJson(PROFILES_FILE, {});
+      const post = {
+        id: randomBytes(8).toString('hex'),
+        title,
+        html,
+        authorEmail: norm,
+        authorName: (profiles[norm] || {}).displayName || email.split('@')[0],
+        ts: Date.now(),
+        updatedAt: 0,
+        pinned: !!body.pinned,
+        reactions: {},
+      };
+      const posts = loadJson(PICKLE_BULLETIN_FILE, []);
+      posts.unshift(post);
+      saveJson(PICKLE_BULLETIN_FILE, posts.slice(-500));
+      logAdminAction(email, 'pickle_bulletin_post', { id: post.id, title });
+      const payload = JSON.stringify({ type: 'pickle_bulletin_new', post: pickleBulletinPublic(post, '') });
+      for (const ws of allSockets) {
+        if (ws.data && ws.data.isBroadcast) { try { ws.send(payload); } catch {} }
+      }
+      return jsonResp(200, { ok: true, post: pickleBulletinPublic(post, norm) });
+    }
+
+    if (path === '/api/pickle-bulletin/react' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const postId = String(body.id || '');
+      const emoji = String(body.emoji || '');
+      if (!postId || !emoji || [...emoji].length > 3) return jsonResp(400, { error: 'id and emoji required' });
+      const posts = loadJson(PICKLE_BULLETIN_FILE, []);
+      const post = posts.find(p => p && p.id === postId);
+      if (!post) return jsonResp(404, { error: 'post not found' });
+      const normEmail = normalizeEmail(email);
+      if (!post.reactions || typeof post.reactions !== 'object') post.reactions = {};
+      const list = Array.isArray(post.reactions[emoji]) ? post.reactions[emoji] : [];
+      const mineIdx = list.indexOf(normEmail);
+      if (mineIdx >= 0) list.splice(mineIdx, 1);
+      else list.push(normEmail);
+      if (list.length) post.reactions[emoji] = list;
+      else delete post.reactions[emoji];
+      saveJson(PICKLE_BULLETIN_FILE, posts);
+      const tally = {};
+      for (const [em, arr] of Object.entries(post.reactions)) {
+        if (Array.isArray(arr) && arr.length) tally[em] = arr.length;
+      }
+      const payload = JSON.stringify({ type: 'pickle_bulletin_react', id: postId, reactions: tally });
+      for (const ws of allSockets) {
+        if (ws.data && ws.data.isBroadcast) { try { ws.send(payload); } catch {} }
+      }
+      const myReactions = Object.entries(post.reactions)
+        .filter(([, arr]) => Array.isArray(arr) && arr.includes(normEmail))
+        .map(([em]) => em);
+      return jsonResp(200, { ok: true, reactions: tally, myReactions });
+    }
+
+    if (path === '/api/pickle-bulletin/delete' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const postId = String(body.id || '');
+      const posts = loadJson(PICKLE_BULLETIN_FILE, []);
+      const idx = posts.findIndex(p => p && p.id === postId);
+      if (idx < 0) return jsonResp(404, { error: 'post not found' });
+      const isFounder = isPickleFounderId(sid);
+      const isAuthor = normalizeEmail(posts[idx].authorEmail || '') === normalizeEmail(email);
+      if (!isFounder && !isAuthor) return jsonResp(403, { error: 'forbidden' });
+      posts.splice(idx, 1);
+      saveJson(PICKLE_BULLETIN_FILE, posts);
+      logAdminAction(email, 'pickle_bulletin_delete', { id: postId });
+      const payload = JSON.stringify({ type: 'pickle_bulletin_delete', id: postId });
+      for (const ws of allSockets) {
+        if (ws.data && ws.data.isBroadcast) { try { ws.send(payload); } catch {} }
+      }
       return jsonResp(200, { ok: true });
     }
 
@@ -13709,6 +13995,92 @@ function loadAllGamesList() {
     }
 
   }
+    if (path === '/api/pickle-club/membership' && method === 'GET') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      const norm = normalizeEmail(email);
+      const rec = pickleMembershipFor(norm) || { status: 'pending', memberNumber: 0, requestedAt: Date.now(), approvedAt: 0, note: '' };
+      return jsonResp(200, {
+        status: rec.status,
+        memberNumber: rec.memberNumber || null,
+        requestedAt: rec.requestedAt || 0,
+        approvedAt: rec.approvedAt || 0,
+        note: rec.note || '',
+        isFounder: !!rec.founder,
+      });
+    }
+
+    if (path === '/api/pickle-club/applicants' && method === 'GET') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isPickleFounderId(sid)) return jsonResp(403, { error: 'forbidden' });
+      const all = loadJson(PICKLE_MEMBERS_FILE, {});
+      const profiles = loadJson(PROFILES_FILE, {});
+      const statusRank = { pending: 0, approved: 1, rejected: 2 };
+      const applicants = Object.entries(all)
+        .map(([key, rec]) => ({
+          key, // exact normalized email — what /api/pickle-club/decide expects
+          display: maskEmail(key),
+          name: (profiles[key] || {}).displayName || key.split('@')[0],
+          status: rec.status,
+          requestedAt: rec.requestedAt || 0,
+          approvedAt: rec.approvedAt || 0,
+          memberNumber: rec.memberNumber || null,
+          note: rec.note || '',
+        }))
+        .sort((a, b) => (statusRank[a.status] ?? 3) - (statusRank[b.status] ?? 3) || b.requestedAt - a.requestedAt);
+      const counts = { pending: 0, approved: 0, rejected: 0 };
+      for (const a of applicants) if (counts[a.status] !== undefined) counts[a.status]++;
+      const coowners = Object.entries(pickleCoOwners())
+        .map(([email, o]) => ({
+          email, // exact normalized email — what /api/pickle-club/owners expects
+          display: maskEmail(email),
+          memberNumber: o.memberNumber || null,
+          appointedAt: o.appointedAt || 0,
+        }))
+        .sort((a, b) => (a.memberNumber || 0) - (b.memberNumber || 0));
+      return jsonResp(200, { applicants, counts, founders: [...PICKLE_FOUNDERS].map(e => maskEmail(e)), coowners });
+    }
+
+    function pickleBulletinPublic(post, viewerNorm) {
+      const rx = post.reactions && typeof post.reactions === 'object' ? post.reactions : {};
+      const reactions = {};
+      const myReactions = [];
+      for (const [emoji, arr] of Object.entries(rx)) {
+        if (!Array.isArray(arr) || !arr.length) continue;
+        reactions[emoji] = arr.length;
+        if (viewerNorm && arr.includes(viewerNorm)) myReactions.push(emoji);
+      }
+      return {
+        id: post.id,
+        title: post.title,
+        html: post.html,
+        author: post.authorName || maskEmail(post.authorEmail || ''),
+        authorEmail: maskEmail(post.authorEmail || ''),
+        ts: post.ts,
+        updatedAt: post.updatedAt || 0,
+        pinned: !!post.pinned,
+        reactions,
+        myReactions,
+        mine: !!viewerNorm && normalizeEmail(post.authorEmail || '') === viewerNorm,
+      };
+    }
+
+    if (path === '/api/pickle-bulletin/state' && method === 'GET') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      const viewerNorm = sid && validId(sid) ? normalizeEmail(emailFromSid(sid) || '') : '';
+      const posts = loadJson(PICKLE_BULLETIN_FILE, []);
+      const sorted = [...posts].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.ts || 0) - (a.ts || 0));
+      return jsonResp(200, { posts: sorted.map(p => pickleBulletinPublic(p, viewerNorm)), now: Date.now() });
+    }
+
 
 
   const qs = url.searchParams;
@@ -18936,7 +19308,9 @@ function loadAllGamesList() {
       if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
       const email = emailFromSid(sid);
       if (!email) return jsonResp(401, { error: 'email not found' });
+      ensurePickleMember(sid); // page-load beacon: register as pending on first visit
       const history = loadJson(PICKLE_CHAT_FILE, []);
+      const members = loadJson(PICKLE_MEMBERS_FILE, {});
       const viewerEmail = emailFromSid(sid);
       const viewerNorm = normalizeEmail(viewerEmail);
       const messages = history.slice(-100).map(msg => {
@@ -18954,6 +19328,7 @@ function loadAllGamesList() {
           email: processed.email,
           color: publicActiveColor(msg.email || msg.name || '', msg.color),
           chatEffect: msg.chatEffect || null,
+          jar: pickleJarFor(msg.email, members),
           reactions,
           myReactions,
         };
@@ -19034,13 +19409,17 @@ function loadAllGamesList() {
 
       // The viewer's badges.
       const badges = [];
-      if (viewerNorm === 'mitch@student.rjuhsd.us' || viewerNorm === 'lochlann@student.rjuhsd.us') {
+      if (isPickleFounderEmail(viewerNorm)) {
         badges.push({ id: 'co_owner', label: 'Co-Owner', emoji: '👑' });
       }
       if (crunchData[viewerNorm]) badges.push({ id: 'crunch_certified', label: 'Certified Crunchy', emoji: '💥' });
       if ((msgCounts.get(viewerNorm) || 0) >= 25) badges.push({ id: 'chatty', label: 'Chatty Brine', emoji: '💬' });
       const originals = [...firstSeen.entries()].sort((x, y) => x[1] - y[1]).slice(0, 10).map(e => e[0]);
       if (originals.includes(viewerNorm)) badges.push({ id: 'original_brine', label: 'Original Brine', emoji: '🏺' });
+
+      // Membership status (page-load beacon: first visit registers as pending).
+      ensurePickleMember(sid);
+      const membership = pickleMembershipFor(viewerNorm);
 
       return jsonResp(200, {
         potd: {
@@ -19061,6 +19440,13 @@ function loadAllGamesList() {
         online: { count: picklePresence.size, names: onlineNames.slice(0, 12) },
         stats: { messages: chatHistory.length, briners: msgCounts.size },
         badges,
+        membership: membership
+          ? {
+              status: membership.status,
+              memberNumber: membership.memberNumber || null,
+              isFounder: !!(membership.founder || membership.coowner),
+            }
+          : viewerNorm ? { status: 'pending', memberNumber: null, isFounder: false } : null,
       });
     }
 

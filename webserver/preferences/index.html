@@ -780,6 +780,14 @@
           <button class="soft-btn" type="button" id="bgImageClear">Clear</button>
         </div>
       </div>
+
+      <div class="field">
+        <label>Match Accent to Background</label>
+        <div class="inline-row">
+          <button class="soft-btn" type="button" id="adaptToggle">On</button>
+          <small style="color: var(--t-fg2); font-size: .78rem;">Dark mode only — tints the accent from the wallpaper</small>
+        </div>
+      </div>
     </div>
 
     <div class="control-grid three">
@@ -1593,7 +1601,7 @@ var DISPLAY_CONFIG_KEY  = '_prefDisplay';
 var SYNC_CONFIG_KEY     = '_prefSync';
 var TOOLS_CONFIG_KEY    = '_prefTools';
 var PREF_BACKUP_KEYS    = [VFX_CONFIG_KEY, PRIVACY_CONFIG_KEY, AI_CONFIG_KEY, HOME_CONFIG_KEY, DISPLAY_CONFIG_KEY, SYNC_CONFIG_KEY, TOOLS_CONFIG_KEY];
-var THEME_PREF_KEYS     = ['accent','dim','bgmode','bgpos','density','radius','font','motion','material'];
+var THEME_PREF_KEYS     = ['accent','adapt','dim','bgmode','bgpos','density','radius','font','motion','material'];
 
 function load(key, def) {
   try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || '{}')); }
@@ -1959,6 +1967,20 @@ function setupAppearanceControls() {
     syncAppearanceControls();
     applyAppearanceLive('Accent cleared.');
   };
+
+  // Background-adaptive accent (dark mode). "On" clears the stored pref —
+  // theme.js treats an absent theme_adapt as enabled.
+  var adaptBtn = document.getElementById('adaptToggle');
+  if (adaptBtn) {
+    var syncAdapt = function() { adaptBtn.textContent = getThemePref('adapt', 'on') === 'off' ? 'Off' : 'On'; };
+    adaptBtn.onclick = function() {
+      var off = getThemePref('adapt', 'on') !== 'off';
+      setThemePref('adapt', off ? 'off' : '');
+      syncAdapt();
+      applyAppearanceLive(off ? 'Accent will stay stock.' : 'Accent now matches the background.');
+    };
+    syncAdapt();
+  }
 
   document.getElementById('bgImageInput').addEventListener('change', function() {
     setCookieValue('bgimg', this.value.trim());

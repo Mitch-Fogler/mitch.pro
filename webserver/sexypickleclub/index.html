@@ -11,7 +11,7 @@
   <meta property="og:image" content="/pickle-portrait.webp" />
 
   <script src="/theme.js?v=9"></script>
-  <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/app.css"><script src="/api.js"></script>
 
   <style>
     /* Same burning-cherry wallpaper treatment as mitch.pro's front page */
@@ -183,6 +183,7 @@
     /* Clubhouse features */
     .sp-item-link { display: inline-block; margin-top: .5rem; color: var(--sp); font-size: .82rem; font-weight: 700; text-decoration: none; }
     .sp-item-link:hover { text-decoration: underline; }
+    .sp-pill { display: inline-block; margin-left: .35rem; padding: .05rem .35rem; border-radius: 999px; background: var(--sp); color: #0c1a08; font-size: .58rem; font-weight: 800; letter-spacing: .06em; vertical-align: 2px; }
     @media (min-width: 720px) {
       .sp-list .sp-wide { grid-column: 1 / -1; }
       #clubhouseGrid { grid-template-columns: 1fr 1fr; }
@@ -242,6 +243,7 @@
     </a>
     <nav>
       <a href="/members/">Members</a>
+      <a href="/bulletin/">Bulletin<span id="bullPill" class="sp-pill" hidden>NEW</span></a>
       <a id="navLogin" class="btn-ghost" href="/api/sso/bridge?back=%2F">Sign in with mitch.pro</a>
     </nav>
   </header>
@@ -276,6 +278,11 @@
         <article class="sp-item">
           <h3><span class="sp-emoji" aria-hidden="true">🎮</span>Game Room</h3>
           <p>Hundreds of games on mitch.pro, no downloads. Crunch time, literally.</p>
+        </article>
+        <article class="sp-item">
+          <h3><span class="sp-emoji" aria-hidden="true">📌</span>Club Bulletin</h3>
+          <p>Official word from the co-founders — announcements, awards, and pickled wisdom.</p>
+          <a class="sp-item-link" href="/bulletin/">Read the Bulletin →</a>
         </article>
         <article class="sp-item">
           <h3><span class="sp-emoji" aria-hidden="true">🥒</span>One account, total cucumber</h3>
@@ -323,6 +330,13 @@
           <h3><span class="sp-emoji" aria-hidden="true">✨</span>Brine Name Generator</h3>
           <p class="brine-name" id="brineName">Click to get brined</p>
           <button type="button" class="btn-ghost" id="brineNameBtn">Generate my brine name</button>
+        </article>
+        <!-- Founder-only entry point: revealed by the clubhouse script when
+             /api/pickle-club/features says the viewer is a founder/co-owner. -->
+        <article class="sp-item" id="founderCard" hidden>
+          <h3><span class="sp-emoji" aria-hidden="true">👑</span>Founder Tools</h3>
+          <p>Approve new members, appoint co-owners by email, and publish to the Bulletin.</p>
+          <a class="sp-item-link" href="/members/">Open the Applicant Pool →</a>
         </article>
       </div>
     </section>
@@ -439,6 +453,11 @@
     if (!features) return;
     document.getElementById('clubhouse').hidden = false;
 
+    // Founders/co-owners get a visible path to the Applicant Pool (it only
+    // lives on /members/ and shows nothing for non-founders).
+    const founderCard = document.getElementById('founderCard');
+    if (founderCard && features.membership && features.membership.isFounder) founderCard.hidden = false;
+
     // Pickle of the Day
     const potd = features.potd || {};
     const matchup = document.getElementById('potdMatchup');
@@ -522,6 +541,19 @@
         : (signedIn ? 'No badges yet — vote, rate, and chat to earn them.' : '');
     }
 
+    // Membership status: approved members wear their Jar number on the hero CTA.
+    const membership = features.membership;
+    const heroCta = document.getElementById('heroCta');
+    if (membership && heroCta) {
+      if (membership.status === 'approved') {
+        heroCta.textContent = membership.isFounder ? '👑 Co-Founder' : '🫙 Jar #' + membership.memberNumber + ' · Member';
+      } else if (membership.status === 'pending') {
+        heroCta.textContent = '⏳ Membership fermenting…';
+      } else if (membership.status === 'rejected') {
+        heroCta.textContent = '🥒 Application declined — reapply';
+      }
+    }
+
     // Brine Name Generator (purely client-side, purely serious)
     const ADJ = ['Crunchy', 'Dilly', 'Briny', 'Half-Sour', 'Kosher', 'Fermented', 'Speared', 'Vinegary', 'Crispy', 'Puckering'];
     const NOUN = ['Gherkin', 'Cucumber', 'Spear', 'Pickleback', 'Briner', 'Dillwagon', 'Crunchlord', 'Kosherini', 'Puckerup', 'Barrelmaster'];
@@ -548,6 +580,21 @@
     const a = $id(id);
     if (a) a.addEventListener('click', goSignIn);
   });
+
+  // ── Bulletin "NEW" pill: light up when a post is newer than the last read ──
+  (async function bulletinPill() {
+    try {
+      const pill = document.getElementById('bullPill');
+      if (!pill) return;
+      const r = await fetch('/api/pickle-bulletin/state', { cache: 'no-store' });
+      if (!r.ok) return;
+      const d = await r.json();
+      const latest = ((d.posts || [])[0] || {}).ts || 0;
+      let seen = 0;
+      try { seen = Number(localStorage.getItem('sp_bulletin_seen')) || 0; } catch {}
+      if (latest > seen) pill.hidden = false;
+    } catch {}
+  })();
 })();
 </script>
 </body>
