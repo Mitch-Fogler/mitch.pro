@@ -187,6 +187,15 @@ const CANVAS_PIXELS_FILE     = join(DATA_DIR, 'canvas_pixels.json');
 const CANVAS_LOCKS_FILE      = join(DATA_DIR, 'canvas_locks.json');
 const PREMIUM_CHAT_FILE      = join(DATA_DIR, 'premium_chat.json');
 const PUBLIC_CHAT_FILE       = join(DATA_DIR, 'public_chat.json');
+// Sexy Pickle Club (sexypickleclub.com) is a standalone site with its own
+// rooms: The Barrel (public chat) and The Brine Cellar (E2E DMs) never mix
+// with the mitch.pro chats. Same accounts/keys, separate message stores.
+const PICKLE_CHAT_FILE       = join(DATA_DIR, 'pickle_chat.json');
+const PICKLE_DMS_FILE        = join(DATA_DIR, 'pickle_dms.json');
+const PICKLE_GROUPS_FILE     = join(DATA_DIR, 'pickle_groups.json');
+const PICKLE_DM_CLEARED_FILE = join(DATA_DIR, 'pickle_dm_cleared.json');
+const PICKLE_VOTES_FILE      = join(DATA_DIR, 'pickle_votes.json');
+const PICKLE_CRUNCH_FILE     = join(DATA_DIR, 'pickle_crunch.json');
 const MARKETPLACE_FILE       = join(DATA_DIR, 'marketplace.json');
 const COSMETICS_FILE         = join(DATA_DIR, 'cosmetics.json');
 const EMOJIS_FILE            = join(DATA_DIR, 'emojis.json');
@@ -1116,6 +1125,10 @@ function loadGlobalGameStats() {
 
 const allSockets = new Set();
 
+// Sexy Pickle Club presence ("in the barrel right now"). Heartbeats from the
+// Barrel page keep this fresh; in-memory only, so a fresh boot is an empty room.
+const picklePresence = new Map(); // normalized email -> last heartbeat ts
+
 // Blooket Bot Globals & Functions
 const blooketQueue = []; // Array of { email, ws, params: { pin, name, auto, headless } }
 const blooketActive = new Map(); // email -> { ws, msWs, params }
@@ -1326,6 +1339,13 @@ const RATE_LIMITS = {
   '/api/premium-chat/send':    [3,   10],
   '/api/public-chat/history':  [60,  60],
   '/api/public-chat/send':     [3,   10],
+  // Sexy Pickle Club rooms (The Barrel + Brine Cellar + clubhouse features)
+  '/api/pickle-chat/history':  [60,  60],
+  '/api/pickle-chat/send':     [3,   10],
+  '/api/pickle-chat/react':    [30,  10],
+  '/api/pickle-chat/presence': [10,  60],
+  '/api/pickle-club/vote':     [5,   60],
+  '/api/pickle-club/crunch':   [5,   60],
   // Direct/group chat is authenticated and CSRF-protected. Allow normal
   // conversational bursts while retaining a firm abuse ceiling.
   '/api/dm/send':              [20,  10],
@@ -5728,6 +5748,21 @@ function setChatExpiry(key, ms) {
   if (ms && CHAT_EXPIRY_OPTIONS.includes(ms)) all[key] = ms;
   else delete all[key];
   saveJson(CHAT_EXPIRY_FILE, all);
+}
+
+// Pickle Club room selection: on sexypickleclub.com the DM/group endpoints
+// read and write the pickle_* stores so Cellar conversations stay separate
+// from mitch.pro DMs (same accounts, same E2E keys, different rooms).
+function dmStoreFiles(req) {
+  if (isPickleHost(req)) {
+    return { dms: PICKLE_DMS_FILE, groups: PICKLE_GROUPS_FILE, cleared: PICKLE_DM_CLEARED_FILE, pickle: true };
+  }
+  return { dms: DMS_FILE, groups: GROUPS_FILE, cleared: DM_CLEARED_FILE, pickle: false };
+}
+// Auto-delete windows are keyed per conversation; prefix pickle-origin keys
+// so a window set on mitch.pro never bleeds into the Cellar (and vice versa).
+function hostExpiryPrefix(req) {
+  return isPickleHost(req) ? 'spc:' : '';
 }
 
 function pruneDms(dms) {
@@ -12707,6 +12742,190 @@ function loadAllGamesList() {
       return jsonResp(200, { ok: true });
     }
 
+    // ── Sexy Pickle Club: The Barrel (sexypickleclub.com's own room) ─────────
+    // Mirrors the Plaza but with its own store, its own bans, and its own WS
+    // types — pickle chat never appears on mitch.pro and vice versa.
+    if (path === '/api/pickle-chat/send' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip)) {
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
+      }
+      const text = String(body.text || '').trim().slice(0, 1000);
+      if (!text) return jsonResp(400, { error: 'empty message' });
+      const normEmail = normalizeEmail(email);
+
+      // Bans/timeouts live under their own room key — the Barrel bans nobody
+      // from the Plaza and the Plaza bans nobody from the Barrel.
+      const banFile = join(DATA_DIR, 'chatroom_bans.json');
+      const chatroomBans = loadJson(banFile, {});
+      const barrelBans = chatroomBans.pickle || {};
+      const banEntry = barrelBans[normEmail];
+      if (banEntry) {
+        if (banEntry.type === 'ban') {
+          return jsonResp(403, { error: 'You are banned from The Barrel.' });
+        } else if (Date.now() < banEntry.expires) {
+          return jsonResp(403, { error: `You are timed out from The Barrel for another ${Math.ceil((banEntry.expires - Date.now()) / 1000)} seconds.` });
+        } else {
+          // Timeout expired, clean it up
+          delete barrelBans[normEmail];
+          chatroomBans.pickle = barrelBans;
+          saveJson(banFile, chatroomBans);
+        }
+      }
+
+      // Check last 10 messages spam limit
+      const history = loadJson(PICKLE_CHAT_FILE, []);
+      if (history.length >= 10) {
+        const last10 = history.slice(-10);
+        if (last10.every(m => normalizeEmail(m.email) === normEmail)) {
+          logCheat(email, 'chat_spam', 'User sent 10 consecutive messages in pickle_chat', getRealIp(req));
+          return jsonResp(400, { error: 'Spam detected. The last 10 messages in The Barrel are yours.' });
+        }
+      }
+
+      const profiles = loadJson(PROFILES_FILE, {});
+      const p = profiles[normEmail] || {};
+      const name = p.displayName || email.split('@')[0];
+      const cosm = loadJson(COSMETICS_FILE, {});
+      const userCosm = cosm[normEmail] || {};
+      const msg = {
+        id: randomBytes(8).toString('hex'),
+        name,
+        email,
+        text,
+        ts: Date.now(),
+        color: publicActiveColor(email, userCosm.activeColor),
+        badge: userCosm.activeBadge || null,
+        chatEffect: userCosm.activeChatEffect || null,
+        reactions: {},
+      };
+      if (shadowBans.has(normEmail)) {
+        return jsonResp(200, { ok: true }); // shadow success
+      }
+      history.push(msg);
+      saveJson(PICKLE_CHAT_FILE, history.slice(-1000));
+      picklePresence.set(normEmail, Date.now());
+
+      const payload = JSON.stringify({
+        type: 'pickle_chat',
+        msg: {
+          ...msg,
+          email: maskEmail(msg.email || ''),
+          color: publicActiveColor(msg.email || msg.name || '', msg.color)
+        }
+      });
+      for (const ws of allSockets) {
+        if (ws.data && ws.data.isBroadcast) {
+          try { ws.send(payload); } catch {}
+        }
+      }
+
+      return jsonResp(200, { ok: true });
+    }
+
+    // Barrel reactions — one toggle per member per emoji. Stored as
+    // { emoji: [normEmail, ...] } on the message; clients only ever see
+    // counts (plus their own picks from the history endpoint).
+    if (path === '/api/pickle-chat/react' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const msgId = String(body.msgId || '');
+      const emoji = String(body.emoji || '');
+      if (!msgId || !emoji || [...emoji].length > 3) return jsonResp(400, { error: 'msgId and emoji required' });
+      const history = loadJson(PICKLE_CHAT_FILE, []);
+      const msg = history.find(m => m && m.id === msgId);
+      if (!msg) return jsonResp(404, { error: 'message not found' });
+      const normEmail = normalizeEmail(email);
+      if (!msg.reactions || typeof msg.reactions !== 'object') msg.reactions = {};
+      const list = Array.isArray(msg.reactions[emoji]) ? msg.reactions[emoji] : [];
+      const mineIdx = list.indexOf(normEmail);
+      if (mineIdx >= 0) list.splice(mineIdx, 1);
+      else list.push(normEmail);
+      if (list.length) msg.reactions[emoji] = list;
+      else delete msg.reactions[emoji];
+      saveJson(PICKLE_CHAT_FILE, history);
+      const tally = {};
+      for (const [em, arr] of Object.entries(msg.reactions)) {
+        if (Array.isArray(arr) && arr.length) tally[em] = arr.length;
+      }
+      const payload = JSON.stringify({ type: 'pickle_chat_react', msgId, reactions: tally });
+      for (const ws of allSockets) {
+        if (ws.data && ws.data.isBroadcast) {
+          try { ws.send(payload); } catch {}
+        }
+      }
+      const myReactions = Object.entries(msg.reactions)
+        .filter(([, arr]) => Array.isArray(arr) && arr.includes(normEmail))
+        .map(([em]) => em);
+      return jsonResp(200, { ok: true, reactions: tally, myReactions });
+    }
+
+    // Barrel presence heartbeat ("N in the barrel right now")
+    if (path === '/api/pickle-chat/presence' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (email) picklePresence.set(normalizeEmail(email), Date.now());
+      // Prune stale entries so the count stays honest.
+      const now = Date.now();
+      for (const [k, ts] of picklePresence) {
+        if (now - ts > 90000) picklePresence.delete(k);
+      }
+      return jsonResp(200, { ok: true, online: picklePresence.size });
+    }
+
+    // Pickle Clubhouse features: Pickle of the Day voting, the Crunch-o-meter,
+    // the Top Briners leaderboard, live presence, and member badges.
+    if (path === '/api/pickle-club/vote' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const choice = Number(body.choice);
+      if (choice !== 0 && choice !== 1) return jsonResp(400, { error: 'invalid choice' });
+      const all = loadJson(PICKLE_VOTES_FILE, {});
+      const day = new Date().toISOString().slice(0, 10);
+      if (!all[day]) all[day] = {};
+      all[day][normalizeEmail(email)] = choice;
+      // Keep only the last 30 days of votes.
+      const days = Object.keys(all).sort();
+      while (days.length > 30) delete all[days.shift()];
+      saveJson(PICKLE_VOTES_FILE, all);
+      return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/pickle-club/crunch' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const rating = Math.round(Number(body.rating));
+      if (!(rating >= 1 && rating <= 10)) return jsonResp(400, { error: 'rating must be 1-10' });
+      const data = loadJson(PICKLE_CRUNCH_FILE, {});
+      data[normalizeEmail(email)] = rating;
+      saveJson(PICKLE_CRUNCH_FILE, data);
+      return jsonResp(200, { ok: true });
+    }
+
 
     // POST /api/chat/delete-message
     if (path === '/api/chat/delete-message' && method === 'POST') {
@@ -12716,13 +12935,13 @@ function loadAllGamesList() {
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       
-      const room = String(body.room || '').trim().toLowerCase(); // 'public' or 'premium'
+      const room = String(body.room || '').trim().toLowerCase(); // 'public', 'premium', or 'pickle'
       const msgId = String(body.msgId || '').trim();
-      if (!msgId || !['public', 'premium'].includes(room)) {
+      if (!msgId || !['public', 'premium', 'pickle'].includes(room)) {
         return jsonResp(400, { error: 'msgId and valid room required' });
       }
 
-      const file = room === 'public' ? PUBLIC_CHAT_FILE : PREMIUM_CHAT_FILE;
+      const file = room === 'public' ? PUBLIC_CHAT_FILE : room === 'pickle' ? PICKLE_CHAT_FILE : PREMIUM_CHAT_FILE;
       const history = loadJson(file, []);
       const msgIndex = history.findIndex(m => m.id === msgId);
       if (msgIndex === -1) {
@@ -12737,9 +12956,9 @@ function loadAllGamesList() {
       logAdminAction(actor, `chat_delete_message_${room}`, { msgId, sender: msg.email, text: msg.text });
 
       // Broadcast update to WebSocket clients if public
-      if (room === 'public') {
+      if (room === 'public' || room === 'pickle') {
         const payload = JSON.stringify({
-          type: 'public_chat_delete',
+          type: room === 'pickle' ? 'pickle_chat_delete' : 'public_chat_delete',
           msgId
         });
         for (const ws of allSockets) {
@@ -12762,11 +12981,11 @@ function loadAllGamesList() {
 
       const room = String(body.room || '').trim().toLowerCase();
       const userEmail = String(body.userEmail || '').trim();
-      if (!userEmail || !['public', 'premium'].includes(room)) {
+      if (!userEmail || !['public', 'premium', 'pickle'].includes(room)) {
         return jsonResp(400, { error: 'userEmail and valid room required' });
       }
 
-      const file = room === 'public' ? PUBLIC_CHAT_FILE : PREMIUM_CHAT_FILE;
+      const file = room === 'public' ? PUBLIC_CHAT_FILE : room === 'pickle' ? PICKLE_CHAT_FILE : PREMIUM_CHAT_FILE;
       const history = loadJson(file, []);
       const normTarget = normalizeEmail(userEmail);
       const filtered = history.filter(m => normalizeEmail(m.email) !== normTarget);
@@ -12776,9 +12995,9 @@ function loadAllGamesList() {
       logAdminAction(actor, `chat_delete_user_messages_${room}`, { userEmail });
 
       // Broadcast update to WebSocket clients if public
-      if (room === 'public') {
+      if (room === 'public' || room === 'pickle') {
         const payload = JSON.stringify({
-          type: 'public_chat_clear_user',
+          type: room === 'pickle' ? 'pickle_chat_clear_user' : 'public_chat_clear_user',
           userEmail: normTarget
         });
         for (const ws of allSockets) {
@@ -12802,7 +13021,7 @@ function loadAllGamesList() {
       const room = String(body.room || '').trim().toLowerCase();
       const userEmail = String(body.userEmail || '').trim();
       const isBan = !!body.ban;
-      if (!userEmail || !['public', 'premium'].includes(room)) {
+      if (!userEmail || !['public', 'premium', 'pickle'].includes(room)) {
         return jsonResp(400, { error: 'userEmail and valid room required' });
       }
 
@@ -12840,7 +13059,7 @@ function loadAllGamesList() {
       const room = String(body.room || '').trim().toLowerCase();
       const userEmail = String(body.userEmail || '').trim();
       const durationSeconds = Number(body.durationSeconds);
-      if (!userEmail || !['public', 'premium'].includes(room) || isNaN(durationSeconds) || durationSeconds <= 0) {
+      if (!userEmail || !['public', 'premium', 'pickle'].includes(room) || isNaN(durationSeconds) || durationSeconds <= 0) {
         return jsonResp(400, { error: 'userEmail, valid room, and positive durationSeconds required' });
       }
 
@@ -14730,6 +14949,10 @@ function loadAllGamesList() {
       const names = loadJson(NAMES_FILE, {});
       const senderEmail = (names[sid] || '').toLowerCase();
       if (!senderEmail) return jsonResp(403, { error: 'email not found' });
+      const store = dmStoreFiles(req);
+      const expPfx = hostExpiryPrefix(req);
+      // Push deep-links must open the app the message was sent from.
+      const chatAppUrl = (p) => store.pickle ? PICKLE_ORIGIN + '/cellar/' + p : '/encrypt/' + p;
       const declaredChatBytes = Number(req.headers.get('Content-Length') || 0);
       if (declaredChatBytes > MAX_CHAT_JSON_BODY_BYTES) return jsonResp(413, { error: 'message request too large' });
       if (!await tryParseJson(MAX_CHAT_JSON_BODY_BYTES)) return jsonResp(400, { error: 'bad json' });
@@ -14766,7 +14989,7 @@ function loadAllGamesList() {
         text: String(body.replyTo.text || '').slice(0, 200),
         ts: Number(body.replyTo.ts) || 0,
       } : null;
-      const dms = loadJson(DMS_FILE, []);
+      const dms = loadJson(store.dms, []);
       // Treat clientId as an idempotency key. A retry after a slow/lost HTTP
       // response must return the stored message instead of creating a copy.
       if (clientId) {
@@ -14802,13 +15025,13 @@ function loadAllGamesList() {
       // The conversation-wide setting (set by either participant) always
       // wins; the sender's per-send value is only a fallback for clients
       // that haven't synced the conversation setting yet.
-      const convExpiryKey = groupId ? groupExpiryKey(groupId) : dmExpiryKey(senderEmail, to);
+      const convExpiryKey = expPfx + (groupId ? groupExpiryKey(groupId) : dmExpiryKey(senderEmail, to));
       const effectiveExpiry = getChatExpiry(convExpiryKey) || expiry;
       const getNotificationBody = (t, img) => encryptedEnvelope
         ? '[Secure Message]'
         : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));
       if (groupId) {
-        const groups = loadJson(GROUPS_FILE, []);
+        const groups = loadJson(store.groups, []);
         const group = groups.find(g => g.id === groupId);
         if (!group) return jsonResp(404, { error: 'group not found' });
         const groupMemberNorms = (group.members || []).map(m => resolveMemberRef(m) || normalizeEmail(m));
@@ -14825,7 +15048,7 @@ function loadAllGamesList() {
           msg.expiresAt = Date.now() + effectiveExpiry;
         }
         dms.push(msg);
-        saveJson(DMS_FILE, pruneDms(dms));
+        saveJson(store.dms, pruneDms(dms));
         if (VAPID_PUBLIC) {
           const notifyBody = getNotificationBody(text, safeImage);
           for (const member of group.members) {
@@ -14836,11 +15059,11 @@ function loadAllGamesList() {
               await sendWebPushClean(subs, memberNorm, {
                 title: `${displayEmail(senderEmail)} in ${group.name}`,
                 body: notifyBody,
-                url: notificationUrl('/encrypt/?group=' + encodeURIComponent(groupId)),
+                url: notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))),
                 tag: `group-${groupId}-${msg.ts}`,
               });
             } else if (!recActive && notifAllowed(memberNorm, 'group')) {
-              ntfyNotify(memberNorm, `${displayEmail(senderEmail)} in ${group.name}`, notifyBody, notificationUrl('/encrypt/'));
+              ntfyNotify(memberNorm, `${displayEmail(senderEmail)} in ${group.name}`, notifyBody, notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))));
             }
           }
         }
@@ -14856,18 +15079,18 @@ function loadAllGamesList() {
           msg.expiresAt = Date.now() + effectiveExpiry;
         }
         dms.push(msg);
-        saveJson(DMS_FILE, pruneDms(dms));
+        saveJson(store.dms, pruneDms(dms));
         const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
         if (!recActive && notifAllowed(to, 'dm') && VAPID_PUBLIC && subs[to]) {
           await sendWebPushClean(subs, to, {
             title: `Message from ${displayEmail(senderEmail)}`,
             body:  getNotificationBody(text, safeImage),
             // Deep-link: /encrypt/?to=<sender> opens the conversation directly.
-            url:   notificationUrl('/encrypt/?to=' + encodeURIComponent(senderEmail)),
+            url:   notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))),
             tag:   `dm-${msg.ts}`,
           });
         } else if (!recActive && notifAllowed(to, 'dm')) {
-          ntfyNotify(to, `Message from ${displayEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl('/encrypt/'));
+          ntfyNotify(to, `Message from ${displayEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))));
         }
         }
         addCoins(senderEmail, 2.0);
@@ -14921,11 +15144,12 @@ function loadAllGamesList() {
       const names = loadJson(NAMES_FILE, {});
       const myEmail = (names[sid] || '').toLowerCase();
       if (!myEmail) return jsonResp(403, { error: 'email not found' });
-      const allGroups = loadJson(GROUPS_FILE, []);
+      const store = dmStoreFiles(req);
+      const allGroups = loadJson(store.groups, []);
       const myGroups = allGroups.filter(g => (g.members || []).some(m => (resolveMemberRef(m) || normalizeEmail(m)) === normalizeEmail(myEmail)));
       const profiles = loadJson(PROFILES_FILE, {});
-      const dms = loadJson(DMS_FILE, []);
-      const cleared = loadJson(DM_CLEARED_FILE, {});
+      const dms = loadJson(store.dms, []);
+      const cleared = loadJson(store.cleared, {});
       const myCleared = cleared[normalizeEmail(myEmail)] || {};
       const result = myGroups.map(g => {
         // Return each member as their public username: the client encrypts one
@@ -14990,10 +15214,12 @@ function loadAllGamesList() {
       const before = parseInt(qs.get('before') || '0') || 0;
       const limit = parseInt(qs.get('limit') || '0') || 0;
 
-      const dms = loadJson(DMS_FILE, []);
-      const cleared = loadJson(DM_CLEARED_FILE, {});
+      const store = dmStoreFiles(req);
+      const expPfx = hostExpiryPrefix(req);
+      const dms = loadJson(store.dms, []);
+      const cleared = loadJson(store.cleared, {});
       const myCleared = cleared[normalizeEmail(myEmail)] || {};
-      const myGroups = (loadJson(GROUPS_FILE, [])).filter(g => (g.members || []).some(m => (resolveMemberRef(m) || normalizeEmail(m)) === normalizeEmail(myEmail)));
+      const myGroups = (loadJson(store.groups, [])).filter(g => (g.members || []).some(m => (resolveMemberRef(m) || normalizeEmail(m)) === normalizeEmail(myEmail)));
       const myGroupIds = new Set(myGroups.map(g => g.id));
       const myNormEmail = normalizeEmail(myEmail);
       const myMaskedEmail = maskEmail(myEmail);
@@ -15057,8 +15283,8 @@ function loadAllGamesList() {
       // Include the conversation's auto-delete window so both sides render
       // the same toggle state.
       const convExpiry = groupId
-        ? getChatExpiry(groupExpiryKey(groupId))
-        : (withResolved ? getChatExpiry(dmExpiryKey(myNormEmail, withResolved)) : undefined);
+        ? getChatExpiry(expPfx + groupExpiryKey(groupId))
+        : (withResolved ? getChatExpiry(expPfx + dmExpiryKey(myNormEmail, withResolved)) : undefined);
       return jsonResp(200, { messages: resultMsgs, myEmail: maskEmail(myEmail), expiry: convExpiry });
 
     }
@@ -15073,7 +15299,7 @@ function loadAllGamesList() {
       if (!await tryParseJson()) return jsonResp(400, {});
       const from = (body.from || '').toLowerCase();
       const groupId = body.groupId ? String(body.groupId) : '';
-      const dms = loadJson(DMS_FILE, []);
+      const dms = loadJson(dmStoreFiles(req).dms, []);
       let changed = false;
       for (const m of dms) {
         if (groupId) {
@@ -15088,7 +15314,7 @@ function loadAllGamesList() {
           }
         }
       }
-      if (changed) saveJson(DMS_FILE, dms);
+      if (changed) saveJson(dmStoreFiles(req).dms, dms);
       if (from) addCoins(resolveMemberRef(from) || from, 2.0);
       return jsonResp(200, { success: true });
     }
@@ -15109,9 +15335,9 @@ function loadAllGamesList() {
       const members = [...new Set([myEmail, ...rawMembers.map(m => resolveMemberRef(m) || String(m).toLowerCase().trim()).filter(Boolean)])];
       if (members.length < 2) return jsonResp(400, { error: 'need at least one other member' });
       const group = { id: String(Date.now()) + '-' + Math.random().toString(36).slice(2, 8), name, members, createdBy: myEmail, createdAt: Date.now() };
-      const groups = loadJson(GROUPS_FILE, []);
+      const groups = loadJson(dmStoreFiles(req).groups, []);
       groups.push(group);
-      saveJson(GROUPS_FILE, groups);
+      saveJson(dmStoreFiles(req).groups, groups);
       return jsonResp(200, { ok: true, group });
     }
 
@@ -15126,12 +15352,12 @@ function loadAllGamesList() {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const groupId = String(body.groupId || '');
       if (!groupId) return jsonResp(400, { error: 'missing groupId' });
-      const groups = loadJson(GROUPS_FILE, []);
+      const groups = loadJson(dmStoreFiles(req).groups, []);
       const idx = groups.findIndex(g => g.id === groupId);
       if (idx === -1) return jsonResp(404, { error: 'group not found' });
       groups[idx].members = groups[idx].members.filter(m => normalizeEmail(m) !== normalizeEmail(myEmail));
       if (groups[idx].members.length === 0) groups.splice(idx, 1);
-      saveJson(GROUPS_FILE, groups);
+      saveJson(dmStoreFiles(req).groups, groups);
       return jsonResp(200, { ok: true });
     }
 
@@ -15144,14 +15370,14 @@ function loadAllGamesList() {
       const myEmail = (names[sid] || '').toLowerCase();
       if (!myEmail) return jsonResp(403, { error: 'email not found' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
-      const cleared = loadJson(DM_CLEARED_FILE, {});
+      const cleared = loadJson(dmStoreFiles(req).cleared, {});
       const norm = normalizeEmail(myEmail);
       if (!cleared[norm]) cleared[norm] = {};
       const now = Date.now();
       if (body.all) {
-        const groups = loadJson(GROUPS_FILE, []).filter(g => g.members.some(m => normalizeEmail(m) === norm));
+        const groups = loadJson(dmStoreFiles(req).groups, []).filter(g => g.members.some(m => normalizeEmail(m) === norm));
         for (const g of groups) cleared[norm]['group:' + g.id] = now;
-        const dms = loadJson(DMS_FILE, []);
+        const dms = loadJson(dmStoreFiles(req).dms, []);
         const peers = new Set();
         for (const m of dms) {
           if ((!m.kind || m.kind === 'dm') && normalizeEmail(m.from) === norm) peers.add(normalizeEmail(m.to));
@@ -15165,7 +15391,7 @@ function loadAllGamesList() {
       } else {
         return jsonResp(400, { error: 'missing target' });
       }
-      saveJson(DM_CLEARED_FILE, cleared);
+      saveJson(dmStoreFiles(req).cleared, cleared);
       return jsonResp(200, { success: true });
     }
 
@@ -15182,17 +15408,18 @@ function loadAllGamesList() {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const requested = Number(body.expiry) || 0;
       if (requested !== 0 && !CHAT_EXPIRY_OPTIONS.includes(requested)) return jsonResp(400, { error: 'invalid expiry' });
+      const expPfx = hostExpiryPrefix(req);
       const norm = normalizeEmail(myEmail);
       let wsTargets = null; // set of normalized emails to notify
       let key = '';
       let wsGroupId, wsWith;
       if (body.groupId) {
         const groupId = String(body.groupId);
-        const group = loadJson(GROUPS_FILE, []).find(g => g.id === groupId);
+        const group = loadJson(dmStoreFiles(req).groups, []).find(g => g.id === groupId);
         if (!group) return jsonResp(404, { error: 'group not found' });
         const memberNorms = (group.members || []).map(m => resolveMemberRef(m) || normalizeEmail(m));
         if (!memberNorms.includes(norm)) return jsonResp(403, { error: 'not a member' });
-        key = groupExpiryKey(groupId);
+        key = expPfx + groupExpiryKey(groupId);
         wsGroupId = groupId;
         wsTargets = new Set(memberNorms);
       } else if (body.with) {
@@ -15200,7 +15427,7 @@ function loadAllGamesList() {
         // (email, masked email, or username), which doubles as the exists check.
         const peerResolved = resolveMemberRef(String(body.with));
         if (!peerResolved || peerResolved === norm) return jsonResp(400, { error: 'invalid peer' });
-        key = dmExpiryKey(norm, peerResolved);
+        key = expPfx + dmExpiryKey(norm, peerResolved);
         wsWith = peerResolved;
         wsTargets = new Set([norm, peerResolved]);
       } else {
@@ -18698,6 +18925,143 @@ function loadAllGamesList() {
         };
       });
       return jsonResp(200, { messages });
+    }
+
+    // Barrel history — same shape as the Plaza plus reaction tallies and the
+    // viewer's own reactions.
+    if (path === '/api/pickle-chat/history') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { error: 'email not found' });
+      const history = loadJson(PICKLE_CHAT_FILE, []);
+      const viewerEmail = emailFromSid(sid);
+      const viewerNorm = normalizeEmail(viewerEmail);
+      const messages = history.slice(-100).map(msg => {
+        const processed = processMemberFields(msg.email, null, viewerEmail);
+        const rx = msg.reactions && typeof msg.reactions === 'object' ? msg.reactions : {};
+        const reactions = {};
+        const myReactions = [];
+        for (const [emoji, arr] of Object.entries(rx)) {
+          if (!Array.isArray(arr) || !arr.length) continue;
+          reactions[emoji] = arr.length;
+          if (arr.includes(viewerNorm)) myReactions.push(emoji);
+        }
+        return {
+          ...msg,
+          email: processed.email,
+          color: publicActiveColor(msg.email || msg.name || '', msg.color),
+          chatEffect: msg.chatEffect || null,
+          reactions,
+          myReactions,
+        };
+      });
+      return jsonResp(200, { messages });
+    }
+
+    // Clubhouse dashboard — public aggregates for the landing page, with the
+    // viewer's personal slice (vote, rating, badges) filled in when signed in.
+    if (path === '/api/pickle-club/features' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      const sidOk = !!sid && validId(sid) && !isRevoked(sid);
+      const viewerEmail = sidOk ? emailFromSid(sid) : '';
+      const viewerNorm = viewerEmail ? normalizeEmail(viewerEmail) : '';
+
+      // Pickle of the Day: a deterministic matchup per UTC day, one vote each.
+      const POTD_PICKLES = [
+        { name: 'Gherkin Gandalf', emoji: '🧙' },
+        { name: 'Dill Diamond', emoji: '💎' },
+        { name: 'Sir Crunchworthy', emoji: '🛡️' },
+        { name: 'The Brine Whisperer', emoji: '🌊' },
+        { name: 'Kosher Kommander', emoji: '🫡' },
+        { name: 'Bread & Butter Bob', emoji: '🥖' },
+        { name: 'Half-Sour Hank', emoji: '🤠' },
+        { name: 'The Full Spear', emoji: '🔱' },
+        { name: 'Pickleberry Piet', emoji: '🍓' },
+        { name: 'Madam Cucumberstein', emoji: '🎭' },
+        { name: 'Fermento', emoji: '🦸' },
+        { name: 'The Last Dill standing', emoji: '🥒' },
+      ];
+      const day = new Date().toISOString().slice(0, 10);
+      const daySeed = [...day].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+      const idxA = daySeed % POTD_PICKLES.length;
+      let idxB = (daySeed >>> 3) % POTD_PICKLES.length;
+      if (idxB === idxA) idxB = (idxB + 1) % POTD_PICKLES.length;
+      const votes = loadJson(PICKLE_VOTES_FILE, {})[day] || {};
+      let votesA = 0, votesB = 0;
+      for (const v of Object.values(votes)) {
+        if (v === 0) votesA++; else if (v === 1) votesB++;
+      }
+
+      // Crunch-o-meter: one 1-10 rating per member, re-ratable.
+      const crunchData = loadJson(PICKLE_CRUNCH_FILE, {});
+      let crunchSum = 0, crunchCount = 0;
+      for (const v of Object.values(crunchData)) {
+        const n = Number(v);
+        if (n >= 1 && n <= 10) { crunchSum += n; crunchCount++; }
+      }
+
+      // Top Briners: most active voices in The Barrel.
+      const chatHistory = loadJson(PICKLE_CHAT_FILE, []);
+      const msgCounts = new Map();
+      const firstSeen = new Map();
+      for (const m of chatHistory) {
+        const k = normalizeEmail((m && m.email) || '');
+        if (!k) continue;
+        msgCounts.set(k, (msgCounts.get(k) || 0) + 1);
+        if (!firstSeen.has(k)) firstSeen.set(k, m.ts || 0);
+      }
+      const profiles = loadJson(PROFILES_FILE, {});
+      const topBriners = [...msgCounts.entries()]
+        .sort((x, y) => y[1] - x[1])
+        .slice(0, 5)
+        .map(([em, count], i) => ({
+          name: (profiles[em] || {}).displayName || em.split('@')[0],
+          count,
+          trophy: i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '🥒',
+        }));
+
+      // Who's in the barrel right now (heartbeat < 90s old).
+      const now = Date.now();
+      for (const [k, ts] of picklePresence) {
+        if (now - ts > 90000) picklePresence.delete(k);
+      }
+      const onlineNames = [...picklePresence.keys()]
+        .map(em => (profiles[em] || {}).displayName || em.split('@')[0]);
+
+      // The viewer's badges.
+      const badges = [];
+      if (viewerNorm === 'mitch@student.rjuhsd.us' || viewerNorm === 'lochlann@student.rjuhsd.us') {
+        badges.push({ id: 'co_owner', label: 'Co-Owner', emoji: '👑' });
+      }
+      if (crunchData[viewerNorm]) badges.push({ id: 'crunch_certified', label: 'Certified Crunchy', emoji: '💥' });
+      if ((msgCounts.get(viewerNorm) || 0) >= 25) badges.push({ id: 'chatty', label: 'Chatty Brine', emoji: '💬' });
+      const originals = [...firstSeen.entries()].sort((x, y) => x[1] - y[1]).slice(0, 10).map(e => e[0]);
+      if (originals.includes(viewerNorm)) badges.push({ id: 'original_brine', label: 'Original Brine', emoji: '🏺' });
+
+      return jsonResp(200, {
+        potd: {
+          day,
+          a: POTD_PICKLES[idxA],
+          b: POTD_PICKLES[idxB],
+          votesA,
+          votesB,
+          total: votesA + votesB,
+          myVote: viewerNorm && viewerNorm in votes ? votes[viewerNorm] : null,
+        },
+        crunch: {
+          average: crunchCount ? Math.round((crunchSum / crunchCount) * 10) / 10 : null,
+          count: crunchCount,
+          myRating: viewerNorm ? (crunchData[viewerNorm] ?? null) : null,
+        },
+        topBriners,
+        online: { count: picklePresence.size, names: onlineNames.slice(0, 12) },
+        stats: { messages: chatHistory.length, briners: msgCounts.size },
+        badges,
+      });
     }
 
     if (path === '/api/bell/override') {

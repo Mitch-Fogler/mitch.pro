@@ -180,6 +180,37 @@
     .sp-item h3 .sp-emoji { margin-right: 0.4rem; }
     .sp-item p { margin: 0; color: var(--t-fg2); font-size: 0.88rem; line-height: 1.5; }
 
+    /* Clubhouse features */
+    .sp-item-link { display: inline-block; margin-top: .5rem; color: var(--sp); font-size: .82rem; font-weight: 700; text-decoration: none; }
+    .sp-item-link:hover { text-decoration: underline; }
+    @media (min-width: 720px) {
+      .sp-list .sp-wide { grid-column: 1 / -1; }
+      #clubhouseGrid { grid-template-columns: 1fr 1fr; }
+    }
+    .potd-matchup { font-size: 1.05rem; font-weight: 700; margin: .35rem 0 .6rem; }
+    .potd-bar { position: relative; height: 12px; border-radius: 999px; overflow: hidden; border: 1px solid var(--t-bd); background: color-mix(in srgb, var(--t-fg) 8%, transparent); margin-bottom: .6rem; }
+    .potd-fill { position: absolute; inset: 0 auto 0 0; width: 50%; background: linear-gradient(90deg, var(--sp), color-mix(in srgb, var(--sp) 55%, #f4d35e)); transition: width .4s ease; }
+    .potd-actions { display: flex; gap: .5rem; flex-wrap: wrap; }
+    .potd-actions button { min-height: 2.4rem; padding: .45rem 1rem; }
+    .sp-note { margin-top: .55rem; color: var(--t-fg2); font-size: .8rem; }
+    .crunch-score { font-family: Outfit, system-ui, sans-serif; font-size: 2rem; font-weight: 800; letter-spacing: -.03em; margin: .3rem 0; }
+    .crunch-picker { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .6rem; }
+    .crunch-picker button { width: 2.2rem; min-height: 2.2rem; margin: 0; padding: 0; border: 1px solid var(--t-bd); border-radius: 8px; background: color-mix(in srgb, var(--t-bg2) 88%, transparent); color: var(--t-fg); font-weight: 700; font-size: .78rem; cursor: pointer; }
+    .crunch-picker button:hover { border-color: var(--sp); }
+    .crunch-picker button.mine { background: var(--sp); border-color: var(--sp); color: #10240f; }
+    .briner-list { margin: .4rem 0 0; padding-left: 0; list-style: none; display: grid; gap: .35rem; }
+    .briner-list li { display: flex; justify-content: space-between; gap: .75rem; font-size: .88rem; color: var(--t-fg2); }
+    .briner-list li b { color: var(--t-fg); font-weight: 700; }
+    .now-line { font-size: 1.02rem; font-weight: 700; margin: .3rem 0; }
+    .brine-fact { font-style: italic; }
+    .brine-name { font-family: Outfit, system-ui, sans-serif; font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; color: var(--sp); margin: .4rem 0 .8rem; }
+    .pickle-golden { animation: pickle-golden 1.2s ease; }
+    @keyframes pickle-golden {
+      0%, 100% { filter: none; transform: none; }
+      30% { filter: sepia(1) saturate(3) hue-rotate(-15deg) brightness(1.3); transform: scale(1.06) rotate(-2deg); }
+      60% { filter: sepia(1) saturate(3) hue-rotate(-15deg) brightness(1.5); transform: scale(1.1) rotate(2deg); }
+    }
+
     /* Bottom CTA + footer */
     .sp-bottom {
       width: min(560px, 100%);
@@ -234,11 +265,13 @@
       <div class="sp-list">
         <article class="sp-item">
           <h3><span class="sp-emoji" aria-hidden="true">🫙</span>The Barrel</h3>
-          <p>Open chat for every member, live for everyone. Bring your best brine takes.</p>
+          <p>The club's own live chat — reactions, presence, and the crunchiest takes. Members only.</p>
+          <a class="sp-item-link" href="/barrel/">Open The Barrel →</a>
         </article>
         <article class="sp-item">
           <h3><span class="sp-emoji" aria-hidden="true">🔒</span>The Brine Cellar</h3>
-          <p>End-to-end encrypted DMs and groups — secret handshakes, actually secret.</p>
+          <p>The club's own end-to-end encrypted DMs and groups. Secret handshakes, actually secret.</p>
+          <a class="sp-item-link" href="/cellar/">Enter The Cellar →</a>
         </article>
         <article class="sp-item">
           <h3><span class="sp-emoji" aria-hidden="true">🎮</span>Game Room</h3>
@@ -247,6 +280,49 @@
         <article class="sp-item">
           <h3><span class="sp-emoji" aria-hidden="true">🥒</span>One account, total cucumber</h3>
           <p>Your mitch.pro login is the entire membership. Nothing else to join, nothing else to remember.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Clubhouse: live club features (Pickle of the Day, Crunch-o-meter, Top Briners…) -->
+    <section class="sp-section" id="clubhouse" aria-labelledby="clubhouseHeading" hidden>
+      <h2 id="clubhouseHeading">The Clubhouse</h2>
+      <p class="sub">Live from the brine: today's showdown, the crunch verdict, and the club's loudest voices.</p>
+      <div class="sp-list" id="clubhouseGrid">
+        <article class="sp-item sp-wide" id="potdCard">
+          <h3><span class="sp-emoji" aria-hidden="true">🗳️</span>Pickle of the Day</h3>
+          <p class="potd-matchup" id="potdMatchup">Loading today's matchup…</p>
+          <div class="potd-bar" id="potdBar" hidden>
+            <span class="potd-fill" id="potdFillA"></span>
+          </div>
+          <div class="potd-actions" id="potdActions">
+            <button type="button" class="btn-ghost potd-vote" id="potdVoteA">Vote A</button>
+            <button type="button" class="btn-ghost potd-vote" id="potdVoteB">Vote B</button>
+          </div>
+          <p class="sp-note" id="potdNote"></p>
+        </article>
+        <article class="sp-item" id="crunchCard">
+          <h3><span class="sp-emoji" aria-hidden="true">💥</span>Crunch-o-meter</h3>
+          <p class="crunch-score" id="crunchScore">—</p>
+          <p class="sp-note" id="crunchNote">Rate the crunch, 1 to 10.</p>
+          <div class="crunch-picker" id="crunchPicker">
+            <button type="button" data-rating="1">1</button><button type="button" data-rating="2">2</button><button type="button" data-rating="3">3</button><button type="button" data-rating="4">4</button><button type="button" data-rating="5">5</button><button type="button" data-rating="6">6</button><button type="button" data-rating="7">7</button><button type="button" data-rating="8">8</button><button type="button" data-rating="9">9</button><button type="button" data-rating="10">10</button>
+          </div>
+        </article>
+        <article class="sp-item" id="brinersCard">
+          <h3><span class="sp-emoji" aria-hidden="true">🏆</span>Top Briners</h3>
+          <ol class="briner-list" id="brinerList"><li>Loading…</li></ol>
+        </article>
+        <article class="sp-item" id="barrelCard">
+          <h3><span class="sp-emoji" aria-hidden="true">🫙</span>Right now</h3>
+          <p class="now-line" id="nowLine">…</p>
+          <p class="sp-note" id="badgesLine"></p>
+          <p class="sp-note brine-fact" id="brineFact"></p>
+        </article>
+        <article class="sp-item sp-wide" id="nameCard">
+          <h3><span class="sp-emoji" aria-hidden="true">✨</span>Brine Name Generator</h3>
+          <p class="brine-name" id="brineName">Click to get brined</p>
+          <button type="button" class="btn-ghost" id="brineNameBtn">Generate my brine name</button>
         </article>
       </div>
     </section>
@@ -331,6 +407,143 @@
   })();
 
   checkAuth();
+
+  // ── Clubhouse: Pickle of the Day, Crunch-o-meter, Top Briners, presence ───
+  (async function clubhouse() {
+    const grid = document.getElementById('clubhouseGrid');
+    if (!grid) return;
+    let me = null;
+    try {
+      const r = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
+      if (r.ok) me = await r.json();
+    } catch {}
+    const signedIn = !!(me && me.email);
+    const needSignIn = () => { location.href = '/api/sso/bridge?back=' + encodeURIComponent('/'); };
+
+    const FACTS = [
+      'Pickles were Cleopatra\'s beauty secret. The club simply made it a personality.',
+      'A crunch above 180 decibels would be illegal. We test responsibly.',
+      'The word "pickle" comes from the Dutch "pekel" — brine. Fitting.',
+      'Pickle juice is a legal sports drink. Athletes call it "the brine advantage".',
+      'Every pickle in this club is a cucumber that committed to the lifestyle.',
+      'The Barrel is self-cleaning. Nobody knows how. Nobody asks.',
+    ];
+    const factEl = document.getElementById('brineFact');
+    if (factEl) factEl.textContent = '🥒 Did you know — ' + FACTS[Math.floor(Math.random() * FACTS.length)];
+
+    let features = null;
+    try {
+      const r = await fetch('/api/pickle-club/features', { credentials: 'include', cache: 'no-store' });
+      if (r.ok) features = await r.json();
+    } catch {}
+    if (!features) return;
+    document.getElementById('clubhouse').hidden = false;
+
+    // Pickle of the Day
+    const potd = features.potd || {};
+    const matchup = document.getElementById('potdMatchup');
+    if (matchup && potd.a && potd.b) {
+      matchup.textContent = potd.a.emoji + ' ' + potd.a.name + '  vs  ' + potd.b.emoji + ' ' + potd.b.name;
+      const total = Math.max(1, (potd.votesA || 0) + (potd.votesB || 0));
+      const bar = document.getElementById('potdBar');
+      const fill = document.getElementById('potdFillA');
+      if (bar && fill) {
+        bar.hidden = potd.total === 0;
+        fill.style.width = Math.round(100 * (potd.votesA || 0) / total) + '%';
+        bar.title = (potd.votesA || 0) + ' — ' + (potd.votesB || 0);
+      }
+      const note = document.getElementById('potdNote');
+      const voted = potd.myVote === 0 || potd.myVote === 1;
+      if (note) note.textContent = potd.total
+        ? (voted ? 'You voted. ' : '') + (potd.votesA || 0) + ' vs ' + (potd.votesB || 0) + ' so far today.'
+        : 'Be the first to vote today.';
+      const vote = async choice => {
+        if (!signedIn) return needSignIn();
+        try {
+          const r = await fetch('/api/pickle-club/vote', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ choice }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw Error(d.error || 'Vote failed');
+          note.textContent = 'Vote locked in. The brine has spoken.';
+          document.querySelectorAll('.potd-vote').forEach(b => b.disabled = true);
+        } catch (e) { if (note) note.textContent = e.message; }
+      };
+      const btnA = document.getElementById('potdVoteA'), btnB = document.getElementById('potdVoteB');
+      if (btnA) { btnA.textContent = 'Vote ' + potd.a.emoji + ' ' + potd.a.name; btnA.onclick = () => vote(0); }
+      if (btnB) { btnB.textContent = 'Vote ' + potd.b.emoji + ' ' + potd.b.name; btnB.onclick = () => vote(1); }
+      if (voted) document.querySelectorAll('.potd-vote').forEach(b => b.disabled = true);
+    }
+
+    // Crunch-o-meter
+    const crunch = features.crunch || {};
+    const score = document.getElementById('crunchScore');
+    if (score) score.textContent = crunch.average != null ? crunch.average + ' / 10' : '—';
+    const crunchNote = document.getElementById('crunchNote');
+    if (crunchNote) crunchNote.textContent = crunch.count
+      ? crunch.count + ' member' + (crunch.count === 1 ? '' : 's') + ' have rated the crunch.'
+      : 'Nobody has rated the crunch yet. Cowards.';
+    document.querySelectorAll('#crunchPicker button').forEach(b => {
+      const rating = Number(b.dataset.rating);
+      if (crunch.myRating === rating) b.classList.add('mine');
+      b.onclick = async () => {
+        if (!signedIn) return needSignIn();
+        try {
+          const r = await fetch('/api/pickle-club/crunch', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rating }) });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) throw Error(d.error || 'Rating failed');
+          b.classList.add('mine');
+          document.querySelectorAll('#crunchPicker button').forEach(x => { if (x !== b) x.classList.remove('mine'); });
+          if (crunchNote) crunchNote.textContent = 'Crunch rated ' + rating + '/10. The committee thanks you.';
+        } catch (e) { if (crunchNote) crunchNote.textContent = e.message; }
+      };
+    });
+
+    // Top Briners
+    const list = document.getElementById('brinerList');
+    if (list) {
+      const top = features.topBriners || [];
+      list.innerHTML = top.length
+        ? top.map(t => '<li><b>' + t.trophy + ' ' + String(t.name).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])) + '</b><span>' + t.count + ' msgs</span></li>').join('')
+        : '<li>No messages in The Barrel yet. Be the first brine.</li>';
+    }
+
+    // Right now: presence + your badges
+    const nowLine = document.getElementById('nowLine');
+    if (nowLine) {
+      const n = (features.online && features.online.count) || 0;
+      nowLine.textContent = n === 0
+        ? 'The barrel is quiet. Too quiet.'
+        : n + ' member' + (n === 1 ? '' : 's') + ' in the barrel right now.';
+    }
+    const badgesLine = document.getElementById('badgesLine');
+    if (badgesLine) {
+      const badges = features.badges || [];
+      badgesLine.textContent = badges.length
+        ? 'Your badges: ' + badges.map(b => b.emoji + ' ' + b.label).join(' · ')
+        : (signedIn ? 'No badges yet — vote, rate, and chat to earn them.' : '');
+    }
+
+    // Brine Name Generator (purely client-side, purely serious)
+    const ADJ = ['Crunchy', 'Dilly', 'Briny', 'Half-Sour', 'Kosher', 'Fermented', 'Speared', 'Vinegary', 'Crispy', 'Puckering'];
+    const NOUN = ['Gherkin', 'Cucumber', 'Spear', 'Pickleback', 'Briner', 'Dillwagon', 'Crunchlord', 'Kosherini', 'Puckerup', 'Barrelmaster'];
+    const nameBtn = document.getElementById('brineNameBtn');
+    const nameEl = document.getElementById('brineName');
+    if (nameBtn && nameEl) nameBtn.onclick = () => {
+      const seed = Math.floor(Math.random() * 9000) + 1000;
+      nameEl.textContent = ADJ[Math.floor(Math.random() * ADJ.length)] + ' ' + NOUN[Math.floor(Math.random() * NOUN.length)] + ' the ' + seed + 'th';
+    };
+
+    // Easter egg: seven clicks on the portrait earns the Golden Pickle.
+    const portrait = document.querySelector('.sp-portrait');
+    let clicks = 0;
+    if (portrait) portrait.addEventListener('click', () => {
+      clicks++;
+      if (clicks === 7) {
+        portrait.classList.add('pickle-golden');
+        if (nameEl) nameEl.textContent = '🥇 THE GOLDEN PICKLE 🥇';
+        setTimeout(() => portrait.classList.remove('pickle-golden'), 1300);
+      }
+    });
+  })();
   ['navLogin', 'heroCta', 'ctaSignin'].forEach(id => {
     const a = $id(id);
     if (a) a.addEventListener('click', goSignIn);
