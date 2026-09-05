@@ -12,7 +12,7 @@
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>The Brine Cellar — Sexy Pickle Club</title>
-<script src="/theme.js?v=9"></script>
+<script src="/theme.js?v=10"></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
 <script src="/api.js"></script>
@@ -785,6 +785,11 @@ button {
   .msg-tools { opacity: 0.55; pointer-events: auto; }
   .msg-tools.open { opacity: 1; }
   #input-row {
+    /* Body padding is zeroed above for the scroll lock, so THIS rule owns the
+       home-indicator inset — margin-bottom must stay inset-free or the safe
+       area gets counted twice (~34px of dead space under the composer on
+       iPhone; Android reports a 0 inset here, which is why it looked fine). */
+    margin-bottom: 8px !important;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
     min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
   }
@@ -809,7 +814,7 @@ button {
   transition: none !important;
 }
 </style>
-<link rel="stylesheet" href="/encrypt-galaxy.css?v=6">
+<link rel="stylesheet" href="/encrypt-galaxy.css?v=7">
 </head>
 <body class="encrypt-page">
 

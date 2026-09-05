@@ -20,33 +20,23 @@
   <meta property="twitter:description" content="Access live Woodcreek High School bell schedules, 25,000+ unblocked games, secure E2E encrypted chat, and cloud-sync gameplay profiles." />
   <meta property="twitter:image" content="https://mitch.pro/icon-512.png" />
 
-  <script src="/theme.js?v=9"></script>
+  <script src="/theme.js?v=10"></script>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/welcome.css?v=2">
   <script src="/app-shell.js" defer></script>
   <script src="/api.js"></script>
 
   <style>
-    /* Burning cherry wallpaper on its own fixed layer behind everything —
-       the theme's galaxy background is never painted or downloaded here.
-       Heavily blurred and faint: an ambient wash the transparent browser
-       window breathes through. */
-    html body.sales-page::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -1;
-      background: url(/home-burning-cherry.webp) center / cover no-repeat;
-      opacity: 0.45;
-      filter: blur(26px);
-      transform: scale(1.15);
-      pointer-events: none;
+    /* Burning cherry wallpaper — painted (and blurred) by theme.js's shared
+       html::before layer. Heavily faint: an ambient wash the transparent
+       browser window breathes through. */
+    html body.sales-page {
+      --t-bgr: url(/home-burning-cherry.webp) center / cover no-repeat;
+      --t-bg-layer-opacity: 0.45;
     }
-    html,
-    html body {
-      background: transparent !important;
-      background-image: none !important;
-      background-attachment: initial !important;
+    /* Light mode: the cherry photo is a dark print — use the light theme's wash */
+    html.theme-light body.sales-page {
+      --t-bgr: linear-gradient(160deg, #f3f5fa, #e9edf6);
     }
     /* Light mode: pale wash over the wallpaper so ink text keeps contrast */
     html.theme-light body.sales-page::after {
@@ -85,8 +75,7 @@
       pointer-events: none;
       background:
         radial-gradient(ellipse 80% 55% at 50% -15%, color-mix(in srgb, var(--t-ac) 22%, transparent), transparent 70%),
-        radial-gradient(ellipse 45% 40% at 100% 80%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 10%, transparent), transparent 65%),
-        var(--t-bgr, none);
+        radial-gradient(ellipse 45% 40% at 100% 80%, color-mix(in srgb, var(--t-ac2, var(--t-ac)) 10%, transparent), transparent 65%);
     }
 
     .sales-top {

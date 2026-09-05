@@ -962,10 +962,10 @@ body.auth-claim-page {
   --auth-cobalt: #b52f70;
   --auth-orange: #f23f83;
   --auth-acid: #ff6ca7;
-  background:
+  --t-bgr:
     linear-gradient(90deg, rgba(3,5,18,.7) 0%, rgba(3,5,18,.34) 45%, rgba(3,5,18,.76) 100%),
     linear-gradient(0deg, rgba(3,4,16,.52) 0%, transparent 56%),
-    url('/home-burning-cherry.webp') center 48% / cover no-repeat fixed !important;
+    url('/home-burning-cherry.webp') center 48% / cover no-repeat !important;
 }
 
 body.enroll-page::before,
@@ -1080,10 +1080,10 @@ body.auth-claim-page::before {
 @media (max-width: 860px) {
   body.enroll-page,
   body.auth-claim-page {
-    background:
+    background-color: #080919;
+    --t-bgr:
       linear-gradient(180deg, rgba(3,5,18,.38) 0%, rgba(3,5,18,.72) 42%, rgba(3,5,18,.92) 100%),
-      url('/home-burning-cherry.webp') center top / auto max(42rem, 72vh) no-repeat,
-      #080919 !important;
+      url('/home-burning-cherry.webp') center top / auto max(42rem, 72vh) no-repeat !important;
   }
   body.enroll-page::before,
   body.auth-claim-page::before { clip-path: none; }
@@ -1092,10 +1092,10 @@ body.auth-claim-page::before {
 @media (max-width: 520px) {
   body.enroll-page,
   body.auth-claim-page {
-    background:
+    background-color: #080919;
+    --t-bgr:
       linear-gradient(180deg, rgba(3,5,18,.32) 0%, rgba(3,5,18,.78) 34rem, #080919 48rem),
-      url('/home-burning-cherry.webp') center top / auto 36rem no-repeat,
-      #080919 !important;
+      url('/home-burning-cherry.webp') center top / auto 36rem no-repeat !important;
   }
 }
 
@@ -1544,4 +1544,12 @@ html.theme-light .claim-card .claim-action:hover {
   background:
     linear-gradient(110deg, rgba(255, 255, 255, .18), transparent 34%),
     linear-gradient(100deg, #f43782 0%, #d32ab3 55%, #873df1 100%) !important;
+}
+
+/* Light mode: the cherry night artwork is a dark print — ink text can't live
+   on it. Swap to the light theme's plain wash (beats the !important dark
+   values above by cascade order + html.theme-light specificity). */
+html.theme-light body.enroll-page,
+html.theme-light body.auth-claim-page {
+  --t-bgr: linear-gradient(160deg, #f3f5fa, #e9edf6) !important;
 }

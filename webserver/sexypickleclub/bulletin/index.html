@@ -4,14 +4,15 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Club Bulletin — Sexy Pickle Club</title>
   <meta name="description" content="The Sexy Pickle Club Bulletin: official announcements, awards, and pickled wisdom from the co-founders.">
-  <script src="/theme.js?v=9"></script><link rel="stylesheet" href="/app.css"><script src="/api.js"></script><script src="/app-shell.js" defer></script>
+  <script src="/theme.js?v=10"></script><link rel="stylesheet" href="/app.css"><script src="/api.js"></script><script src="/app-shell.js" defer></script>
   <!-- Pickle pages bypass the server's site-wide head injection, so the shared
        shell stylesheets the Plaza gets automatically are linked here instead. -->
   <link rel="stylesheet" href="/relaunch.css"><link rel="stylesheet" href="/site-galaxy.css"><link rel="stylesheet" href="/portal-redesign.css?v=10">
   <style>
-    /* Same wallpaper treatment as the club landing */
-    html body.pickle-page::before{content:"";position:fixed;inset:0;z-index:-1;background:url(/home-burning-cherry.webp) center/cover no-repeat;opacity:.45;filter:blur(26px);transform:scale(1.15);pointer-events:none}
-    html,html body{background:transparent!important;background-image:none!important;background-attachment:initial!important}
+    /* Same wallpaper treatment as the club landing — painted (and blurred)
+       by theme.js's shared html::before layer. */
+    html body.pickle-page{--t-bgr:url(/home-burning-cherry.webp) center/cover no-repeat;--t-bg-layer-opacity:.45}
+    html.theme-light body.pickle-page{--t-bgr:linear-gradient(160deg,#f3f5fa,#e9edf6)}
     html.theme-light body.pickle-page::after{content:"";position:fixed;inset:0;z-index:-1;background:linear-gradient(180deg,rgba(242,244,250,.72),rgba(236,238,247,.8));pointer-events:none}
     body.pickle-page{--sp:#7ac74f}
     body.pickle-page .sp-page::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse 80% 55% at 50% -15%,color-mix(in srgb,var(--sp) 20%,transparent),transparent 70%)}

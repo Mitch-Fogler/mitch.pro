@@ -12,7 +12,7 @@
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Encrypted Chat — mitch.pro</title>
-<script src="/theme.js?v=9"></script>
+<script src="/theme.js?v=10"></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
 <script src="/api.js"></script>
@@ -615,6 +615,10 @@ button {
 
 #group-modal.show, #e2e-modal.show { display: flex; }
 
+/* Light mode: soften the modal scrim + card shadow to match the pale palette */
+html.theme-light #group-modal, html.theme-light #e2e-modal { background: rgba(238, 241, 249, 0.62); }
+html.theme-light .modal-card { box-shadow: 0 28px 90px rgba(15, 18, 35, 0.28); }
+
 .modal-card {
   width: min(620px, 100%);
   max-height: min(760px, calc(100vh - 32px));
@@ -805,7 +809,7 @@ button {
   transition: none !important;
 }
 </style>
-<link rel="stylesheet" href="/encrypt-galaxy.css?v=6">
+<link rel="stylesheet" href="/encrypt-galaxy.css?v=7">
 </head>
 <body class="encrypt-page">
 
