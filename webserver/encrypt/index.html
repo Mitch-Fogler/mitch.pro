@@ -816,7 +816,7 @@ button {
     <div id="sidebar-top">
       <!-- Brand doubles as the home button — the app topbar is hidden on this page -->
       <a id="sidebar-home" href="/" title="Back to homepage" aria-label="Back to homepage">
-        <span class="brand-monogram" aria-hidden="true">m.</span>
+        <img class="site-logo" src="/icon-192.png" alt="" width="35" height="35">
         <span id="sidebar-title"><b>Messages</b><small>End-to-end encrypted</small></span>
       </a>
       <a id="sidebar-home-action" class="small-btn chat-home-action" href="/" aria-label="Go to homepage">⌂ <span>Home</span></a>
@@ -1489,7 +1489,7 @@ async function init() {
     console.error("Fetch /api/me error:", err);
   }
   if (!myEmail) {
-    document.getElementById('loading').innerHTML = '<div class="chat-signin"><span class="brand-monogram" aria-hidden="true">m.</span><h1>Your conversations<br>are waiting.</h1><p>Sign in to open encrypted chat.</p><a class="btn-primary" href="/enroll/">Sign in</a><a href="/">Back to mitch.pro</a></div>';
+    document.getElementById('loading').innerHTML = '<div class="chat-signin"><img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><h1>Encrypted chat</h1><p>Sign in to open encrypted chat.</p><a class="btn-primary" href="/enroll/">Sign in</a><a href="/">Back to mitch.pro</a></div>';
     return;
   }
 
