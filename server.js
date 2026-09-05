@@ -7764,6 +7764,128 @@ async function handleRequest(req, server) {
       return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy GameMonetize game.' });
     }
   }
+
+  // ── Pirate Voyage PIA-Proxied Reverse Proxy (Premium Only) ──
+  if (path.startsWith('/proxy/pirate-voyage') || path.startsWith('/pirate-voyage')) {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const email = emailFromSid(sid);
+    
+    // Strict premium user check
+    if (!email || !isPremiumEmail(email)) {
+      return new Response(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Premium Required — Pirate Voyage</title>
+  <style>
+    body { background: #070510; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; min-height: 100vh; margin: 0; align-items: center; justify-content: center; text-align: center; padding: 20px; box-sizing: border-box; }
+    .card { background: #0f172a; border: 1px solid rgba(168, 85, 247, 0.3); padding: 40px 32px; border-radius: 16px; max-width: 460px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); }
+    .icon { font-size: 48px; margin-bottom: 12px; }
+    h1 { color: #f8fafc; font-size: 22px; margin: 0 0 12px; font-weight: 800; }
+    p { color: #cbd5e1; font-size: 14px; line-height: 1.6; margin: 0 0 24px; }
+    .badge { display: inline-block; background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); font-weight: 700; padding: 4px 12px; border-radius: 99px; font-size: 12px; margin-bottom: 16px; }
+    .btn { background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700; display: inline-block; transition: transform 0.15s; }
+    .btn:hover { transform: scale(1.04); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">🏴‍☠️</div>
+    <div class="badge">Premium Feature</div>
+    <h1>Pirate Voyage Access Restricted</h1>
+    <p>Pirate Voyage is an exclusive feature reserved for <strong>mitch.pro Premium</strong> members. All traffic for Pirate Voyage is proxied through server PIA VPN.</p>
+    <a href="/premium.html" target="_top" class="btn">Get Lifetime Premium</a>
+  </div>
+</body>
+</html>`, {
+        status: 403,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      });
+    }
+
+    let subPath = '';
+    if (path.startsWith('/proxy/pirate-voyage')) {
+      subPath = path.slice('/proxy/pirate-voyage'.length);
+    } else if (path.startsWith('/pirate-voyage')) {
+      subPath = path.slice('/pirate-voyage'.length);
+    }
+    if (!subPath || subPath === '/') subPath = '/';
+    
+    const targetUrl = `https://cinejoy.to${subPath}${url.search}`;
+
+    function getPiaProxyUrl() {
+      if (process.env.PIA_PROXY_URL) return process.env.PIA_PROXY_URL;
+      if (process.env.PIA_VPN_PROXY) return process.env.PIA_VPN_PROXY;
+      if (process.env.PIA_HTTP_PROXY) return process.env.PIA_HTTP_PROXY;
+      if (process.env.PIA_SOCKS_PROXY) return process.env.PIA_SOCKS_PROXY;
+      const user = process.env.PIA_USER || process.env.PIA_USERNAME || '';
+      const pass = process.env.PIA_PASS || process.env.PIA_PASSWORD || '';
+      const host = process.env.PIA_HOST || 'proxy-nl.privateinternetaccess.com';
+      const port = process.env.PIA_PORT || '1080';
+      if (user && pass) {
+        return `socks5://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}`;
+      }
+      return `socks5://${host}:${port}`;
+    }
+
+    try {
+      const headers = new Headers();
+      for (const [k, v] of req.headers.entries()) {
+        if (!['host', 'cookie', 'authorization', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
+          headers.set(k, v);
+        }
+      }
+      headers.set('Host', 'cinejoy.to');
+      headers.set('Referer', 'https://cinejoy.to/');
+      
+      const piaProxy = getPiaProxyUrl();
+      const fetchOpts = {
+        method: req.method,
+        headers: headers,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null,
+        redirect: 'follow'
+      };
+      if (piaProxy) {
+        fetchOpts.proxy = piaProxy;
+      }
+      
+      let upstreamRes;
+      try {
+        upstreamRes = await fetch(targetUrl, fetchOpts);
+      } catch (err) {
+        console.error('[pirate-voyage-proxy] PIA fetch attempt failed:', err?.message || err);
+        delete fetchOpts.proxy;
+        upstreamRes = await fetch(targetUrl, fetchOpts);
+      }
+
+      const contentType = upstreamRes.headers.get('content-type') || '';
+      const resHeaders = new Headers(upstreamRes.headers);
+      resHeaders.set('Access-Control-Allow-Origin', '*');
+      resHeaders.delete('content-security-policy');
+      resHeaders.delete('x-frame-options');
+      resHeaders.delete('content-encoding');
+      resHeaders.delete('content-length');
+
+      if (contentType.includes('text/html')) {
+        let htmlText = await upstreamRes.text();
+        htmlText = htmlText.replaceAll('https://cinejoy.to', '/proxy/pirate-voyage');
+        return new Response(htmlText, {
+          status: upstreamRes.status,
+          headers: resHeaders
+        });
+      }
+
+      return new Response(upstreamRes.body, {
+        status: upstreamRes.status,
+        headers: resHeaders
+      });
+    } catch (e) {
+      console.error('[pirate-voyage-proxy] error:', e?.message || e);
+      return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy Pirate Voyage stream.' });
+    }
+  }
+
   if (softMaintenanceActive) {
     const isExemptMaint = path === '/maintenance.html' ||
                           path === '/cookie-consent.js' ||
