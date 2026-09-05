@@ -231,18 +231,45 @@
   function applyBgImg(url) {
     var h = document.documentElement, r = h.style;
     var isLight = h.classList.contains('theme-light');
-    if (url) {
-      // User wallpaper: paint dim gradient + image, honoring the pos/size
-      // preferences. Painted via the background shorthand (see baseStyle),
-      // so position/size ride inside the value.
-      var dimGradient = isLight
-        ? 'linear-gradient(rgba(240,243,250,var(--t-bg-dim-light,0.85)),rgba(240,243,250,var(--t-bg-dim-light,0.85)))'
-        : 'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5)))';
-      r.setProperty('--t-bg-img-layer',
-        dimGradient + ',url(' + JSON.stringify(url) + ') var(--t-bg-pos,center) / var(--t-bg-size,cover) var(--t-bg-repeat,no-repeat)');
+    var videoEl = document.getElementById('mitch-bg-video');
+    var isVideo = url && (/\.webm($|\?)/i.test(url) || /^data:video\/webm/i.test(url));
+
+    if (isVideo) {
+      if (!videoEl) {
+        videoEl = document.createElement('video');
+        videoEl.id = 'mitch-bg-video';
+        videoEl.setAttribute('autoplay', '');
+        videoEl.setAttribute('loop', '');
+        videoEl.setAttribute('muted', '');
+        videoEl.setAttribute('playsinline', '');
+        videoEl.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;object-fit:cover;z-index:-9999;pointer-events:none;transition:opacity 0.5s ease;';
+        (document.body || document.documentElement).appendChild(videoEl);
+      }
+      if (videoEl.getAttribute('src') !== url) {
+        videoEl.src = url;
+        videoEl.play().catch(function(){});
+      }
+      videoEl.style.display = 'block';
+      videoEl.style.opacity = isLight ? '0.35' : '0.65';
+      r.setProperty('--t-bg-img-layer', 'none');
     } else {
-      // Page-owned --t-bgr (stylesheets) wins over the theme-owned default.
-      r.setProperty('--t-bg-img-layer', 'var(--t-bgr, var(--t-bgr-theme, none))');
+      if (videoEl) {
+        videoEl.style.display = 'none';
+        videoEl.src = '';
+      }
+      if (url) {
+        // User wallpaper: paint dim gradient + image, honoring the pos/size
+        // preferences. Painted via the background shorthand (see baseStyle),
+        // so position/size ride inside the value.
+        var dimGradient = isLight
+          ? 'linear-gradient(rgba(240,243,250,var(--t-bg-dim-light,0.85)),rgba(240,243,250,var(--t-bg-dim-light,0.85)))'
+          : 'linear-gradient(rgba(0,0,0,var(--t-bg-dim,0.5)),rgba(0,0,0,var(--t-bg-dim,0.5)))';
+        r.setProperty('--t-bg-img-layer',
+          dimGradient + ',url(' + JSON.stringify(url) + ') var(--t-bg-pos,center) / var(--t-bg-size,cover) var(--t-bg-repeat,no-repeat)');
+      } else {
+        // Page-owned --t-bgr (stylesheets) wins over the theme-owned default.
+        r.setProperty('--t-bg-img-layer', 'var(--t-bgr, var(--t-bgr-theme, none))');
+      }
     }
     var resolved = '';
     try { resolved = getComputedStyle(h).getPropertyValue('--t-bg-img-layer'); } catch (_) {}
@@ -262,7 +289,7 @@
         }
       } catch (_) {}
     }
-    var active = /url\(/.test(resolved);
+    var active = isVideo || /url\(/.test(resolved);
     h.toggleAttribute('data-bglayer', active);
     if (active) setBodyTransparent(); else clearBodyTransparent();
     scheduleAdaptive();

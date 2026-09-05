@@ -12,11 +12,34 @@ services:
       - webserver-blue
       - webserver-green
 
+  # Dedicated Independent Private Internet Access (PIA) VPN Proxy Service
+  pia-proxy:
+    image: qmcgaw/gluetun:latest
+    container_name: mitch-pia-proxy
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "127.0.0.1:8888:8888"
+      - "127.0.0.1:8388:8388"
+    environment:
+      - VPN_SERVICE_PROVIDER=private internet access
+      - OPENVPN_USER=${PIA_USER:-${PIA_USERNAME:-}}
+      - OPENVPN_PASSWORD=${PIA_PASS:-${PIA_PASSWORD:-}}
+      - HTTPPROXY=on
+      - HTTPPROXY_LISTENING_ADDRESS=:8888
+      - SOCKS5_LISTENING_ADDRESS=:8388
+      - UPDATER_PERIOD=24h
+
   # Production Slot A: Blue Webserver
   webserver-blue:
     build: .
     container_name: mitch-webserver-blue
     restart: unless-stopped
+    depends_on:
+      - pia-proxy
     ports:
       - "127.0.0.1:6811:6800"
     volumes:
@@ -34,6 +57,11 @@ services:
       # with process.env.PVE_SSH_KEY_PATH === undefined.
       - ./.env:/app/.env:ro
     environment:
+      - PIA_PROXY_URL=http://pia-proxy:8888
+      - PIA_USER
+      - PIA_PASS
+      - PIA_USERNAME
+      - PIA_PASSWORD
       - SUPPORT_USER
       - SUPPORT_PASS
       - NOREPLY_USER
@@ -78,6 +106,8 @@ services:
     build: .
     container_name: mitch-webserver-green
     restart: unless-stopped
+    depends_on:
+      - pia-proxy
     ports:
       - "127.0.0.1:6812:6800"
     volumes:
@@ -91,6 +121,11 @@ services:
       - /opt/userdata:/opt/userdata
       - ./.env:/app/.env:ro
     environment:
+      - PIA_PROXY_URL=http://pia-proxy:8888
+      - PIA_USER
+      - PIA_PASS
+      - PIA_USERNAME
+      - PIA_PASSWORD
       - SUPPORT_USER
       - SUPPORT_PASS
       - NOREPLY_USER

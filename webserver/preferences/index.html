@@ -1941,6 +1941,24 @@ function updateBgChipActive() {
   });
 }
 
+function applyChipPreview(chip, url) {
+  if (/\.webm($|\?)/i.test(url)) {
+    var vid = document.createElement('video');
+    vid.src = url;
+    vid.autoplay = true;
+    vid.loop = true;
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit;';
+    chip.style.position = 'relative';
+    chip.style.overflow = 'hidden';
+    chip.appendChild(vid);
+    vid.play().catch(function(){});
+  } else {
+    chip.style.backgroundImage = 'url("' + url + '")';
+  }
+}
+
 function renderPresetBgChips(presetGrid, bgs, cur) {
   presetGrid.innerHTML = '';
   bgs.forEach(function(b) {
@@ -1948,7 +1966,7 @@ function renderPresetBgChips(presetGrid, bgs, cur) {
     chip.type = 'button';
     chip.className = 'bg-chip' + (cur === b.url ? ' active' : '');
     chip.setAttribute('data-url', b.url);
-    chip.style.backgroundImage = 'url("' + b.url + '")';
+    applyChipPreview(chip, b.url);
     chip.title = b.name;
     chip.setAttribute('aria-label', 'Use ' + b.name + ' background');
     chip.onclick = function() {
@@ -1967,9 +1985,8 @@ function renderBgChips() {
   var myBgGrid = document.getElementById('myBgGrid');
   if (!presetGrid || !myBgGrid) return;
   var cur = getCookieValue('bgimg', '');
-  // The server lists whatever .webp files sit in webserver/backgrounds/ — drop
-  // one in and it appears as a chip, delete it and the chip is gone. The static
-  // manifest in theme.js is the fallback if that fetch fails.
+  // The server lists whatever .webp or .webm files sit in webserver/backgrounds/ — drop
+  // one in (or .mp4/.gif which auto-convert to .webm) and it appears as a chip.
   var fallback = (window.__theme && window.__theme.backgrounds) || [];
   fetch('/api/backgrounds/list').then(function(r) { return r.ok ? r.json() : null; }).then(function(res) {
     var bgs = (res && res.ok && Array.isArray(res.items) && res.items.length) ? res.items : fallback;
@@ -1985,7 +2002,7 @@ function renderBgChips() {
       chip.type = 'button';
       chip.className = 'bg-chip' + (cur === item.url ? ' active' : '');
       chip.setAttribute('data-url', item.url);
-      chip.style.backgroundImage = 'url("' + item.url + '")';
+      applyChipPreview(chip, item.url);
       chip.title = item.name || 'Uploaded background';
       chip.onclick = function() {
         setCookieValue('bgimg', item.url);
@@ -1996,6 +2013,7 @@ function renderBgChips() {
       };
       var del = document.createElement('span');
       del.className = 'bg-chip-del';
+      del.style.zIndex = '2';
       del.textContent = '×';
       del.title = 'Delete this background';
       del.onclick = function(ev) {
