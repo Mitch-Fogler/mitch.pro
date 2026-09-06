@@ -559,3 +559,110 @@ body.dark .hero { background: var(--wine-soft); }
 .dock-item.highlight-dock .dock-icon {
   transform: scale(1.12);
 }
+
+/* ── Coherence pass: school identity over theme-engine defaults ────────────
+   The hub shares the mitch theme engine, but its accent identity is the
+   school's. Opting the body into .mitch-design stops the engine's global
+   button restyle; these pins stop the remaining token bleed (purple accents,
+   blue-black surfaces) so every surface stays on the school palette. */
+
+html body.school-hub {
+  --t-bg: #0c0809 !important;
+  --t-bg2: rgba(30, 23, 26, 0.85) !important;
+  --t-bg3: #241c20 !important;
+  --t-fg: #f5eff1 !important;
+  --t-fg2: #b3a6ab !important;
+  --t-bd: rgba(224, 214, 218, 0.16) !important;
+  /* theme.js styles bare anchors with a{color:var(--t-ac)} — keep that accent
+     on the school palette too (the engine's dark default is purple). */
+  --t-ac: #c46a7e !important;
+  --t-ac2: #dd8b9e !important;
+  --t-bda: rgba(196, 106, 126, 0.45) !important;
+  --t-gls: rgba(196, 106, 126, 0.3) !important;
+}
+html.theme-light body.school-hub {
+  --t-bg: #f7f4f4 !important;
+  --t-bg2: #ffffff !important;
+  --t-bg3: #f1ecec !important;
+  --t-fg: #231a1d !important;
+  --t-fg2: #5d5156 !important;
+  --t-bd: rgba(40, 16, 20, 0.16) !important;
+  --t-ac: #700018 !important;
+  --t-ac2: #9d1933 !important;
+  --t-bda: rgba(112, 0, 24, 0.4) !important;
+  --t-gls: rgba(112, 0, 24, 0.22) !important;
+}
+
+/* Filled controls keep the deep school maroon with white text in BOTH themes:
+   in dark, var(--wine) flips to a 45%-white mix that washes out under white
+   text (the "view schedule" pink). Solid fills use --school-primary; --wine
+   stays the accent for text, icons, and borders, where the lighter dark-mode
+   mix is what keeps contrast. */
+.lunch-status,
+.date-tile span,
+.day-brief button,
+.calendar-agenda>a,
+.calendar-days>button.today,
+.timeline-row.active .timeline-dot,
+.timeline-row .now-chip,
+.choice-number,
+.hero .primary-button {
+  background: var(--school-primary, #500000);
+  border-color: var(--school-primary, #500000);
+  color: #fff;
+}
+body.dark :is(.lunch-status, .hero .primary-button, .day-brief button, .calendar-agenda>a, .calendar-days>button.today) {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+body.dark .lunch-status span { color: rgba(255, 255, 255, 0.72); }
+.lunch-status strong { white-space: nowrap; }
+
+/* Chat surfaces: school maroon instead of the engine's purple accent. */
+.site-header nav a.nav-chat-link { color: var(--wine) !important; }
+.site-header nav a.nav-chat-link:hover { border-bottom-color: var(--wine) !important; }
+.header-chat-btn {
+  border-color: color-mix(in srgb, var(--school-primary, #500000) 55%, transparent);
+  background: color-mix(in srgb, var(--school-primary, #500000) 10%, transparent);
+}
+.header-chat-btn:hover { background: var(--school-primary, #500000); color: #fff; box-shadow: 0 4px 14px rgba(80, 0, 0, .35); }
+.header-chat-btn .e2e-badge { background: var(--school-primary, #500000); color: #fff; }
+.header-chat-btn:hover .e2e-badge { background: #fff; color: var(--school-primary, #500000); }
+.hero-actions .hero-chat-btn {
+  border-color: var(--school-primary, #500000);
+  background: var(--school-primary, #500000);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(80, 0, 0, .25);
+}
+.app-icon { background: color-mix(in srgb, var(--wine) 14%, transparent); }
+.app-card-badge, .app-card-cta, .dock-item.highlight-dock { color: var(--wine); }
+.app-card:hover { border-color: color-mix(in srgb, var(--wine) 55%, var(--line)); }
+.app-card.highlight-app {
+  border-color: color-mix(in srgb, var(--wine) 55%, var(--line));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--wine) 9%, var(--card)), var(--card));
+}
+.pwa-install-btn { background: #fff; color: var(--school-primary, #500000); box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+
+/* Tools zone: the maroon band needs white heading text in light mode too. */
+.tools-zone .tools-heading h2 { color: #fff; }
+.tools-zone .tools-heading p:last-child { color: rgba(255, 255, 255, 0.78); }
+/* Emoji tiles replaced the old logo images — center the glyph. */
+.tool-logo { display: grid; place-items: center; font-size: 19px; line-height: 1; }
+
+/* Mobile: the fixed 58px header clipped its wrapped actions over the hero. */
+@media (max-width: 680px) {
+  .site-header { height: auto; min-height: 58px; padding-block: 8px; row-gap: 8px; }
+  .lunch-status { display: none; } /* hero keeps a Change-lunch button; day brief shows lunch */
+  .school-choice { gap: 2px; font-size: 9px; }
+  .school-choice select { max-width: 148px; padding: 7px; }
+  .hero-actions { flex-direction: row; flex-wrap: wrap; row-gap: 9px; }
+  /* Keep the weather pill above the mobile dock instead of under it. */
+  .weather-widget {
+    bottom: calc(78px + max(6px, env(safe-area-inset-bottom, 0px)));
+    width: min(300px, calc(100vw - 20px));
+  }
+}
+/* Installed PWA: theme.js injects body padding-bottom env() !important after
+   this sheet, which would erase the dock clearance — out-specify it. */
+@media (display-mode: standalone) {
+  html body.school-hub:not(.encrypt-page) { padding-bottom: calc(75px + env(safe-area-inset-bottom, 0px)) !important; }
+}

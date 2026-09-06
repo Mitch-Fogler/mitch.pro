@@ -198,11 +198,19 @@
     return p === '/' || p === '/index.html';
   }
 
+  // School hubs keep their own identity: no default wallpaper, no adaptive
+  // accent sampling (the palette comes from reference-theme.css / the school
+  // brands). An explicit bgimg cookie is still honored.
+  function isSchoolHub() {
+    return !!(document.body && document.body.classList.contains('school-hub'));
+  }
+
   function getEffectiveBgImg() {
     var custom = getBgImgCookie();
     if (custom) return custom;
     var isLight = document.documentElement.classList.contains('theme-light');
     if (isLight) return '';
+    if (isSchoolHub()) return '';
     return '/backgrounds/wallhaven-black-mountain.webp';
   }
 
@@ -359,6 +367,7 @@
     var root = document.documentElement;
     if (getPref('adapt', 'on') === 'off' && !force) { clearAdaptive(); return; }
     if (root.classList.contains('theme-light')) { clearAdaptive(); return; }
+    if (isSchoolHub()) { clearAdaptive(); return; }
     // A manual accent is the user's explicit choice — never override it.
     if (/^#[0-9a-f]{6}$/i.test(getPref('accent', ''))) { clearAdaptive(); return; }
 
@@ -674,7 +683,9 @@
     '.theme-light .wallet strong,.theme-light .fs-wallet strong,.theme-light .hist strong{color:var(--t-fg)!important;}' +
     '.theme-light .listing-title{color:var(--t-fg)!important;}' +
     '.theme-light .btn.sec{color:var(--t-fg)!important;background:rgba(0,0,0,0.05)!important;border-color:rgba(0,0,0,0.1)!important;}' +
-    '.theme-light h1,.theme-light h2,.theme-light h3,.theme-light h4,.theme-light h5,.theme-light h6{color:var(--t-fg)!important;}' +
+    // School hubs design their own heading colors (white on maroon bands) —
+    // don't force the light palette onto them.
+    '.theme-light body:not(.school-hub) h1,.theme-light body:not(.school-hub) h2,.theme-light body:not(.school-hub) h3,.theme-light body:not(.school-hub) h4,.theme-light body:not(.school-hub) h5,.theme-light body:not(.school-hub) h6{color:var(--t-fg)!important;}' +
     '.theme-light .brand{color:var(--t-fg)!important;}' +
     '.theme-light .opt-btn:hover{color:var(--t-fg)!important;background:rgba(0,0,0,0.08)!important;}' +
     '.theme-light .choice.active{color:var(--t-fg)!important;background:rgba(56,189,248,0.18)!important;}' +
