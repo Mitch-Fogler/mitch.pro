@@ -494,15 +494,16 @@
   </style>
   <link rel="stylesheet" href="/admin-dayboard.css?v=9">
   <link rel="stylesheet" href="/staff-galaxy.css?v=4">
+  <link rel="stylesheet" href="/admin-command.css?v=1">
 </head>
-<body class="admin-page admin-locked">
+<body id="command-center" class="admin-page admin-locked">
   <main class="shell">
     <div class="topbar">
       <a class="back" href="/">Back</a>
       <img class="staff-logo" src="/icon-192.png" alt="mitch.pro">
       <div class="staff-heading">
-        <span class="staff-eyebrow">mitch.pro / staff systems</span>
-        <h1>Admin Command Center</h1>
+        <span class="staff-eyebrow">mitch.pro / admin</span>
+        <h1>Command <span class="command-title-accent">Center</span></h1>
 
       </div>
       <div class="status"><span class="dot"></span><span id="access-status">Checking access</span></div>
@@ -681,7 +682,7 @@
 
       <form class="action-card" onsubmit="sendNotification(event)">
         <h2>Send Notification</h2>
-        <p>Stored like encrypted chat delivery: POST, server validation, immediate local status.</p>
+        <p>Send a notification to one account or everyone.</p>
         <label class="check"><input id="notif-all" type="checkbox" onchange="syncNotifMode()">Send to all users</label>
         <input id="notif-email" type="email" placeholder="user@email.com">
         <input id="notif-title" type="text" maxlength="80" placeholder="Title">
@@ -1889,8 +1890,8 @@
         ['Banned Accounts', s.bannedAccounts || 0],
         ['Cheat Logs', s.cheatLogs || 0],
       ];
-      document.getElementById('cards').innerHTML = cards.map(c =>
-        '<div class="card"><div class="label">' + esc(c[0]) + '</div><div class="value">' + esc(c[1]) + '</div></div>'
+      document.getElementById('cards').innerHTML = cards.map((c, i) =>
+        '<div class="card"><span class="metric-mark" aria-hidden="true">' + ['↗','✉','⚑','◇','●','⊘','≡'][i] + '</span><div class="label">' + esc(c[0]) + '</div><div class="value">' + esc(c[1]) + '</div></div>'
       ).join('');
     }
 
