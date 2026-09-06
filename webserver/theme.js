@@ -201,6 +201,8 @@
   function getEffectiveBgImg() {
     var custom = getBgImgCookie();
     if (custom) return custom;
+    var isLight = document.documentElement.classList.contains('theme-light');
+    if (isLight) return '';
     return '/backgrounds/wallhaven-black-mountain.webp';
   }
 
@@ -244,6 +246,12 @@
       }
       if (videoEl.getAttribute('src') !== url) {
         videoEl.src = url;
+      }
+      var isPrefs = (location.pathname || '').indexOf('/preferences') === 0;
+      if (isPrefs) {
+        videoEl.pause();
+        try { videoEl.currentTime = 0.1; } catch (_) {}
+      } else {
         videoEl.play().catch(function(){});
       }
       videoEl.style.display = 'block';
@@ -618,8 +626,9 @@
     // background extend edge-to-edge, but keep content clear of the cutouts.
     '@supports (padding: env(safe-area-inset-top)) {' +
       '@media (display-mode: standalone) {' +
-        'body{padding-top:env(safe-area-inset-top)!important;padding-right:env(safe-area-inset-right)!important;' +
+        'body:not(.encrypt-page):not(.cellar-page){padding-top:env(safe-area-inset-top)!important;padding-right:env(safe-area-inset-right)!important;' +
           'padding-bottom:env(safe-area-inset-bottom)!important;padding-left:env(safe-area-inset-left)!important}' +
+        'body.encrypt-page,body.cellar-page{padding:0!important}' +
         'html{background:var(--t-bg)}' +
         'body.home-galaxy .hud-topbar{top:calc(14px + env(safe-area-inset-top))!important}' +
       '}' +

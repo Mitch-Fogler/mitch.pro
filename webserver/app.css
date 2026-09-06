@@ -54,6 +54,16 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body.encrypt-page,
+body.cellar-page {
+  padding-bottom: 0 !important;
+}
+
+input,
+textarea {
+  scroll-margin-bottom: max(80px, env(safe-area-inset-bottom, 0px));
+}
+
 img,
 svg,
 video,
