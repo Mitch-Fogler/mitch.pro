@@ -36,6 +36,15 @@
   var T = { dark: DARK, light: LIGHT };
   var LEGACY_LIGHT = { daylight: 1, paper: 1, arctic: 1, blossom: 1 };
   var BACKGROUND_DEFAULTS_VERSION = 'mountain-2026-09-06';
+  var VFX_DEFAULTS_VERSION = 'all-on-2026-09-06';
+  var VFX_DEFAULTS = { snow: true, stars: true, rain: true, particles: true };
+  function applyVFXDefaults() {
+    if (usesSchoolDefaults() || getPref('vfxDefaults', '') === VFX_DEFAULTS_VERSION) return;
+    try {
+      localStorage.setItem('_prefVFX', JSON.stringify(VFX_DEFAULTS));
+      setPref('vfxDefaults', VFX_DEFAULTS_VERSION);
+    } catch (_) {}
+  }
   var BACKGROUND_DEFAULTS = {
     bgimg: '/backgrounds/wallhaven-black-mountain.webp',
     bgblur: '8', accent: '', adapt: 'on', dim: '0.50', bgmode: 'cover', bgpos: 'center'
@@ -52,9 +61,14 @@
     setPref('backgroundDefaults', BACKGROUND_DEFAULTS_VERSION);
   }
   function preparePreferenceSnapshot(snapshot) {
-    if (usesSchoolDefaults() || snapshot.theme_backgroundDefaults === BACKGROUND_DEFAULTS_VERSION) return snapshot;
+    if (usesSchoolDefaults()) return snapshot;
+    var result = snapshot;
+    if (snapshot.theme_vfxDefaults !== VFX_DEFAULTS_VERSION) {
+      result = Object.assign({}, result, { _prefVFX: Object.assign({}, VFX_DEFAULTS), theme_vfxDefaults: VFX_DEFAULTS_VERSION });
+    }
+    if (snapshot.theme_backgroundDefaults === BACKGROUND_DEFAULTS_VERSION) return result;
     // Old account backups must not undo the site-wide default rollout.
-    var result = Object.assign({}, snapshot);
+    result = Object.assign({}, result);
     Object.keys(BACKGROUND_DEFAULTS).forEach(function (key) { result['theme_' + key] = BACKGROUND_DEFAULTS[key]; });
     result.theme_backgroundDefaults = BACKGROUND_DEFAULTS_VERSION;
     setCookie('dark');
@@ -668,6 +682,7 @@
   }
 
   applyBackgroundDefaults();
+  applyVFXDefaults();
   applyTheme(getCookie());
   // applyTheme ran while <body> didn't exist yet (script is in <head>) —
   // re-assert the wallpaper layer's body transparency once it does.
@@ -963,7 +978,9 @@
   })();
 
   // ── Visual Effects ──────────────────────────────────────────────────────────
+  var cleanupVFX = null;
   function applyVFX() {
+    if (cleanupVFX) { cleanupVFX(); cleanupVFX = null; }
     var vfx = {};
     try { vfx = JSON.parse(localStorage.getItem('_prefVFX') || '{}') || {}; } catch (_) {}
     var existing = document.getElementById('mitch-vfx-canvas');
@@ -978,6 +995,9 @@
     document.body.appendChild(canvas);
 
     var ctx = canvas.getContext('2d');
+    if (!ctx) { canvas.remove(); return; }
+    var frame = 0;
+    var motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
     var w, h;
     function resize() {
       var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1014,7 +1034,7 @@
     window.addEventListener('themecustomize', updateCachedAccent);
 
     function animate() {
-      if (!document.getElementById('mitch-vfx-canvas')) return;
+      if (!canvas.isConnected || document.hidden) return;
       ctx.clearRect(0, 0, w, h);
 
       // 1. Batch Snow
@@ -1078,9 +1098,24 @@
         ctx.globalAlpha = 1.0;
       }
 
-      requestAnimationFrame(animate);
+      if (!motionQuery.matches && !document.documentElement.classList.contains('theme-no-motion')) frame = requestAnimationFrame(animate);
     }
-    animate();
+    function resumeVFX() {
+      cancelAnimationFrame(frame);
+      frame = 0;
+      animate();
+    }
+    document.addEventListener('visibilitychange', resumeVFX);
+    motionQuery.addEventListener('change', resumeVFX);
+    cleanupVFX = function () {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('themecustomize', updateCachedAccent);
+      document.removeEventListener('visibilitychange', resumeVFX);
+      motionQuery.removeEventListener('change', resumeVFX);
+      canvas.remove();
+    };
+    resumeVFX();
   }
 
   function applyCustomCSS() {
