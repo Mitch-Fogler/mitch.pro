@@ -765,7 +765,7 @@ html:not(.theme-light) .encrypt-page {
 
 @media (max-width: 860px) {
   #app.ready {
-    height: calc(100dvh - 68px);
+    height: var(--vvh, 100dvh);
     min-height: 0;
   }
 
@@ -794,7 +794,7 @@ html:not(.theme-light) .encrypt-page {
 }
 
 @media (max-width: 520px) {
-  #app.ready { height: calc(100dvh - 58px); border-radius: 15px; }
+  #app.ready { height: var(--vvh, 100dvh); border-radius: 0; }
   #sidebar-top { min-height: 58px; }
   .sidebar-foot #profile-btn { display: none; }
   #chat-tools-menu { top: 64px; right: 7px; width: calc(100vw - 14px); }
@@ -1108,7 +1108,7 @@ html:not(.theme-light) .encrypt-page {
 }
 
 @media (max-width: 860px) {
-  #app.ready { height: calc(100dvh - 68px); min-height: 0; }
+  #app.ready { height: var(--vvh, 100dvh); min-height: 0; }
   #chat-header { grid-template-columns: 40px minmax(0, 1fr) auto; grid-template-rows: 1fr; min-height: 62px; padding: 8px 10px; }
   #chat-header #chat-back-btn { grid-column: 1; grid-row: 1; }
   #chat-header .chat-title-wrap { grid-column: 2; grid-row: 1; }
@@ -1122,7 +1122,7 @@ html:not(.theme-light) .encrypt-page {
 }
 
 @media (max-width: 520px) {
-  #app.ready { height: calc(100dvh - 58px); }
+  #app.ready { height: var(--vvh, 100dvh); }
   #sidebar-top { min-height: 58px; }
   .msg, .msg.mine, .msg.theirs { max-width: 90%; }
 }
