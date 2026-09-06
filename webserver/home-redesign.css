@@ -246,17 +246,21 @@ body.home #_ab { background: var(--t-bg2) !important; color: var(--t-ac) !import
 .account-perk-grid { display: grid; gap: 8px; }
 .account-perk {
   position: relative; min-height: 68px; display: grid; grid-template-columns: 42px 1fr; grid-template-rows: auto auto;
-  align-items: center; column-gap: 10px; padding: 10px; overflow: hidden; color: #fff; text-decoration: none;
-  border: 1px solid rgba(255,255,255,.18); border-radius: 13px; box-shadow: inset 0 1px rgba(255,255,255,.14);
+  align-items: center; column-gap: 10px; padding: 10px; overflow: hidden; color: var(--t-fg); text-decoration: none;
+  border: 1px solid var(--t-bd); border-radius: 13px; background: color-mix(in srgb, var(--t-bg3) 88%, transparent);
   transition: transform .18s ease, filter .18s ease;
 }
 .account-perk:hover { transform: translateY(-2px) scale(1.01); filter: brightness(1.08); }
 .account-perk > span { grid-row: 1 / 3; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: rgba(255,255,255,.16); font-size: 19px; }
 .account-perk b { align-self: end; font-size: 13px; }
-.account-perk small { align-self: start; color: rgba(255,255,255,.76); font-size: 10px; line-height: 1.3; }
-.perk-premium { background: linear-gradient(135deg,#7c3aed,#db2777); }
-.perk-inventory { background: linear-gradient(135deg,#2563eb,#6d28d9); }
-.perk-achievement { background: linear-gradient(135deg,#ea580c,#db2777); }
+.account-perk small { align-self: start; color: var(--t-fg2); font-size: 10px; line-height: 1.3; }
+/* Muted perk tiles: quiet surface, only the icon carries a hint of color. */
+.perk-premium { background: color-mix(in srgb, var(--t-bg3) 88%, transparent); }
+.perk-inventory { background: color-mix(in srgb, var(--t-bg3) 88%, transparent); }
+.perk-achievement { background: color-mix(in srgb, var(--t-bg3) 88%, transparent); }
+.perk-premium > span { background: color-mix(in srgb, #8b5cf6 20%, transparent); }
+.perk-inventory > span { background: color-mix(in srgb, #3b82f6 20%, transparent); }
+.perk-achievement > span { background: color-mix(in srgb, #f97316 20%, transparent); }
 .home-masthead-links a,.home-account-link { font-size:14px; }
 body.home #mainpage .hud-topbar { padding:28px 0 22px; }
 body.home .hud-brand { font-size:36px; }
@@ -275,7 +279,7 @@ body.home .home-actions a[href='/encrypt/'],body.home .home-actions a[href='/gam
 body.home .hud-pane-aside { border:0; background:transparent; padding:0; }
 body.home .hud-workspace { grid-template-columns:minmax(0,1fr) 320px; gap:24px; }
 body.home .command-deck-heading { margin-bottom:14px; }
-body.home .account-perks { margin:18px 0; padding:20px; border-radius:22px; background:linear-gradient(155deg,color-mix(in srgb,var(--t-ac) 10%,var(--t-bg2)),var(--t-bg2)); }
+body.home .account-perks { margin:18px 0; padding:20px; border-radius:22px; background:color-mix(in srgb, var(--t-ac) 4%, var(--t-bg2)); }
 .account-perks-head span { font-size:12px; }
 .account-perks-head h3 { font-size:23px; margin:6px 0 18px; }
 .account-perk { min-height:86px; border-radius:15px; padding:12px; }
@@ -299,12 +303,15 @@ body.home .daily-login-claim-btn { min-height:44px; font-size:14px; }
   #member-side-rail { width: min(380px, 96vw); border-radius: 18px 0 0 18px; }
 }
 
-/* Keep the entire label visible and reserve space for both edge controls. */
-body.home .staff-access-rail { width:152px; left:12px; gap:10px; }
-body.home .staff-access-button { width:152px; grid-template-columns:34px 1fr; min-height:58px; border-radius:14px; }
-body.home .staff-access-button b { position:static; width:auto; height:auto; clip:auto; overflow:visible; font-size:14px; }
+/* Staff rail: compact icon buttons on desktop. It floats over the page edge,
+   so it must never reserve layout space — the old #mainpage offset shoved the
+   whole page right. Labels stay in the DOM (clipped) with title tooltips. */
 body.home:has(.is-admin) .staff-access-rail { display:grid; }
-@media(min-width:1101px) { body.home.is-staff #mainpage { width:min(1280px,calc(100% - 250px)); margin-left:max(190px,calc((100vw - 1090px)/2)); margin-right:60px; } }
+@media(min-width:1101px) {
+  body.home .staff-access-rail { width:54px; gap:8px; }
+  body.home .staff-access-button { width:54px; min-height:50px; padding:8px; grid-template-columns:1fr; justify-items:center; }
+  body.home .staff-access-button b { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+}
 #member-side-rail { top:12px; bottom:12px; width:360px; max-width:calc(100vw - 16px); transform:translateX(calc(100% - 44px)); border-radius:20px 0 0 20px; overflow:hidden; padding-left:44px; }
 #member-side-rail.is-open { overflow-y:auto; padding-left:0; }
 #member-side-rail.is-collapsed > :not(#member-side-rail-collapsed-handle) { visibility:hidden; pointer-events:none; }
