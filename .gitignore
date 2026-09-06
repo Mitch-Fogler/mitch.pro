@@ -58,7 +58,6 @@ ssh-gateway/node_modules/
 
 # Oversized Media and Data Recovery items (Host only)
 *.mov
-*.webm
 *.swf
 *.tar.gz
 *.tar

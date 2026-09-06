@@ -7,6 +7,11 @@ services:
     container_name: mitch-webserver-dev
     ports:
       - "6800:6800"
+    environment:
+      - PIA_USER
+      - PIA_PASS
+      - PIA_USERNAME
+      - PIA_PASSWORD
     volumes:
       - .:/app
     working_dir: /app
