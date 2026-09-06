@@ -1,7 +1,12 @@
 (function () {
   'use strict';
 
-  var NAV = [
+  // rjuhsd.school shares this webroot for its sub-apps (bell, chat,
+  // preferences) — its topbar gets the school brand and only links that
+  // exist there (the mitch-only sections 404 under that host).
+  var IS_RJUHSD = /(^|\.)rjuhsd\.school$/.test(location.hostname || '');
+
+  var NAV_MITCH = [
     { href: '/', label: 'Home', icon: '⌂', match: function (p) { return p === '/' || p === '/index.html'; } },
     { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
     { href: '/games/', label: 'Games', icon: '◆', match: function (p) { return p.indexOf('/games') === 0; } },
@@ -10,6 +15,15 @@
     { href: '/shop/', label: 'Shop', icon: '▣', match: function (p) { return p.indexOf('/shop') === 0 || p.indexOf('/marketplace') === 0; } },
     { href: '/preferences/', label: 'Settings', icon: '⚙', match: function (p) { return p.indexOf('/preferences') === 0; } }
   ];
+
+  var NAV_RJUHSD = [
+    { href: '/', label: 'Home', icon: '⌂', match: function (p) { return p === '/' || p === '/index.html'; } },
+    { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
+    { href: '/bell/', label: 'Bell', icon: '◷', match: function (p) { return p.indexOf('/bell') === 0; } },
+    { href: '/preferences/', label: 'Settings', icon: '⚙', match: function (p) { return p.indexOf('/preferences') === 0; } }
+  ];
+
+  var NAV = IS_RJUHSD ? NAV_RJUHSD : NAV_MITCH;
 
   function ensureRelaunchStyles() {
     if (document.getElementById('mitch-relaunch') || document.querySelector('link[href="/relaunch.css"], link[href^="/relaunch.css?"]')) return;
@@ -24,7 +38,7 @@
     if (document.querySelector('link[href="/portal-redesign.css"], link[href^="/portal-redesign.css?"]')) return;
     var link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/portal-redesign.css?v=14';
+    link.href = '/portal-redesign.css?v=15';
     (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
   }
 
@@ -43,11 +57,11 @@
 
   function ensureInstallMetadata() {
     var metas = {
-      'theme-color': '#0b0e14',
+      'theme-color': IS_RJUHSD ? '#0c0809' : '#0b0e14',
       'mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-capable': 'yes',
       'apple-mobile-web-app-status-bar-style': 'black-translucent',
-      'apple-mobile-web-app-title': 'mitch.pro'
+      'apple-mobile-web-app-title': IS_RJUHSD ? 'RJUHSD Hub' : 'mitch.pro'
     };
     Object.keys(metas).forEach(function (name) {
       if (document.querySelector('meta[name="' + name + '"]')) return;
@@ -66,7 +80,7 @@
       var touchIcon = document.createElement('link');
       touchIcon.rel = 'apple-touch-icon';
       touchIcon.sizes = '180x180';
-      touchIcon.href = '/apple-touch-icon.png';
+      touchIcon.href = IS_RJUHSD ? '/rjuhsd-assets/apple-touch-icon.png' : '/apple-touch-icon.png';
       document.head.appendChild(touchIcon);
     }
   }
@@ -100,8 +114,13 @@
     var brand = document.createElement('a');
     brand.className = 'app-brand';
     brand.href = '/';
-    brand.innerHTML = '<img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><b>mitch<span>.pro</span></b>';
-    brand.setAttribute('aria-label', 'mitch.pro home');
+    if (IS_RJUHSD) {
+      brand.innerHTML = '<img class="site-logo" src="/rjuhsd-assets/woodcreek.png" alt="" style="object-fit:contain" width="35" height="35"><b>RJUHSD<span>.school</span></b>';
+      brand.setAttribute('aria-label', 'rjuhsd.school home');
+    } else {
+      brand.innerHTML = '<img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><b>mitch<span>.pro</span></b>';
+      brand.setAttribute('aria-label', 'mitch.pro home');
+    }
 
     var nav = document.createElement('nav');
     nav.className = 'app-nav';
@@ -121,7 +140,7 @@
 
     var account = document.createElement('a');
     account.className = 'app-account-link';
-    account.href = '/profile/';
+    account.href = IS_RJUHSD ? '/preferences/' : '/profile/';
     account.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg><span>My account</span>';
     account.setAttribute('aria-label', 'Open your profile');
     bar.appendChild(account);

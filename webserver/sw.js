@@ -6,7 +6,7 @@ const ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/relaunch.css',
-  '/portal-redesign.css?v=14',
+  '/portal-redesign.css?v=15',
   '/home-redesign.css?v=2',
   '/popup.js',
   '/pwa-install.js'
@@ -137,6 +137,9 @@ async function isUserInEncryptChat() {
   } catch { return false; }
 }
 
+// The wolf logo on rjuhsd.school, the mitch mark everywhere else.
+const notifyIcon = () => (self.location.hostname.endsWith('rjuhsd.school') ? '/rjuhsd-assets/icon-192.png' : '/icon-192.png');
+
 self.addEventListener('push', e => {
   let data = { title: 'New message', body: '', url: '/encrypt/' };
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
@@ -145,8 +148,8 @@ self.addEventListener('push', e => {
     if (inChat) return;
     return self.registration.showNotification(data.title, {
       body: data.body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      icon: notifyIcon(),
+      badge: notifyIcon(),
       tag: data.tag || undefined,
       renotify: Boolean(data.tag),
       vibrate: [90, 45, 90],

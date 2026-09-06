@@ -6,13 +6,13 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=12', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
+      navigator.serviceWorker.register('/sw.js?v=13', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
     });
   }
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>The Brine Cellar — Sexy Pickle Club</title>
-<script src="/theme.js?v=10"></script>
+<script src="/theme.js?v=11"></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
 <script src="/api.js"></script>

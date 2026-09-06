@@ -69,10 +69,11 @@
       '#mitchPwaBanner button{cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;' +
       'border-radius:9px;padding:8px 14px;border:1px solid var(--t-bd,rgba(148,163,184,0.18));' +
       'background:rgba(148,163,184,0.08);color:var(--t-fg2,#cbd5e1)}' +
-      '#mitchPwaBanner #mitchPwaInstall{background:var(--t-ac,#2dd4bf);border-color:var(--t-ac,#2dd4bf);color:var(--t-bg2,#0f172a);' +
-      'box-shadow:0 4px 12px var(--t-gls,rgba(45,212,191,0.25))}' +
-      '#mitchPwaBanner #mitchPwaInstall:hover{background:var(--t-ac2,#22bfa9)}' +
-      '@media(max-width:560px){#mitchPwaBanner{bottom:10px;padding:12px}}';
+      '#mitchPwaBanner #mitchPwaInstall{background:#fff;border-color:#fff;color:#500000;' +
+      'box-shadow:0 4px 12px rgba(0,0,0,0.35)}' +
+      '#mitchPwaBanner #mitchPwaInstall:hover{background:#f6e7e7}' +
+      '@media(max-width:560px){#mitchPwaBanner{bottom:86px;padding:12px;width:min(440px,calc(100vw - 16px))}}' +
+      '@media(max-width:850px) and (min-width:561px){#mitchPwaBanner{bottom:86px}}';
     document.head.appendChild(s);
   }
 
