@@ -19907,6 +19907,7 @@ function loadAllGamesList() {
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
       '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/home-redesign.css', '/welcome.css',
+      '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
