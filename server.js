@@ -5907,14 +5907,54 @@ function hostExpiryPrefix(req) {
   return isPickleHost(req) ? 'spc:' : '';
 }
 
-function pruneDms(dms) {
+function isDmMessageRead(m) {
+  if (!m) return false;
+  if (m.kind === 'group') {
+    const sender = normalizeEmail(m.from || '');
+    return Array.isArray(m.readBy) && m.readBy.some(r => normalizeEmail(r) !== sender);
+  }
+  return m.read === true || !!m.readAt;
+}
+
+function getExpiryForMsg(m, isPickle = false) {
+  if (!m) return 0;
+  const pfx = isPickle ? 'spc:' : '';
+  if (m.kind === 'group') {
+    return getChatExpiry(pfx + groupExpiryKey(m.groupId));
+  }
+  return getChatExpiry(pfx + dmExpiryKey(m.from, m.to));
+}
+
+function isMessageExpired(m, isPickle = false, now = Date.now()) {
+  if (!m) return false;
+  const isRead = isDmMessageRead(m);
+  // Auto-delete only deletes messages AFTER they have been read
+  if (!isRead) return false;
+
+  const expiry = getExpiryForMsg(m, isPickle);
+  if (expiry > 0) {
+    // If auto-delete is enabled for this chat:
+    // Delete if an hour old (>= 3,600,000 ms), or older than expiry, or past expiresAt, or read for >= expiry
+    if ((now - (m.ts || 0) >= 3600000) ||
+        (now - (m.ts || 0) >= expiry) ||
+        (m.expiresAt && now > m.expiresAt) ||
+        (m.readAt && now - m.readAt >= expiry)) {
+      return true;
+    }
+  } else if (m.expiresAt && now > m.expiresAt) {
+    return true;
+  }
+  return false;
+}
+
+function pruneDms(dms, isPickle = false) {
   const counts = new Map();
   const keep = [];
   const now = Date.now();
   for (let i = dms.length - 1; i >= 0; i--) {
     const msg = dms[i];
     if (!msg) continue;
-    if (msg.expiresAt && now > msg.expiresAt) continue; // Purge expired messages
+    if (isMessageExpired(msg, isPickle, now)) continue; // Purge expired messages (only after read)
     let convoId;
     if (msg.kind === 'group') {
       convoId = 'g::' + (msg.groupId || '');
@@ -15377,7 +15417,7 @@ function loadAllGamesList() {
       const dmBySender = {};
       const now = Date.now();
       for (const m of notificationDms) {
-        if (m.expiresAt && now > m.expiresAt) continue;
+        if (isMessageExpired(m, false, now)) continue;
         if (normalizeEmail(m.to || '') !== norm || m.read) continue;
         const from = normalizeEmail(m.from || '');
         if (!from) continue;
@@ -15414,7 +15454,7 @@ function loadAllGamesList() {
       const groupById = {};
       for (const m of notificationDms) {
         if (m.kind !== 'group' || !myGroupIds.has(String(m.groupId || ''))) continue;
-        if (m.expiresAt && now > m.expiresAt) continue;
+        if (isMessageExpired(m, false, now)) continue;
         if (normalizeEmail(m.from || '') === norm) continue;
         if ((m.readBy || []).some(reader => normalizeEmail(reader) === norm)) continue;
         const groupId = String(m.groupId || '');
@@ -15955,10 +15995,10 @@ function loadAllGamesList() {
         }
         if (clientId) msg.clientId = clientId;
         if (effectiveExpiry > 0) {
-          msg.expiresAt = Date.now() + effectiveExpiry;
+          msg.autoDelete = effectiveExpiry;
         }
         dms.push(msg);
-        saveJson(store.dms, pruneDms(dms));
+        saveJson(store.dms, pruneDms(dms, store.pickle));
         if (VAPID_PUBLIC) {
           const notifyBody = getNotificationBody(text, safeImage);
           for (const member of group.members) {
@@ -15986,10 +16026,10 @@ function loadAllGamesList() {
         }
         if (clientId) msg.clientId = clientId;
         if (effectiveExpiry > 0) {
-          msg.expiresAt = Date.now() + effectiveExpiry;
+          msg.autoDelete = effectiveExpiry;
         }
         dms.push(msg);
-        saveJson(store.dms, pruneDms(dms));
+        saveJson(store.dms, pruneDms(dms, store.pickle));
         const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
         if (!recActive && notifAllowed(to, 'dm') && VAPID_PUBLIC && subs[to]) {
           await sendWebPushClean(subs, to, {
@@ -16140,8 +16180,9 @@ function loadAllGamesList() {
         if (nv === myNormEmail || (myMaskedEmail && nv === myMaskedEmail)) return true;
         return !String(v).includes('@') && normalizeUsername(v) === myUsername;
       };
+      const now = Date.now();
       const msgs = dms.filter(m => {
-        if (m.expiresAt && Date.now() > m.expiresAt) return false;
+        if (isMessageExpired(m, store.pickle, now)) return false;
         if (since && (m.ts || 0) <= since) return false;
         if (groupId) {
           if (m.kind !== 'group' || String(m.groupId) !== groupId) return false;
@@ -16209,22 +16250,39 @@ function loadAllGamesList() {
       if (!await tryParseJson()) return jsonResp(400, {});
       const from = (body.from || '').toLowerCase();
       const groupId = body.groupId ? String(body.groupId) : '';
-      const dms = loadJson(dmStoreFiles(req).dms, []);
+      const store = dmStoreFiles(req);
+      const dms = loadJson(store.dms, []);
       let changed = false;
+      const now = Date.now();
       for (const m of dms) {
+        let marked = false;
         if (groupId) {
           if (m.kind === 'group' && m.groupId === groupId && !(m.readBy || []).some(e => normalizeEmail(e) === normalizeEmail(myEmail))) {
             m.readBy = [...(m.readBy || []), myEmail];
+            m.readAt = m.readAt || now;
+            marked = true;
             changed = true;
           }
         } else {
           const fromResolved = resolveMemberRef(from) || normalizeEmail(from);
           if ((!m.kind || m.kind === 'dm') && (normalizeEmail(m.to) === normalizeEmail(myEmail) || resolveMemberRef(m.to) === normalizeEmail(myEmail)) && (!from || normalizeEmail(m.from) === fromResolved || normalizeEmail(m.from) === normalizeEmail(from)) && !m.read) {
-            m.read = true; changed = true;
+            m.read = true;
+            m.readAt = m.readAt || now;
+            marked = true;
+            changed = true;
+          }
+        }
+        if (marked && isDmMessageRead(m)) {
+          const exp = getExpiryForMsg(m, store.pickle);
+          if (exp > 0 && !m.expiresAt) {
+            m.expiresAt = Math.min(now + exp, (m.ts || now) + Math.max(exp, 3600000));
           }
         }
       }
-      if (changed) saveJson(dmStoreFiles(req).dms, dms);
+      if (changed) {
+        const pruned = pruneDms(dms, store.pickle);
+        saveJson(store.dms, pruned);
+      }
       if (from) addCoins(resolveMemberRef(from) || from, 2.0);
       return jsonResp(200, { success: true });
     }
@@ -16344,14 +16402,43 @@ function loadAllGamesList() {
         return jsonResp(400, { error: 'missing target' });
       }
       setChatExpiry(key, requested);
+      const store = dmStoreFiles(req);
+      const dms = loadJson(store.dms, []);
+      let prunedAny = false;
+      if (requested > 0) {
+        const now = Date.now();
+        const initialLen = dms.length;
+        const filtered = dms.filter(m => {
+          let matches = false;
+          if (wsGroupId) {
+            matches = m.kind === 'group' && String(m.groupId) === String(wsGroupId);
+          } else if (wsWith) {
+            matches = m.kind !== 'group' &&
+              ((normalizeEmail(m.from) === norm && (normalizeEmail(m.to) === normalizeEmail(wsWith) || resolveMemberRef(m.to) === normalizeEmail(wsWith))) ||
+               ((normalizeEmail(m.from) === normalizeEmail(wsWith) || resolveMemberRef(m.from) === normalizeEmail(wsWith)) && normalizeEmail(m.to) === norm));
+          }
+          if (!matches) return true;
+          if (isDmMessageRead(m)) {
+            if ((now - (m.ts || 0) >= 3600000) || (now - (m.ts || 0) >= requested) || (m.readAt && now - m.readAt >= requested)) {
+              return false; // delete old read message!
+            }
+            m.expiresAt = Math.min(now + requested, (m.ts || now) + Math.max(requested, 3600000));
+          }
+          return true;
+        });
+        if (filtered.length !== initialLen) {
+          saveJson(store.dms, pruneDms(filtered, store.pickle));
+          prunedAny = true;
+        }
+      }
       // Live-sync the toggle on the other side(s).
-      const wsPayload = JSON.stringify({ type: 'chat_expiry', key, expiry: requested, groupId: wsGroupId, with: wsWith });
+      const wsPayload = JSON.stringify({ type: 'chat_expiry', key, expiry: requested, groupId: wsGroupId, with: wsWith, reload: prunedAny });
       for (const ws of allSockets) {
         if (ws.data && ws.data.isBroadcast && ws.data.email && wsTargets.has(normalizeEmail(ws.data.email))) {
           try { ws.send(wsPayload); } catch {}
         }
       }
-      return jsonResp(200, { success: true, expiry: requested });
+      return jsonResp(200, { success: true, expiry: requested, pruned: prunedAny });
     }
 
     // /api/dm/report — report a message for admin review
@@ -22022,9 +22109,16 @@ async function cleanupAllEphemeralVms() {
   setInterval(() => {
     try {
       const dms = loadJson(DMS_FILE, []);
-      const pruned = pruneDms(dms);
+      const pruned = pruneDms(dms, false);
       if (pruned.length !== dms.length) {
         saveJson(DMS_FILE, pruned);
       }
     } catch {}
-  }, 5 * 60 * 1000);
+    try {
+      const spcDms = loadJson(PICKLE_DMS_FILE, []);
+      const spcPruned = pruneDms(spcDms, true);
+      if (spcPruned.length !== spcDms.length) {
+        saveJson(PICKLE_DMS_FILE, spcPruned);
+      }
+    } catch {}
+  }, 60 * 1000);

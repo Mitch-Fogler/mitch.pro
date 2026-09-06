@@ -2738,6 +2738,19 @@ async function loadMoreMessages() {
 
 function renderMessages() {
   const el = document.getElementById('msgs');
+  const now = Date.now();
+  if (msgExpiry > 0) {
+    currentMessages = currentMessages.filter(m => {
+      if (m.isPending) return true;
+      const isRead = m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, m.from)));
+      if (!isRead) return true; // Keep unread messages!
+      if (now - (m.ts || 0) >= 3600000) return false; // 1 hour old and read -> delete!
+      if (now - (m.ts || 0) >= msgExpiry) return false;
+      if (m.expiresAt && now > m.expiresAt) return false;
+      if (m.readAt && now - m.readAt >= msgExpiry) return false;
+      return true;
+    });
+  }
   if (!currentMessages.length) {
     el.innerHTML = '<div class="empty">No messages here yet.</div>';
     return;
@@ -2792,8 +2805,13 @@ function messageHtml(m) {
     ? `<div class="reply-box">${esc(displayNameFor(m.replyTo.from || ''))}: ${esc(m.replyTo.text || '')}</div>`
     : '';
   const bodyText = esc(text || (m.image ? (m.image.name || 'attachment') : ''));
-  const expiry = m.expiresAt ? ` data-expire="${m.expiresAt}"` : '';
   const seen = mine && !m.isPending && (m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, myEmail))));
+  const isRead = m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, m.from)));
+  let expireTs = m.expiresAt || 0;
+  if (!expireTs && msgExpiry > 0 && isRead) {
+    expireTs = Math.min((m.readAt || m.ts) + msgExpiry, (m.ts || Date.now()) + 3600000);
+  }
+  const expiry = (expireTs && isRead) ? ` data-expire="${expireTs}"` : '';
   const delivery = mine
     ? `<span class="msg-delivery ${m.isPending ? 'sending' : (seen ? 'seen' : 'sent')}"><i aria-hidden="true"></i>${m.isPending ? 'Sending' : (seen ? 'Seen' : 'Sent')}</span>`
     : '';
@@ -2914,8 +2932,12 @@ async function send() {
           sendBtn.disabled = false;
           sendBtn.innerHTML = origHtml;
         }
-        if (upRes.status === 413 || upData.error === 'quotaExceeded') {
+        if (upData.error === 'quotaExceeded') {
           openAttachmentsManager(upData);
+          return;
+        }
+        if (upRes.status === 413) {
+          toast(upData.message || 'Upload rejected: file exceeds proxy size limit (HTTP 413). Check client_max_body_size in Nginx.');
           return;
         }
         toast(upData.error || upData.message || 'Failed to upload attachment.');
@@ -2951,7 +2973,7 @@ async function send() {
     readBy: [myEmail],
     clientId: pendingMsgId,
     isPending: true,
-    expiresAt: msgExpiry > 0 ? Date.now() + msgExpiry : undefined
+    autoDelete: msgExpiry > 0 ? msgExpiry : undefined
   };
   
   // Optimistically push and render
@@ -3590,7 +3612,7 @@ async function openAttachmentsManager(quotaNotice) {
   modal.style.display = 'flex';
   const noticeEl = document.getElementById('attachments-notice');
   const retryBtn = document.getElementById('attachments-retry-btn');
-  if (quotaNotice) {
+  if (quotaNotice && (quotaNotice.message || quotaNotice.error === 'quotaExceeded')) {
     noticeEl.textContent = quotaNotice.message || 'Storage quota exceeded (250MB limit). Delete older attachments to make room.';
     noticeEl.style.display = 'block';
   } else {
@@ -3740,6 +3762,10 @@ async function cycleExpiry() {
   msgExpiry = next;
   convExpiry.set(chatCacheKey(activeChat), next);
   syncExpiryButton();
+  if (next > 0) {
+    conversationCache.delete(chatCacheKey(activeChat));
+    await reloadActiveChat();
+  }
 }
 
 function syncExpiryButton() {
@@ -3859,6 +3885,10 @@ window.addEventListener('ws-broadcast-message', async function(e) {
       msgExpiry = exp;
       convExpiry.set(chatCacheKey(activeChat), exp);
       syncExpiryButton();
+      if (exp > 0 || data.reload) {
+        conversationCache.delete(chatCacheKey(activeChat));
+        reloadActiveChat();
+      }
       toast(exp > 0
         ? 'Auto-delete set to ' + (EXPIRY_LABELS[EXPIRY_OPTIONS.indexOf(exp)] || 'on') + ' for this chat'
         : 'Auto-delete turned off for this chat');
