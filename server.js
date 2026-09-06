@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { createHmac, createHash, randomBytes, timingSafeEqual, createECDH, createCipheriv, createDecipheriv } from 'crypto';
-import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, rmSync, readdirSync, appendFileSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, statSync, rmSync, readdirSync, appendFileSync, unlinkSync } from 'fs';
 import { join, basename, extname, resolve, sep } from 'path';
 import { spawnSync, spawn } from 'child_process';
 import os from 'os';
@@ -174,6 +174,13 @@ const DMS_FILE               = join(DATA_DIR, 'dms.json');
 const CHAT_EXPIRY_FILE       = join(DATA_DIR, 'chat_expiry.json');
 const GROUPS_FILE            = join(DATA_DIR, 'groups.json');
 const E2E_KEYS_FILE          = join(DATA_DIR, 'e2e_keys.json');
+const E2E_ATTACHMENTS_DIR     = join(DATA_DIR, 'e2e_attachments');
+const E2E_ATTACHMENTS_INDEX   = join(DATA_DIR, 'e2e_attachments.json');
+const E2E_MAX_USER_BYTES      = 250 * 1024 * 1024; // 250 MB max per user
+const E2E_ATTACHMENT_TTL_MS   = 2 * 24 * 60 * 60 * 1000; // 2 days retention
+if (!existsSync(E2E_ATTACHMENTS_DIR)) {
+  try { mkdirSync(E2E_ATTACHMENTS_DIR, { recursive: true }); } catch {}
+}
 const CANVAS_HISTORY_FILE    = join(DATA_DIR, 'canvas_history.jsonl');
 const UNLOCKED_AI_FILE       = join(DATA_DIR, 'unlocked_ai.json');
 const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
@@ -1388,6 +1395,8 @@ const RATE_LIMITS = {
   '/api/blog/upload':         [10,  60],
   '/api/backgrounds/upload':  [6, 120],
   '/api/backgrounds/delete':  [20,  60],
+  '/api/dm/attachment/upload': [20, 60],
+  '/api/dm/attachments/delete': [30, 60],
   '/api/blog/subscription':   [20,  60],
   '/api/newsletter-signup':    [3,   60],
   '/api/newsletter/unsubscribe-direct': [10, 600],
@@ -5878,6 +5887,57 @@ function pruneDms(dms) {
   return keep;
 }
 
+function loadE2eAttachmentsIndex() {
+  return loadJson(E2E_ATTACHMENTS_INDEX, {});
+}
+
+async function saveE2eAttachmentsIndex(idx) {
+  await saveJson(E2E_ATTACHMENTS_INDEX, idx);
+}
+
+function cleanExpiredE2eAttachments() {
+  try {
+    const idx = loadE2eAttachmentsIndex();
+    const now = Date.now();
+    let modified = false;
+    for (const [id, att] of Object.entries(idx)) {
+      if (!att || (att.expiresAt && now > att.expiresAt)) {
+        if (att && att.file) {
+          const filePath = join(E2E_ATTACHMENTS_DIR, att.file);
+          try { if (existsSync(filePath)) unlinkSync(filePath); } catch {}
+        }
+        delete idx[id];
+        modified = true;
+      }
+    }
+    if (modified) saveE2eAttachmentsIndex(idx);
+  } catch (e) {
+    console.error('[e2e_attachments] cleanup error:', e?.message || e);
+  }
+}
+
+function userE2eAttachmentUsage(userEmail, idx) {
+  const norm = normalizeEmail(userEmail);
+  let total = 0;
+  const items = [];
+  for (const [id, att] of Object.entries(idx)) {
+    if (att && normalizeEmail(att.user) === norm) {
+      total += Number(att.size || 0);
+      items.push({
+        id,
+        name: att.name,
+        size: att.size,
+        mime: att.mime,
+        ts: att.ts,
+        expiresAt: att.expiresAt,
+        url: `/api/dm/attachment?id=${id}`
+      });
+    }
+  }
+  items.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  return { total, items };
+}
+
 function isPremiumEmail(email) {
   if (!email) return false;
   if (isAdminEmail(email) || isModeratorEmail(email)) return true;
@@ -7836,18 +7896,11 @@ async function handleRequest(req, server) {
     }
 
     function getPiaProxyUrl() {
-      if (process.env.PIA_PROXY_URL) return process.env.PIA_PROXY_URL;
-      if (process.env.PIA_VPN_PROXY) return process.env.PIA_VPN_PROXY;
-      if (process.env.PIA_HTTP_PROXY) return process.env.PIA_HTTP_PROXY;
-      if (process.env.PIA_SOCKS_PROXY) return process.env.PIA_SOCKS_PROXY;
-      const user = process.env.PIA_USER || process.env.PIA_USERNAME || '';
-      const pass = process.env.PIA_PASS || process.env.PIA_PASSWORD || '';
-      const host = process.env.PIA_HOST || 'proxy-nl.privateinternetaccess.com';
-      const port = process.env.PIA_PORT || '1080';
-      if (user && pass) {
-        return `socks5://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}:${port}`;
+      const explicit = process.env.PIA_PROXY_URL || process.env.PIA_HTTP_PROXY || process.env.HTTP_PROXY || process.env.http_proxy;
+      if (explicit && (explicit.startsWith('http://') || explicit.startsWith('https://'))) {
+        return explicit;
       }
-      return `socks5://${host}:${port}`;
+      return null;
     }
 
     try {
@@ -15743,14 +15796,24 @@ function loadAllGamesList() {
       const rawText = String(body.text || '').trim();
       const image = body.image && typeof body.image === 'object' ? body.image : null;
       let safeImage = null;
-      if (image && image.data) {
-        const data = String(image.data || '');
-        const mime = String(image.mime || '').toLowerCase();
-        const name = String(image.name || 'image').slice(0, 80);
-        if (!/^image\/(png|jpe?g|gif|webp)$/.test(mime)) return jsonResp(400, { error: 'unsupported image type' });
-        if (!data.startsWith('data:' + mime + ';base64,')) return jsonResp(400, { error: 'invalid image data' });
-        if (Buffer.byteLength(data, 'utf8') > 900_000) return jsonResp(413, { error: 'image too large' });
-        safeImage = { data, mime, name };
+      if (image && typeof image === 'object') {
+        if (image.url && image.id) {
+          safeImage = {
+            id: String(image.id).slice(0, 64),
+            url: String(image.url).slice(0, 250),
+            name: String(image.name || 'attachment').slice(0, 180),
+            size: Number(image.size) || 0,
+            mime: String(image.mime || 'application/octet-stream').slice(0, 80)
+          };
+        } else if (image.data) {
+          const data = String(image.data || '');
+          const mime = String(image.mime || '').toLowerCase();
+          const name = String(image.name || 'image').slice(0, 80);
+          if (!/^image\/(png|jpe?g|gif|webp)$/.test(mime)) return jsonResp(400, { error: 'unsupported image type' });
+          if (!data.startsWith('data:' + mime + ';base64,')) return jsonResp(400, { error: 'invalid image data' });
+          if (Buffer.byteLength(data, 'utf8') > 900_000) return jsonResp(413, { error: 'image too large' });
+          safeImage = { data, mime, name };
+        }
       }
       let encryptedEnvelope = null;
       try {
@@ -16257,6 +16320,284 @@ function loadAllGamesList() {
       if (reports.length > 5000) reports.splice(0, reports.length - 5000);
       saveJson(CHAT_REPORTS_FILE, reports);
       return jsonResp(200, { success: true });
+    }
+
+    // /api/dm/attachment/upload — upload encrypted/binary attachment with 2-day TTL, 250MB user quota
+    if (path === '/api/dm/attachment/upload' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const senderEmail = (emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
+      if (!senderEmail) return jsonResp(403, { error: 'email not found' });
+
+      cleanExpiredE2eAttachments();
+      const ct = (req.headers.get('content-type') || '').toLowerCase();
+      let fileName = 'attachment';
+      let fileMime = 'application/octet-stream';
+      let fileSize = 0;
+
+      try {
+        if (ct.includes('multipart/form-data')) {
+          const form = await req.formData();
+          const file = form.get('file');
+          if (!file || typeof file === 'string') return jsonResp(400, { error: 'no file provided' });
+          fileName = String(file.name || 'attachment').slice(0, 180);
+          fileMime = String(file.type || 'application/octet-stream').slice(0, 80);
+          fileSize = Number(file.size) || 0;
+          if (fileSize <= 0) return jsonResp(400, { error: 'empty file' });
+          if (fileSize > E2E_MAX_USER_BYTES) {
+            return jsonResp(413, {
+              error: 'quotaExceeded',
+              message: `Attachment exceeds 250MB maximum file size limit.`,
+              max: E2E_MAX_USER_BYTES
+            });
+          }
+          const idx = loadE2eAttachmentsIndex();
+          const usage = userE2eAttachmentUsage(senderEmail, idx);
+          if (usage.total + fileSize > E2E_MAX_USER_BYTES) {
+            return jsonResp(413, {
+              error: 'quotaExceeded',
+              message: `Storage quota exceeded (250MB max total). You have used ${(usage.total / (1024 * 1024)).toFixed(1)}MB. Delete old attachments to free up space.`,
+              total: usage.total,
+              max: E2E_MAX_USER_BYTES,
+              items: usage.items
+            });
+          }
+          const id = randomBytes(16).toString('hex');
+          const safeExt = extname(fileName).slice(0, 10).replace(/[^a-zA-Z0-9._-]/g, '') || '.bin';
+          const diskFilename = `${id}${safeExt}`;
+          const diskPath = join(E2E_ATTACHMENTS_DIR, diskFilename);
+          await Bun.write(diskPath, file);
+          idx[id] = {
+            id,
+            file: diskFilename,
+            name: fileName,
+            size: fileSize,
+            mime: fileMime,
+            user: senderEmail,
+            ts: Date.now(),
+            expiresAt: Date.now() + E2E_ATTACHMENT_TTL_MS
+          };
+          await saveE2eAttachmentsIndex(idx);
+          return jsonResp(200, {
+            success: true,
+            attachment: {
+              id,
+              url: `/api/dm/attachment?id=${id}`,
+              name: fileName,
+              size: fileSize,
+              mime: fileMime,
+              expiresAt: idx[id].expiresAt
+            }
+          });
+        } else if (ct.includes('application/json')) {
+          if (!await tryParseJson(MAX_CHAT_JSON_BODY_BYTES)) return jsonResp(400, { error: 'bad json or payload too large' });
+          if (!body || !body.data) return jsonResp(400, { error: 'no data provided' });
+          fileName = String(body.name || 'attachment').slice(0, 180);
+          fileMime = String(body.mime || 'application/octet-stream').slice(0, 80);
+          let dataStr = String(body.data);
+          if (dataStr.includes(',')) dataStr = dataStr.split(',')[1];
+          const buf = Buffer.from(dataStr, 'base64');
+          fileSize = buf.length;
+          if (fileSize <= 0) return jsonResp(400, { error: 'empty file' });
+          const idx = loadE2eAttachmentsIndex();
+          const usage = userE2eAttachmentUsage(senderEmail, idx);
+          if (usage.total + fileSize > E2E_MAX_USER_BYTES) {
+            return jsonResp(413, {
+              error: 'quotaExceeded',
+              message: `Storage quota exceeded (250MB max total). You have used ${(usage.total / (1024 * 1024)).toFixed(1)}MB. Delete old attachments to free up space.`,
+              total: usage.total,
+              max: E2E_MAX_USER_BYTES,
+              items: usage.items
+            });
+          }
+          const id = randomBytes(16).toString('hex');
+          const safeExt = extname(fileName).slice(0, 10).replace(/[^a-zA-Z0-9._-]/g, '') || '.bin';
+          const diskFilename = `${id}${safeExt}`;
+          const diskPath = join(E2E_ATTACHMENTS_DIR, diskFilename);
+          writeFileSync(diskPath, buf);
+          idx[id] = {
+            id,
+            file: diskFilename,
+            name: fileName,
+            size: fileSize,
+            mime: fileMime,
+            user: senderEmail,
+            ts: Date.now(),
+            expiresAt: Date.now() + E2E_ATTACHMENT_TTL_MS
+          };
+          await saveE2eAttachmentsIndex(idx);
+          return jsonResp(200, {
+            success: true,
+            attachment: {
+              id,
+              url: `/api/dm/attachment?id=${id}`,
+              name: fileName,
+              size: fileSize,
+              mime: fileMime,
+              expiresAt: idx[id].expiresAt
+            }
+          });
+        } else {
+          // Raw stream upload
+          const urlObj = new URL(req.url);
+          fileName = decodeURIComponent(req.headers.get('x-filename') || urlObj.searchParams.get('name') || 'attachment').slice(0, 180);
+          fileMime = String(req.headers.get('content-type') || 'application/octet-stream').slice(0, 80);
+          const declaredLen = Number(req.headers.get('content-length') || 0);
+          const idx = loadE2eAttachmentsIndex();
+          const usage = userE2eAttachmentUsage(senderEmail, idx);
+          if (declaredLen && (usage.total + declaredLen > E2E_MAX_USER_BYTES)) {
+            return jsonResp(413, {
+              error: 'quotaExceeded',
+              message: `Storage quota exceeded (250MB max total). Delete old attachments to free up space.`,
+              total: usage.total,
+              max: E2E_MAX_USER_BYTES,
+              items: usage.items
+            });
+          }
+          const id = randomBytes(16).toString('hex');
+          const safeExt = extname(fileName).slice(0, 10).replace(/[^a-zA-Z0-9._-]/g, '') || '.bin';
+          const diskFilename = `${id}${safeExt}`;
+          const diskPath = join(E2E_ATTACHMENTS_DIR, diskFilename);
+          await Bun.write(diskPath, req.body);
+          const stat = statSync(diskPath);
+          fileSize = stat.size;
+          if (usage.total + fileSize > E2E_MAX_USER_BYTES) {
+            try { unlinkSync(diskPath); } catch {}
+            return jsonResp(413, {
+              error: 'quotaExceeded',
+              message: `Storage quota exceeded (250MB max total). Delete old attachments to free up space.`,
+              total: usage.total,
+              max: E2E_MAX_USER_BYTES,
+              items: usage.items
+            });
+          }
+          idx[id] = {
+            id,
+            file: diskFilename,
+            name: fileName,
+            size: fileSize,
+            mime: fileMime,
+            user: senderEmail,
+            ts: Date.now(),
+            expiresAt: Date.now() + E2E_ATTACHMENT_TTL_MS
+          };
+          await saveE2eAttachmentsIndex(idx);
+          return jsonResp(200, {
+            success: true,
+            attachment: {
+              id,
+              url: `/api/dm/attachment?id=${id}`,
+              name: fileName,
+              size: fileSize,
+              mime: fileMime,
+              expiresAt: idx[id].expiresAt
+            }
+          });
+        }
+      } catch (err) {
+        console.error('[dm-attachment-upload] error:', err);
+        return jsonResp(500, { error: 'Failed to upload attachment' });
+      }
+    }
+
+    // /api/dm/attachment — serve attachment file
+    if (path === '/api/dm/attachment' && method === 'GET') {
+      const urlObj = new URL(req.url);
+      const id = String(urlObj.searchParams.get('id') || '').trim();
+      if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) return jsonResp(400, { error: 'invalid attachment id' });
+
+      cleanExpiredE2eAttachments();
+      const idx = loadE2eAttachmentsIndex();
+      const att = idx[id];
+      if (!att) return jsonResp(404, { error: 'attachment not found or expired' });
+      if (att.expiresAt && Date.now() > att.expiresAt) {
+        cleanExpiredE2eAttachments();
+        return jsonResp(404, { error: 'attachment expired' });
+      }
+
+      const filePath = join(E2E_ATTACHMENTS_DIR, att.file);
+      if (!existsSync(filePath)) return jsonResp(404, { error: 'attachment file missing' });
+
+      const isDownload = urlObj.searchParams.get('download') === '1';
+      const safeName = (att.name || 'attachment').replace(/["\r\n]/g, '_');
+      const encodedName = encodeURIComponent(att.name || 'attachment');
+      const disposition = isDownload
+        ? `attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`
+        : `inline; filename="${safeName}"; filename*=UTF-8''${encodedName}`;
+
+      return new Response(Bun.file(filePath), {
+        status: 200,
+        headers: {
+          'Content-Type': att.mime || 'application/octet-stream',
+          'Content-Disposition': disposition,
+          'Cache-Control': 'public, max-age=86400',
+          'X-Content-Type-Options': 'nosniff'
+        }
+      });
+    }
+
+    // /api/dm/attachments — list user's attachments and storage usage
+    if (path === '/api/dm/attachments' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const senderEmail = (emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
+      if (!senderEmail) return jsonResp(403, { error: 'email not found' });
+
+      cleanExpiredE2eAttachments();
+      const idx = loadE2eAttachmentsIndex();
+      const usage = userE2eAttachmentUsage(senderEmail, idx);
+      return jsonResp(200, {
+        total: usage.total,
+        max: E2E_MAX_USER_BYTES,
+        ttlMs: E2E_ATTACHMENT_TTL_MS,
+        items: usage.items
+      });
+    }
+
+    // /api/dm/attachments/delete — delete old attachments to free quota
+    if (path === '/api/dm/attachments/delete' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const senderEmail = (emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
+      if (!senderEmail) return jsonResp(403, { error: 'email not found' });
+
+      if (!await tryParseJson(65536)) return jsonResp(400, { error: 'bad json' });
+      const idsToDelete = Array.isArray(body?.ids)
+        ? body.ids.map(x => String(x || '').trim()).filter(Boolean)
+        : (body?.id ? [String(body.id).trim()] : []);
+      if (!idsToDelete.length) return jsonResp(400, { error: 'no attachments specified' });
+
+      const idx = loadE2eAttachmentsIndex();
+      const norm = normalizeEmail(senderEmail);
+      const isPrivileged = isAdminEmail(senderEmail) || isModeratorEmail(senderEmail);
+      let modified = false;
+
+      for (const id of idsToDelete) {
+        const att = idx[id];
+        if (att && (normalizeEmail(att.user) === norm || isPrivileged)) {
+          if (att.file) {
+            const filePath = join(E2E_ATTACHMENTS_DIR, att.file);
+            try { if (existsSync(filePath)) unlinkSync(filePath); } catch {}
+          }
+          delete idx[id];
+          modified = true;
+        }
+      }
+
+      if (modified) await saveE2eAttachmentsIndex(idx);
+      const usage = userE2eAttachmentUsage(senderEmail, idx);
+      return jsonResp(200, {
+        success: true,
+        deleted: idsToDelete.length,
+        total: usage.total,
+        max: E2E_MAX_USER_BYTES,
+        items: usage.items
+      });
     }
 
     // /api/push/subscribe
@@ -19914,12 +20255,20 @@ function loadAllGamesList() {
       if (!html.includes('/popup.js')) {
         html = html.replace('</head>',
           '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n' +
-          '<script src="/popup.js?v=3"></script>\n<script src="/pwa-install.js" defer></script>\n<link rel="manifest" href="/manifest.json">\n<meta name="theme-color" content="#05070d">\n</head>');
+          '<script src="/popup.js?v=3"></script>\n<script src="/pwa-install.js" defer></script>\n<link rel="manifest" href="/manifest.json">\n<meta name="theme-color" content="#05070d">\n' +
+          '<meta name="mobile-web-app-capable" content="yes">\n<meta name="apple-mobile-web-app-capable" content="yes">\n<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">\n<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">\n</head>');
       }
-      if (html.includes('name="viewport"') && !html.includes('viewport-fit')) {
-        html = html.replace(
-          /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
-          (m, a, content, c) => a + content + ', viewport-fit=cover' + c);
+      if (html.includes('name="viewport"')) {
+        if (!html.includes('viewport-fit')) {
+          html = html.replace(
+            /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
+            (m, a, content, c) => a + content + ', viewport-fit=cover' + c);
+        }
+        if (!html.includes('interactive-widget')) {
+          html = html.replace(
+            /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
+            (m, a, content, c) => a + content + ', interactive-widget=resizes-content' + c);
+        }
       }
       return html;
     };
@@ -19965,6 +20314,65 @@ function loadAllGamesList() {
       `    });\n` +
       `  };\n` +
       `</script>\n`;
+    if (path === '/manifest.json') {
+      if (isPickleHost(req)) {
+        const pickleManifest = {
+          name: "Sexy Pickle Club",
+          short_name: "Pickle Club",
+          description: "The premier pickle community & cellar chat — installable and works offline.",
+          id: "/",
+          start_url: "/?utm_source=pwa",
+          scope: "/",
+          display: "standalone",
+          display_override: ["standalone", "minimal-ui"],
+          background_color: "#171918",
+          theme_color: "#171918",
+          orientation: "any",
+          categories: ["social", "games", "productivity"],
+          icons: [
+            { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
+          ],
+          shortcuts: [
+            { name: "The Cellar", short_name: "Cellar", description: "Open encrypted cellar chat", url: "/cellar/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+            { name: "The Barrel", short_name: "Barrel", description: "Live pickle lounge", url: "/barrel/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+            { name: "Bulletin", short_name: "Bulletin", description: "Official announcements", url: "/bulletin/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] }
+          ]
+        };
+        return new Response(JSON.stringify(pickleManifest, null, 2), {
+          headers: { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }
+        });
+      }
+      if (isRjuhsdHost(req)) {
+        const rjuhsdManifest = {
+          name: "RJUHSD Hub",
+          short_name: "RJUHSD",
+          description: "The Roseville Joint Union High School District hub: bell schedules, news, and encrypted chat.",
+          id: "/",
+          start_url: "/?utm_source=pwa",
+          scope: "/",
+          display: "standalone",
+          display_override: ["standalone", "minimal-ui"],
+          background_color: "#171918",
+          theme_color: "#171918",
+          orientation: "any",
+          categories: ["education", "social", "productivity"],
+          icons: [
+            { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
+          ],
+          shortcuts: [
+            { name: "Bell Schedule", short_name: "Bells", description: "Live RJUHSD bell schedules", url: "/bell/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+            { name: "Encrypted Chat", short_name: "Chat", description: "Open end-to-end encrypted messages", url: "/encrypt/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] }
+          ]
+        };
+        return new Response(JSON.stringify(rjuhsdManifest, null, 2), {
+          headers: { 'Content-Type': 'application/manifest+json; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }
+        });
+      }
+    }
     const rjuhsdHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isRjuhsdHost(req)) {
       try {
@@ -20230,14 +20638,23 @@ function loadAllGamesList() {
             if (!raw.includes(Buffer.from('/popup.js'))) injectStr += '<script src="/popup.js?v=3"></script>\n';
             if (!raw.includes(Buffer.from('/pwa-install.js'))) injectStr += '<script src="/pwa-install.js" defer></script>\n';
             if (!raw.includes(Buffer.from('name="viewport"'))) {
-              injectStr += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n';
-            } else if (!raw.includes(Buffer.from('viewport-fit'))) {
-              // Page has its own viewport meta without viewport-fit — extend it
-              // so safe-area insets report correctly in the installed PWA
-              // (otherwise the Dynamic Island area stays black/unmanaged).
-              raw = Buffer.from(raw.toString('utf8').replace(
-                /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
-                (m, a, content, c) => a + content + ', viewport-fit=cover' + c));
+              injectStr += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">\n';
+            } else {
+              let vpStr = raw.toString('utf8');
+              let changed = false;
+              if (!raw.includes(Buffer.from('viewport-fit'))) {
+                vpStr = vpStr.replace(
+                  /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
+                  (m, a, content, c) => a + content + ', viewport-fit=cover' + c);
+                changed = true;
+              }
+              if (!raw.includes(Buffer.from('interactive-widget'))) {
+                vpStr = vpStr.replace(
+                  /(<meta[^>]*name="viewport"[^>]*content=")([^"]*)("[^>]*>)/i,
+                  (m, a, content, c) => a + content + ', interactive-widget=resizes-content' + c);
+                changed = true;
+              }
+              if (changed) raw = Buffer.from(vpStr);
             }
             if (!raw.includes(Buffer.from('rel="manifest"'))) injectStr += '<link rel="manifest" href="/manifest.json">\n';
             if (!raw.includes(Buffer.from('rel="apple-touch-icon"'))) injectStr += '<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">\n';
@@ -20666,6 +21083,9 @@ setTimeout(() => {
 
   setInterval(pruneInactiveFreeVmsWorker, 300_000); // Check VM inactive free VMs every 5 mins
   pruneInactiveFreeVmsWorker(); 
+
+  setInterval(cleanExpiredE2eAttachments, 300_000); // Prune expired e2e chat attachments (2-day TTL)
+  cleanExpiredE2eAttachments(); 
 
   initPortalSshKey();
   cleanupAllEphemeralVms();
