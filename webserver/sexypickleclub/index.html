@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#05070d">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Sexy Pickle Club">
   <title>Sexy Pickle Club — sexypickleclub.com</title>
   <meta name="description" content="The Sexy Pickle Club: an exclusive society of brined and beautiful individuals. Sign in with your mitch.pro account — same login, same chats, substantially more dill.">
   <meta property="og:type" content="website" />
@@ -10,26 +17,13 @@
   <meta property="og:description" content="Some pickles are just sexier than others. Sign in with mitch.pro and claim your place in the brine." />
   <meta property="og:image" content="/pickle-portrait.webp" />
 
-  <script src="/theme.js?v=9"></script>
+  <script src="/theme.js?v=10"></script>
   <link rel="stylesheet" href="/app.css"><script src="/api.js"></script>
 
   <style>
-    /* Same burning-cherry wallpaper treatment as mitch.pro's front page */
-    html body.pickle-page::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      z-index: -1;
-      background: url(/home-burning-cherry.webp) center / cover no-repeat;
-      opacity: 0.45;
-      filter: blur(26px);
-      transform: scale(1.15);
-      pointer-events: none;
-    }
-    html, html body {
-      background: transparent !important;
-      background-image: none !important;
-      background-attachment: initial !important;
+    /* Themed wallpaper treatment — painted (and blurred) by theme.js's shared html::before layer. */
+    html body.pickle-page {
+      --t-bg-layer-opacity: 0.45;
     }
     html.theme-light body.pickle-page::after {
       content: "";

@@ -13,15 +13,18 @@ body.admin-page,
 body.moderator-page {
   color: var(--staff-text);
   background-color: #06030f;
-  background-image:
+  --t-bgr:
     linear-gradient(180deg, rgba(4, 2, 13, .5), rgba(7, 3, 18, .84)),
     radial-gradient(circle at 15% 10%, rgba(157, 117, 255, .26), transparent 30rem),
     radial-gradient(circle at 86% 22%, rgba(241, 91, 181, .17), transparent 28rem),
-    url('/home-burning-cherry.webp');
-  background-size: auto, auto, auto, cover;
-  background-position: center;
-  background-attachment: fixed;
+    url('/home-burning-cherry.webp') center / cover no-repeat;
   font-family: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
+}
+
+/* Light mode: the cherry photo is a dark print — use the light theme's wash */
+html.theme-light body.admin-page,
+html.theme-light body.moderator-page {
+  --t-bgr: linear-gradient(160deg, #f3f5fa, #e9edf6);
 }
 
 body.admin-page::before,

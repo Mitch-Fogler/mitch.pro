@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Preferences — mitch.pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="/theme.js?v=9"></script>
+<script src="/theme.js?v=10"></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
 <link rel="stylesheet" href="/preferences-galaxy.css?v=9">
@@ -670,14 +670,6 @@
     color: var(--t-fg2);
   }
 
-  #premiumAiSection {
-    margin-top: 1.25rem;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--t-bd);
-  }
-
-  #premiumAiSection > label { color: var(--t-ac); }
-
   #pinnedResults {
     display: none;
     flex-direction: column;
@@ -742,12 +734,11 @@
   <div class="pref-summary" aria-label="Current preference snapshot">
     <div class="status-pill"><b>Theme</b><span id="summaryTheme">Loading</span></div>
     <div class="status-pill"><b>Homepage</b><span id="summaryHome">Dashboard</span></div>
-    <div class="status-pill"><b>AI</b><span id="summaryAi">Enabled</span></div>
     <div class="status-pill"><b>Sync</b><span id="summarySync">Enabled</span></div>
   </div>
 
   <nav class="prefs-jump-nav" aria-label="Preference sections">
-    <a href="#appearance">Appearance</a><a href="#account">Account</a><a href="#effects">Effects</a><a href="#privacy">Privacy</a><a href="#security">Security</a><a href="#ai">AI</a><a href="#homepage">Homepage</a><a href="#display">Display</a><a href="#sync">Sync</a><a href="#data">Data</a>
+    <a href="#appearance">Appearance</a><a href="#account">Account</a><a href="#effects">Effects</a><a href="#privacy">Privacy</a><a href="#security">Security</a><a href="#homepage">Homepage</a><a href="#display">Display</a><a href="#sync">Sync</a><a href="#data">Data</a>
   </nav>
 
   <div class="pref-stack">
@@ -770,6 +761,17 @@
           <input id="accentColor" type="color" value="#7c3aed">
           <input id="accentText" type="text" placeholder="#7c3aed">
           <button class="soft-btn" type="button" id="accentClear">Clear</button>
+        </div>
+      </div>
+
+      <div class="field" style="grid-column:1/-1">
+        <label>Official Backgrounds</label>
+        <div class="chip-row bg-chip-row" id="bgPresetGrid"></div>
+        <div class="chip-row bg-chip-row" id="myBgGrid" style="margin-top:8px"></div>
+        <div class="inline-row" style="margin-top:10px">
+          <input id="bgUploadInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/webm,video/mp4" style="display:none">
+          <button class="soft-btn" type="button" id="bgUploadBtn">Upload your own…</button>
+          <span id="bgUploadStatus" class="status-line"></span>
         </div>
       </div>
 
@@ -816,6 +818,13 @@
           <option value="left center">Left</option>
           <option value="right center">Right</option>
         </select>
+      </div>
+      <div class="field">
+        <div class="range-head">
+          <label>Background Blur</label>
+          <output id="bgBlurValue">18px</output>
+        </div>
+        <input id="bgBlurRange" type="range" min="0" max="40" step="1">
       </div>
     </div>
 
@@ -1165,48 +1174,6 @@
       <div class="status-line" id="ntfyStatus"></div>
       <p class="section-sub" style="margin-top:14px">Looking for more? <a href="/notifications/" style="font-weight:650">Full notification settings</a> — mute chat, groups, friends-online and digests, or set quiet hours.</p>
     </div>
-  </section>
-  <section class="pref-section" id="ai">
-  <h2>AI Assistant</h2>
-  <p class="section-sub">The AI chat widget that appears on every page.</p>
-
-  <div class="field">
-    <label>Enable AI Assistant</label>
-    <div class="toggle-row">
-      <label class="toggle-switch">
-        <input type="checkbox" id="aiToggle" checked>
-        <span class="toggle-slider"></span>
-      </label>
-      <span class="toggle-desc">Show the AI chat button on all pages. Requires a mitch.pro account.</span>
-    </div>
-  </div>
-
-  <div class="field">
-    <label>Personality</label>
-    <div class="chip-row">
-      <button class="chip active" data-personality="friendly" onclick="selectPersonality(this)">😊 Friendly</button>
-      <button class="chip" data-personality="concise" onclick="selectPersonality(this)">⚡ Concise</button>
-      <button class="chip" data-personality="detailed" onclick="selectPersonality(this)">📖 Detailed</button>
-      <button class="chip" data-personality="fun" onclick="selectPersonality(this)">🎉 Fun</button>
-    </div>
-  </div>
-
-  <div class="field">
-    <label>Privacy Mode</label>
-    <div class="toggle-row">
-      <label class="toggle-switch">
-        <input type="checkbox" id="aiPrivacyToggle">
-        <span class="toggle-slider"></span>
-      </label>
-      <span class="toggle-desc">Don't send your email or page contents to the AI. Slightly less context-aware but more private.</span>
-    </div>
-  </div>
-
-  <div class="field" id="premiumAiSection" style="display:none;">
-    <label>Custom AI Personality</label>
-    <p class="field-sub">Override the AI's base instructions. Requires Premium.</p>
-    <textarea id="aiCustomPrompt" placeholder="You are a helpful assistant that..."></textarea>
-  </div>
   </section>
 
   <section class="pref-section" id="homepage">
@@ -1595,13 +1562,12 @@ async function generateNewE2EKeys(email, newPassword) {
 
 var VFX_CONFIG_KEY      = '_prefVFX';
 var PRIVACY_CONFIG_KEY  = '_prefPrivacy';
-var AI_CONFIG_KEY       = '_prefAI';
 var HOME_CONFIG_KEY     = '_prefHomepage';
 var DISPLAY_CONFIG_KEY  = '_prefDisplay';
 var SYNC_CONFIG_KEY     = '_prefSync';
 var TOOLS_CONFIG_KEY    = '_prefTools';
-var PREF_BACKUP_KEYS    = [VFX_CONFIG_KEY, PRIVACY_CONFIG_KEY, AI_CONFIG_KEY, HOME_CONFIG_KEY, DISPLAY_CONFIG_KEY, SYNC_CONFIG_KEY, TOOLS_CONFIG_KEY];
-var THEME_PREF_KEYS     = ['accent','adapt','dim','bgmode','bgpos','density','radius','font','motion','material'];
+var PREF_BACKUP_KEYS    = [VFX_CONFIG_KEY, PRIVACY_CONFIG_KEY, HOME_CONFIG_KEY, DISPLAY_CONFIG_KEY, SYNC_CONFIG_KEY, TOOLS_CONFIG_KEY];
+var THEME_PREF_KEYS     = ['accent','adapt','dim','bgmode','bgpos','bgblur','density','radius','font','motion','material'];
 
 function load(key, def) {
   try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || '{}')); }
@@ -1744,6 +1710,24 @@ function imageFileToAvatarDataUrl(file) {
       reject(new Error('Could not read that image.'));
     };
     img.src = url;
+  });
+}
+
+// Wallpaper reader: reads the chosen image or video file directly as a Data URL
+// without re-encoding, letting the server enforce the storage quota.
+function wallpaperFileToDataUrl(file) {
+  return new Promise(function(resolve, reject) {
+    if (!file) return reject(new Error('No file chosen.'));
+    var validExts = /\.(png|jpe?g|webp|gif|mp4|webm)$/i;
+    var validMimes = /^(image\/(png|jpe?g|webp|gif)|video\/(mp4|webm))$/i;
+    if (!validMimes.test(file.type || '') && !validExts.test(file.name || '')) {
+      reject(new Error('Choose an image (PNG, JPEG, WebP, GIF) or video (MP4, WebM).'));
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function() { resolve(reader.result); };
+    reader.onerror = function() { reject(new Error('Failed to read file.')); };
+    reader.readAsDataURL(file);
   });
 }
 
@@ -1891,11 +1875,9 @@ async function disable2fa() {
 
 function updateSummaries() {
   var theme = getCookieValue('theme', 'dark');
-  var ai = load(AI_CONFIG_KEY, { enabled: true });
   var home = load(HOME_CONFIG_KEY, { showQuickActions: true, showMemberRail: true });
   var sync = load(SYNC_CONFIG_KEY, { enabled: true });
   document.getElementById('summaryTheme').textContent = theme;
-  document.getElementById('summaryAi').textContent = ai.enabled === false ? 'Hidden' : 'Enabled';
   document.getElementById('summaryHome').textContent = (home.showQuickActions === false ? 'Focused' : 'Dashboard');
   document.getElementById('summarySync').textContent = sync.enabled === false ? 'Manual' : 'Enabled';
 }
@@ -1915,6 +1897,104 @@ function applyAppearanceLive(statusText) {
   setStatus('appearanceStatus', statusText || 'Appearance updated.');
 }
 
+function updateBgChipActive() {
+  var cur = getCookieValue('bgimg', '') || '/backgrounds/wallhaven-black-mountain.webp';
+  document.querySelectorAll('.bg-chip-row .bg-chip').forEach(function(chip) {
+    chip.classList.toggle('active', chip.getAttribute('data-url') === cur);
+  });
+}
+
+function applyChipPreview(chip, url) {
+  if (/\.(webm|mp4)($|\?)/i.test(url)) {
+    var vid = document.createElement('video');
+    var srcUrl = url.includes('#') ? url : (url + '#t=0.1');
+    vid.src = srcUrl;
+    vid.preload = 'auto';
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.currentTime = 0.1;
+    vid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit;';
+    chip.style.position = 'relative';
+    chip.style.overflow = 'hidden';
+    chip.appendChild(vid);
+  } else {
+    chip.style.backgroundImage = 'url("' + url + '")';
+  }
+}
+
+function renderPresetBgChips(presetGrid, bgs, cur) {
+  presetGrid.innerHTML = '';
+  var effective = cur || '/backgrounds/wallhaven-black-mountain.webp';
+  bgs.forEach(function(b) {
+    var chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'bg-chip' + (effective === b.url ? ' active' : '');
+    chip.setAttribute('data-url', b.url);
+    applyChipPreview(chip, b.url);
+    chip.title = b.name;
+    chip.setAttribute('aria-label', 'Use ' + b.name + ' background');
+    chip.onclick = function() {
+      setCookieValue('bgimg', b.url);
+      document.getElementById('bgImageInput').value = b.url;
+      syncAppearanceControls();
+      applyAppearanceLive(b.name + ' background applied.');
+      saveAll();
+    };
+    presetGrid.appendChild(chip);
+  });
+}
+
+function renderBgChips() {
+  var presetGrid = document.getElementById('bgPresetGrid');
+  var myBgGrid = document.getElementById('myBgGrid');
+  if (!presetGrid || !myBgGrid) return;
+  var cur = getCookieValue('bgimg', '');
+  // The server lists whatever .webp or .webm files sit in webserver/backgrounds/ — drop
+  // one in (or .mp4/.gif which auto-convert to .webm) and it appears as a chip.
+  var fallback = (window.__theme && window.__theme.backgrounds) || [];
+  fetch('/api/backgrounds/list').then(function(r) { return r.ok ? r.json() : null; }).then(function(res) {
+    var bgs = (res && res.ok && Array.isArray(res.items) && res.items.length) ? res.items : fallback;
+    renderPresetBgChips(presetGrid, bgs, cur);
+  }).catch(function() {
+    renderPresetBgChips(presetGrid, fallback, cur);
+  });
+  myBgGrid.innerHTML = '';
+  fetch('/api/backgrounds/mine').then(function(r) { return r.ok ? r.json() : null; }).then(function(res) {
+    if (!res || !res.ok) return;
+    (res.items || []).forEach(function(item) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'bg-chip' + (cur === item.url ? ' active' : '');
+      chip.setAttribute('data-url', item.url);
+      applyChipPreview(chip, item.url);
+      chip.title = item.name || 'Uploaded background';
+      chip.onclick = function() {
+        setCookieValue('bgimg', item.url);
+        document.getElementById('bgImageInput').value = item.url;
+        syncAppearanceControls();
+        applyAppearanceLive('Background updated.');
+        saveAll();
+      };
+      var del = document.createElement('span');
+      del.className = 'bg-chip-del';
+      del.style.zIndex = '2';
+      del.textContent = '×';
+      del.title = 'Delete this background';
+      del.onclick = function(ev) {
+        ev.stopPropagation();
+        if (!confirm('Delete this background?')) return;
+        fetch('/api/backgrounds/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: item.id })
+        }).then(function() { renderBgChips(); updateBgChipActive(); });
+      };
+      chip.appendChild(del);
+      myBgGrid.appendChild(chip);
+    });
+  }).catch(function() {});
+}
+
 function syncAppearanceControls() {
   refreshThemeButtons();
   var accent = getThemePref('accent', '');
@@ -1927,6 +2007,10 @@ function syncAppearanceControls() {
   document.getElementById('bgDimValue').textContent = Math.round(dim * 100) + '%';
   document.getElementById('bgModeSelect').value = getThemePref('bgmode', 'cover');
   document.getElementById('bgPosSelect').value = getThemePref('bgpos', 'center');
+  var blur = getThemePref('bgblur', '8');
+  document.getElementById('bgBlurRange').value = blur;
+  document.getElementById('bgBlurValue').textContent = blur + 'px';
+  updateBgChipActive();
   document.getElementById('densitySelect').value = getThemePref('density', 'normal');
   document.getElementById('radiusSelect').value = getThemePref('radius', 'soft');
   document.getElementById('fontSelect').value = getThemePref('font', 'system');
@@ -1946,6 +2030,7 @@ function selectThemePreset(btn) {
 
 function setupAppearanceControls() {
   syncAppearanceControls();
+  renderBgChips();
 
   document.getElementById('accentColor').addEventListener('input', function() {
     document.getElementById('accentText').value = this.value;
@@ -1996,6 +2081,43 @@ function setupAppearanceControls() {
     setThemePref('dim', this.value);
     document.getElementById('bgDimValue').textContent = Math.round(Number(this.value) * 100) + '%';
     applyAppearanceLive('Background dim updated.');
+  });
+
+  document.getElementById('bgBlurRange').addEventListener('input', function() {
+    setThemePref('bgblur', this.value);
+    document.getElementById('bgBlurValue').textContent = this.value + 'px';
+    if (window.__theme && window.__theme.setBlur) window.__theme.setBlur(Number(this.value));
+    applyAppearanceLive('Background blur updated.');
+  });
+
+  document.getElementById('bgUploadBtn').onclick = function() {
+    document.getElementById('bgUploadInput').click();
+  };
+  document.getElementById('bgUploadInput').addEventListener('change', async function() {
+    var file = this.files && this.files[0];
+    this.value = '';
+    if (!file) return;
+    var status = document.getElementById('bgUploadStatus');
+    try {
+      status.textContent = 'Processing…';
+      var dataUrl = await wallpaperFileToDataUrl(file);
+      var r = await fetch('/api/backgrounds/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mime: dataUrl.slice(5, dataUrl.indexOf(';')), data: dataUrl, name: file.name })
+      });
+      var res = await r.json().catch(function() { return {}; });
+      if (!r.ok || !res.ok) throw new Error(res.error || 'Upload failed.');
+      status.textContent = 'Uploaded.';
+      setCookieValue('bgimg', res.url);
+      document.getElementById('bgImageInput').value = res.url;
+      renderBgChips();
+      syncAppearanceControls();
+      applyAppearanceLive('Custom background uploaded.');
+      saveAll();
+    } catch (err) {
+      status.textContent = err.message || 'Upload failed.';
+    }
   });
 
   ['bgModeSelect','bgPosSelect','densitySelect','radiusSelect','fontSelect','motionSelect','materialSelect'].forEach(function(id) {
@@ -2066,7 +2188,6 @@ function setupAccordions() {
   }
 }
 
-var activePersonality = 'friendly';
 var passwordChangeVerificationType = 'email';
 
 function setPasswordChangeVerificationUi(type) {
@@ -2084,13 +2205,6 @@ function setPasswordChangeVerificationUi(type) {
     input.placeholder = 'Email code';
     hint.textContent = 'Leave this blank and click Change Password to send a code first.';
   }
-}
-
-function selectPersonality(btn) {
-  activePersonality = btn.getAttribute('data-personality');
-  document.querySelectorAll('[data-personality]').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  saveAll();
 }
 
 var activeClock  = '12';
@@ -2244,12 +2358,6 @@ function saveAll() {
       noHistory:    document.getElementById('privNoHistoryToggle').checked,
       newsletter:   document.getElementById('privNewsletterToggle').checked,
       blockProfile: document.getElementById('privBlockProfileToggle').checked,
-    }));
-    localStorage.setItem(AI_CONFIG_KEY, JSON.stringify({
-      enabled:     document.getElementById('aiToggle').checked,
-      personality: activePersonality,
-      privacy:     document.getElementById('aiPrivacyToggle').checked,
-      customPrompt: document.getElementById('aiCustomPrompt').value.trim(),
     }));
     localStorage.setItem(HOME_CONFIG_KEY, JSON.stringify({
       topCount:         activeCount,
@@ -2504,17 +2612,8 @@ async function deleteAccount() {
   loadBlogAlerts();
   loadNtfyTopic();
 
-  var ai = load(AI_CONFIG_KEY, { enabled: true, personality: 'friendly', privacy: false, customPrompt: '' });
-  document.getElementById('aiToggle').checked = ai.enabled !== false;
-  document.getElementById('aiPrivacyToggle').checked = !!ai.privacy;
-  document.getElementById('aiCustomPrompt').value = ai.customPrompt || '';
-  activePersonality = ai.personality || 'friendly';
-  var ap2 = document.querySelector('[data-personality="' + activePersonality + '"]');
-  if (ap2) { document.querySelectorAll('[data-personality]').forEach(function(b){b.classList.remove('active');}); ap2.classList.add('active'); }
-
   fetch('/api/me').then(function(r){return r.ok ? r.json() : {};}).then(function(me){
     if (me.email) myEmail = me.email;
-    if (me.isPremium) document.getElementById('premiumAiSection').style.display = 'block';
   }).catch(function(){});
 
   var hc = load(HOME_CONFIG_KEY, {
@@ -2576,7 +2675,7 @@ async function deleteAccount() {
 
   ['vfxSnowToggle','vfxStarsToggle','vfxRainToggle','vfxParticlesToggle',
    'privHideOnlineToggle','privStealthToggle','privNoHistoryToggle','privNewsletterToggle','privBlockProfileToggle',
-   'aiToggle','aiPrivacyToggle','syncToggle','homeQuickToggle','homeMembersToggle','homeCompactToggle','homeSearchFocusToggle',
+   'syncToggle','homeQuickToggle','homeMembersToggle','homeCompactToggle','homeSearchFocusToggle',
    'prefCanvasLock','prefQuickAccess','prefDailyBonus'].forEach(function(id) {
     document.getElementById(id).addEventListener('change', saveAll);
   });
@@ -2587,7 +2686,7 @@ async function deleteAccount() {
     applyAppearanceLive(this.checked ? 'Animations reduced.' : 'Animations restored.');
     saveAll();
   });
-  ['greetingName','customCSS','aiCustomPrompt'].forEach(function(id) {
+  ['greetingName','customCSS'].forEach(function(id) {
     document.getElementById(id).addEventListener('input', debouncedSave);
   });
   document.getElementById('exportPrefsBtn').onclick = exportPreferences;

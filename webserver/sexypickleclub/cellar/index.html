@@ -12,7 +12,7 @@
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>The Brine Cellar — Sexy Pickle Club</title>
-<script src="/theme.js?v=9"></script>
+<script src="/theme.js?v=10"></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
 <script src="/api.js"></script>
@@ -785,6 +785,11 @@ button {
   .msg-tools { opacity: 0.55; pointer-events: auto; }
   .msg-tools.open { opacity: 1; }
   #input-row {
+    /* Body padding is zeroed above for the scroll lock, so THIS rule owns the
+       home-indicator inset — margin-bottom must stay inset-free or the safe
+       area gets counted twice (~34px of dead space under the composer on
+       iPhone; Android reports a 0 inset here, which is why it looked fine). */
+    margin-bottom: 8px !important;
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
     min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
   }
@@ -809,9 +814,9 @@ button {
   transition: none !important;
 }
 </style>
-<link rel="stylesheet" href="/encrypt-galaxy.css?v=6">
+<link rel="stylesheet" href="/encrypt-galaxy.css?v=7">
 </head>
-<body class="encrypt-page">
+<body class="encrypt-page cellar-page">
 
 <div id="loading">connecting...</div>
 
@@ -860,6 +865,7 @@ button {
         <div id="chat-tools-menu" role="menu">
           <input id="msgSearch" placeholder="Search this conversation" autocomplete="off">
           <div class="chat-menu-actions">
+            <button id="manage-storage-btn" class="tool-btn" type="button">Attachments (250MB)</button>
             <button id="clear-chat-btn" class="tool-btn" type="button">Clear chat</button>
             <button id="export-chat-btn" class="tool-btn" type="button">Export</button>
             <button id="leave-group-btn" class="tool-btn" type="button" style="display:none">Leave group</button>
@@ -878,13 +884,15 @@ button {
       <button type="button" class="small-btn" id="reply-cancel-btn" style="margin-left:auto">Cancel</button>
     </div>
     <div id="image-preview">
-      <img id="image-preview-img" alt="">
+      <img id="image-preview-img" alt="" style="display:none">
+      <span id="image-preview-icon" style="display:none; font-size:20px;">📎</span>
       <span id="image-preview-name"></span>
+      <span id="image-preview-size" style="font-size:11px; opacity:0.75;"></span>
       <button type="button" class="small-btn" id="image-clear-btn" style="margin-left:auto">Remove</button>
     </div>
     <div id="input-row">
-      <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none">
-      <button id="attachBtn" type="button" title="Attach an image" aria-label="Attach an image">＋</button>
+      <input type="file" id="imageInput" accept="*/*" style="display:none">
+      <button id="attachBtn" type="button" title="Attach an image or file (up to 250MB)" aria-label="Attach an image or file">＋</button>
       <input type="text" id="msgInput" placeholder="type a message..." autocomplete="off">
       <button id="sendBtn" type="button" disabled><span>Send</span><b aria-hidden="true">↗</b></button>
     </div>
@@ -936,6 +944,44 @@ button {
         <button class="small-btn" type="button" id="e2e-skip-btn" style="background: transparent; color: var(--t-fg2, #999); border: 1px solid var(--t-bd, #444); display: none;">Not now</button>
         <button class="small-btn" type="button" id="e2e-submit-btn">Unlock</button>
       </span>
+    </div>
+  </div>
+</div>
+
+<div id="attachments-modal" class="modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.65); backdrop-filter:blur(6px); align-items:center; justify-content:center;">
+  <div class="modal-card" style="max-width:540px; width:92%; max-height:85vh; display:flex; flex-direction:column; padding:22px; border-radius:14px; background:var(--t-bg2); border:1px solid var(--t-bd); box-shadow:0 24px 80px rgba(0,0,0,0.5);">
+    <div class="modal-head" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <strong style="font-size:1.1rem; display:flex; align-items:center; gap:8px;">📦 Chat Attachments & Storage</strong>
+      <button class="small-btn" type="button" id="close-attachments-modal">Close</button>
+    </div>
+    
+    <div id="attachments-quota-section" style="margin-bottom:14px; padding:12px; background:var(--t-bg); border-radius:10px; border:1px solid var(--t-bd);">
+      <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:6px;">
+        <span style="font-weight:600;">Total Storage Used</span>
+        <span id="attachments-quota-text" style="color:var(--t-ac); font-weight:700;">0 MB / 250 MB</span>
+      </div>
+      <div style="height:8px; width:100%; background:rgba(255,255,255,0.08); border-radius:999px; overflow:hidden;">
+        <div id="attachments-quota-bar" style="height:100%; width:0%; background:var(--t-ac); border-radius:999px; transition:width 0.3s ease;"></div>
+      </div>
+      <div style="font-size:11px; color:var(--t-fg2); margin-top:8px; line-height:1.4;">
+        ⏳ Attachments auto-expire after <strong>2 days (48 hours)</strong>. To upload new files when your 250MB limit is reached, delete older attachments below.
+      </div>
+    </div>
+
+    <div id="attachments-notice" style="display:none; padding:8px 12px; margin-bottom:12px; border-radius:8px; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); color:#fca5a5; font-size:12px;"></div>
+
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <span style="font-size:12px; font-weight:600; color:var(--t-fg2);">Your Active Uploads</span>
+      <button id="attachments-delete-all-btn" class="small-btn" type="button" style="font-size:11px; color:#ef4444; border-color:rgba(239,68,68,0.3); display:none;">Delete All</button>
+    </div>
+
+    <div id="attachments-list" style="flex:1; overflow-y:auto; min-height:120px; max-height:300px; display:flex; flex-direction:column; gap:8px; padding-right:4px;">
+      <div style="text-align:center; padding:30px; color:var(--t-fg2); font-size:12px;">Loading attachments…</div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px; display:flex; justify-content:flex-end; gap:8px;">
+      <button id="attachments-retry-btn" class="small-btn" type="button" style="background:var(--t-ac); color:var(--t-bg); display:none;">Retry Pending Upload</button>
+      <button class="small-btn" type="button" id="done-attachments-btn">Done</button>
     </div>
   </div>
 </div>
@@ -1274,14 +1320,24 @@ async function deriveSharedKey(peerPubKeyHex, kp = myKP, keyId = 'current') {
 }
 
 function buildSecureMessageContent(text, image, quotedReply) {
-  const safeImage = image && typeof image === 'object' &&
-    /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(image.data || ''))
-    ? {
+  let safeImage = null;
+  if (image && typeof image === 'object') {
+    if (image.url && image.id) {
+      safeImage = {
+        id: String(image.id).slice(0, 64),
+        url: String(image.url).slice(0, 250),
+        name: String(image.name || 'attachment').slice(0, 180),
+        size: Number(image.size) || 0,
+        mime: String(image.mime || 'application/octet-stream').slice(0, 80)
+      };
+    } else if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(image.data || ''))) {
+      safeImage = {
         data: String(image.data),
         mime: String(image.mime || '').slice(0, 80),
         name: String(image.name || 'image').slice(0, 180)
-      }
-    : null;
+      };
+    }
+  }
   const safeReply = quotedReply && typeof quotedReply === 'object'
     ? {
         id: String(quotedReply.id || '').slice(0, 180),
@@ -1314,14 +1370,27 @@ function applyDecryptedMessageContent(message, decryptedText, version) {
   }
 
   message.text = typeof content.text === 'string' ? content.text.slice(0, 2000) : '';
-  message.image = content.image && typeof content.image === 'object' &&
-    /^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(content.image.data || ''))
-    ? {
+  if (content.image && typeof content.image === 'object') {
+    if (content.image.url && content.image.id) {
+      message.image = {
+        id: String(content.image.id).slice(0, 64),
+        url: String(content.image.url).slice(0, 250),
+        name: String(content.image.name || 'attachment').slice(0, 180),
+        size: Number(content.image.size) || 0,
+        mime: String(content.image.mime || 'application/octet-stream').slice(0, 80)
+      };
+    } else if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(content.image.data || ''))) {
+      message.image = {
         data: String(content.image.data),
         mime: String(content.image.mime || '').slice(0, 80),
         name: String(content.image.name || 'image').slice(0, 180)
-      }
-    : null;
+      };
+    } else {
+      message.image = null;
+    }
+  } else {
+    message.image = null;
+  }
   message.replyTo = content.replyTo && typeof content.replyTo === 'object'
     ? {
         id: String(content.replyTo.id || '').slice(0, 180),
@@ -1920,6 +1989,20 @@ function bindEvents() {
   document.getElementById('leave-group-btn').onclick = leaveCurrentGroup;
   document.getElementById('chat-search-toggle').onclick = () => toggleChatTools(true);
   document.getElementById('chat-more-btn').onclick = () => toggleChatTools();
+  const manageStorageBtn = document.getElementById('manage-storage-btn');
+  if (manageStorageBtn) manageStorageBtn.onclick = () => openAttachmentsManager();
+  const closeAttModal = document.getElementById('close-attachments-modal');
+  if (closeAttModal) closeAttModal.onclick = closeAttachmentsManager;
+  const doneAttBtn = document.getElementById('done-attachments-btn');
+  if (doneAttBtn) doneAttBtn.onclick = closeAttachmentsManager;
+  const delAllAttBtn = document.getElementById('attachments-delete-all-btn');
+  if (delAllAttBtn) delAllAttBtn.onclick = deleteAllAttachments;
+  const retryAttBtn = document.getElementById('attachments-retry-btn');
+  if (retryAttBtn) retryAttBtn.onclick = retryPendingUpload;
+  const attModal = document.getElementById('attachments-modal');
+  if (attModal) {
+    attModal.onclick = e => { if (e.target.id === 'attachments-modal') closeAttachmentsManager(); };
+  }
   document.getElementById('attachBtn').onclick = () => document.getElementById('imageInput').click();
   document.getElementById('imageInput').onchange = handleImagePick;
   document.getElementById('image-clear-btn').onclick = clearImage;
@@ -2669,14 +2752,32 @@ function messageHtml(m) {
     ? ` <button class="small-btn retry-decrypt-btn" data-id="${id}" type="button" style="margin-left:6px;padding:1px 5px;font-size:0.6rem;vertical-align:middle;display:inline-block;">Retry</button>`
     : '';
 
-  const safeText = text ? `<span class="body">${esc(text)}${retryBtn}</span>` : '<span class="body" style="opacity:.55">sent an image</span>';
-  const imageHtml = m.image && m.image.data
-    ? `<a href="${esc(m.image.data)}" target="_blank" rel="noopener"><img class="chat-image" src="${esc(m.image.data)}" alt="${esc(m.image.name || 'attached image')}"></a>`
-    : '';
+  let attachmentHtml = '';
+  if (m.image) {
+    if (m.image.url) {
+      const mime = (m.image.mime || '').toLowerCase();
+      const attUrl = esc(m.image.url);
+      const attName = esc(m.image.name || 'attachment');
+      const attSizeStr = m.image.size ? ` (${fmtBytes(m.image.size)})` : '';
+      if (mime.startsWith('image/')) {
+        attachmentHtml = `<a href="${attUrl}" target="_blank" rel="noopener"><img class="chat-image" src="${attUrl}" alt="${attName}"></a>`;
+      } else if (mime.startsWith('video/')) {
+        attachmentHtml = `<video controls playsinline preload="metadata" style="max-width:100%;max-height:360px;border-radius:10px;margin-top:6px;display:block;" src="${attUrl}"></video>`;
+      } else if (mime.startsWith('audio/')) {
+        attachmentHtml = `<audio controls preload="metadata" style="max-width:100%;margin-top:6px;display:block;" src="${attUrl}"></audio>`;
+      } else {
+        attachmentHtml = `<div class="attachment-card" style="display:inline-flex;align-items:center;gap:10px;padding:10px 14px;background:var(--t-bg);border:1px solid var(--t-bd);border-radius:10px;margin-top:6px;"><span style="font-size:20px;">📎</span><div style="min-width:0;"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${attName}</div><small style="color:var(--t-fg2);font-size:11px;">${attSizeStr}</small></div><a href="${attUrl}&download=1" download="${attName}" class="small-btn" style="text-decoration:none;margin-left:8px;">Download</a></div>`;
+      }
+    } else if (m.image.data) {
+      attachmentHtml = `<a href="${esc(m.image.data)}" target="_blank" rel="noopener"><img class="chat-image" src="${esc(m.image.data)}" alt="${esc(m.image.name || 'attached image')}"></a>`;
+    }
+  }
+
+  const safeText = text ? `<span class="body">${esc(text)}${retryBtn}</span>` : (attachmentHtml ? '' : '<span class="body" style="opacity:.55">sent an attachment</span>');
   const reply = m.replyTo && (m.replyTo.text || m.replyTo.from)
     ? `<div class="reply-box">${esc(displayNameFor(m.replyTo.from || ''))}: ${esc(m.replyTo.text || '')}</div>`
     : '';
-  const bodyText = esc(text || (m.image ? 'sent an image' : ''));
+  const bodyText = esc(text || (m.image ? (m.image.name || 'attachment') : ''));
   const expiry = m.expiresAt ? ` data-expire="${m.expiresAt}"` : '';
   const seen = mine && !m.isPending && (m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, myEmail))));
   const delivery = mine
@@ -2691,7 +2792,7 @@ function messageHtml(m) {
     ${reply}
     <div class="msg-line msg-bubble">
       ${safeText}
-      ${imageHtml}
+      ${attachmentHtml}
     </div>
     <div class="msg-tools">
       <!-- One ••• per message; the actions live in a small menu so phone
@@ -2777,8 +2878,48 @@ async function send() {
   // Plaintext sends are capped by the server (shorter with an image).
   const sendText = fallbackMode ? text.slice(0, pendingImage ? 500 : 2000) : text;
 
+  let imageToSend = pendingImage;
+  if (imageToSend && imageToSend.file) {
+    const sendBtn = document.getElementById('sendBtn');
+    const origHtml = sendBtn ? sendBtn.innerHTML : '';
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.innerHTML = '<span>Uploading…</span>';
+    }
+    try {
+      const fd = new FormData();
+      fd.append('file', imageToSend.file);
+      const upRes = await fetch('/api/dm/attachment/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: fd
+      });
+      const upData = await upRes.json().catch(() => ({}));
+      if (!upRes.ok || !upData.success) {
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = origHtml;
+        }
+        if (upRes.status === 413 || upData.error === 'quotaExceeded') {
+          openAttachmentsManager(upData);
+          return;
+        }
+        toast(upData.error || upData.message || 'Failed to upload attachment.');
+        return;
+      }
+      imageToSend = upData.attachment;
+    } catch (err) {
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = origHtml;
+      }
+      toast('Network error uploading attachment.');
+      return;
+    }
+    if (sendBtn) sendBtn.innerHTML = origHtml;
+  }
+
   const pendingMsgId = 'pending-' + Date.now() + '-' + Math.random().toString(36).slice(2);
-  const imageToSend = pendingImage;
   const replyToSend = replyTo ? { ...replyTo } : null;
   const secureContent = buildSecureMessageContent(text, imageToSend, replyToSend);
   // Construct optimistic pending message
@@ -3314,7 +3455,12 @@ function clearImage() {
   const preview = document.getElementById('image-preview');
   if (file) file.value = '';
   preview.classList.remove('on');
-  document.getElementById('image-preview-img').src = '';
+  const imgEl = document.getElementById('image-preview-img');
+  const iconEl = document.getElementById('image-preview-icon');
+  const sizeEl = document.getElementById('image-preview-size');
+  if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
+  if (iconEl) iconEl.style.display = 'none';
+  if (sizeEl) sizeEl.textContent = '';
   document.getElementById('image-preview-name').textContent = '';
   syncComposer();
 }
@@ -3325,8 +3471,21 @@ function restoreFailedDraft(text, image, quotedReply, chat) {
   if (text && input && !input.value.trim()) input.value = text;
   if (image && !pendingImage) {
     pendingImage = image;
-    document.getElementById('image-preview-img').src = image.data || '';
-    document.getElementById('image-preview-name').textContent = image.name || 'image';
+    const imgEl = document.getElementById('image-preview-img');
+    const iconEl = document.getElementById('image-preview-icon');
+    const sizeEl = document.getElementById('image-preview-size');
+    if (image.data || (image.file && image.file.type && image.file.type.startsWith('image/'))) {
+      if (imgEl) {
+        imgEl.src = image.data || '';
+        imgEl.style.display = 'block';
+      }
+      if (iconEl) iconEl.style.display = 'none';
+    } else {
+      if (imgEl) { imgEl.src = ''; imgEl.style.display = 'none'; }
+      if (iconEl) iconEl.style.display = 'block';
+    }
+    if (sizeEl && image.size) sizeEl.textContent = ` (${fmtBytes(image.size)})`;
+    document.getElementById('image-preview-name').textContent = image.name || 'attachment';
     document.getElementById('image-preview').classList.add('on');
   }
   if (quotedReply && !replyTo) {
@@ -3348,23 +3507,196 @@ function syncComposer() {
 function handleImagePick() {
   const file = this.files && this.files[0];
   if (!file) return clearImage();
-  if (!/^image\/(png|jpe?g|gif|webp)$/i.test(file.type)) {
-    alert('Use PNG, JPG, GIF, or WebP images.');
+  if (file.size > 250 * 1024 * 1024) {
+    alert('File exceeds 250MB limit. Maximum file size is 250MB.');
     return clearImage();
   }
-  if (file.size > 650 * 1024) {
-    alert('Image is too large. Keep it under 650 KB.');
-    return clearImage();
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    pendingImage = { data: String(reader.result), mime: file.type, name: file.name };
-    document.getElementById('image-preview-img').src = pendingImage.data;
-    document.getElementById('image-preview-name').textContent = file.name;
+  pendingImage = {
+    file: file,
+    name: file.name,
+    size: file.size,
+    mime: file.type || 'application/octet-stream'
+  };
+  const imgEl = document.getElementById('image-preview-img');
+  const iconEl = document.getElementById('image-preview-icon');
+  const sizeEl = document.getElementById('image-preview-size');
+  if (sizeEl) sizeEl.textContent = ` (${fmtBytes(file.size)})`;
+  document.getElementById('image-preview-name').textContent = file.name;
+
+  if (file.type && file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (imgEl) {
+        imgEl.src = String(reader.result);
+        imgEl.style.display = 'block';
+      }
+      if (iconEl) iconEl.style.display = 'none';
+      document.getElementById('image-preview').classList.add('on');
+      syncComposer();
+    };
+    reader.readAsDataURL(file);
+  } else {
+    if (imgEl) {
+      imgEl.src = '';
+      imgEl.style.display = 'none';
+    }
+    if (iconEl) iconEl.style.display = 'block';
     document.getElementById('image-preview').classList.add('on');
     syncComposer();
-  };
-  reader.readAsDataURL(file);
+  }
+}
+
+let lastQuotaInfo = null;
+
+function fmtBytes(bytes) {
+  bytes = Number(bytes) || 0;
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+function fmtTimeRemaining(expiresAt) {
+  if (!expiresAt) return 'Expires soon';
+  const diff = expiresAt - Date.now();
+  if (diff <= 0) return 'Expired';
+  const hours = Math.floor(diff / (3600 * 1000));
+  if (hours > 24) {
+    const days = Math.floor(hours / 24);
+    const remHours = hours % 24;
+    return `Expires in ${days}d ${remHours}h`;
+  }
+  if (hours > 0) return `Expires in ${hours}h`;
+  const mins = Math.max(1, Math.floor(diff / (60 * 1000)));
+  return `Expires in ${mins}m`;
+}
+
+async function openAttachmentsManager(quotaNotice) {
+  const modal = document.getElementById('attachments-modal');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  const noticeEl = document.getElementById('attachments-notice');
+  const retryBtn = document.getElementById('attachments-retry-btn');
+  if (quotaNotice) {
+    noticeEl.textContent = quotaNotice.message || 'Storage quota exceeded (250MB limit). Delete older attachments to make room.';
+    noticeEl.style.display = 'block';
+  } else {
+    noticeEl.style.display = 'none';
+  }
+  if (pendingImage && pendingImage.file) {
+    retryBtn.style.display = 'inline-block';
+  } else {
+    retryBtn.style.display = 'none';
+  }
+  await refreshAttachmentsList();
+}
+
+function closeAttachmentsManager() {
+  const modal = document.getElementById('attachments-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+async function refreshAttachmentsList() {
+  const listEl = document.getElementById('attachments-list');
+  const quotaText = document.getElementById('attachments-quota-text');
+  const quotaBar = document.getElementById('attachments-quota-bar');
+  const delAllBtn = document.getElementById('attachments-delete-all-btn');
+  try {
+    const res = await fetch('/api/dm/attachments', { credentials: 'include' });
+    if (!res.ok) throw new Error('Failed to load attachments');
+    const data = await res.json();
+    lastQuotaInfo = data;
+    const total = Number(data.total) || 0;
+    const max = Number(data.max) || (250 * 1024 * 1024);
+    const pct = Math.min(100, (total / max) * 100);
+    quotaText.textContent = `${(total / (1024 * 1024)).toFixed(1)} MB / ${(max / (1024 * 1024)).toFixed(0)} MB`;
+    quotaBar.style.width = pct + '%';
+    quotaBar.style.background = pct > 90 ? '#ef4444' : (pct > 75 ? '#f59e0b' : 'var(--t-ac)');
+
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) {
+      listEl.innerHTML = '<div style="text-align:center; padding:30px; color:var(--t-fg2); font-size:12px;">No active uploads found.</div>';
+      if (delAllBtn) delAllBtn.style.display = 'none';
+      return;
+    }
+    if (delAllBtn) delAllBtn.style.display = 'inline-block';
+
+    listEl.innerHTML = items.map(item => {
+      const mime = (item.mime || '').toLowerCase();
+      const icon = mime.startsWith('image/') ? '🖼️' : (mime.startsWith('video/') ? '🎬' : (mime.startsWith('audio/') ? '🎵' : '📄'));
+      return `<div class="attachment-item" data-id="${esc(item.id)}" style="display:flex; align-items:center; gap:10px; padding:8px 10px; background:var(--t-bg); border:1px solid var(--t-bd); border-radius:8px;">
+        <span style="font-size:20px; flex-shrink:0;">${icon}</span>
+        <div style="flex:1; min-width:0;">
+          <div style="font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${esc(item.name)}">${esc(item.name)}</div>
+          <div style="font-size:11px; color:var(--t-fg2); display:flex; gap:8px;">
+            <span>${fmtBytes(item.size)}</span>
+            <span>•</span>
+            <span style="color:#f59e0b;">${fmtTimeRemaining(item.expiresAt)}</span>
+          </div>
+        </div>
+        <a href="${esc(item.url)}&download=1" download="${esc(item.name)}" class="small-btn" style="text-decoration:none; padding:4px 8px; font-size:11px;" title="Download">⬇</a>
+        <button class="small-btn del-att-btn" data-id="${esc(item.id)}" type="button" style="padding:4px 8px; font-size:11px; color:#ef4444; border-color:rgba(239,68,68,0.3);">Delete</button>
+      </div>`;
+    }).join('');
+
+    listEl.querySelectorAll('.del-att-btn').forEach(btn => {
+      btn.onclick = async function () {
+        const id = this.getAttribute('data-id');
+        this.disabled = true;
+        this.textContent = '…';
+        await deleteAttachment(id);
+      };
+    });
+  } catch (err) {
+    listEl.innerHTML = `<div style="text-align:center; padding:30px; color:#ef4444; font-size:12px;">Failed to load attachments.</div>`;
+  }
+}
+
+async function deleteAttachment(id) {
+  try {
+    const res = await fetch('/api/dm/attachments/delete', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.success) {
+      toast(d.error || 'Failed to delete attachment.');
+      return;
+    }
+    toast('Attachment deleted.');
+    await refreshAttachmentsList();
+  } catch {
+    toast('Network error deleting attachment.');
+  }
+}
+
+async function deleteAllAttachments() {
+  if (!confirm('Are you sure you want to delete all your active attachments? This cannot be undone.')) return;
+  if (!lastQuotaInfo || !Array.isArray(lastQuotaInfo.items)) return;
+  const ids = lastQuotaInfo.items.map(x => x.id);
+  try {
+    const res = await fetch('/api/dm/attachments/delete', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids })
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.success) {
+      toast(d.error || 'Failed to delete attachments.');
+      return;
+    }
+    toast('All attachments deleted.');
+    await refreshAttachmentsList();
+  } catch {
+    toast('Network error deleting attachments.');
+  }
+}
+
+async function retryPendingUpload() {
+  closeAttachmentsManager();
+  await send();
 }
 
 async function cycleExpiry() {
@@ -3613,12 +3945,16 @@ window.addEventListener('ws-broadcast-status', function(e) {
 
   function hardReset() {
     kbOpen = false;
+    document.body.classList.remove('keyboard-open');
     const el = page();
-    if (el) el.style.height = '';
+    if (el) {
+      el.style.removeProperty('height');
+      el.style.height = '';
+    }
     // Re-anchor: dropping position:fixed for one frame makes WebKit relayout
     // against the layout viewport, discarding the visual pan the keyboard
     // left behind. Cheap and invisible when we're already at scroll 0.
-    if (el && document.body.classList.contains('encrypt-page')) {
+    if (el && (document.body.classList.contains('encrypt-page') || document.body.classList.contains('cellar-page'))) {
       el.style.position = 'static';
       void document.body.offsetHeight; // force reflow
       el.style.position = '';
@@ -3634,12 +3970,14 @@ window.addEventListener('ws-broadcast-status', function(e) {
     const el = page();
     if (!el) return;
     const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-    if (overlap > 120) {
+    const isKeyboard = overlap > 120;
+    document.body.classList.toggle('keyboard-open', isKeyboard);
+    if (isKeyboard) {
       if (!kbOpen) kbOpen = true;
       // Keep the fixed page anchored at scroll 0 — iOS sometimes tries to
       // nudge the window anyway while the keyboard animates in.
       if (window.scrollY !== 0) window.scrollTo(0, 0);
-      el.style.height = Math.round(vv.height) + 'px';
+      el.style.setProperty('height', Math.round(vv.height) + 'px', 'important');
       const m = msgs();
       if (m && m.classList.contains('on')) m.scrollTop = m.scrollHeight;
     } else if (kbOpen && overlap <= 1) {
@@ -3650,6 +3988,14 @@ window.addEventListener('ws-broadcast-status', function(e) {
   if (vv) {
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
+  }
+
+  const msgInp = document.getElementById('msgInput');
+  if (msgInp) {
+    msgInp.addEventListener('focus', function () {
+      setTimeout(update, 60);
+      setTimeout(update, 260);
+    });
   }
 
   // The keyboard-going-away reset. iOS doesn't always deliver a final
