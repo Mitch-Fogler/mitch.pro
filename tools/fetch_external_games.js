@@ -1,7 +1,7 @@
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-const GAMES_FILE = join(process.cwd(), 'games_external');
+const GAMES_FILE = join(process.cwd(), 'data', 'games_external');
 const CATS_FILE = join(process.cwd(), 'data', 'game_categories_external.json');
 
 // High-capacity endpoint discovered to support 25,000+ games in one request
