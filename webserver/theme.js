@@ -52,6 +52,9 @@
   function getBgImgCookie() {
     var m = document.cookie.match(/(?:^|; )bgimg=([^;]*)/);
     var v = m ? decodeURIComponent(m[1]) : '';
+    var saved = getPref('bgimg', null);
+    if (saved !== null) v = saved;
+    setBgImgCookie(v);
     // The official wallpapers were SVGs once; anyone still pointing at one gets
     // silently moved to its .webp replacement (same art, rasterized).
     var migrated = v.replace(/^\/backgrounds\/(bg-[a-z0-9-]+)\.svg$/, '/backgrounds/$1.webp');
@@ -59,6 +62,7 @@
     return v;
   }
   function setBgImgCookie(url) {
+    setPref('bgimg', url || '');
     document.cookie = 'bgimg=' + encodeURIComponent(url || '') + ';path=/;max-age=31536000';
   }
 
@@ -184,6 +188,7 @@
   // backgrounds/ directory, so dropping in or removing a .webp is enough);
   // this manifest is only the offline fallback.
   var THEME_BGS = [
+    { id: 'starfield', name: 'Starfield', url: 'effect:starfield', effect: 'starfield', script: '/backgrounds/starfield.js?v=1', preview: 'radial-gradient(circle at 18% 28%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 72% 24%,#c5bcff 0 1.5px,transparent 3px),radial-gradient(circle at 43% 75%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 85% 68%,#d8e8ff 0 1px,transparent 2px),radial-gradient(ellipse at 65% 25%,#17213f,#030713)' },
     { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp' },
     { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp' },
     { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp' },
@@ -235,10 +240,50 @@
     document.documentElement.style.removeProperty('background');
   }
 
+  var effectInstance = null, effectKey = '', effectGeneration = 0, effectLoads = {};
+  function getBackground(url) {
+    return THEME_BGS.find(function (bg) { return bg.url === url; });
+  }
+  function applyEffect(config) {
+    var key = config ? config.effect : '';
+    if (key === effectKey) { if (effectInstance) effectInstance.update(); return; }
+    effectKey = key;
+    var generation = ++effectGeneration;
+    if (effectInstance) effectInstance.destroy();
+    effectInstance = null;
+    if (!config) return;
+    if (!effectLoads[key]) effectLoads[key] = new Promise(function (resolve, reject) {
+      var script = document.createElement('script');
+      script.src = config.script;
+      script.onload = function () { script.remove(); resolve(); };
+      script.onerror = function () { script.remove(); reject(new Error('Background unavailable')); };
+      document.head.appendChild(script);
+    });
+    effectLoads[key].then(function () {
+      if (generation !== effectGeneration) return;
+      effectInstance = window.MitchBackgroundEffects[key](document.documentElement);
+    }).catch(function () {
+      if (generation === effectGeneration) effectKey = '';
+      delete effectLoads[key];
+    });
+  }
+  window.addEventListener('storage', function (event) {
+    if (event.key === 'theme_bgimg') {
+      setBgImgCookie(event.newValue || '');
+      applyBgImg(getEffectiveBgImg());
+    }
+  });
+  window.addEventListener('pagehide', function () { applyEffect(null); });
+  window.addEventListener('pageshow', function (event) { if (event.persisted) applyBgImg(getEffectiveBgImg()); });
+
   function applyBgImg(url) {
     var h = document.documentElement, r = h.style;
     var isLight = h.classList.contains('theme-light');
     var videoEl = document.getElementById('mitch-bg-video');
+    var config = getBackground(url);
+    var effect = config && config.effect ? config : null;
+    if (effect) h.setAttribute('data-bg-effect', effect.effect); else h.removeAttribute('data-bg-effect');
+    applyEffect(effect);
     var isVideo = url && (/\.(webm|mp4)($|\?)/i.test(url) || /^data:video\/(webm|mp4)/i.test(url));
 
     if (isVideo) {
@@ -267,10 +312,14 @@
       r.setProperty('--t-bg-img-layer', 'none');
     } else {
       if (videoEl) {
-        videoEl.style.display = 'none';
-        videoEl.src = '';
+        videoEl.pause();
+        videoEl.removeAttribute('src');
+        videoEl.load();
+        videoEl.remove();
       }
-      if (url) {
+      if (effect) {
+        r.setProperty('--t-bg-img-layer', 'none');
+      } else if (url) {
         // User wallpaper: paint dim gradient + image, honoring the pos/size
         // preferences. Painted via the background shorthand (see baseStyle),
         // so position/size ride inside the value.
@@ -289,7 +338,7 @@
     // Pages declare --t-bgr on <body>, and custom properties never inherit
     // upward — so if the html-level var chain resolved to nothing, lift the
     // body's computed value inline onto <html> as a literal layer value.
-    if (!/url\(/.test(resolved) && document.body) {
+    if (!url && !/url\(/.test(resolved) && document.body) {
       try {
         var fromBody = getComputedStyle(document.body).getPropertyValue('--t-bgr');
         if (/url\(/.test(fromBody)) { r.setProperty('--t-bg-img-layer', fromBody); resolved = fromBody; }
@@ -302,7 +351,7 @@
         }
       } catch (_) {}
     }
-    var active = isVideo || /url\(/.test(resolved);
+    var active = !!effect || isVideo || /url\(/.test(resolved);
     h.toggleAttribute('data-bglayer', active);
     if (active) setBodyTransparent(); else clearBodyTransparent();
     scheduleAdaptive();
@@ -335,7 +384,7 @@
     // off, sampler failure) would land on dark purple tokens over the light
     // palette. Restore the active theme's values, then let a manual accent sit
     // back on top.
-    var t = T[normalize(getCookie())];
+    var t = T[document.documentElement.classList.contains('theme-light') ? 'light' : 'dark'];
     if (t) {
       r.setProperty('--t-bg2', t.bg2);
       r.setProperty('--t-bg3', t.bg3);
@@ -365,6 +414,7 @@
 
   function applyAdaptiveTheme(force) {
     var root = document.documentElement;
+    if (root.hasAttribute('data-bg-effect')) { clearAdaptive(); return; }
     if (getPref('adapt', 'on') === 'off' && !force) { clearAdaptive(); return; }
     if (root.classList.contains('theme-light')) { clearAdaptive(); return; }
     if (isSchoolHub()) { clearAdaptive(); return; }
@@ -611,6 +661,9 @@
     // is forced transparent by JS so the layer shows through. scale(1.12)
     // hides the blur's edge fringing.
     'html[data-bglayer]{background:var(--t-bg)!important}' +
+    'html[data-bg-effect]{background:#050b1b!important}' +
+    'html[data-bg-effect]::before{display:none!important}' +
+    'html[data-bg-effect].theme-light :is(.page-head,.page-header) :is(h1,p){color:#eef2ff!important}' +
     'html[data-bglayer]::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;' +
       'opacity:var(--t-bg-layer-opacity,1);' +
       // Shorthand, not background-image: page-owned --t-bgr values carry their
@@ -792,6 +845,10 @@
     get: getCookie,
     themes: T,
     backgrounds: THEME_BGS,
+    getBackground: getBackground,
+    mergeBackgrounds: function (items) {
+      return THEME_BGS.filter(function (bg) { return bg.effect; }).concat(items.filter(function (bg) { return !THEME_BGS.some(function (entry) { return entry.effect && entry.url === bg.url; }); }));
+    },
     setBg: function(url) { setBgImgCookie(url); applyBgImg(url || getEffectiveBgImg()); },
     setBlur: function(px) {
       setPref('bgblur', clamp(Number(px) || 0, 0, 40));
