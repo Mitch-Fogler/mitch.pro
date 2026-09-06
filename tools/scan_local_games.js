@@ -2,7 +2,7 @@ import { readdirSync, existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 const WEBROOT = join(process.cwd(), 'webserver');
-const GAMES_FILE_LOCAL = join(process.cwd(), 'games_local');
+const GAMES_FILE_LOCAL = join(process.cwd(), 'data', 'games_local');
 const CATS_FILE_LOCAL = join(process.cwd(), 'data', 'game_categories_local.json');
 
 function formatTitle(name) {

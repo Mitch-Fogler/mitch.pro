@@ -1,6 +1,6 @@
 # Security Posture
 
-Last updated: 2026-08-11
+Last updated: 2026-09-06
 
 This is the public security note for the open-source tree. Detailed exploit writeups are not published here.
 

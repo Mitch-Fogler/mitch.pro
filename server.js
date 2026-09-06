@@ -158,9 +158,9 @@ const ACHIEVEMENTS_FILE      = join(DATA_DIR, 'achievements.json');
 const SESSION_LOG_FILE       = join(DATA_DIR, 'sessions.json');
 const COINS_FILE             = join(DATA_DIR, 'coins.json');
 const ID_SECRET_FILE         = join(DATA_DIR, 'id_secret.key');
-const GAMES_FILE             = join(BASE, 'games');
-const GAMES_LOCAL_FILE       = join(BASE, 'games_local');
-const GAMES_EXTERNAL_FILE    = join(BASE, 'games_external');
+const GAMES_FILE             = join(DATA_DIR, 'games');
+const GAMES_LOCAL_FILE       = join(DATA_DIR, 'games_local');
+const GAMES_EXTERNAL_FILE    = join(DATA_DIR, 'games_external');
 const GAME_CATEGORIES_FILE   = join(DATA_DIR, 'game_categories.json');
 const GAME_CATEGORIES_LOCAL  = join(DATA_DIR, 'game_categories_local.json');
 const GAME_CATEGORIES_EXTERNAL = join(DATA_DIR, 'game_categories_external.json');
@@ -2657,6 +2657,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/school-info',
   '/api/site-info',
   '/api/backgrounds/list',
+  '/api/dm/attachment',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -3946,52 +3947,6 @@ function scheduleDailySummary() {
   }, 30000); // Check every 30 seconds
 }
 
-// ── Backup worker ─────────────────────────────────────────────────────────────
-const BACKUP_DIR = join(BASE, 'backups');
-async function backupWorker() {
-  try {
-    if (!existsSync(BACKUP_DIR)) mkdirSync(BACKUP_DIR, { recursive: true });
-    const now = new Date();
-    const folderName = now.toISOString().replace(/[:.]/g, '-');
-    const folder = join(BACKUP_DIR, folderName);
-    mkdirSync(folder, { recursive: true });
-
-    const filesToBackup = [
-      TOKENS_FILE, APPLICATIONS_FILE, PROFILES_FILE, NAMES_FILE,
-      BLACKLIST_FILE, GENERATIONS_FILE, CANVAS_PIXELS_FILE, CHESS_VS_FILE, DMS_FILE,
-      COINS_FILE, ACHIEVEMENTS_FILE, USER_STATS_FILE, CANVAS_LOCKS_FILE, FRIENDS_FILE,
-      PREMIUM_CHAT_FILE, ADMIN_ACTION_LOG_FILE, CHAT_REPORTS_FILE, SESSION_LOG_FILE,
-      MASTER_SESSION_LOG
-    ];
-
-    for (const file of filesToBackup) {
-      if (existsSync(file)) {
-        const dest = join(folder, basename(file));
-        try {
-          const content = readFileSync(file);
-          writeFileSync(dest, content);
-        } catch (e) {
-          console.error(`[backup] failed to copy ${file}: ${e.message}`);
-        }
-      }
-    }
-    // Backup webserver content (Task Fix: include files even if symlinked)
-    try {
-      const webDest = join(folder, 'webserver');
-      spawnSync('rsync', ['-avL', '--exclude=games/many', '--exclude=games/eag*', '--exclude=games/eag', WEBROOT + '/', webDest + '/']);
-    } catch (e) { console.error(`[backup] webserver failed: ${e.message}`); }
-
-    console.log(`[backup] created backup in ${folderName}`);    
-    // Clean up old backups (keep last 14)
-    const folders = readdirSync(BACKUP_DIR).map(f => join(BACKUP_DIR, f)).filter(f => statSync(f).isDirectory());
-    folders.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-    const toDelete = folders.slice(14);
-    for (const f of toDelete) {
-      rmSync(f, { recursive: true, force: true });
-      console.log(`[backup] deleted old backup ${basename(f)}`);
-    }
-  } catch (e) { console.error(`[backup] worker error: ${e.message}`); }
-}
 
 async function premiumMaintenanceWorker() {
   try {
@@ -5276,6 +5231,10 @@ function validIpLiteral(value) {
 }
 
 function requestHost(req) {
+  const forwarded = req.headers.get('x-forwarded-host');
+  if (forwarded) return forwarded.split(',')[0].trim();
+  const hostHeader = req.headers.get('host');
+  if (hostHeader) return hostHeader.trim();
   try { return new URL(req.url).host; } catch { return ''; }
 }
 
@@ -5387,15 +5346,20 @@ function consumeSsoBridgeToken(token) {
 function sameOriginRequest(req) {
   const host = requestHost(req);
   if (!host) return false;
+  const hostName = host.split(':')[0].toLowerCase();
   const origin = req.headers.get('Origin');
   if (origin) {
-    try { return new URL(origin).host === host; }
-    catch { return false; }
+    try {
+      const u = new URL(origin);
+      if (u.hostname.toLowerCase() === hostName) return true;
+    } catch { return false; }
   }
   const referer = req.headers.get('Referer');
   if (referer) {
-    try { return new URL(referer).host === host; }
-    catch { return false; }
+    try {
+      const u = new URL(referer);
+      if (u.hostname.toLowerCase() === hostName) return true;
+    } catch { return false; }
   }
   return false;
 }
@@ -5406,8 +5370,10 @@ function sameOriginRequest(req) {
 // custom headers, so the header check would always block it. It doesn't need
 // CSRF protection anyway — the single-use, 90-second token minted server-side
 // for an authenticated session IS the authorization.
+// /api/dm/attachment/upload is session-authenticated with strict MIME & quota checks.
 const CSRF_EXEMPT_PATHS = new Set([
   '/api/sso/exchange',
+  '/api/dm/attachment/upload',
 ]);
 
 function csrfFailureIfUnsafe(req, path, method) {
@@ -5508,7 +5474,10 @@ function getCookies(req) {
 
   try {
     const session = authSessionFromToken(cookies[AUTH_COOKIE] || '');
-    if (session && session.sid && validId(session.sid)) {
+    if (session && (session.email || session.normEmail)) {
+      if (!session.sid || !validId(session.sid)) {
+        session.sid = makeEmailId(session.normEmail || session.email, session.gen || 0);
+      }
       cookies['studentId'] = session.sid;
       cookies['id'] = session.sid;
       cookies._authSession = session;
@@ -5634,7 +5603,7 @@ function checkPasswordCookie(req, providedSid = null) {
   if (!validId(sid)) return false;
   if (bannedInfoForSid(sid)) return false;
 
-  const email = emailFromSid(sid);
+  const email = cookies._authSession?.email || emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid];
   if (!email) return false;
 
   const passwords = loadPasswords();
@@ -8174,7 +8143,7 @@ async function handleRequest(req, server) {
     const cookies = getCookies(req);
     const sid = cookies['studentId'] || cookies['id'] || '';
     if (!validId(sid)) return { sid, email: '' };
-    return { sid, email: emailFromSid(sid) || '' };
+    return { sid, email: cookies._authSession?.email || emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '' };
   }
 
   if (path === '/api/blog/me' && method === 'GET') {
@@ -16480,7 +16449,7 @@ function loadAllGamesList() {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
-      const senderEmail = (emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
+      const senderEmail = (cookies._authSession?.email || emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
       if (!senderEmail) return jsonResp(403, { error: 'email not found' });
 
       cleanExpiredE2eAttachments();
@@ -16695,7 +16664,7 @@ function loadAllGamesList() {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
-      const senderEmail = (emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
+      const senderEmail = (cookies._authSession?.email || emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
       if (!senderEmail) return jsonResp(403, { error: 'email not found' });
 
       cleanExpiredE2eAttachments();
@@ -16715,7 +16684,7 @@ function loadAllGamesList() {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
-      const senderEmail = (emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
+      const senderEmail = (cookies._authSession?.email || emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
       if (!senderEmail) return jsonResp(403, { error: 'email not found' });
 
       if (!await tryParseJson(65536)) return jsonResp(400, { error: 'bad json' });
@@ -21242,8 +21211,6 @@ console.log(`Webserver active. Loading background systems...`);
 setTimeout(() => {
   // ── Start workers ──────────────────────────────────────────────────────────── 
   scheduleDailySummary();
-  setInterval(backupWorker, 12 * 3600 * 1000); 
-  backupWorker(); 
   setInterval(premiumMaintenanceWorker, 6 * 3600 * 1000); 
   premiumMaintenanceWorker(); 
   setInterval(nudgeWorker, 600_000); 

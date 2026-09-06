@@ -25,7 +25,6 @@ services:
       - ./mail:/app/mail
       - ./logs:/app/logs
       - ./webserver:/app/webserver
-      - ./games_external:/app/games_external
       - ./webvm:/app/webvm
       - /opt/userdata:/opt/userdata
       # Mount the host .env so PVE_SSH_KEY_PATH (and friends) actually
@@ -90,7 +89,6 @@ services:
       - ./mail:/app/mail
       - ./logs:/app/logs
       - ./webserver:/app/webserver
-      - ./games_external:/app/games_external
       - ./webvm:/app/webvm
       - /opt/userdata:/opt/userdata
       - ./.env:/app/.env:ro

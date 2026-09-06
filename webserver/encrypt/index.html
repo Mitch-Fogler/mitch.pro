@@ -2933,6 +2933,7 @@ async function send() {
       const upRes = await fetch('/api/dm/attachment/upload', {
         method: 'POST',
         credentials: 'include',
+        headers: { 'X-Mitch-Requested-With': '1' },
         body: fd
       });
       const upData = await upRes.json().catch(() => ({}));
@@ -3701,7 +3702,7 @@ async function deleteAttachment(id) {
     const res = await fetch('/api/dm/attachments/delete', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
       body: JSON.stringify({ id })
     });
     const d = await res.json().catch(() => ({}));
@@ -3724,7 +3725,7 @@ async function deleteAllAttachments() {
     const res = await fetch('/api/dm/attachments/delete', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
       body: JSON.stringify({ ids })
     });
     const d = await res.json().catch(() => ({}));
