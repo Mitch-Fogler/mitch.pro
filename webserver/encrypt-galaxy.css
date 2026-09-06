@@ -498,7 +498,10 @@ html:not(.theme-light) .encrypt-page {
   #msgSearch { min-width: 0; }
   #msgs { padding: 16px 12px 24px; }
   .msg { max-width: 88%; }
-  #input-row { margin: 0 8px max(8px, env(safe-area-inset-bottom, 8px)); padding-bottom: max(8px, env(safe-area-inset-bottom, 8px)); border-radius: 17px; }
+  /* The home-indicator inset is owned by the cellar rule (encrypt/index.html:
+     padding-bottom + min-height with env()). Adding env() here too (and the
+     ≤520px margin below) stacked the inset 2-3× in the iOS PWA. */
+  #input-row { margin: 0 8px 8px; border-radius: 17px; }
 }
 
 @media (max-width: 520px) {

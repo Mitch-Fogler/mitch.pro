@@ -186,7 +186,7 @@
     if (!keyData.publicKey) throw new Error('Notification service is not configured');
 
     var registration = await navigator.serviceWorker.getRegistration('/');
-    if (!registration) registration = await navigator.serviceWorker.register('/sw.js?v=12', { scope: '/', updateViaCache: 'none' });
+    if (!registration) registration = await navigator.serviceWorker.register('/sw.js?v=13', { scope: '/', updateViaCache: 'none' });
     await navigator.serviceWorker.ready;
     var subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
