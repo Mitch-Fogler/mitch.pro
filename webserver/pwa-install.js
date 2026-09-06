@@ -37,8 +37,9 @@
       if (window.top !== window.self) return false;
       if (window.location.pathname.startsWith('/games/')) return false;
       var h = String(window.location.hostname).toLowerCase();
-      if (h !== 'rjuhsd.school' && !h.endsWith('.rjuhsd.school')) return false;
-      return isPhone();
+      var isRj = h === 'rjuhsd.school' || h.endsWith('.rjuhsd.school') || window.location.pathname.indexOf('/rjuhsd') === 0;
+      if (!isRj) return false;
+      return true;
     } catch (e) { return false; }
   }
 
@@ -118,9 +119,34 @@
     };
   }
 
+  function notifyInstallable() {
+    window.dispatchEvent(new CustomEvent('pwa-installable'));
+    document.querySelectorAll('#pwa-install-btn, .pwa-install-btn').forEach(function(b) {
+      b.style.display = 'inline-flex';
+    });
+  }
+
+  window.__promptPwaInstall = function() {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      return deferredPrompt.userChoice.finally(function () { deferredPrompt = null; });
+    } else {
+      showBanner(false);
+    }
+  };
+
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('#pwa-install-btn, .pwa-install-btn');
+    if (btn) {
+      e.preventDefault();
+      window.__promptPwaInstall();
+    }
+  });
+
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     deferredPrompt = e;
+    notifyInstallable();
     if (!isStandalone() && !dismissedBefore() && allowedHere()) {
       // Give the page a moment to settle before offering.
       setTimeout(function () { showBanner(true); }, 2500);
@@ -129,11 +155,15 @@
 
   window.addEventListener('appinstalled', function () {
     rememberDismissal();
+    document.querySelectorAll('#pwa-install-btn, .pwa-install-btn').forEach(function(b) {
+      b.style.display = 'none';
+    });
   });
 
   // iOS never fires beforeinstallprompt — offer the manual flow instead,
   // but only once and never inside the installed app.
   if (isIos() && !isStandalone() && !dismissedBefore() && allowedHere()) {
+    notifyInstallable();
     setTimeout(function () { showBanner(false); }, 4000);
   }
 })();
