@@ -8078,6 +8078,7 @@ async function handleRequest(req, server) {
                    cleanPath === '/larp' ||
                    cleanPath === '/larp/rezero' ||
                    cleanPath === '/bell' ||
+                   cleanPath === '/preferences' ||
                    cleanPath === '/api/bell/override' ||
                    cleanPath === '/claim' || 
                    cleanPath === '/unsubscribe' ||
@@ -8090,19 +8091,9 @@ async function handleRequest(req, server) {
   
   const isAsset = path.includes('.') && !path.endsWith('.html');
 
-  if (!isExempt && !isAsset && path !== '/ws' && path !== '/' && !checkPasswordCookie(req) && !isPickleHost(req)) {
+  if (!isExempt && !isAsset && path !== '/ws' && path !== '/' && !checkPasswordCookie(req) && !isPickleHost(req) && !isRjuhsdHost(req)) {
     if (path.startsWith('/api/')) {
       return jsonResp(403, { error: 'password required', message: 'Please set a password at /enroll/ to continue.' });
-    }
-    // rjuhsd.school has no /enroll/ — send visitors through the SSO bridge so
-    // they sign in on mitch.pro and land back on the school site.
-    // sexypickleclub.com is exempt entirely: its pages are public and the
-    // pickle webroot server below gates the symlinked apps itself.
-    if (isRjuhsdHost(req)) {
-      return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(RJUHSD_ORIGIN + path), 302);
-    }
-    if (isPickleHost(req)) {
-      return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(PICKLE_ORIGIN + path), 302);
     }
     return Response.redirect('/enroll/', 302);
   }
@@ -20421,6 +20412,7 @@ function loadAllGamesList() {
     const HTML_OPEN = new Set(['/roblox', '/enroll', '/claim', '/password',
                                 '/appeal', '/unsubscribe', '/admin',
                                 '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
+                                '/preferences', '/preferences/index',
                                 '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
     const pickleHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'sexypickleclub', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isPickleHost(req)) {
