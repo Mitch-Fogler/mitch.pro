@@ -20402,18 +20402,18 @@ function loadAllGamesList() {
           scope: "/",
           display: "standalone",
           display_override: ["standalone", "minimal-ui"],
-          background_color: "#171918",
-          theme_color: "#171918",
+          background_color: "#0c0809",
+          theme_color: "#0c0809",
           orientation: "any",
           categories: ["education", "social", "productivity"],
           icons: [
-            { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-            { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
+            { src: "/rjuhsd-assets/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+            { src: "/rjuhsd-assets/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+            { src: "/rjuhsd-assets/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
           ],
           shortcuts: [
-            { name: "Bell Schedule", short_name: "Bells", description: "Live RJUHSD bell schedules", url: "/bell/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
-            { name: "Encrypted Chat", short_name: "Chat", description: "Open end-to-end encrypted messages", url: "/encrypt/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] }
+            { name: "Bell Schedule", short_name: "Bells", description: "Live RJUHSD bell schedules", url: "/bell/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] },
+            { name: "Encrypted Chat", short_name: "Chat", description: "Open end-to-end encrypted messages", url: "/encrypt/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] }
           ]
         };
         return new Response(JSON.stringify(rjuhsdManifest, null, 2), {
@@ -20785,6 +20785,7 @@ function loadAllGamesList() {
       '/home-redesign.css', '/welcome.css',
       '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
       '/rjuhsd-assets/calendar.js', '/rjuhsd-assets/woodcreek-logo.png', '/rjuhsd-assets/roseville-logo.png', '/rjuhsd-assets/granitebay-logo.png', '/rjuhsd-assets/antelope-logo.png', '/rjuhsd-assets/westpark-logo.png', '/rjuhsd-assets/oakmont-logo.png',
+      '/rjuhsd-assets/icon-192.png', '/rjuhsd-assets/icon-512.png', '/rjuhsd-assets/maskable-512.png', '/rjuhsd-assets/apple-touch-icon.png', '/rjuhsd-assets/favicon-32.png',
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
@@ -20795,7 +20796,7 @@ function loadAllGamesList() {
       '/robots.txt'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && path !== '/larp' && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);
