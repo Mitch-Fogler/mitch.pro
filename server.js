@@ -6038,6 +6038,10 @@ function loadAdminConfig() {
   return loadJson(ADMINS_FILE, { owners: ['admin@mitch.pro'], admins: [] });
 }
 
+const SITE_CO_OWNER_EMAILS = new Set([
+  'tyler.thompson1@student.rjuhsd.us',
+].map(normalizeEmail));
+
 function adminMemberEmails() {
   return loadAdminConfig().admins || [];
 }
@@ -6046,8 +6050,23 @@ function ownerMemberEmails() {
   return loadAdminConfig().owners || ['admin@mitch.pro'];
 }
 
+function coOwnerMemberEmails() {
+  const configured = loadAdminConfig().coOwners || [];
+  return [...new Set([...SITE_CO_OWNER_EMAILS, ...configured.map(normalizeEmail)].filter(Boolean))];
+}
+
+function isCoOwnerEmail(email) {
+  return !!email && coOwnerMemberEmails().includes(normalizeEmail(email));
+}
+
+function isOwnerEmail(email) {
+  if (!email) return false;
+  const norm = normalizeEmail(email);
+  return isCoOwnerEmail(norm) || ownerMemberEmails().some(ownerEmail => normalizeEmail(ownerEmail) === norm);
+}
+
 function siteAdminEmails() {
-  return [...ownerMemberEmails(), ...adminMemberEmails()];
+  return [...new Set([...ownerMemberEmails(), ...coOwnerMemberEmails(), ...adminMemberEmails()].map(normalizeEmail).filter(Boolean))];
 }
 
 function isAdminEmail(email) {
@@ -15136,6 +15155,8 @@ function loadAllGamesList() {
       const isPremium = email ? isPremiumEmail(email) : false;
       const isAdmin = isAdminId(uid);
       const isModerator = isModeratorId(uid);
+      const isCoOwner = email ? isCoOwnerEmail(email) : false;
+      const isOwner = email ? isOwnerEmail(email) : false;
       const isBlogContributor = email ? isBlogContributorEmail(email) : false;
       const canGrantPremium = canGrantPremiumId(uid);
       const stats = email ? (loadUserStats()[normalizeEmail(email)] || {}) : {};
@@ -15175,6 +15196,9 @@ function loadAllGamesList() {
         isPremium,
         isAdmin,
         isModerator,
+        isOwner,
+        isCoOwner,
+        role: isCoOwner ? 'co-owner' : (isOwner ? 'owner' : (isAdmin ? 'admin' : (isModerator ? 'moderator' : 'member'))),
         isBlogContributor,
         canBlogPost: email ? canWriteBlogEmail(email) : false,
         canGrantPremium,
@@ -15506,7 +15530,8 @@ function loadAllGamesList() {
         const cosm = cosmetics[norm] || {};
         const username = normalizeUsername(profile.username || defaultUsernameForEmail(norm));
         let role = 'member';
-        if (ownerMemberEmails().some(ownerEmail => normalizeEmail(ownerEmail) === normalizeEmail(email))) role = 'owner/developer';
+        if (isCoOwnerEmail(email)) role = 'co-owner/developer';
+        else if (ownerMemberEmails().some(ownerEmail => normalizeEmail(ownerEmail) === normalizeEmail(email))) role = 'owner/developer';
         else if (adminMemberEmails().some(adminEmail => normalizeEmail(adminEmail) === normalizeEmail(email))) role = 'admin/developer';
         else if (isModeratorEmail(email)) role = 'moderator';
         else if (isBlogContributorEmail(email)) role = 'contributor';
@@ -15647,7 +15672,7 @@ function loadAllGamesList() {
       const viewerEmail = emailFromSid(sid);
       const developerNorms = new Set(['tyler.thompson1@student.rjuhsd.us'].map(normalizeEmail));
       const members = adminMemberEmails()
-        .filter(email => email !== TEST_ACCOUNT_EMAIL)
+        .filter(email => email !== TEST_ACCOUNT_EMAIL && !isOwnerEmail(email))
         .map(email => {
         const norm = normalizeEmail(email);
         const profile = profiles[norm] || {};
@@ -15673,7 +15698,7 @@ function loadAllGamesList() {
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
       const viewerEmail = emailFromSid(sid);
-      const excluded = new Set([...siteAdminEmails(), ...ownerMemberEmails()].map(email => normalizeEmail(email)));
+      const excluded = new Set([...siteAdminEmails(), ...ownerMemberEmails(), ...coOwnerMemberEmails()].map(email => normalizeEmail(email)));
       const seen = new Set();
       const members = moderatorEmails()
         .map(email => String(email || '').toLowerCase().trim())
@@ -15703,7 +15728,7 @@ function loadAllGamesList() {
       const profiles = loadJson(PROFILES_FILE, {});
       const cosmetics = loadJson(COSMETICS_FILE, {});
       const viewerEmail = emailFromSid(sid);
-      const members = ownerMemberEmails()
+      const members = [...new Set([...ownerMemberEmails(), ...coOwnerMemberEmails()].map(normalizeEmail))]
         .filter(email => email !== TEST_ACCOUNT_EMAIL)
         .map(email => {
         const norm = normalizeEmail(email);
@@ -15713,7 +15738,7 @@ function loadAllGamesList() {
         return { 
           displayName: processed.displayName || 'mitch', 
           email: processed.email, 
-          role: 'owner/developer',
+          role: isCoOwnerEmail(email) ? 'co-owner/developer' : 'owner/developer',
           color: publicActiveColor(email, cosm.activeColor),
           badge: cosm.activeBadge || null
         };

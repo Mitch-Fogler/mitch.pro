@@ -39,7 +39,7 @@
     }
     .links a:hover { border-color: var(--t-bda); }
   </style>
-  <link rel="stylesheet" href="/staff-galaxy.css?v=2">
+  <link rel="stylesheet" href="/staff-galaxy.css?v=3">
 </head>
 <body class="moderator-page">
   <main>
@@ -53,11 +53,16 @@
       </div>
       <span class="staff-role-badge"><i></i> Moderator</span>
     </div>
+    <nav class="staff-panel-switcher" aria-label="Staff workspaces">
+      <a id="moderator-owner-link" href="/admin/#moderation-tools"><span>&#9733;</span><b>Owner tools</b><small>Site operations</small></a>
+      <a id="moderator-admin-link" href="/admin/"><span>&#9881;</span><b>Admin tools</b><small>Control center</small></a>
+      <a class="active" href="/moderator/"><span>&#10003;</span><b>Moderator tools</b><small>Safety workspace</small></a>
+    </nav>
     <div class="moderator-intro" aria-hidden="true">
       <span>01</span><p>Review</p><i></i><span>02</span><p>Resolve</p><i></i><span>03</span><p>Document</p>
     </div>
     <section class="panel" id="panel">
-      <div class="empty"><span class="loading-orbit" aria-hidden="true"></span>Loading your moderator tools...</div>
+      <div class="empty">Loading moderator tools...</div>
     </section>
   </main>
   <script>
@@ -72,6 +77,13 @@
       return '#';
     }
     async function loadPanel() {
+      const meResponse = await fetch('/api/me', { credentials: 'include' });
+      if (meResponse.ok) {
+        const me = await meResponse.json();
+        document.getElementById('moderator-owner-link').hidden = !me.isOwner;
+        const roleBadge = document.querySelector('.staff-role-badge');
+        if (roleBadge && me.isCoOwner) roleBadge.innerHTML = '<i></i> Co-owner';
+      }
       const r = await fetch('/api/moderator-panel', { credentials: 'include' });
       if (!r.ok) {
         document.getElementById('panel').innerHTML = '<div class="empty">Moderator access is required.</div>';
