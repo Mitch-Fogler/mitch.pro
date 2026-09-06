@@ -75,6 +75,7 @@ docker-compose.override.yml
 codepen-temp/
 expressions.txt
 plan.md
+proxmox_*.txt
 scratch/
 artifacts/ui-review/
 test-results/
