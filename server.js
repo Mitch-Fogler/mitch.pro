@@ -5193,6 +5193,19 @@ function parseFinalsiteHomepage(html) {
   };
 }
 
+function parseSchoolCalendar(html) {
+  const days = [...html.matchAll(/class="fsCalendarDate"[^>]*data-day="(\d+)"[^>]*data-year="(\d+)"[^>]*data-month="(\d+)"/g)];
+  const events = [];
+  for (let i = 0; i < days.length; i++) {
+    const [, day, year, month] = days[i];
+    const date = `${year}-${String(Number(month) + 1).padStart(2, '0')}-${day.padStart(2, '0')}`;
+    const segment = html.slice(days[i].index, days[i + 1]?.index ?? html.length);
+    for (const match of segment.matchAll(/class="fsCalendarEventTitle[^>]*"[^>]*title="([^"]+)"/g)) {
+      events.push({ date, title: decodeHtmlEntities(match[1]), detail: '', all_day: true, starts_at: null });
+    }
+  }
+  return events;
+}
 const schoolInfoCache = new Map(); // key → { payload, expiresAt }
 const SCHOOL_INFO_TTL_MS = 30 * 60 * 1000;
 
@@ -5207,12 +5220,31 @@ async function schoolInfoPayload(schoolKey) {
     }, 8500);
     if (!response.ok) throw new Error(`school site ${response.status}`);
     const html = await response.text();
-    const { events, news } = parseFinalsiteHomepage(html);
+    const homepage = parseFinalsiteHomepage(html);
+    const news = homepage.news;
+    let events = homepage.events;
+    let calendarVerified = false;
+    const calendarPaths = { roseville: 'school-calendar', antelope: 'antelope-hs-calendar', westpark: 'panther-calendar' };
+    const calendarUrl = school.url + '/' + (calendarPaths[schoolKey] || 'calendar');
+    try {
+      const calendarResponse = await fetchWithDeadline(calendarUrl, { headers: { Accept: 'text/html' } }, 8500);
+      if (!calendarResponse.ok) throw new Error('calendar unavailable');
+      const calendarEvents = parseSchoolCalendar(await calendarResponse.text());
+      calendarVerified = calendarEvents.length > 0;
+      const seen = new Set();
+      events = [...calendarEvents, ...events].filter(e => {
+        const key = e.date + '|' + e.title.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key); return true;
+      }).sort((a, b) => a.date.localeCompare(b.date));
+    } catch {}
     const mottoMatch = html.match(/class="fsLocationMotto"[^>]*>([\s\S]*?)<\/div>/);
     const motto = mottoMatch ? stripHtml(mottoMatch[1]).slice(0, 120) : '';
     if (!events.length && !news.length) throw new Error('school page parse empty');
     const result = {
       school: schoolKey,
+      calendar_verified: calendarVerified,
+      calendar_url: calendarUrl,
       name: school.name,
       motto,
       url: school.url,
@@ -20735,6 +20767,7 @@ function loadAllGamesList() {
       '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/home-redesign.css', '/welcome.css',
       '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
+      '/rjuhsd-assets/calendar.js', '/rjuhsd-assets/woodcreek-logo.png', '/rjuhsd-assets/roseville-logo.png', '/rjuhsd-assets/granitebay-logo.png', '/rjuhsd-assets/antelope-logo.png', '/rjuhsd-assets/westpark-logo.png', '/rjuhsd-assets/oakmont-logo.png',
       '/liquid-glass.js',
       '/jsmpeg.min.js',
       '/open.css', '/readability.css', '/theme.js',      '/sw.js',
