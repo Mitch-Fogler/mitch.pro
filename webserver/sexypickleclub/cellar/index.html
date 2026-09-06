@@ -721,9 +721,11 @@ button {
   background-size: 200% auto;
   animation: rainbow_move 3s linear infinite;
   font-weight: 800;
-  text-shadow: 0 0 2px rgba(0,0,0,0.3);
-}
 @keyframes rainbow_move { to { background-position: 200% center; } }
+@keyframes e2e-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
 
 .msg.pending {
   opacity: 0.65 !important;
@@ -843,7 +845,7 @@ button {
         <span id="sidebar-title"><b>The Cellar 🥒</b><small>End-to-end encrypted</small></span>
       </a>
       <a id="sidebar-home-action" class="small-btn chat-home-action" href="/" aria-label="Go to homepage">⌂ <span>Home</span></a>
-      <button id="new-group-btn" class="small-btn icon-btn" type="button"><span aria-hidden="true">＋</span><em>Group</em></button>
+      <button id="new-group-btn" class="small-btn icon-btn" type="button" title="Start a conversation or group"><span aria-hidden="true">＋</span><em>New</em></button>
     </div>
     <div id="my-identity"></div>
     <div id="search-wrap">
@@ -926,18 +928,32 @@ button {
 </div>
 
 <div id="group-modal">
-  <div class="modal-card">
+  <div class="modal-card" style="max-height:85vh; display:flex; flex-direction:column;">
     <div class="modal-head">
-      <strong>Create group chat</strong>
+      <strong id="modal-chat-title">New conversation</strong>
       <button class="small-btn" type="button" id="close-group-modal">Close</button>
     </div>
-    <input id="groupName" maxlength="60" placeholder="group name">
-    <input id="groupMemberSearch" placeholder="search members to add...">
-    <div id="selected-members"></div>
-    <div id="group-member-list"></div>
-    <div class="modal-actions">
-      <button class="small-btn" type="button" id="cancel-group-btn">Cancel</button>
-      <button class="small-btn" type="button" id="create-group-btn">Create group</button>
+    <div class="tabs" style="display:flex; gap:6px; margin-bottom:12px;">
+      <button class="tab active" id="new-tab-dm" type="button" style="flex:1;"><span>💬</span> Direct Message</button>
+      <button class="tab" id="new-tab-group" type="button" style="flex:1;"><span>👥</span> Group Chat</button>
+    </div>
+
+    <!-- Direct Message Selection Pane -->
+    <div id="new-pane-dm" style="display:flex; flex-direction:column; gap:8px; flex:1; min-height:0;">
+      <input id="directMemberSearch" placeholder="Search people to message..." autocomplete="off">
+      <div id="direct-member-list" style="overflow-y:auto; max-height:340px; display:flex; flex-direction:column; gap:6px;"></div>
+    </div>
+
+    <!-- Group Chat Creation Pane -->
+    <div id="new-pane-group" style="display:none; flex-direction:column; gap:8px; flex:1; min-height:0;">
+      <input id="groupName" maxlength="60" placeholder="Group name">
+      <input id="groupMemberSearch" placeholder="Search members to add..." autocomplete="off">
+      <div id="selected-members"></div>
+      <div id="group-member-list" style="overflow-y:auto; max-height:240px;"></div>
+      <div class="modal-actions">
+        <button class="small-btn" type="button" id="cancel-group-btn">Cancel</button>
+        <button class="small-btn" type="button" id="create-group-btn">Create group</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1233,8 +1249,17 @@ function roleInfo(role) {
 
 function safeProfileImage(value) {
   const raw = String(value || '').trim();
-  if (/^https?:\/\//i.test(raw)) return raw;
-  if (/^data:image\/(?:png|jpe?g|webp|gif);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 140000) return raw;
+  if (!raw) return '';
+  if (/^data:image\/(?:png|jpe?g|webp|gif|svg\+xml);base64,[a-z0-9+/=]+$/i.test(raw) && raw.length <= 140000) return raw;
+  if (raw.startsWith('/') && !raw.startsWith('//')) return raw;
+  if (/^https?:\/\//i.test(raw)) {
+    try {
+      const u = new URL(raw);
+      if (/\.(png|jpe?g|gif|webp|svg|avif|ico)$/i.test(u.pathname)) {
+        return raw;
+      }
+    } catch {}
+  }
   return '';
 }
 
@@ -1342,7 +1367,10 @@ function buildSecureMessageContent(text, image, quotedReply) {
         url: String(image.url).slice(0, 250),
         name: String(image.name || 'attachment').slice(0, 180),
         size: Number(image.size) || 0,
-        mime: String(image.mime || 'application/octet-stream').slice(0, 80)
+        mime: String(image.mime || 'application/octet-stream').slice(0, 80),
+        key: image.key ? String(image.key).slice(0, 128) : undefined,
+        iv: image.iv ? String(image.iv).slice(0, 64) : undefined,
+        e2e: !!image.e2e
       };
     } else if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(image.data || ''))) {
       safeImage = {
@@ -1391,7 +1419,10 @@ function applyDecryptedMessageContent(message, decryptedText, version) {
         url: String(content.image.url).slice(0, 250),
         name: String(content.image.name || 'attachment').slice(0, 180),
         size: Number(content.image.size) || 0,
-        mime: String(content.image.mime || 'application/octet-stream').slice(0, 80)
+        mime: String(content.image.mime || 'application/octet-stream').slice(0, 80),
+        key: content.image.key ? String(content.image.key).slice(0, 128) : undefined,
+        iv: content.image.iv ? String(content.image.iv).slice(0, 64) : undefined,
+        e2e: !!content.image.e2e
       };
     } else if (/^data:image\/(?:png|jpe?g|gif|webp);base64,/i.test(String(content.image.data || ''))) {
       message.image = {
@@ -1413,6 +1444,70 @@ function applyDecryptedMessageContent(message, decryptedText, version) {
         ts: Number(content.replyTo.ts) || 0
       }
     : null;
+}
+
+const decryptedMediaCache = new Map();
+const decryptingMediaPromises = new Map();
+
+async function loadAndDecryptAttachment(img) {
+  if (!img || !img.id || !img.url || !img.key || !img.iv) return null;
+  if (decryptedMediaCache.has(img.id)) return decryptedMediaCache.get(img.id);
+  if (decryptingMediaPromises.has(img.id)) return decryptingMediaPromises.get(img.id);
+
+  const promise = (async () => {
+    try {
+      const res = await fetch(img.url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Download failed: ' + res.status);
+      const encryptedData = await res.arrayBuffer();
+      const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        h2b(img.key),
+        { name: 'AES-GCM' },
+        false,
+        ['decrypt']
+      );
+      const decryptedBytes = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: h2b(img.iv) },
+        cryptoKey,
+        encryptedData
+      );
+      const mime = img.mime || 'application/octet-stream';
+      const blob = new Blob([decryptedBytes], { type: mime });
+      const blobUrl = URL.createObjectURL(blob);
+      decryptedMediaCache.set(img.id, blobUrl);
+
+      const els = document.querySelectorAll(`[id="e2e-att-${img.id}"]`);
+      const mimeLower = mime.toLowerCase();
+      const safeName = esc(img.name || 'attachment');
+      const sizeStr = img.size ? ` (${fmtBytes(img.size)})` : '';
+      let html = '';
+      if (mimeLower.startsWith('image/')) {
+        html = `<a href="${blobUrl}" target="_blank" rel="noopener"><img class="chat-image" src="${blobUrl}" alt="${safeName}"></a>`;
+      } else if (mimeLower.startsWith('video/')) {
+        html = `<video controls playsinline preload="metadata" style="max-width:100%;max-height:360px;border-radius:10px;margin-top:6px;display:block;" src="${blobUrl}"></video>`;
+      } else if (mimeLower.startsWith('audio/')) {
+        html = `<audio controls preload="metadata" style="max-width:100%;margin-top:6px;display:block;" src="${blobUrl}"></audio>`;
+      } else {
+        html = `<div class="attachment-card" style="display:inline-flex;align-items:center;gap:10px;padding:10px 14px;background:var(--t-bg);border:1px solid var(--t-bd);border-radius:10px;margin-top:6px;"><span style="font-size:20px;">🔒</span><div style="min-width:0;"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${safeName}</div><small style="color:var(--t-fg2);font-size:11px;">${sizeStr}</small></div><a href="${blobUrl}" download="${safeName}" class="small-btn" style="text-decoration:none;margin-left:8px;">Download</a></div>`;
+      }
+      els.forEach(el => {
+        el.outerHTML = html;
+      });
+      return blobUrl;
+    } catch (err) {
+      console.error('[E2E Attachment] Decryption failed:', err);
+      const els = document.querySelectorAll(`[id="e2e-att-${img.id}"]`);
+      els.forEach(el => {
+        el.innerHTML = `<span style="color:#ff6b6b;font-size:12px;">⚠️ Attachment decryption failed</span>`;
+      });
+      return null;
+    } finally {
+      decryptingMediaPromises.delete(img.id);
+    }
+  })();
+
+  decryptingMediaPromises.set(img.id, promise);
+  return promise;
 }
 
 async function getOptionalCaptchaToken(action) {
@@ -2050,6 +2145,12 @@ function bindEvents() {
   document.getElementById('cancel-group-btn').onclick = closeGroupModal;
   document.getElementById('create-group-btn').onclick = createGroup;
   document.getElementById('groupMemberSearch').oninput = renderGroupPicker;
+  const newTabDm = document.getElementById('new-tab-dm');
+  if (newTabDm) newTabDm.onclick = () => switchNewChatModalTab('dm');
+  const newTabGroup = document.getElementById('new-tab-group');
+  if (newTabGroup) newTabGroup.onclick = () => switchNewChatModalTab('group');
+  const directMemberSearch = document.getElementById('directMemberSearch');
+  if (directMemberSearch) directMemberSearch.oninput = renderDirectPicker;
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       pollNewDMs();
@@ -2216,9 +2317,13 @@ function renderList() {
     const filtered = groups.filter(g => {
       const hay = [g.name, ...(g.members || [])].join(' ').toLowerCase();
       return !q || hay.includes(q);
+    }).sort((a, b) => {
+      const timeA = Math.max(a.lastTs || (a.lastMessage ? a.lastMessage.ts : 0) || 0, getConversationActivity('group', a.id) || 0);
+      const timeB = Math.max(b.lastTs || (b.lastMessage ? b.lastMessage.ts : 0) || 0, getConversationActivity('group', b.id) || 0);
+      return timeB - timeA;
     });
     if (!filtered.length) {
-      list.innerHTML = '<div class="empty">No group chats yet. Use New group to start one.</div>';
+      list.innerHTML = '<div class="empty">No group chats yet. Tap ＋ to start one.</div>';
       return;
     }
     list.innerHTML = filtered.map(g => {
@@ -2241,21 +2346,31 @@ function renderList() {
     return;
   }
 
+  const isSearching = !!q;
   const filtered = members
     .filter(m => {
-      const hay = [m.email, m.displayName, m.role].join(' ').toLowerCase();
+      if (sameEmail(m.email, myEmail)) return false;
+      const actTs = getConversationActivity('dm', m.email);
+      const hasHistory = actTs > 0 || (m.lastMessage && m.lastMessage.ts > 0);
+      const isActive = activeChat && activeChat.type === 'dm' && sameEmail(activeChat.id, m.email);
+      if (!isSearching && !hasHistory && !isActive) return false;
+      const hay = [m.email, m.displayName, m.role, m.handle].join(' ').toLowerCase();
       return !q || hay.includes(q);
     })
     .sort((a, b) => {
-      const la = a.lastMessage;
-      const lb = b.lastMessage;
-      return (lb ? lb.ts : 0) - (la ? la.ts : 0) ||
-        roleRank(b.role) - roleRank(a.role) ||
+      const timeA = Math.max(a.lastMessage ? (a.lastMessage.ts || 0) : 0, getConversationActivity('dm', a.email) || 0);
+      const timeB = Math.max(b.lastMessage ? (b.lastMessage.ts || 0) : 0, getConversationActivity('dm', b.email) || 0);
+      if (timeA !== timeB) return timeB - timeA;
+      return roleRank(b.role) - roleRank(a.role) ||
         Number(b.online) - Number(a.online) ||
         a.email.localeCompare(b.email);
     });
   if (!filtered.length) {
-    list.innerHTML = '<div class="empty">No users found.</div>';
+    if (isSearching) {
+      list.innerHTML = `<div class="empty">No users found matching "${esc(q)}".</div>`;
+    } else {
+      list.innerHTML = `<div class="empty" style="padding:28px 16px;text-align:center;">No conversations yet.<br><span style="opacity:0.65;font-size:0.85rem;display:inline-block;margin-top:6px;">Tap <strong>＋</strong> to start messaging someone.</span></div>`;
+    }
     return;
   }
   const badgeLabels = {
@@ -2611,6 +2726,39 @@ function chatCacheKey(chat) {
   return chat ? `${chat.type}:${chat.type === 'dm' ? normEmail(chat.id) : String(chat.id)}` : '';
 }
 
+function getConvStorageKey() {
+  return 'mitch_conv_activity_' + (myEmail ? normEmail(myEmail) : 'anon');
+}
+
+function loadConvActivity() {
+  try {
+    return JSON.parse(localStorage.getItem(getConvStorageKey()) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function recordConversationActivity(type, id, ts) {
+  if (!id) return;
+  const key = (type === 'group' ? 'group:' : 'dm:') + (type === 'group' ? String(id) : normEmail(id));
+  const act = loadConvActivity();
+  const currentTs = Number(act[key] || 0);
+  const newTs = ts ? Number(ts) : Date.now();
+  if (!currentTs || newTs >= currentTs) {
+    act[key] = newTs;
+    try {
+      localStorage.setItem(getConvStorageKey(), JSON.stringify(act));
+    } catch (_) {}
+  }
+}
+
+function getConversationActivity(type, id) {
+  if (!id) return 0;
+  const key = (type === 'group' ? 'group:' : 'dm:') + (type === 'group' ? String(id) : normEmail(id));
+  const act = loadConvActivity();
+  return Number(act[key] || 0);
+}
+
 async function fetchConversation(chat, limit = 20) {
   const key = chatCacheKey(chat);
   if (conversationRequests.has(key)) return conversationRequests.get(key);
@@ -2623,6 +2771,13 @@ async function fetchConversation(chat, limit = 20) {
     const data = await response.json();
     const messages = (data.messages || []).sort((a,b) => (a.ts || 0) - (b.ts || 0));
     await Promise.all(messages.map(decryptMessageContent));
+    messages.forEach(m => {
+      if (m.kind === 'group') recordConversationActivity('group', m.groupId, m.ts);
+      else {
+        const peer = sameEmail(m.from, myEmail) ? m.to : m.from;
+        if (peer) recordConversationActivity('dm', peer, m.ts);
+      }
+    });
     conversationCache.set(key, messages);
     if (data.expiry !== undefined) convExpiry.set(key, Number(data.expiry) || 0);
     return messages;
@@ -2781,7 +2936,30 @@ function messageHtml(m) {
 
   let attachmentHtml = '';
   if (m.image) {
-    if (m.image.url) {
+    if (m.image.e2e && m.image.key && m.image.iv) {
+      const cachedUrl = m.image.id ? decryptedMediaCache.get(m.image.id) : null;
+      if (cachedUrl) {
+        const mime = (m.image.mime || '').toLowerCase();
+        const safeName = esc(m.image.name || 'attachment');
+        const sizeStr = m.image.size ? ` (${fmtBytes(m.image.size)})` : '';
+        if (mime.startsWith('image/')) {
+          attachmentHtml = `<a href="${cachedUrl}" target="_blank" rel="noopener"><img class="chat-image" src="${cachedUrl}" alt="${safeName}"></a>`;
+        } else if (mime.startsWith('video/')) {
+          attachmentHtml = `<video controls playsinline preload="metadata" style="max-width:100%;max-height:360px;border-radius:10px;margin-top:6px;display:block;" src="${cachedUrl}"></video>`;
+        } else if (mime.startsWith('audio/')) {
+          attachmentHtml = `<audio controls preload="metadata" style="max-width:100%;margin-top:6px;display:block;" src="${cachedUrl}"></audio>`;
+        } else {
+          attachmentHtml = `<div class="attachment-card" style="display:inline-flex;align-items:center;gap:10px;padding:10px 14px;background:var(--t-bg);border:1px solid var(--t-bd);border-radius:10px;margin-top:6px;"><span style="font-size:20px;">🔒</span><div style="min-width:0;"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${safeName}</div><small style="color:var(--t-fg2);font-size:11px;">${sizeStr}</small></div><a href="${cachedUrl}" download="${safeName}" class="small-btn" style="text-decoration:none;margin-left:8px;">Download</a></div>`;
+        }
+      } else {
+        const safeName = esc(m.image.name || 'attachment');
+        const sizeStr = m.image.size ? ` (${fmtBytes(m.image.size)})` : '';
+        attachmentHtml = `<div id="e2e-att-${m.image.id}" class="attachment-card" style="display:inline-flex;align-items:center;gap:10px;padding:10px 14px;background:var(--t-bg);border:1px solid var(--t-bd);border-radius:10px;margin-top:6px;"><div style="width:16px;height:16px;border:2px solid var(--t-fg2);border-top-color:var(--accent);border-radius:50%;animation:e2e-spin 0.8s linear infinite;display:inline-block;"></div><div style="min-width:0;"><div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;">${safeName}</div><small style="color:var(--t-fg2);font-size:11px;">Decrypting…${sizeStr}</small></div></div>`;
+        if (typeof setTimeout !== 'undefined') {
+          setTimeout(() => loadAndDecryptAttachment(m.image), 10);
+        }
+      }
+    } else if (m.image.url) {
       const mime = (m.image.mime || '').toLowerCase();
       const attUrl = esc(m.image.url);
       const attName = esc(m.image.name || 'attachment');
@@ -2848,6 +3026,7 @@ function scheduleLocalExpiry() {
       currentMessages = currentMessages.filter(message => msgId(message) !== id);
       allMessages = allMessages.filter(message => msgId(message) !== id);
       if (el.parentNode) el.remove();
+      renderList();
     }, wait);
   });
 }
@@ -2911,16 +3090,36 @@ async function send() {
   const sendText = fallbackMode ? text.slice(0, pendingImage ? 500 : 2000) : text;
 
   let imageToSend = pendingImage;
-  if (imageToSend && imageToSend.file) {
+  if (imageToSend && imageToSend.file && !imageToSend.id) {
     const sendBtn = document.getElementById('sendBtn');
     const origHtml = sendBtn ? sendBtn.innerHTML : '';
     if (sendBtn) {
       sendBtn.disabled = true;
-      sendBtn.innerHTML = '<span>Uploading…</span>';
+      sendBtn.innerHTML = fallbackMode ? '<span>Uploading…</span>' : '<span>Encrypting…</span>';
     }
     try {
+      let fileToUpload = imageToSend.file;
+      let e2eKeyHex = null;
+      let e2eIvHex = null;
+      let localBlobUrl = null;
+
+      if (!fallbackMode) {
+        const rawKey = crypto.getRandomValues(new Uint8Array(32));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const cryptoKey = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['encrypt']);
+        const plaintextBytes = await imageToSend.file.arrayBuffer();
+        const cipherBytes = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, plaintextBytes);
+        fileToUpload = new Blob([cipherBytes], { type: 'application/octet-stream' });
+        e2eKeyHex = b2h(rawKey);
+        e2eIvHex = b2h(iv);
+        try {
+          localBlobUrl = URL.createObjectURL(imageToSend.file);
+        } catch (_) {}
+        if (sendBtn) sendBtn.innerHTML = '<span>Uploading…</span>';
+      }
+
       const fd = new FormData();
-      fd.append('file', imageToSend.file);
+      fd.append('file', fileToUpload, fallbackMode ? (imageToSend.file.name || 'attachment') : 'blob.enc');
       const upRes = await fetch('/api/dm/attachment/upload', {
         method: 'POST',
         credentials: 'include',
@@ -2944,13 +3143,32 @@ async function send() {
         toast(upData.error || upData.message || 'Failed to upload attachment.');
         return;
       }
-      imageToSend = upData.attachment;
+
+      if (!fallbackMode && e2eKeyHex && e2eIvHex) {
+        imageToSend = {
+          file: imageToSend.file,
+          id: upData.attachment.id,
+          url: upData.attachment.url,
+          name: imageToSend.name || imageToSend.file.name || 'attachment',
+          size: imageToSend.size || imageToSend.file.size || 0,
+          mime: imageToSend.mime || imageToSend.file.type || 'application/octet-stream',
+          e2e: true,
+          key: e2eKeyHex,
+          iv: e2eIvHex,
+          expiresAt: upData.attachment.expiresAt
+        };
+        if (localBlobUrl) {
+          decryptedMediaCache.set(upData.attachment.id, localBlobUrl);
+        }
+      } else {
+        imageToSend = upData.attachment;
+      }
     } catch (err) {
       if (sendBtn) {
         sendBtn.disabled = false;
         sendBtn.innerHTML = origHtml;
       }
-      toast('Network error uploading attachment.');
+      toast('Network or encryption error uploading attachment.');
       return;
     }
     if (sendBtn) sendBtn.innerHTML = origHtml;
@@ -3154,6 +3372,7 @@ async function send() {
     currentMessages = currentMessages.filter(x => msgId(x) !== msgId(msg));
     allMessages.push(msg);
     if (msg.kind === 'group') {
+      recordConversationActivity('group', msg.groupId, msg.ts);
       const g = groups.find(x => String(x.id) === String(msg.groupId));
       if (g) {
         g.lastMessage = msg;
@@ -3162,6 +3381,7 @@ async function send() {
       }
     } else {
       const peerEmail = chatAtSend.id;
+      recordConversationActivity('dm', peerEmail, msg.ts);
       const member = members.find(x => sameEmail(x.email, peerEmail));
       if (member) {
         member.lastMessage = msg;
@@ -3200,6 +3420,12 @@ async function pollNewDMs() {
     await Promise.all(msgs.map(decryptMessageContent));
     let activeAdded = false;
     for (const m of msgs) {
+      if (m.kind === 'group') {
+        recordConversationActivity('group', m.groupId, m.ts);
+      } else {
+        const peer = sameEmail(m.from, myEmail) ? m.to : m.from;
+        if (peer) recordConversationActivity('dm', peer, m.ts);
+      }
       if ((m.ts || 0) <= dmSince) continue;
       dmSince = Math.max(dmSince, m.ts || 0);
       if (allMessages.some(existing => msgId(existing) === msgId(m))) continue;
@@ -3778,13 +4004,77 @@ function syncExpiryButton() {
   }
 }
 
-function openGroupModal() {
+function switchNewChatModalTab(tab = 'dm') {
+  const tabDm = document.getElementById('new-tab-dm');
+  const tabGroup = document.getElementById('new-tab-group');
+  const paneDm = document.getElementById('new-pane-dm');
+  const paneGroup = document.getElementById('new-pane-group');
+  const title = document.getElementById('modal-chat-title');
+  if (tab === 'group') {
+    if (tabGroup) tabGroup.classList.add('active');
+    if (tabDm) tabDm.classList.remove('active');
+    if (paneGroup) paneGroup.style.display = 'flex';
+    if (paneDm) paneDm.style.display = 'none';
+    if (title) title.textContent = 'Create group';
+    renderGroupPicker();
+    const gInput = document.getElementById('groupName');
+    if (gInput) gInput.focus();
+  } else {
+    if (tabDm) tabDm.classList.add('active');
+    if (tabGroup) tabGroup.classList.remove('active');
+    if (paneDm) paneDm.style.display = 'flex';
+    if (paneGroup) paneGroup.style.display = 'none';
+    if (title) title.textContent = 'New conversation';
+    renderDirectPicker();
+    const dInput = document.getElementById('directMemberSearch');
+    if (dInput) dInput.focus();
+  }
+}
+
+function renderDirectPicker() {
+  const q = (document.getElementById('directMemberSearch')?.value || '').toLowerCase().trim();
+  const list = document.getElementById('direct-member-list');
+  if (!list) return;
+  const filtered = members
+    .filter(m => !sameEmail(m.email, myEmail) && (!q || [m.email, m.displayName, m.role, m.handle].join(' ').toLowerCase().includes(q)))
+    .sort((a, b) => roleRank(b.role) - roleRank(a.role) || Number(b.online) - Number(a.online) || a.email.localeCompare(b.email));
+  if (!filtered.length) {
+    list.innerHTML = `<div class="empty">${q ? 'No matching members found.' : 'No other members available.'}</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(m => {
+    const role = roleInfo(m.role);
+    const initial = esc(initialsFor(m.displayName || m.email));
+    return `<button class="pick-row" type="button" data-direct-email="${esc(m.email)}">
+      <span class="dot ${m.online ? 'on' : ''}" data-initials="${initial}"></span>
+      <span style="flex:1;min-width:0">
+        <span class="entry-name">${esc(m.displayName || m.email.split('@')[0])}</span>
+        <span class="entry-sub">${esc(m.email)}</span>
+      </span>
+      <span class="role-tag ${role.cls}">${esc(role.label)}</span>
+    </button>`;
+  }).join('');
+  list.querySelectorAll('[data-direct-email]').forEach(btn => {
+    btn.onclick = () => {
+      const email = btn.dataset.directEmail;
+      recordConversationActivity('dm', email, Date.now());
+      closeGroupModal();
+      setView('direct');
+      selectDm(email);
+    };
+  });
+}
+
+function openGroupModal(defaultTab = 'dm') {
   selectedGroupMembers = new Set();
-  document.getElementById('groupName').value = '';
-  document.getElementById('groupMemberSearch').value = '';
+  const gName = document.getElementById('groupName');
+  const gSearch = document.getElementById('groupMemberSearch');
+  const dSearch = document.getElementById('directMemberSearch');
+  if (gName) gName.value = '';
+  if (gSearch) gSearch.value = '';
+  if (dSearch) dSearch.value = '';
   document.getElementById('group-modal').classList.add('show');
-  renderGroupPicker();
-  document.getElementById('groupName').focus();
+  switchNewChatModalTab(defaultTab);
 }
 
 function closeGroupModal() {
@@ -3922,6 +4212,7 @@ window.addEventListener('ws-broadcast-message', async function(e) {
     
     // Update last message pointers
     if (m.kind === 'group') {
+      recordConversationActivity('group', m.groupId, m.ts);
       const g = groups.find(x => String(x.id) === String(m.groupId));
       if (g) {
         g.lastMessage = m;
@@ -3930,6 +4221,7 @@ window.addEventListener('ws-broadcast-message', async function(e) {
       }
     } else {
       const peerEmail = sameEmail(m.from, myEmail) ? m.to : m.from;
+      if (peerEmail) recordConversationActivity('dm', peerEmail, m.ts);
       const member = members.find(x => sameEmail(x.email, peerEmail));
       if (member) {
         member.lastMessage = m;

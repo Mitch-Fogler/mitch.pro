@@ -85,6 +85,8 @@ try {
   console.warn(`[env] .env loader failed: ${e.message}`);
 }
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = process.env.NODE_TLS_REJECT_UNAUTHORIZED || '1';
+
 let VAPID_PUBLIC  = (process.env.VAPID_PUBLIC_KEY  || '').trim();
 let VAPID_PRIVATE = (process.env.VAPID_PRIVATE_KEY || '').trim();
 
@@ -1941,6 +1943,10 @@ function sanitizeProfileImageUrl(value, opts = {}) {
   try {
     const u = new URL(raw);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+    const pathname = u.pathname.toLowerCase();
+    if (!/\.(png|jpe?g|gif|webp|svg|avif|ico)$/i.test(pathname)) {
+      return '';
+    }
     return u.href;
   } catch {
     return '';
@@ -2392,13 +2398,42 @@ function verifyPasswordChangeSecondFactor(normEmail, code) {
   return verifySecurityActionCode(normEmail, 'change_password', code);
 }
 
+const TOTP_AT_REST_PREFIX = 'totp1:';
+let TOTP_AT_REST_KEY = null;
+function totpAtRestKey() {
+  if (!TOTP_AT_REST_KEY) TOTP_AT_REST_KEY = createHmac('sha256', ID_SECRET).update('totp-at-rest-v1').digest();
+  return TOTP_AT_REST_KEY;
+}
+
+function sealTotpSecret(secret) {
+  if (!secret || typeof secret !== 'string') return '';
+  try {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', totpAtRestKey(), iv);
+    const ct = Buffer.concat([cipher.update(secret, 'utf8'), cipher.final()]);
+    return TOTP_AT_REST_PREFIX + iv.toString('hex') + ':' + ct.toString('hex') + ':' + cipher.getAuthTag().toString('hex');
+  } catch { return secret; }
+}
+
+function openTotpSecret(str) {
+  if (typeof str !== 'string' || !str.startsWith(TOTP_AT_REST_PREFIX)) return str || '';
+  try {
+    const body = str.slice(TOTP_AT_REST_PREFIX.length);
+    const i1 = body.indexOf(':'), i2 = body.indexOf(':', i1 + 1);
+    if (i1 < 0 || i2 < 0) return '';
+    const decipher = createDecipheriv('aes-256-gcm', totpAtRestKey(), Buffer.from(body.slice(0, i1), 'hex'));
+    decipher.setAuthTag(Buffer.from(body.slice(i2 + 1), 'hex'));
+    return Buffer.concat([decipher.update(Buffer.from(body.slice(i1 + 1, i2), 'hex')), decipher.final()]).toString('utf8');
+  } catch { return ''; }
+}
+
 function twoFactorConfig(normEmail) {
   const profiles = loadJson(PROFILES_FILE, {});
   const p = profiles[normEmail] || {};
   return {
     enabled: !!(p.twofa_enabled || p.twofaEnabled || p.twoFactorEnabled),
     type: p.twofa_type || p.twofaType || 'email',
-    secret: p.totp_secret || p.totpSecret || '',
+    secret: openTotpSecret(p.totp_secret || p.totpSecret || ''),
   };
 }
 
@@ -2657,7 +2692,6 @@ const PUBLIC_API_PATHS = new Set([
   '/api/school-info',
   '/api/site-info',
   '/api/backgrounds/list',
-  '/api/dm/attachment',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -5538,14 +5572,20 @@ function getRealIp(req) {
     return peer;
   }
 
-  // 1. Try X-Mitch-Client-IP (set by a trusted local proxy, if any)
-  let ip = (req.headers.get('X-Mitch-Client-IP') || '').trim();
+  // 1. Cloudflare connecting IP, when traffic arrives via CF
+  let ip = (req.headers.get('CF-Connecting-IP') || '').trim();
   if (ip && validIpLiteral(ip) && !isPrivateIp(ip)) {
     return ip;
   }
 
-  // 1b. Cloudflare connecting IP, when traffic arrives via CF
-  ip = (req.headers.get('CF-Connecting-IP') || '').trim();
+  // 1b. True-Client-IP (Cloudflare Enterprise / Akamai)
+  ip = (req.headers.get('True-Client-IP') || '').trim();
+  if (ip && validIpLiteral(ip) && !isPrivateIp(ip)) {
+    return ip;
+  }
+
+  // 1c. X-Mitch-Client-IP (set by trusted reverse proxy)
+  ip = (req.headers.get('X-Mitch-Client-IP') || '').trim();
   if (ip && validIpLiteral(ip) && !isPrivateIp(ip)) {
     return ip;
   }
@@ -5567,21 +5607,44 @@ function getRealIp(req) {
     return ip;
   }
 
+  // 3b. Try X-Client-IP
+  ip = (req.headers.get('X-Client-IP') || '').trim();
+  if (ip && validIpLiteral(ip) && !isPrivateIp(ip)) {
+    return ip;
+  }
+
+  // 3c. Try RFC 7239 Forwarded header (e.g. for=1.2.3.4 or for="[2001:db8::1]")
+  const fwd = req.headers.get('Forwarded');
+  if (fwd) {
+    const m = fwd.match(/for=(?:"?\[?)([a-zA-Z0-9:.]+)(?:\]?"?)/);
+    if (m && validIpLiteral(m[1]) && !isPrivateIp(m[1])) {
+      return m[1];
+    }
+  }
+
   // Fallback: when all candidate IPs are private or behind proxies (e.g. LAN access,
   // VPN, or local proxies), prefer client IPs forwarded by trusted reverse proxies
-  // (X-Mitch-Client-IP, X-Real-IP) over the internal Docker bridge socket peer.
+  // (X-Mitch-Client-IP, X-Real-IP, peer) over loopback 127.0.0.1 or Docker bridge.
   const rawMitch = (req.headers.get('X-Mitch-Client-IP') || '').trim();
   const mitchIsBridge = rawMitch && /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(rawMitch);
-  if (rawMitch && validIpLiteral(rawMitch) && !mitchIsBridge) return rawMitch;
+  if (rawMitch && validIpLiteral(rawMitch) && !mitchIsBridge && rawMitch !== '127.0.0.1' && rawMitch !== '::1') return rawMitch;
 
   const rawReal = (req.headers.get('X-Real-IP') || '').trim();
   const realIsBridge = rawReal && /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(rawReal);
-  if (rawReal && validIpLiteral(rawReal) && !realIsBridge) return rawReal;
+  if (rawReal && validIpLiteral(rawReal) && !realIsBridge && rawReal !== '127.0.0.1' && rawReal !== '::1') return rawReal;
 
+  if (xff) {
+    const parts = xff.split(',').map(p => p.trim());
+    for (const part of parts) {
+      const partIsBridge = part && /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(part);
+      if (part && validIpLiteral(part) && !partIsBridge && part !== '127.0.0.1' && part !== '::1') return part;
+    }
+  }
+
+  const peerIsBridge = peer && /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(peer);
+  if (peer && validIpLiteral(peer) && !peerIsBridge && peer !== '127.0.0.1' && peer !== '::1') return peer;
   if (rawMitch && validIpLiteral(rawMitch)) return rawMitch;
   if (rawReal && validIpLiteral(rawReal)) return rawReal;
-
-  if (peer && validIpLiteral(peer)) return peer;
 
   return '127.0.0.1';
 }
@@ -11600,7 +11663,7 @@ async function handleRequest(req, server) {
 
         let ok = false;
         try { ok = await Bun.password.verify(password, stored); }
-        catch { ok = password === stored; }
+        catch { ok = false; }
         if (!ok) {
           writeAppLog('warn', 'login', 'Login failed: bad password', { email: normEmail, ip });
           return jsonResp(401, { success: false, message: 'Invalid email/username or password.' });
@@ -12785,7 +12848,7 @@ function loadAllGamesList() {
       if (!email) return jsonResp(401, { error: 'not logged in' });
       const norm = normalizeEmail(email);
       const secret = randomBase32();
-      saveTwoFactorConfig(norm, { pendingTotpSecret: secret });
+      saveTwoFactorConfig(norm, { pendingTotpSecret: sealTotpSecret(secret) });
       const label = encodeURIComponent(`mitch.pro:${norm}`);
       const issuer = encodeURIComponent('mitch.pro');
       const otpauth = `otpauth://totp/${label}?secret=${secret}&issuer=${issuer}&algorithm=SHA1&digits=6&period=30`;
@@ -12808,17 +12871,19 @@ function loadAllGamesList() {
       }
       if (type === 'totp') {
         const profiles = loadJson(PROFILES_FILE, {});
-        const secret = profiles[norm]?.pendingTotpSecret || profiles[norm]?.totp_secret || profiles[norm]?.totpSecret;
+        const storedSecret = profiles[norm]?.pendingTotpSecret || profiles[norm]?.totp_secret || profiles[norm]?.totpSecret;
+        const secret = openTotpSecret(storedSecret);
         if (!secret || !verifyTotp(secret, body.code)) return jsonResp(400, { error: 'invalid totp code' });
         const verified = verifySecurityActionCode(norm, 'enable_totp_2fa', body.emailCode);
         if (!verified.ok) return jsonResp(verified.status, { error: verified.error });
+        const sealed = sealTotpSecret(secret);
         saveTwoFactorConfig(norm, {
           twofa_enabled: true,
           twofa_type: 'totp',
           twoFactorEnabled: true,
           twofaEnabled: true,
-          totp_secret: secret,
-          totpSecret: secret,
+          totp_secret: sealed,
+          totpSecret: sealed,
           pendingTotpSecret: '',
         });
         return jsonResp(200, { ok: true, type: 'totp' });
@@ -16488,8 +16553,12 @@ function loadAllGamesList() {
           const id = randomBytes(16).toString('hex');
           const safeExt = extname(fileName).slice(0, 10).replace(/[^a-zA-Z0-9._-]/g, '') || '.bin';
           const diskFilename = `${id}${safeExt}`;
+          if (!existsSync(E2E_ATTACHMENTS_DIR)) {
+            mkdirSync(E2E_ATTACHMENTS_DIR, { recursive: true });
+          }
           const diskPath = join(E2E_ATTACHMENTS_DIR, diskFilename);
-          await Bun.write(diskPath, file);
+          const buf = Buffer.from(await file.arrayBuffer());
+          writeFileSync(diskPath, buf);
           idx[id] = {
             id,
             file: diskFilename,
@@ -16536,6 +16605,9 @@ function loadAllGamesList() {
           const id = randomBytes(16).toString('hex');
           const safeExt = extname(fileName).slice(0, 10).replace(/[^a-zA-Z0-9._-]/g, '') || '.bin';
           const diskFilename = `${id}${safeExt}`;
+          if (!existsSync(E2E_ATTACHMENTS_DIR)) {
+            mkdirSync(E2E_ATTACHMENTS_DIR, { recursive: true });
+          }
           const diskPath = join(E2E_ATTACHMENTS_DIR, diskFilename);
           writeFileSync(diskPath, buf);
           idx[id] = {
@@ -16580,12 +16652,13 @@ function loadAllGamesList() {
           const id = randomBytes(16).toString('hex');
           const safeExt = extname(fileName).slice(0, 10).replace(/[^a-zA-Z0-9._-]/g, '') || '.bin';
           const diskFilename = `${id}${safeExt}`;
+          if (!existsSync(E2E_ATTACHMENTS_DIR)) {
+            mkdirSync(E2E_ATTACHMENTS_DIR, { recursive: true });
+          }
           const diskPath = join(E2E_ATTACHMENTS_DIR, diskFilename);
-          await Bun.write(diskPath, req.body);
-          const stat = statSync(diskPath);
-          fileSize = stat.size;
+          const buf = Buffer.from(await req.arrayBuffer());
+          fileSize = buf.length;
           if (usage.total + fileSize > E2E_MAX_USER_BYTES) {
-            try { unlinkSync(diskPath); } catch {}
             return jsonResp(413, {
               error: 'quotaExceeded',
               message: `Storage quota exceeded (250MB max total). Delete old attachments to free up space.`,
@@ -16594,6 +16667,7 @@ function loadAllGamesList() {
               items: usage.items
             });
           }
+          writeFileSync(diskPath, buf);
           idx[id] = {
             id,
             file: diskFilename,
@@ -16619,12 +16693,18 @@ function loadAllGamesList() {
         }
       } catch (err) {
         console.error('[dm-attachment-upload] error:', err);
-        return jsonResp(500, { error: 'Failed to upload attachment' });
+        return jsonResp(500, { error: 'Failed to upload attachment', message: err?.message || String(err) });
       }
     }
 
     // /api/dm/attachment — serve attachment file
     if (path === '/api/dm/attachment' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const userEmail = (cookies._authSession?.email || emailFromSid(sid) || loadJson(NAMES_FILE, {})[sid] || '').toLowerCase();
+      if (!userEmail) return jsonResp(403, { error: 'email not found' });
+
       const urlObj = new URL(req.url);
       const id = String(urlObj.searchParams.get('id') || '').trim();
       if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) return jsonResp(400, { error: 'invalid attachment id' });
@@ -16653,7 +16733,7 @@ function loadAllGamesList() {
         headers: {
           'Content-Type': att.mime || 'application/octet-stream',
           'Content-Disposition': disposition,
-          'Cache-Control': 'public, max-age=86400',
+          'Cache-Control': 'private, no-cache, no-store, must-revalidate',
           'X-Content-Type-Options': 'nosniff'
         }
       });
@@ -20724,7 +20804,6 @@ function loadAllGamesList() {
 	          let raw    = readFileSync(filePath);
 
           let injectStr = '';
-          const gaId = (process.env.GOOGLE_ANALYTICS_ID || '').trim();
           const rcKey = (process.env.RECAPTCHA_SITE_KEY || '').trim();
           const hasV2Script = raw.includes(Buffer.from('recaptcha/api.js'));
           const reqHost = String(req.headers.get('X-Forwarded-Host') || req.headers.get('Host') || '').split(':')[0].toLowerCase();
@@ -20732,7 +20811,6 @@ function loadAllGamesList() {
           try { primaryHost = new URL(site().primary).host.toLowerCase(); } catch {}
           const isPrimaryHost = !reqHost || reqHost === primaryHost || reqHost === 'localhost' || reqHost === '127.0.0.1';
           const recaptchaHost = (process.env.RECAPTCHA_SCRIPT_HOST || (isPrimaryHost ? 'www.google.com' : 'www.recaptcha.net')).trim();
-          const loadAnalytics = !!gaId && (isPrimaryHost || process.env.GOOGLE_ANALYTICS_ON_MIRRORS === '1');
           const isUnsubscribePage = path === '/unsubscribe' || path === '/unsubscribe/' || path === '/unsubscribe/index.html';
           const loadRecaptcha = !!rcKey && !hasV2Script && !isUnsubscribePage;
 
@@ -20806,23 +20884,10 @@ function loadAllGamesList() {
             injectStr += '<style>a[href="/vms/"], .site-advert-banner, #vm-workspace-panel, #cloud-vms { display: none !important; }</style>\n';
           }
 
-          if (loadAnalytics || loadRecaptcha) {
-            injectStr += `\n<!-- mitch.pro: GTM & reCAPTCHA Loader -->\n`;
-            if (loadRecaptcha) {
-              injectStr += recaptchaLoaderStr(recaptchaHost, rcKey);
-            }
-            if (loadAnalytics) {
-              injectStr += `<script async src="https://www.googletagmanager.com/gtag/js?id=${gaId}"></script>\n` +
-                           `<script>\n` +
-                           `  window.dataLayer = window.dataLayer || [];\n` +
-                           `  window.gtag = function(){dataLayer.push(arguments);};\n` +
-                           `  gtag('js', new Date());\n` +
-                           `  gtag('config', '${gaId}');\n` +
-                           `</script>\n`;
-            }
-            if (loadRecaptcha) {
-              injectStr += `<style>.grecaptcha-badge { visibility: hidden !important; }</style>\n`;
-            }
+          if (loadRecaptcha) {
+            injectStr += `\n<!-- mitch.pro: reCAPTCHA Loader -->\n`;
+            injectStr += recaptchaLoaderStr(recaptchaHost, rcKey);
+            injectStr += `<style>.grecaptcha-badge { visibility: hidden !important; }</style>\n`;
           }
           if (injectStr) {
             const injectBuf = Buffer.from(injectStr);
