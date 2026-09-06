@@ -785,8 +785,10 @@ html.theme-light .modal-card { box-shadow: 0 28px 90px rgba(15, 18, 35, 0.28); }
   .msg-tools { opacity: 0.55; pointer-events: auto; }
   .msg-tools.open { opacity: 1; }
   #input-row {
+    /* The home-indicator inset lives in padding-bottom ONLY — counting it in
+       min-height as well inflated the row ~34px on the iPhone PWA. */
     padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)) !important;
-    min-height: calc(56px + env(safe-area-inset-bottom, 0px)) !important;
+    min-height: 56px !important;
   }
 }
 
@@ -1557,7 +1559,12 @@ async function init() {
     console.error("Fetch /api/me error:", err);
   }
   if (!myEmail) {
-    document.getElementById('loading').innerHTML = '<div class="chat-signin"><img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><h1>Encrypted chat</h1><p>Sign in to open encrypted chat.</p><a class="btn-primary" href="/enroll/">Sign in</a><a href="/">Back to mitch.pro</a></div>';
+    // On rjuhsd.school the enroll page doesn't exist — route sign-in through
+    // the SSO bridge back to this exact page instead (mitch.pro keeps /enroll/).
+    const __signinHref = /(^|\.)rjuhsd\.school$/.test(location.hostname)
+      ? '/api/sso/bridge?back=' + encodeURIComponent(location.pathname + location.search)
+      : '/enroll/';
+    document.getElementById('loading').innerHTML = '<div class="chat-signin"><img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><h1>Encrypted chat</h1><p>Sign in to open encrypted chat.</p><a class="btn-primary" href="' + __signinHref + '">Sign in</a><a href="/">Back to mitch.pro</a></div>';
     return;
   }
 

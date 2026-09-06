@@ -3324,8 +3324,16 @@ setInterval(() => {
 // ── VPN checking ──────────────────────────────────────────────────────────────
 
 function isPrivateIp(ip) {
-  return ip === '127.0.0.1' || ip === '::1' ||
-         ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('100.');
+  if (!ip) return false;
+  if (ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') return true;
+  if (ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('169.254.') || ip.startsWith('100.')) return true;
+  const m = ip.match(/^172\.(\d+)\./);
+  if (m) {
+    const octet = parseInt(m[1], 10);
+    if (octet >= 16 && octet <= 31) return true;
+  }
+  if (/^(fc|fd|fe[89ab])/i.test(ip)) return true;
+  return false;
 }
 
 async function isVpnOrProxy(ip) {
@@ -5590,16 +5598,21 @@ function getRealIp(req) {
     return ip;
   }
 
-  // Fallback: the real socket peer even when private (truthful — e.g. the
-  // router/NAT gateway), then whatever X-Mitch-Client-IP / X-Real-IP hold,
-  // then loopback.
-  if (peer && validIpLiteral(peer)) return peer;
-
+  // Fallback: when all candidate IPs are private or behind proxies (e.g. LAN access,
+  // VPN, or local proxies), prefer client IPs forwarded by trusted reverse proxies
+  // (X-Mitch-Client-IP, X-Real-IP) over the internal Docker bridge socket peer.
   const rawMitch = (req.headers.get('X-Mitch-Client-IP') || '').trim();
-  if (rawMitch && validIpLiteral(rawMitch)) return rawMitch;
+  const mitchIsBridge = rawMitch && /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(rawMitch);
+  if (rawMitch && validIpLiteral(rawMitch) && !mitchIsBridge) return rawMitch;
 
   const rawReal = (req.headers.get('X-Real-IP') || '').trim();
+  const realIsBridge = rawReal && /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(rawReal);
+  if (rawReal && validIpLiteral(rawReal) && !realIsBridge) return rawReal;
+
+  if (rawMitch && validIpLiteral(rawMitch)) return rawMitch;
   if (rawReal && validIpLiteral(rawReal)) return rawReal;
+
+  if (peer && validIpLiteral(peer)) return peer;
 
   return '127.0.0.1';
 }
@@ -10878,13 +10891,17 @@ async function handleRequest(req, server) {
           }
         }
 
-        // Not signed in on this host: the school domain doesn't serve the
-        // login UI, so hop to a mitch.pro identity origin (primary first)
-        // to sign in there — its enroll page returns to the bridge on that
-        // same origin, which carries the session back to the school site.
+        // Not signed in on this host: hop directly to a mitch.pro identity
+        // origin's bridge. If the user already has a session there, that bridge
+        // immediately mints an exchange token and returns here silently.
+        // If not, mitch.pro's bridge redirects them to /enroll/ to sign in.
         let loginOrigin = selfOrigin;
         if (!isMitchSsoHost(requestHost(req))) {
           loginOrigin = mitchSsoOrigins().values().next().value || MITCH_ORIGIN;
+          return new Response(null, {
+            status: 302,
+            headers: { Location: loginOrigin + '/api/sso/bridge?back=' + encodeURIComponent(back.toString()) }
+          });
         }
         return new Response(null, {
           status: 302,
@@ -20599,6 +20616,20 @@ function loadAllGamesList() {
       } catch (e) {}
     }
 
+    // Already signed in on this host and heading somewhere specific? Skip the
+    // enroll form entirely — the SSO bridge picks the session up from here.
+    // Without this, a user signed in on mitch.pro who clicks "Sign in" on
+    // rjuhsd.school gets bounced here and asked for their password again even
+    // though the bridge could have carried their session across silently.
+    if (path === '/enroll/' || path === '/enroll/index.html' || path === '/enroll.html') {
+      const hasEnrollParam = ['ref', 'email', 'code', 'token', 'claim', 'reset'].some(k => url.searchParams.has(k));
+      const nextRaw = url.searchParams.get('next') || '';
+      const next = nextRaw && !hasEnrollParam ? ssoBackAllowed(nextRaw, req) : null;
+      if (method === 'GET' && next && !next.pathname.startsWith('/enroll') && checkPasswordCookie(req)) {
+        return new Response(null, { status: 302, headers: { Location: next.toString() } });
+      }
+    }
+
     // HTML pages with auth stub
     let htmlBase = path;
     if (htmlBase.endsWith('.html')) htmlBase = htmlBase.slice(0, -5);
@@ -20670,7 +20701,7 @@ function loadAllGamesList() {
             injectStr += '<link rel="stylesheet" href="/site-galaxy.css">\n';
           }
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/portal-redesign.css'))) {
-            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=14">\n';
+            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=16">\n';
           }
           // One compact navigation shell across every full page. Pages that
           // intentionally opt out (such as the public landing page) use

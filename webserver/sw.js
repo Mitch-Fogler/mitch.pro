@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v25';
+const CACHE_NAME = 'mitch-pro-cache-v26';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -6,7 +6,7 @@ const ASSETS = [
   '/icon-192.png',
   '/icon-512.png',
   '/relaunch.css',
-  '/portal-redesign.css?v=15',
+  '/portal-redesign.css?v=16',
   '/home-redesign.css?v=2',
   '/popup.js',
   '/pwa-install.js'
