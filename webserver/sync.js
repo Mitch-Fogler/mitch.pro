@@ -22,6 +22,7 @@
   }
 
   function applySnap(snap) {
+    if (window.__theme && window.__theme.preparePreferenceSnapshot) snap = window.__theme.preparePreferenceSnapshot(snap);
     for (var k in snap) {
       if (!snap.hasOwnProperty(k)) continue;
       try {

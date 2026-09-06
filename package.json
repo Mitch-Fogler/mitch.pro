@@ -7,7 +7,7 @@
     "preview:ui": "bun tools/preview-ui.js",
     "test:ui": "node tools/review-ui.mjs",
     "start": "bun server.js",
-    "test:unit": "bun tests/test_daily_login_unit.js && bun tests/test_roles_unit.js",
+    "test:unit": "bun tests/test_daily_login_unit.js && bun tests/test_roles_unit.js && bun tests/test_background_defaults_unit.js",
     "test:integration": "bun tests/test_runner.js",
     "test:integration:daily-login": "bun tests/test_daily_login.js",
     "test": "bun run test:unit && bun run test:integration"

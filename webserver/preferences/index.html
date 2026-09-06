@@ -1567,7 +1567,7 @@ var DISPLAY_CONFIG_KEY  = '_prefDisplay';
 var SYNC_CONFIG_KEY     = '_prefSync';
 var TOOLS_CONFIG_KEY    = '_prefTools';
 var PREF_BACKUP_KEYS    = [VFX_CONFIG_KEY, PRIVACY_CONFIG_KEY, HOME_CONFIG_KEY, DISPLAY_CONFIG_KEY, SYNC_CONFIG_KEY, TOOLS_CONFIG_KEY];
-var THEME_PREF_KEYS     = ['accent','adapt','dim','bgmode','bgpos','bgblur','density','radius','font','motion','material','bgimg'];
+var THEME_PREF_KEYS     = ['accent','adapt','dim','bgmode','bgpos','bgblur','density','radius','font','motion','material','bgimg','backgroundDefaults'];
 
 function load(key, def) {
   try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || '{}')); }
