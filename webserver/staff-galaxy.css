@@ -657,3 +657,66 @@ html.theme-light .staff-role-badge {
   color: #db2777;
   background: rgba(219, 39, 119, .07) !important;
 }
+
+html body:is(.admin-page,.moderator-page) { font-size:16px; line-height:1.5; }
+html body.admin-page .shell,html body.moderator-page main { width:min(1440px,calc(100% - 48px)); padding:24px 0 60px; }
+html body.admin-page.admin-page .topbar,html body.moderator-page.moderator-page .topbar { border:0!important; border-bottom:1px solid var(--staff-line)!important; border-radius:0!important; box-shadow:none!important; background:transparent!important; padding:0 0 22px; gap:16px; }
+html body.admin-page h1,html body.moderator-page h1 { font-size:clamp(26px,3vw,38px); letter-spacing:-.04em; }
+.staff-eyebrow { font-size:12px; letter-spacing:.08em; }
+html body.admin-page .status,.staff-role-badge { font-size:13px; padding:9px 14px; }
+.staff-panel-switcher { grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:24px 0; }
+.staff-panel-switcher a { min-height:96px; grid-template-columns:48px 1fr; padding:18px; border-radius:18px; box-shadow:none; background:var(--staff-panel); }
+.staff-panel-switcher a>span { width:48px;height:48px;font-size:22px;border-radius:15px; }
+.staff-panel-switcher b { font-size:17px; }
+.staff-panel-switcher small { font-size:13px; }
+.staff-panel-switcher a:first-child>span { background:linear-gradient(135deg,#b869eb,#d19e39); }
+.staff-panel-switcher a:last-child>span { background:linear-gradient(135deg,#6578f0,#b44ade); }
+html body.admin-page .admin-layout { grid-template-columns:210px minmax(0,1fr); gap:24px; }
+html body.admin-page .admin-nav { padding:10px; border-radius:16px; background:var(--staff-panel); box-shadow:none; }
+html body.admin-page .admin-nav::before { content:none; }
+html body.admin-page .admin-nav a { min-height:44px; padding:11px 14px; font-size:14px; }
+.admin-nav [hidden],.staff-panel-switcher [hidden] { display:none!important; }
+html body.admin-page.admin-page .tool-group { padding:24px; border-radius:20px!important; border:1px solid var(--staff-line)!important; background:var(--staff-panel)!important; }
+html body.admin-page .tool-group>.section-head { margin:-24px -24px 24px; padding:20px 24px; border-radius:20px 20px 0 0; }
+html body.admin-page .section-head h2 { font-size:22px; }
+html body.admin-page .action-card,html body.admin-page .request-card { border-radius:14px; padding:20px; background:var(--t-bg2); }
+html body.admin-page .action-card h2 { font-size:18px; }
+html body.admin-page :is(p,.sub,.empty,.form-status,.role-note,.notice) { font-size:14px; line-height:1.6; }
+html body.admin-page :is(input,button,select,textarea) { font-size:14px; min-height:42px; border-radius:9px; }
+html body.admin-page .card .label { font-size:12px; }
+html body.admin-page .card .value { font-size:26px; }
+html body.admin-page .cards .card { min-height:90px; padding:16px; background:var(--staff-panel); box-shadow:none; }
+html body.admin-page .cards .card::after { content:none; }
+html body.admin-page .tag { font-size:12px; }
+html body.admin-page :is(th,td) { font-size:13px; padding:12px; }
+html body.admin-page.admin-locked .topbar div { filter:none!important; opacity:1!important; pointer-events:auto!important; }
+html body.admin-page #passphrase-lock-box { padding:22px!important; border-style:solid!important; border-radius:18px; background:var(--staff-panel)!important; }
+html body.admin-page #passphrase-lock-box h2 { font-size:18px!important; }
+html body.admin-page #passphrase-lock-box p { font-size:14px!important; }
+html body.admin-page #passphrase-lock-box :is(input,button) { font-size:14px!important; min-height:44px; }
+.staff-school-details { margin:16px 0; border:1px solid var(--staff-line); border-radius:12px; }
+.staff-school-details summary { cursor:pointer; padding:12px 16px; font-size:14px; color:var(--staff-muted); }
+.staff-school-details[open] summary { border-bottom:1px solid var(--staff-line); }
+.owner-shortcuts { display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px; }
+.owner-shortcuts a { padding:16px;border:1px solid var(--staff-line);border-radius:12px;color:var(--staff-text);font-size:14px;text-decoration:none; }
+html body.moderator-page .moderator-intro { display:none; }
+html body.moderator-page .panel { padding:24px; border-radius:20px; background:var(--staff-panel); box-shadow:none; }
+html body.moderator-page .links a { min-height:150px; padding:20px; border-radius:16px; }
+html body.moderator-page .links .link-copy b { font-size:18px; }
+html body.moderator-page .links .link-copy small { font-size:14px; }
+html body.moderator-page .empty-note { display:none; }
+@media(max-width:900px) {
+ html body.admin-page .admin-layout { grid-template-columns:1fr; }
+ html body.admin-page .admin-nav { display:flex;overflow:auto;top:0;z-index:20; }
+ .staff-panel-switcher { grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); }
+}
+@media(max-width:600px) {
+ html body.admin-page .shell,html body.moderator-page main { width:calc(100% - 24px);padding-top:12px; }
+ .staff-panel-switcher { grid-template-columns:1fr;gap:8px;margin:16px 0; }
+ .staff-panel-switcher a { min-height:72px;padding:12px; }
+ html body.admin-page.admin-page .tool-group { padding:16px; }
+ html body.admin-page .tool-group>.section-head { margin:-16px -16px 16px;padding:16px; }
+ .owner-shortcuts,.approval-grid { grid-template-columns:1fr!important; }
+ html body.admin-page :is(.actions-panel,.toolbar) { min-width:0; }
+ html body.admin-page .action-card { min-width:0;padding:16px; }
+}

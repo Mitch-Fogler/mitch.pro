@@ -493,7 +493,7 @@
     }
   </style>
   <link rel="stylesheet" href="/admin-dayboard.css?v=9">
-  <link rel="stylesheet" href="/staff-galaxy.css?v=3">
+  <link rel="stylesheet" href="/staff-galaxy.css?v=4">
 </head>
 <body class="admin-page admin-locked">
   <main class="shell">
@@ -503,16 +503,17 @@
       <div class="staff-heading">
         <span class="staff-eyebrow">mitch.pro / staff systems</span>
         <h1>Admin Command Center</h1>
-        <p class="sub">Staff tools for people, economy, moderation, casino, content, logs, and audit review.</p>
+
       </div>
       <div class="status"><span class="dot"></span><span id="access-status">Checking access</span></div>
     </div>
     <nav class="staff-panel-switcher" aria-label="Staff workspaces">
-      <a class="owner-switch" href="#moderation-tools"><span>&#9733;</span><b>Owner tools</b><small>Site operations</small></a>
+      <a class="owner-switch" href="#owner-tools" hidden><span>&#9733;</span><b>Owner tools</b><small>Site operations</small></a>
       <a class="active" href="#approval-tools"><span>&#9881;</span><b>Admin tools</b><small>Full control center</small></a>
       <a href="/moderator/"><span>&#10003;</span><b>Moderator tools</b><small>Safety workspace</small></a>
     </nav>
 
+    <details class="staff-school-details"><summary>School calendar &amp; weather</summary>
     <section class="admin-dayboard" aria-labelledby="admin-dayboard-title">
       <header class="admin-dayboard-head">
         <div>
@@ -571,6 +572,7 @@
       </div>
     </section>
 
+    </details>
     <div class="notice" id="policy-note">
       Security monitoring dashboard: admin actions, reports, moderation signals, and operational status are shown for authorized staff. Private chat history is not exposed here.
     </div>
@@ -616,6 +618,7 @@
 
     <div class="admin-layout">
       <nav class="admin-nav" aria-label="Admin tool sections">
+        <a href="#owner-tools" class="owner-nav" hidden>Site operations</a>
         <a href="#approval-tools">Approvals</a>
         <a href="#people-tools">People</a>
         <a href="#economy-tools">Economy</a>
@@ -628,6 +631,11 @@
         <a href="#audit-tools">Audit Logs</a>
       </nav>
       <div class="tool-area">
+    <section class="tool-group" id="owner-tools">
+      <div class="section-head"><h2>Site operations</h2><span class="tag">Owner access</span></div>
+      <div class="actions-panel" id="owner-operations"></div>
+      <div class="owner-shortcuts"><a href="#people-tools">Accounts &amp; roles ↗</a><a href="#content-tools">Site content ↗</a><a href="#logs-tools">System logs ↗</a><a href="#audit-tools">Activity history ↗</a></div>
+    </section>
     <section class="tool-group active" id="approval-tools">
       <div class="section-head">
         <h2>Moderator Approval Center</h2>
@@ -2421,6 +2429,9 @@
       document.body.classList.toggle('owner-mode', !!currentUser.isOwner);
       const ownerSwitch = document.querySelector('.owner-switch');
       if (ownerSwitch) ownerSwitch.hidden = !currentUser.isOwner;
+      document.querySelector('.owner-nav').hidden = !currentUser.isOwner;
+      if (currentUser.isOwner) document.getElementById('owner-operations').appendChild(document.getElementById('soft-maintenance-card'));
+      if (location.hash === '#owner-tools' && !currentUser.isOwner) activateToolGroup('approval-tools');
       const eyebrow = document.querySelector('.staff-eyebrow');
       if (eyebrow && currentUser.isCoOwner) eyebrow.textContent = 'mitch.pro / co-owner systems';
       document.body.classList.toggle('moderator-mode', !!(currentUser.isModerator && !currentUser.isAdmin));
@@ -2713,7 +2724,8 @@
     }
 
     async function toggleSoftMaintenance() {
-      setStatus('soft-maintenance-feedback', 'Toggling...', '');
+      if (!currentSoftMaintenanceActive && !confirm('Close the public site for maintenance? Staff access will remain available so you can reopen it.')) return;
+      setStatus('soft-maintenance-feedback', 'Updating public access...', '');
       try {
         const d = await postAdmin('/api/admin/maintenance-toggle', { active: !currentSoftMaintenanceActive });
         if (d.pending) {
@@ -2865,12 +2877,18 @@
 
     function activateToolGroup(id, updateHash = true) {
       const fallback = 'approval-tools';
-      const target = document.getElementById(id) ? id : fallback;
+      const candidate = document.getElementById(id);
+      const target = candidate?.classList.contains('tool-group') ? id : fallback;
       document.querySelectorAll('.tool-area > .tool-group').forEach(section => {
         section.classList.toggle('active', section.id === target);
       });
       document.querySelectorAll('.admin-nav a[href^="#"]').forEach(link => {
         link.classList.toggle('active', link.getAttribute('href') === '#' + target);
+      });
+      document.querySelectorAll('.staff-panel-switcher a[href^="#"]').forEach(link => {
+        const active = link.classList.contains('owner-switch') ? target === 'owner-tools' : target !== 'owner-tools';
+        link.classList.toggle('active', active);
+        if (active) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
       });
       if (updateHash && location.hash !== '#' + target) {
         history.replaceState(null, '', '#' + target);
