@@ -40,7 +40,7 @@ try {
       let data = { ok: true, success: true, items: [], members: [], messages: [], friends: [], notifications: [], groups: [], requests: [], profile: {} };
       if (url.pathname === '/api/me') data = { email: 'starfield@example.test', nickname: 'Player', coins: 100, isAdmin: false };
       if (url.pathname === '/api/backgrounds/list') data.items = [{ name: 'Mountain', url: '/backgrounds/wallhaven-black-mountain.webp' }];
-      if (url.pathname === '/api/userdata' && restored && route.request().method() === 'GET') data = { _snapshot: { theme_bgimg: 'effect:starfield' }, _snapshot_ts: Date.now() + 60000 };
+      if (url.pathname === '/api/userdata' && restored && route.request().method() === 'GET') data = { _snapshot: { theme_bgimg: 'effect:starfield', theme_backgroundDefaults: 'mountain-2026-09-06' }, _snapshot_ts: Date.now() + 60000 };
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
     });
     return context;

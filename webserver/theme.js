@@ -35,6 +35,31 @@
   };
   var T = { dark: DARK, light: LIGHT };
   var LEGACY_LIGHT = { daylight: 1, paper: 1, arctic: 1, blossom: 1 };
+  var BACKGROUND_DEFAULTS_VERSION = 'mountain-2026-09-06';
+  var BACKGROUND_DEFAULTS = {
+    bgimg: '/backgrounds/wallhaven-black-mountain.webp',
+    bgblur: '8', accent: '', adapt: 'on', dim: '0.50', bgmode: 'cover', bgpos: 'center'
+  };
+
+  function usesSchoolDefaults() {
+    return /(^|\.)rjuhsd\.school$/.test(location.hostname) || /^\/rjuhsd(?:\/|$)/.test(location.pathname);
+  }
+  function applyBackgroundDefaults() {
+    if (usesSchoolDefaults() || getPref('backgroundDefaults', '') === BACKGROUND_DEFAULTS_VERSION) return;
+    Object.keys(BACKGROUND_DEFAULTS).forEach(function (key) { setPref(key, BACKGROUND_DEFAULTS[key]); });
+    setBgImgCookie(BACKGROUND_DEFAULTS.bgimg);
+    setCookie('dark');
+    setPref('backgroundDefaults', BACKGROUND_DEFAULTS_VERSION);
+  }
+  function preparePreferenceSnapshot(snapshot) {
+    if (usesSchoolDefaults() || snapshot.theme_backgroundDefaults === BACKGROUND_DEFAULTS_VERSION) return snapshot;
+    // Old account backups must not undo the site-wide default rollout.
+    var result = Object.assign({}, snapshot);
+    Object.keys(BACKGROUND_DEFAULTS).forEach(function (key) { result['theme_' + key] = BACKGROUND_DEFAULTS[key]; });
+    result.theme_backgroundDefaults = BACKGROUND_DEFAULTS_VERSION;
+    setCookie('dark');
+    return result;
+  }
 
   function normalize(name) {
     if (name === 'light' || LEGACY_LIGHT[name]) return 'light';
@@ -642,6 +667,7 @@
     syncToggleBtn();
   }
 
+  applyBackgroundDefaults();
   applyTheme(getCookie());
   // applyTheme ran while <body> didn't exist yet (script is in <head>) —
   // re-assert the wallpaper layer's body transparency once it does.
@@ -845,6 +871,7 @@
     get: getCookie,
     themes: T,
     backgrounds: THEME_BGS,
+    preparePreferenceSnapshot: preparePreferenceSnapshot,
     getBackground: getBackground,
     mergeBackgrounds: function (items) {
       return THEME_BGS.filter(function (bg) { return bg.effect; }).concat(items.filter(function (bg) { return !THEME_BGS.some(function (entry) { return entry.effect && entry.url === bg.url; }); }));
