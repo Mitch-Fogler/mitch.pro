@@ -39,7 +39,7 @@
     }
     .links a:hover { border-color: var(--t-bda); }
   </style>
-  <link rel="stylesheet" href="/staff-galaxy.css?v=3">
+  <link rel="stylesheet" href="/staff-galaxy.css?v=4">
 </head>
 <body class="moderator-page">
   <main>
@@ -49,18 +49,15 @@
       <div class="staff-heading">
         <span class="staff-eyebrow">mitch.pro / trust &amp; safety</span>
         <h1>Moderator Workspace</h1>
-        <p class="sub">Fast access to the tools your role is allowed to use.</p>
+
       </div>
       <span class="staff-role-badge"><i></i> Moderator</span>
     </div>
     <nav class="staff-panel-switcher" aria-label="Staff workspaces">
-      <a id="moderator-owner-link" href="/admin/#moderation-tools"><span>&#9733;</span><b>Owner tools</b><small>Site operations</small></a>
+      <a id="moderator-owner-link" href="/admin/#owner-tools" hidden><span>&#9733;</span><b>Owner tools</b><small>Site operations</small></a>
       <a id="moderator-admin-link" href="/admin/"><span>&#9881;</span><b>Admin tools</b><small>Control center</small></a>
       <a class="active" href="/moderator/"><span>&#10003;</span><b>Moderator tools</b><small>Safety workspace</small></a>
     </nav>
-    <div class="moderator-intro" aria-hidden="true">
-      <span>01</span><p>Review</p><i></i><span>02</span><p>Resolve</p><i></i><span>03</span><p>Document</p>
-    </div>
     <section class="panel" id="panel">
       <div class="empty">Loading moderator tools...</div>
     </section>
@@ -96,7 +93,8 @@
         html = '<div class="empty empty-note">No custom shortcuts are configured. Your direct safety workspace is still available below.</div>';
       }
       html += '<div class="links">';
-      html += '<a class="primary-staff-link" href="/admin/"><span class="link-icon">&#128737;</span><span class="link-copy"><b>Staff Command Center</b><small>Direct safety tools</small></span><span class="link-arrow">&rarr;</span></a>';
+      html += '<a class="primary-staff-link" href="/admin/#moderation-tools"><span class="link-icon">&#128737;</span><span class="link-copy"><b>Safety &amp; reports</b><small>Direct safety tools</small></span><span class="link-arrow">&rarr;</span></a>';
+      html += '<a href="/admin/#approval-tools"><span class="link-icon">✓</span><span class="link-copy"><b>Requests</b><small>Track approvals and decisions</small></span><span class="link-arrow">↗</span></a><a href="/admin/#audit-tools"><span class="link-icon">≡</span><span class="link-copy"><b>Activity</b><small>Review moderation history</small></span><span class="link-arrow">↗</span></a>';
       if (links.length) {
         html += links.map(link =>
           '<a href="' + safeHref(link.href) + '"><span class="link-icon">&#10022;</span><span class="link-copy"><b>' + esc(link.label) + '</b><small>Moderator shortcut</small></span><span class="link-arrow">&rarr;</span></a>'

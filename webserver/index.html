@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/home.css?v=4">
-<link rel="stylesheet" href="/home-redesign.css?v=3">
+<link rel="stylesheet" href="/home-redesign.css?v=4">
 <script src="/app-shell.js" defer></script>
 <script>
   if ('serviceWorker' in navigator) {
@@ -969,6 +969,7 @@ function loadGreeting() {
     if (!rail) return;
     var handle = document.getElementById('member-side-rail-collapsed-handle');
     var hoverTimeout = null;
+    var hoverCapable = window.matchMedia("(hover: hover) and (pointer: fine)");
 
     function setOpen(open) {
       if (hoverTimeout) {
@@ -980,6 +981,7 @@ function loadGreeting() {
       rail.setAttribute('aria-expanded', open ? 'true' : 'false');
       if (handle) handle.setAttribute('aria-expanded', open ? 'true' : 'false');
       document.body.classList.toggle('members-rail-open', !!open);
+      Array.from(rail.children).forEach(function(child) { if (child !== handle) child.inert = !open; });
     }
     rail._setOpen = setOpen;
 
@@ -1003,6 +1005,7 @@ function loadGreeting() {
 
     // Hover to pop open smoothly with a grace timeout on mouseleave
     rail.addEventListener('mouseenter', function() {
+      if (!hoverCapable.matches) return;
       if (hoverTimeout) {
         clearTimeout(hoverTimeout);
         hoverTimeout = null;
@@ -1012,14 +1015,13 @@ function loadGreeting() {
 
     rail.addEventListener('mouseleave', function() {
       if (hoverTimeout) clearTimeout(hoverTimeout);
-      hoverTimeout = setTimeout(function() {
-        setOpen(false);
-      }, 280);
+      if (!hoverCapable.matches || rail.contains(document.activeElement)) return;
+      hoverTimeout = setTimeout(function() { setOpen(false); }, 450);
     });
 
     document.addEventListener('click', function(e) {
       if (!rail.classList.contains('is-open')) return;
-      if (rail.contains(e.target)) return;
+      if (rail.contains(e.target) || e.target.closest('[onclick*="openMembersRail"]')) return;
       setOpen(false);
     });
 
@@ -1126,6 +1128,7 @@ function escText(t) {
       var me = await r.json();
     var modWrap = document.getElementById('moderator-action-wrap');
     if (modWrap && (me.isModerator || me.isAdmin)) {
+      document.body.classList.add('is-staff');
       modWrap.style.display = 'block';
       document.getElementById('moderator-action-btn').onclick = function() {
         window.location.href = '/moderator/';
@@ -3350,7 +3353,7 @@ if (document.readyState === 'loading') {
 
 <nav class="staff-access-rail" id="staff-access-rail" aria-label="Staff tools">
   <div id="owner-action-wrap">
-    <a class="staff-access-button staff-owner" href="/admin/#moderation-tools"><span aria-hidden="true">&#9733;</span><b>Owner tools</b></a>
+    <a class="staff-access-button staff-owner" href="/admin/#owner-tools"><span aria-hidden="true">&#9733;</span><b>Owner tools</b></a>
   </div>
   <div id="admin-action-wrap">
     <a id="admin-action-btn" class="staff-access-button staff-admin" href="/admin/"><span aria-hidden="true">&#9881;</span><b>Admin tools</b></a>
@@ -3492,6 +3495,16 @@ if (document.readyState === 'loading') {
     </a>
   </section>
 
+      <nav class="home-actions" aria-label="Quick actions">
+        <a class="hub-action hub-action-primary" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M9 9h6M9 12h4"/></svg></span><span class="action-copy"><b>Encrypted Chat</b><small>Open secure messages</small></span></a>
+        <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="16.5" cy="10" r="2.3"/><path d="M3.5 19c.5-3.3 2.2-5 5.5-5s5 1.7 5.5 5M14 15c3.5-.5 5.5.8 6 3.5"/></svg></span><span class="action-copy"><b>People</b><small>See who's here</small></span></button>
+        <a class="hub-action" href="/preferences/" onclick="openHomeHref(event, '/preferences/');"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c.6-4.2 2.9-6.3 7-6.3s6.4 2.1 7 6.3"/></svg></span><span class="action-copy"><b>Account</b><small>Profile and preferences</small></span></a>
+        <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="m12 3 6 6-6 12L6 9z"/><path d="M6 9h12M9 9l3-6 3 6-3 12z"/></svg></span><span class="action-copy"><b>Market</b><small>Browse drops</small></span></a>
+        <a class="hub-action" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span><span class="action-copy"><b>Games</b><small>Choose your arcade</small></span></a>
+        <a class="hub-action" href="/vms/" onclick="openHomeHref(event, '/vms/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M13 2 5.5 13H11l-1 9 8.5-12H13z"/></svg></span><span class="action-copy"><b>VM Lab</b><small>Open workspace</small></span></a>
+        <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily claim</button>
+      </nav>
+
   <!-- Live dayboard: weather · calendar · bells -->
   <section class="home-dayboard" aria-labelledby="home-dayboard-title">
     <h2 id="home-dayboard-title" class="home-dayboard-sr">Around Woodcreek <span class="dayboard-location">Roseville, California</span></h2>
@@ -3554,15 +3567,7 @@ if (document.readyState === 'loading') {
   <!-- Workspace -->
   <div class="hud-workspace">
     <main class="hud-pane-main">
-      <nav class="home-actions" aria-label="Quick actions">
-        <a class="hub-action hub-action-primary" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M9 9h6M9 12h4"/></svg></span><span class="action-copy"><b>Encrypted Chat</b><small>Open secure messages</small></span></a>
-        <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="16.5" cy="10" r="2.3"/><path d="M3.5 19c.5-3.3 2.2-5 5.5-5s5 1.7 5.5 5M14 15c3.5-.5 5.5.8 6 3.5"/></svg></span><span class="action-copy"><b>People</b><small>See who's here</small></span></button>
-        <a class="hub-action" href="/preferences/" onclick="openHomeHref(event, '/preferences/');"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c.6-4.2 2.9-6.3 7-6.3s6.4 2.1 7 6.3"/></svg></span><span class="action-copy"><b>Account</b><small>Profile and preferences</small></span></a>
-        <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="m12 3 6 6-6 12L6 9z"/><path d="M6 9h12M9 9l3-6 3 6-3 12z"/></svg></span><span class="action-copy"><b>Market</b><small>Browse drops</small></span></a>
-        <a class="hub-action" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span><span class="action-copy"><b>Games</b><small>Choose your arcade</small></span></a>
-        <a class="hub-action" href="/vms/" onclick="openHomeHref(event, '/vms/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M13 2 5.5 13H11l-1 9 8.5-12H13z"/></svg></span><span class="action-copy"><b>VM Lab</b><small>Open workspace</small></span></a>
-        <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily claim</button>
-      </nav>
+
 
       <!-- Cloud VM promo -->
       <section class="site-advert-banner">
@@ -3654,7 +3659,7 @@ if (document.readyState === 'loading') {
       </div>
 
       <section class="account-perks" aria-labelledby="account-perks-title">
-        <div class="account-perks-head"><span>PERKS</span><h3 id="account-perks-title">Power-ups for your account</h3></div>
+        <div class="account-perks-head"><span>PERKS</span><h3 id="account-perks-title">Your perks</h3></div>
         <div class="account-perk-grid">
           <a href="/shop/" class="account-perk perk-premium"><span>&#10022;</span><b>Premium</b><small>Boosted rewards and exclusive drops</small></a>
           <a href="/inventory/" class="account-perk perk-inventory"><span>&#9670;</span><b>Inventory</b><small>Equip colors, badges, and effects</small></a>
@@ -3794,7 +3799,7 @@ var origShow = showIframe;
         color: '#eab308',
         bg: 'rgba(234,179,8,0.1)',
         border: 'rgba(234,179,8,0.28)',
-        roleSuffix: '/owner/developer',
+        roleSuffix: '',
       });
     } catch {}
   })();
