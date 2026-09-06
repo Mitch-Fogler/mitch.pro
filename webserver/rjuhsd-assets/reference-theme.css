@@ -547,8 +547,18 @@ body.dark .hero { background: var(--wine-soft); }
   transition: all .15s ease;
 }
 .dock-item .dock-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   font-size: 18px;
   line-height: 1;
+}
+.dock-item .dock-icon svg {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 .dock-item:hover, .dock-item.active {
   color: var(--ink);
@@ -645,8 +655,16 @@ body.dark .lunch-status span { color: rgba(255, 255, 255, 0.72); }
 /* Tools zone: the maroon band needs white heading text in light mode too. */
 .tools-zone .tools-heading h2 { color: #fff; }
 .tools-zone .tools-heading p:last-child { color: rgba(255, 255, 255, 0.78); }
-/* Emoji tiles replaced the old logo images — center the glyph. */
-.tool-logo { display: grid; place-items: center; font-size: 19px; line-height: 1; }
+.tool-logo { display: grid; place-items: center; border-radius: 8px; background: #fff !important; color: var(--wine); overflow: hidden; }
+.tool-logo svg { display: block; width: 22px; height: 22px; }
+.tool-logo img { display: block; width: 28px; height: 28px; object-fit: contain; }
+.app-icon svg { display: block; width: 20px; height: 20px; }
+.hero-btn-icon { display: inline-flex; align-items: center; justify-content: center; }
+.hero-btn-icon svg { display: block; }
+.app-card-badge svg { display: inline-block; vertical-align: -1.5px; margin-right: 4px; }
+nav[aria-label="Primary navigation"] a svg { display: inline-block; vertical-align: -2px; margin-right: 4px; }
+.header-chat-btn .chat-badge-icon svg { display: block; }
+.pwa-install-btn svg { display: inline-block; vertical-align: -2px; margin-right: 3px; }
 
 /* Mobile header: at <= 850px, keep header on one clean row:
    - Hide redundant sign-in & chat pills (both are in hero & bottom dock)
