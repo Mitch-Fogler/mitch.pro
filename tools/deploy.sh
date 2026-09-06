@@ -104,17 +104,25 @@ fi
 echo "[deploy] Swapping Caddy proxy configuration to point to webserver-$INACTIVE_SLOT..."
 cat << EOF > "$CADDYFILE_PATH"
 :6800 {
-    map {header.CF-Connecting-IP} {mitch_client_ip} {
-        ""      {remote_host}
+    # Resolve client IP: CF-Connecting-IP -> X-Mitch-Client-IP (from Nginx) -> X-Real-IP -> immediate peer
+    map {header.CF-Connecting-IP} {cf_ip} {
+        ""      {header.X-Mitch-Client-IP}
         default {header.CF-Connecting-IP}
+    }
+    map {cf_ip} {real_ip} {
+        ""      {header.X-Real-IP}
+        default {cf_ip}
+    }
+    map {real_ip} {mitch_client_ip} {
+        ""      {remote_host}
+        default {real_ip}
     }
 
     reverse_proxy webserver-$INACTIVE_SLOT:6800 {
-        header_up -X-Mitch-Client-IP
         header_up X-Mitch-Client-IP {mitch_client_ip}
-        header_up -CF-Connecting-IP
-        header_up -X-Real-IP
-        header_up -X-Forwarded-For
+        header_up X-Real-IP {mitch_client_ip}
+        header_up X-Forwarded-For {mitch_client_ip}
+        header_up CF-Connecting-IP {mitch_client_ip}
     }
 
     header {
@@ -123,6 +131,15 @@ cat << EOF > "$CADDYFILE_PATH"
         X-Frame-Options SAMEORIGIN
         Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://www.google.com https://www.gstatic.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss: ws:; worker-src 'self' blob:; frame-src 'self' https://www.google.com https://www.recaptcha.net https://html5.gamemonetize.co"
         -Server
+    }
+
+    # Cross-Origin Isolation for WebVM iframe nesting support
+    @coop_paths {
+        path / /webvm/*
+    }
+    header @coop_paths {
+        Cross-Origin-Opener-Policy "same-origin"
+        Cross-Origin-Embedder-Policy "credentialless"
     }
 }
 EOF
