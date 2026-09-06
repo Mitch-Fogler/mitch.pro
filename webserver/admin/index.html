@@ -493,7 +493,7 @@
     }
   </style>
   <link rel="stylesheet" href="/admin-dayboard.css?v=9">
-  <link rel="stylesheet" href="/staff-galaxy.css?v=2">
+  <link rel="stylesheet" href="/staff-galaxy.css?v=3">
 </head>
 <body class="admin-page admin-locked">
   <main class="shell">
@@ -507,6 +507,11 @@
       </div>
       <div class="status"><span class="dot"></span><span id="access-status">Checking access</span></div>
     </div>
+    <nav class="staff-panel-switcher" aria-label="Staff workspaces">
+      <a class="owner-switch" href="#moderation-tools"><span>&#9733;</span><b>Owner tools</b><small>Site operations</small></a>
+      <a class="active" href="#approval-tools"><span>&#9881;</span><b>Admin tools</b><small>Full control center</small></a>
+      <a href="/moderator/"><span>&#10003;</span><b>Moderator tools</b><small>Safety workspace</small></a>
+    </nav>
 
     <section class="admin-dayboard" aria-labelledby="admin-dayboard-title">
       <header class="admin-dayboard-head">
@@ -819,13 +824,13 @@
         <div id="traffic-feed" class="live-feed"></div>
       </div>
       <div class="action-card warning" id="soft-maintenance-card" style="display: none;">
-        <h2>Soft Maintenance Mode</h2>
-        <p>Toggles soft maintenance. Public visitors are blocked with a gorgeous glassmorphic template, while staff can still access the admin panel.</p>
+        <h2>Site Access</h2>
+        <p>Close the public site for maintenance while keeping staff access available.</p>
         <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; margin-bottom: 15px;">
           <span style="font-weight: 600;">Status:</span>
           <span id="soft-maintenance-status" style="font-weight: bold; color: #ef4444;">Inactive</span>
         </div>
-        <button id="toggle-soft-maintenance-btn" onclick="toggleSoftMaintenance()">Toggle Maintenance Mode</button>
+        <button id="toggle-soft-maintenance-btn" onclick="toggleSoftMaintenance()">Toggle Public Access</button>
         <div id="soft-maintenance-feedback" class="form-status"></div>
       </div>
     </div>
@@ -2413,8 +2418,15 @@
         return;
       }
       currentUser = await rMe.json();
+      document.body.classList.toggle('owner-mode', !!currentUser.isOwner);
+      const ownerSwitch = document.querySelector('.owner-switch');
+      if (ownerSwitch) ownerSwitch.hidden = !currentUser.isOwner;
+      const eyebrow = document.querySelector('.staff-eyebrow');
+      if (eyebrow && currentUser.isCoOwner) eyebrow.textContent = 'mitch.pro / co-owner systems';
       document.body.classList.toggle('moderator-mode', !!(currentUser.isModerator && !currentUser.isAdmin));
-      document.getElementById('role-note').textContent = currentUser.isAdmin
+      document.getElementById('role-note').textContent = currentUser.isCoOwner
+        ? 'Co-owner mode: full owner access is active. Operational and account changes apply immediately and are logged.'
+        : currentUser.isAdmin
         ? 'Admin mode: changes apply immediately and every privileged action is logged.'
         : (currentUser.isModerator
           ? 'Moderator mode: you can view the admin tools and submit changes, but state-changing actions wait for admin or owner approval.'
@@ -2465,7 +2477,7 @@
       rawData.searchIntent = dLogs.logs || [];
 
       await loadModeratorRequests();
-      document.getElementById('access-status').textContent = currentUser.isAdmin ? 'Admin verified' : 'Moderator review mode';
+      document.getElementById('access-status').textContent = currentUser.isCoOwner ? 'Co-owner verified' : (currentUser.isAdmin ? 'Admin verified' : 'Moderator review mode');
       renderCards();
       applyFilter();
 
