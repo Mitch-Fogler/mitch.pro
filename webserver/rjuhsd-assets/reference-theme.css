@@ -264,5 +264,38 @@ body.dark .weather-symbol{background:#3b2529;border-color:#55363c}
 .site-header { position: relative; z-index: 5; }
 .school-choice { display: grid; gap: 4px; font: 600 11px Roboto, sans-serif; }
 .school-choice select { max-width: 205px; padding: 9px; border: 1px solid #aaa6; border-radius: 8px; background: inherit; color: inherit; font: inherit; font-size: 14px; }
-body:not([data-school="woodcreek"]) :is(.hero-graphic, .live-wolf, .brand-logo, .onboarding-art img) { visibility: hidden; }
+body { --wine: var(--school-primary, #500000); --wine2: var(--school-secondary, #333333); --wine-soft: color-mix(in srgb, var(--school-primary, #500000) 7%, white); }
+body:not(.dark) { --paper: #f7f9fc; --card: #fff; --ink: #202630; --muted: #566170; --line: #dce1e8; color: var(--ink); background: var(--paper); color-scheme: light; }
+.brand-logo { width: 52px; height: 48px; background: #fff; }
+.brand-logo img, .onboarding-art img { object-fit: contain; filter: none; }
+.site-header { height: auto; min-height: 76px; border-top: 4px solid var(--school-secondary); }
+.announcement-bar { background: var(--school-primary); }
+.hero { background: var(--wine-soft); color: var(--ink); border-bottom: 4px solid var(--school-secondary); }
+.hero :is(h1,h1 em,h2,.countdown,.hero-date-panel,.hero-weekday,.hero-date-main,.hero-date-main b,.hero-date-main small,.hero-overline,.live-clock,.live-card-top time,.live-next strong,.live-next time) { color: var(--wine); }
+.hero :is(.hero-summary,.period-range,.countdown-copy,.countdown-details,.countdown-details small,.live-card-body>p,.live-next>span) { color: var(--muted); }
+.hero-graphic { display: none; }
+.live-card { color: var(--ink); background: var(--card); border: 1px solid var(--line); border-top: 4px solid var(--school-primary); border-radius: 12px; }
+.live-next { color: var(--ink); background: var(--wine-soft); }
+.live-card-top>span { display: inline-flex; color: var(--wine); }
+.live-card h2 { font-size: 18px; }
+.hero-date-panel { border-color: var(--line); background: transparent; }
+.hero .primary-button { background: var(--wine); color: #fff; border-color: var(--wine); }
+.hero .secondary-button { color: var(--wine); border-color: var(--wine); background: transparent; }
+.progress { background: var(--line); }
+.progress span, .date-tile span { background: var(--wine); }
+.dial-track { stroke: var(--line); }
+.dial-value { stroke: var(--wine); }
+.countdown-details, .countdown-details>span { border-color: var(--line); }
+.countdown-details strong { color: var(--ink); }
+.calendar-toolbar, .brief-heading, .day-card.today, .tools-zone, .onboarding-art { background: var(--school-primary); border-color: var(--school-secondary); }
+.schedule-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 22px; font-size: 14px; }
+.schedule-controls label { display: flex; align-items: center; gap: 8px; }
+.schedule-controls [hidden] { display: none !important; }
+.schedule-controls select { max-width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: var(--card); font: inherit; }
+.schedule-controls input { accent-color: var(--wine); }
+#source-status { flex-basis: 100%; font-size: 13px; color: var(--muted); }
+.snapshot small, .section-label, .countdown-details small, .live-next>span, .weather-place small { font-size: 12px; }
+.snapshot strong, .period-range, .section-title-row>div>p:last-child, .primary-button, .secondary-button { font-size: 14px; }
+body.dark { --wine: color-mix(in srgb, var(--school-primary) 45%, white); --wine2: var(--school-secondary); --wine-soft: color-mix(in srgb, var(--school-primary) 20%, #18202c); color-scheme: dark; }
+body.dark .hero { background: var(--wine-soft); }
 @media(max-width: 760px) { .site-header { flex-wrap: wrap; } .header-actions { flex-wrap: wrap; } .school-choice select { max-width: 180px; } }
