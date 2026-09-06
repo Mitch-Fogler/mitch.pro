@@ -1567,7 +1567,7 @@ var DISPLAY_CONFIG_KEY  = '_prefDisplay';
 var SYNC_CONFIG_KEY     = '_prefSync';
 var TOOLS_CONFIG_KEY    = '_prefTools';
 var PREF_BACKUP_KEYS    = [VFX_CONFIG_KEY, PRIVACY_CONFIG_KEY, HOME_CONFIG_KEY, DISPLAY_CONFIG_KEY, SYNC_CONFIG_KEY, TOOLS_CONFIG_KEY];
-var THEME_PREF_KEYS     = ['accent','adapt','dim','bgmode','bgpos','bgblur','density','radius','font','motion','material'];
+var THEME_PREF_KEYS     = ['accent','adapt','dim','bgmode','bgpos','bgblur','density','radius','font','motion','material','bgimg'];
 
 function load(key, def) {
   try { return Object.assign({}, def, JSON.parse(localStorage.getItem(key) || '{}')); }
@@ -1580,6 +1580,7 @@ function getCookieValue(name, fallback) {
 }
 
 function setCookieValue(name, value) {
+  if (name === 'bgimg') { try { localStorage.setItem('theme_bgimg', value || ''); } catch (_) {} }
   document.cookie = name + '=' + encodeURIComponent(value || '') + ';path=/;max-age=31536000';
 }
 
@@ -1905,6 +1906,15 @@ function updateBgChipActive() {
 }
 
 function applyChipPreview(chip, url) {
+  var background = window.__theme && window.__theme.getBackground && window.__theme.getBackground(url);
+  if (background && background.preview) {
+    chip.style.backgroundImage = background.preview;
+    var label = document.createElement('span');
+    label.textContent = background.name;
+    label.style.cssText = 'display:inline-block;margin-top:24px;padding:3px 7px;border-radius:6px;background:#050b1bcc;color:#eef2ff;font-size:11px;font-weight:700;';
+    chip.appendChild(label);
+    return;
+  }
   if (/\.(webm|mp4)($|\?)/i.test(url)) {
     var vid = document.createElement('video');
     var srcUrl = url.includes('#') ? url : (url + '#t=0.1');
@@ -1923,6 +1933,7 @@ function applyChipPreview(chip, url) {
 }
 
 function renderPresetBgChips(presetGrid, bgs, cur) {
+  if (window.__theme && window.__theme.mergeBackgrounds) bgs = window.__theme.mergeBackgrounds(bgs);
   presetGrid.innerHTML = '';
   var effective = cur || '/backgrounds/wallhaven-black-mountain.webp';
   bgs.forEach(function(b) {
