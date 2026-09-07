@@ -410,13 +410,6 @@
   <div id="tabs" class="tabs"></div>
   <div id="market"></div>
 
-  <div id="info-modal" class="modal-backdrop" style="display:none;">
-    <div class="modal-content">
-      <button class="modal-close-btn" type="button">&times;</button>
-      <div id="modal-details"></div>
-    </div>
-  </div>
-
   <div id="admin-section" class="admin-box panel">
     <div class="section-title">Admin Coin Gift</div>
     <p class="subline">Admins already own every shop item. This tool is only for sending coins to a user.</p>
@@ -435,6 +428,16 @@
     </div>
   </div>
 </main>
+
+<!-- Item dialog lives outside <main>: .app-main's fade-in animation keeps a
+     transform on it, which would turn this fixed-position overlay into
+     main-relative positioning and push it below the viewport. -->
+<div id="info-modal" class="modal-backdrop" style="display:none;">
+  <div class="modal-content">
+    <button class="modal-close-btn" type="button">&times;</button>
+    <div id="modal-details"></div>
+  </div>
+</div>
 
 <div id="status-msg"></div>
 

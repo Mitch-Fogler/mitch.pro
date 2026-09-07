@@ -24,7 +24,7 @@
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/welcome.css?v=2">
   <script src="/app-shell.js" defer></script>
-  <script src="/api.js"></script>
+  <script src="/api.js" defer></script>
 
   <style>
     /* Burning cherry wallpaper — painted (and blurred) by theme.js's shared
@@ -59,6 +59,14 @@
     }
     body.sales-page .btn-ghost:not(.btn-primary):not(#nov-1):not(#nov-2):not(#nov-3):not(#nov-4):not(#nov-5):not(#nov-6):not(#nov-7):not(#nov-8):not(#nov-9):not(#nov-10):hover {
       background: var(--sales-btn-bg-hover) !important;
+    }
+    /* Footer links: accent + underline so they don't rely on color alone (a11y). */
+    .sales-foot a {
+      color: var(--t-ac);
+      text-decoration: underline;
+    }
+    .sales-foot a:hover {
+      color: var(--t-ac2);
     }
   </style>
 

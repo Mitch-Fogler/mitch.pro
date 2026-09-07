@@ -3422,6 +3422,26 @@ function emailScript(to) {
   return domain === 'student.rjuhsd.us' ? SEND_SCRIPT : NOREPLY_SCRIPT;
 }
 
+function deliveryEmailFor(to) {
+  const raw = String(to || '');
+  if (!raw.includes('@')) return raw;
+  const norm = normalizeEmail(raw);
+  try {
+    const p = loadJson(PROFILES_FILE, {})[norm];
+    // Only rewrite when the stored address maps back to the same account, so
+    // external recipients (invites, moderators) always pass through untouched.
+    if (p && p.email && normalizeEmail(p.email) === norm) return p.email;
+  } catch {}
+  // Profiles only exist for users who hit a page that created one; enrollment
+  // tokens keep the address exactly as the account was claimed.
+  try {
+    for (const data of Object.values(loadTokens())) {
+      if (data && data.email && normalizeEmail(data.email) === norm) return data.email;
+    }
+  } catch {}
+  return raw;
+}
+
 function sendEmailBg(to, subject, body) {
   // Defensive: refuse to send if the recipient looks masked (e.g. ad***n@…),
   // which would mean a display-time censor leaked into a send path. The
@@ -3438,7 +3458,11 @@ function sendEmailBg(to, subject, body) {
     ntfy(`Email to ${to} dropped — "${matched}" in name`, { title: 'Profanity drop', priority: 'high' });
     return;
   }
-  const proc = spawn(process.execPath, [emailScript(to), to, subject, body], { stdio: 'ignore' });
+  // Workers pass normalized account keys (dots stripped by normalizeEmail).
+  // Deliver to the user's real dotted address when we know it, so mail like
+  // the chat digest doesn't go to a dotless mailbox that may not exist.
+  const deliverTo = deliveryEmailFor(to);
+  const proc = spawn(process.execPath, [emailScript(deliverTo), deliverTo, subject, body], { stdio: 'ignore' });
   proc.unref();
   proc.on('error', () => {});
 }
@@ -20828,14 +20852,16 @@ function loadAllGamesList() {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }
 
+          // Enhancement CSS layers load async (media=print swap) so they stop
+          // blocking first paint — base layout CSS above still loads normally.
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/relaunch.css'))) {
-            injectStr += '<link rel="stylesheet" href="/relaunch.css">\n';
+            injectStr += '<link rel="stylesheet" href="/relaunch.css" media="print" onload="this.media=\'all\'"><noscript><link rel="stylesheet" href="/relaunch.css"></noscript>\n';
           }
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/site-galaxy.css'))) {
-            injectStr += '<link rel="stylesheet" href="/site-galaxy.css">\n';
+            injectStr += '<link rel="stylesheet" href="/site-galaxy.css" media="print" onload="this.media=\'all\'"><noscript><link rel="stylesheet" href="/site-galaxy.css"></noscript>\n';
           }
           if (!isEmbeddedGameRuntime && !raw.includes(Buffer.from('/portal-redesign.css'))) {
-            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=16">\n';
+            injectStr += '<link rel="stylesheet" href="/portal-redesign.css?v=16" media="print" onload="this.media=\'all\'"><noscript><link rel="stylesheet" href="/portal-redesign.css?v=16"></noscript>\n';
           }
           // One compact navigation shell across every full page. Pages that
           // intentionally opt out (such as the public landing page) use
@@ -20849,7 +20875,7 @@ function loadAllGamesList() {
           }
           if (!isEmbeddedGameRuntime) {
             if (!raw.includes(Buffer.from('fonts.googleapis.com'))) injectStr += '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n';
-            if (!raw.includes(Buffer.from('/popup.js'))) injectStr += '<script src="/popup.js?v=3"></script>\n';
+            if (!raw.includes(Buffer.from('/popup.js'))) injectStr += '<script src="/popup.js?v=3" defer></script>\n';
             if (!raw.includes(Buffer.from('/pwa-install.js'))) injectStr += '<script src="/pwa-install.js" defer></script>\n';
             if (!raw.includes(Buffer.from('name="viewport"'))) {
               injectStr += '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">\n';

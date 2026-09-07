@@ -91,9 +91,16 @@ body {
   opacity: .98 !important;
 }
 
-:where(#_agree_footer, #_agree_footer a) {
-  color: rgba(226, 232, 240, .52) !important;
+:where(#_agree_footer) {
+  color: rgba(226, 232, 240, .62) !important;
   font-size: .74rem !important;
+}
+
+/* Footer links must stay distinguishable from surrounding text (a11y):
+   accent color plus an underline, not color alone. */
+:where(#_agree_footer a) {
+  color: var(--t-ac, #b86cff) !important;
+  text-decoration: underline !important;
 }
 
 @media (max-width: 720px) {
