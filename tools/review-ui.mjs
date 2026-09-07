@@ -119,6 +119,19 @@ for (const width of [320, 390, 430]) {
   await page.locator('#chat-back-btn').click();
 }
 await page.goto('http://127.0.0.1:4317/');
+for (const width of [1024, 1440, 1920]) {
+  await page.setViewportSize({ width, height: 1000 });
+  const bar = await page.locator('.home-masthead').evaluate(el => {
+    const box = el.getBoundingClientRect();
+    const content = document.querySelector('#mainpage').getBoundingClientRect();
+    const rail = document.querySelector('#member-side-rail').getBoundingClientRect();
+    const children = [...el.children].map(child => child.getBoundingClientRect()).filter(r => r.width && r.height);
+    return { left: box.left, width: box.width, bottom: box.bottom, contentTop: content.top, railTop: rail.top, childrenFit: children.every(r => r.left >= box.left && r.right <= box.right), overlaps: children.some((r, i) => children.slice(i + 1).some(b => Math.min(r.right, b.right) > Math.max(r.left, b.left) + 1 && Math.min(r.bottom, b.bottom) > Math.max(r.top, b.top) + 1)) };
+  });
+  if (Math.abs(bar.left) > 1 || Math.abs(bar.width - width) > 1 || bar.contentTop < bar.bottom - 1 || bar.railTop < bar.bottom - 1 || !bar.childrenFit || bar.overlaps) throw new Error('Desktop topbar regression: ' + JSON.stringify(bar));
+}
+await page.setViewportSize({ width: 1440, height: 1000 });
+await page.screenshot({ path: `${out}/homepage-topbar-desktop.png` });
 await page.keyboard.press('/');
 if (!(await page.locator('#home-search').evaluate(el => el === document.activeElement))) throw new Error('Search shortcut did not focus search');
 await page.locator('#home-search').fill('encrypted');
