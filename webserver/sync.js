@@ -111,30 +111,33 @@
     style.textContent = '@keyframes _sfadein{from{opacity:0}to{opacity:1}}';
     document.head.appendChild(style);
 
+    // Colors ride the --t-* theme tokens (set by theme.js) with dark fallbacks,
+    // so this dialog follows the light theme like the rest of the site.
     var overlay = document.createElement('div');
     overlay.id = '_sync_restored_overlay';
     overlay.innerHTML =
       '<div style="position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:999998;' +
         'display:flex;align-items:center;justify-content:center;' +
         'font-family:system-ui,sans-serif;animation:_sfadein .25s ease;">' +
-        '<div style="background:#1e1e1e;border:1px solid #444;border-radius:18px;' +
+        '<div style="background:var(--t-bg2,#1e1e1e);border:1px solid var(--t-bd,#444);border-radius:18px;' +
           'padding:2rem 2.5rem;max-width:400px;width:90%;text-align:center;' +
+          'color:var(--t-fg,#e8e6e3);' +
           'box-shadow:0 20px 60px rgba(0,0,0,.6);">' +
           '<div style="font-size:2rem;margin-bottom:.5rem;">☁</div>' +
-          '<div style="font-size:1.15rem;font-weight:700;color:#e8e6e3;margin-bottom:.4rem;">' +
+          '<div style="font-size:1.15rem;font-weight:700;color:var(--t-fg,#e8e6e3);margin-bottom:.4rem;">' +
             'Restore from MitchSync?' +
           '</div>' +
-          '<div style="font-size:.8rem;color:#888;margin-bottom:.35rem;">Saved ' + savedDate + '</div>' +
-          '<div style="font-size:.82rem;color:#aaa;margin-bottom:1.6rem;">' + detail + '</div>' +
-          '<div style="font-size:.75rem;color:#666;margin-bottom:1.2rem;">' +
+          '<div style="font-size:.8rem;color:var(--t-fg2,#888);margin-bottom:.35rem;">Saved ' + savedDate + '</div>' +
+          '<div style="font-size:.82rem;color:var(--t-fg2,#aaa);margin-bottom:1.6rem;">' + detail + '</div>' +
+          '<div style="font-size:.75rem;color:var(--t-fg2,#666);margin-bottom:1.2rem;">' +
             'If you choose No, the MitchSync save will be overwritten with your current data.' +
           '</div>' +
           '<div style="display:flex;gap:10px;justify-content:center;">' +
-            '<button id="_sync_no" style="flex:1;padding:.6rem 1rem;background:#333;color:#aaa;' +
-              'border:1px solid #555;border-radius:9px;font-size:.88rem;font-weight:600;cursor:pointer;">' +
+            '<button id="_sync_no" style="flex:1;padding:.6rem 1rem;background:var(--t-bg3,#333);color:var(--t-fg2,#aaa);' +
+              'border:1px solid var(--t-bd,#555);border-radius:9px;font-size:.88rem;font-weight:600;cursor:pointer;">' +
               'No, keep current' +
             '</button>' +
-            '<button id="_sync_yes" style="flex:1;padding:.6rem 1rem;background:#81b64c;color:#fff;' +
+            '<button id="_sync_yes" style="flex:1;padding:.6rem 1rem;background:var(--t-gr,#81b64c);color:#fff;' +
               'border:none;border-radius:9px;font-size:.88rem;font-weight:700;cursor:pointer;">' +
               'Yes, restore' +
             '</button>' +

@@ -314,8 +314,10 @@
     var s = document.createElement('style');
     s.id = 'sw-notif-styles';
     s.textContent = 
-      /* shared top-right toolbar */
-      '#site-topbar { position: fixed; top: 10px; right: 12px; z-index: 1000001; display: flex; align-items: center; gap: 6px; overflow: visible; }' +
+      /* shared top-right toolbar — only when we built the toolbar ourselves.
+         A #site-topbar we didn't create (e.g. the home masthead renamed by
+         app-shell.js) is a real nav bar and must keep its own layout. */
+      '#site-topbar.sw-standalone { position: fixed; top: 10px; right: 12px; z-index: 1000001; display: flex; align-items: center; gap: 6px; overflow: visible; }' +
       '#sw-notif-wrap { position: relative; display: inline-flex; align-items: center; overflow: visible; isolation: isolate; }' +
       '#sw-notif-btn {' +
       '  width: 36px !important; height: 36px !important; min-width: 36px !important; min-height: 36px !important;' +
@@ -415,11 +417,17 @@
 
   function injectNotifHTML() {
     if (document.getElementById('sw-notif-wrap')) return;
-    // Create shared topbar if not already present
+    // Mount into the shared topbar when one exists. Pages with the full
+    // app topbar get the bell inline (a floating toolbar would cover the
+    // account link); only fall back to our own floating toolbar otherwise.
     var topbar = document.getElementById('site-topbar');
+    if (!topbar && document.getElementById('app-topbar')) {
+      topbar = document.getElementById('app-topbar');
+    }
     if (!topbar) {
       topbar = document.createElement('div');
       topbar.id = 'site-topbar';
+      topbar.className = 'sw-standalone';
       document.body.appendChild(topbar);
     }
     var wrap = document.createElement('div');
