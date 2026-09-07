@@ -11,7 +11,7 @@
     { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
     { href: '/games/', label: 'Games', icon: '◆', match: function (p) { return p.indexOf('/games') === 0; } },
     { href: '/members/', label: 'Members', icon: '●', match: function (p) { return p.indexOf('/members') === 0 || p.indexOf('/friends') === 0 || p.indexOf('/profile') === 0; } },
-    { href: '/bell/', label: 'Bell', icon: '◷', match: function (p) { return p.indexOf('/bell') === 0; } },
+    { href: 'https://rjuhsd.school/', label: 'Bell', icon: '◷', match: function () { return false; } },
     { href: '/shop/', label: 'Shop', icon: '▣', match: function (p) { return p.indexOf('/shop') === 0 || p.indexOf('/marketplace') === 0; } },
     { href: '/preferences/', label: 'Settings', icon: '⚙', match: function (p) { return p.indexOf('/preferences') === 0; } }
   ];
@@ -19,7 +19,7 @@
   var NAV_RJUHSD = [
     { href: '/', label: 'Home', icon: '⌂', match: function (p) { return p === '/' || p === '/index.html'; } },
     { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
-    { href: '/bell/', label: 'Bell', icon: '◷', match: function (p) { return p.indexOf('/bell') === 0; } },
+    { href: '/#schedule-panel', label: 'Bell', icon: '◷', match: function () { return false; } },
     { href: '/preferences/', label: 'Settings', icon: '⚙', match: function (p) { return p.indexOf('/preferences') === 0; } }
   ];
 
@@ -92,7 +92,7 @@
     menu.setAttribute('aria-labelledby', 'mobile-menu-title');
     menu.innerHTML = '<header><h2 id="mobile-menu-title">mitch.pro</h2><button type="button" aria-label="Close menu">×</button></header><nav aria-label="All sections"></nav>';
     var links = menu.querySelector('nav');
-    [['/profile/', 'My profile'], ['/preferences/', 'Customizer'], ['/friends/', 'Friends'], ['/shop/', 'Shop'], ['/marketplace/', 'Marketplace'], ['/inventory/', 'Inventory'], ['/leaderboard/', 'Leaderboard'], ['/bell/', 'Bell schedule'], ['/public-chat/', 'Public chat'], ['/canvas/', 'Canvas'], ['/vms/', 'VM Lab'], ['/notifications/', 'Notifications'], ['/blog/', 'Blog'], ['/invite/', 'Invite friends'], ['/feedback/', 'Feedback'], ['/faq/', 'Help']].forEach(function (item) {
+    [['/profile/', 'My profile'], ['/preferences/', 'Customizer'], ['/friends/', 'Friends'], ['/shop/', 'Shop'], ['/marketplace/', 'Marketplace'], ['/inventory/', 'Inventory'], ['/leaderboard/', 'Leaderboard'], ['https://rjuhsd.school/', 'Bell schedule'], ['/public-chat/', 'Public chat'], ['/canvas/', 'Canvas'], ['/vms/', 'VM Lab'], ['/notifications/', 'Notifications'], ['/blog/', 'Blog'], ['/invite/', 'Invite friends'], ['/feedback/', 'Feedback'], ['/faq/', 'Help']].forEach(function (item) {
       var link = document.createElement('a'); link.href = item[0]; link.textContent = item[1]; links.appendChild(link);
     });
     more.addEventListener('click', function () { menu.showModal(); });

@@ -76,6 +76,10 @@ function showBannedPopup(reason) {
 
 function launchSite(type, href) {
   href = href || '/';
+  if (/^https:\/\/rjuhsd\.school(?:[/?#]|$)/i.test(href)) {
+    window.location.href = href;
+    return;
+  }
   var displayPrefs = {};
   try { displayPrefs = JSON.parse(localStorage.getItem('_prefDisplay') || '{}'); } catch(e) {}
   if (displayPrefs.gameLaunch === 'tab') {
@@ -272,6 +276,13 @@ function parseSites(text) {
     var href = parts[1];
     var label = parts.slice(2).join(' ');
     if (!label) continue;
+    try {
+      var destination = new URL(href, location.href);
+      if (/^\/(?:rjuhsd\/)?bell(?:\.html?|\/(?:index(?:\.html?)?\/?)?)?$/i.test(destination.pathname) || /bell\s+schedules?/i.test(label)) {
+        href = 'https://rjuhsd.school/' + destination.search;
+        type = 'url';
+      }
+    } catch (e) {}
 
     var cat = categoryForLabel(label, isAdmin);
     var entry = { type: type, href: href, label: label, isAdmin: isAdmin, category: cat };
@@ -661,7 +672,7 @@ function updatePopularLaunches() {
     '/public-chat/', '/public-chat',
     '/marketplace/', '/marketplace',
     '/tabs/', '/tabs',
-    '/bell/', '/bell',
+    'https://rjuhsd.school/', 'https://rjuhsd.school',
     '/games/adrian-clicker/', '/games/adrian-clicker',
     '/games/kodys-keyboard/', '/games/kodys-keyboard',
     '/games/lillians-logic/', '/games/lillians-logic',
@@ -3347,7 +3358,7 @@ if (document.readyState === 'loading') {
 <body data-shell="off" class="home">
 <nav class="home-masthead" aria-label="Primary">
   <a class="home-wordmark" href="/" aria-label="mitch.pro home"><img class="site-logo" src="/icon-192.png" alt="" width="35" height="35">mitch<span>.pro</span></a>
-  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/encrypt/">Chat</a><a href="/game-portal/">Games</a><a href="/members/">People</a><a href="/bell/">Schedule</a></div>
+  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/encrypt/">Chat</a><a href="/game-portal/">Games</a><a href="/members/">People</a><a href="https://rjuhsd.school/">Schedule</a></div>
   <a class="home-account-link" href="/profile/">My account <span aria-hidden="true">↗</span></a>
 </nav>
 
@@ -3547,7 +3558,7 @@ if (document.readyState === 'loading') {
       <article class="home-day-card home-bell-card">
         <header class="home-card-head">
           <div><small>Woodcreek High School</small><h3>Today’s bell schedule</h3></div>
-          <a class="home-official-link" href="https://woodcreek.rjuhsd.us/about/bell-schedules" target="_blank" rel="noopener">Official schedule ↗</a>
+          <a class="home-official-link" href="https://rjuhsd.school/">rjuhsd.school ↗</a>
         </header>
         <div class="home-bell-hero">
           <div><span class="home-live-pill" id="home-bell-state"><i></i> CHECKING</span><strong id="home-bell-current">Checking today’s schedule</strong><small id="home-bell-countdown">Pacific time</small></div>
@@ -3556,7 +3567,7 @@ if (document.readyState === 'loading') {
             <button type="button" id="home-second-lunch">2nd lunch</button>
           </div>
         </div>
-        <a class="home-bell-cta" href="/bell/" onclick="openHomeHref(event, '/bell/');"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.8"/></svg>Open the bell schedule</a>
+        <a class="home-bell-cta" href="https://rjuhsd.school/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.8"/></svg>Open the bell schedule</a>
         <div class="home-schedule-heading"><button type="button" id="home-day-prev" aria-label="Previous day">‹</button><span><b id="home-schedule-label">Today</b><small id="home-bell-note">Loading schedule</small></span><button type="button" id="home-day-next" aria-label="Next day">›</button></div>
         <ol class="home-periods" id="home-periods"></ol>
         <footer><span id="home-bell-footer">Periods only — no personal class data</span></footer>
