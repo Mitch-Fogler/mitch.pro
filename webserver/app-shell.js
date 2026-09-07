@@ -291,6 +291,11 @@
     ensurePortalStyles();
     enhanceMobileShell();
     enhanceInterface();
+    if (!IS_RJUHSD && !document.querySelector('script[src^="/mitch-coins.js"]')) {
+      var coins = document.createElement('script');
+      coins.src = '/mitch-coins.js?v=1';
+      document.head.appendChild(coins);
+    }
     if (!shouldInject()) {
       window.MitchShell = { ready: true, injected: false };
       return;

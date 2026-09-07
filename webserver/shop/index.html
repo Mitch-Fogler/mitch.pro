@@ -394,7 +394,7 @@
     </div>
     <div class="panel balance-panel">
       <div class="balance-label">Your Balance</div>
-      <div class="balance-value"><span id="balance">...</span> coins</div>
+      <div class="balance-value mitch-coin-amount"><span id="balance">...</span> <small>MitchCoins</small></div>
       <div class="state-row">
         <span class="pill" id="premium-pill">checking premium</span>
         <span class="pill" id="admin-pill" style="display:none;">admin owns all</span>
@@ -611,7 +611,7 @@
         </div>
         <div>
           <div class="price-row">
-            <div class="price">${priceHtml(item)} coins</div>
+            <div class="price mitch-coin-price">${priceHtml(item)} <small>MitchCoins</small></div>
           </div>
           <button class="btn-buy ${primary ? 'primary' : ''} ${active ? 'active' : ''}" data-item="${esc(item.id)}" ${disabled ? 'disabled' : ''}>
             ${buttonLabel(item, owned, active)}
@@ -906,7 +906,7 @@
         <div>${expl}</div>
       </div>
       <div class="modal-actions">
-        <div class="price" style="font-size: 1.35rem;">${priceHtml(item)} coins</div>
+        <div class="price mitch-coin-price" style="font-size: 1.35rem;">${priceHtml(item)} <small>MitchCoins</small></div>
         <div style="flex-grow: 1; max-width: 12.5rem;">
           <button class="btn-buy ${item.type === 'premium' || (!owned && !locked(item)) ? 'primary' : ''} ${active ? 'active' : ''}" 
                   onclick="handleModalBuy('${esc(item.id)}')" 
