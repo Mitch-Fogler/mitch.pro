@@ -132,6 +132,11 @@ for (const width of [1024, 1440, 1920]) {
 }
 await page.setViewportSize({ width: 1440, height: 1000 });
 await page.screenshot({ path: `${out}/homepage-topbar-desktop.png` });
+if (await page.locator('#site-topbar').count() !== 1) throw new Error('Duplicate homepage topbars');
+await page.locator('#sw-notif-btn').click();
+const notificationBounds = await page.locator('#sw-notif-panel').evaluate(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: innerWidth }; });
+if (notificationBounds.left < 0 || notificationBounds.right > notificationBounds.width) throw new Error('Notification panel escaped viewport');
+await page.locator('#sw-notif-close').click();
 await page.keyboard.press('/');
 if (!(await page.locator('#home-search').evaluate(el => el === document.activeElement))) throw new Error('Search shortcut did not focus search');
 await page.locator('#home-search').fill('encrypted');

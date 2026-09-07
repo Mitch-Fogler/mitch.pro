@@ -56,7 +56,7 @@
         floatBar.remove();
       }
       homeBar.id = 'site-topbar';
-      ['theme-btn', 'sw-notif-btn'].forEach(function (id) { var control = document.getElementById(id); if (control) homeBar.appendChild(control); });
+      ['theme-btn', 'sw-notif-wrap'].forEach(function (id) { var control = document.getElementById(id); if (control) homeBar.appendChild(control); });
     }
     var style = document.createElement('link');
     style.rel = 'stylesheet';
@@ -299,6 +299,11 @@
     var bar = buildTopbar();
     var body = document.body;
     body.insertBefore(bar, body.firstChild);
+    var floating = document.querySelector('#site-topbar.sw-standalone');
+    if (floating) {
+      while (floating.firstChild) bar.appendChild(floating.firstChild);
+      floating.remove();
+    }
     if (!body.classList.contains('app-shell')) {
       body.classList.add('app-shell');
     }
