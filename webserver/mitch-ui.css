@@ -30,6 +30,19 @@ body.mitch-design.mitch-next #app-topbar .app-nav a[aria-current] {
 }
 body.mitch-design.mitch-next #app-topbar .app-nav a:hover { background: var(--t-bg3) !important; }
 body.mitch-next .site-logo { border-radius: 10px; }
+body.home.mitch-design.mitch-next #site-topbar.home-masthead {
+  position: sticky !important; top: 0 !important; left: 0 !important; right: auto !important;
+  width: 100% !important; max-width: none !important; margin: 0 !important;
+  display: flex !important; align-items: center !important; justify-content: flex-start !important;
+  gap: clamp(8px, 1.8vw, 24px) !important; transform: none !important; border-radius: 0 !important;
+  z-index: 100;
+}
+body.home.mitch-next #site-topbar .home-masthead-links { flex: 1; min-width: 0; }
+body.home.mitch-next #site-topbar :is(#theme-btn, #sw-notif-btn) { position: static !important; flex: 0 0 38px; margin: 0 !important; }
+@media (min-width: 761px) {
+  body.home.mitch-design.mitch-next #site-topbar.home-masthead { padding-inline: max(24px, calc((100vw - 1280px) / 2)) !important; }
+  body.home.mitch-next #member-side-rail { top: 80px !important; max-height: calc(100dvh - 92px); }
+}
 html body.mitch-design.mitch-next :is(.panel, .card, .glass-card, .cpanel, .pref-section, .stat-card, .mod-card, .action-card, .listing-item, .item-card, .member-card, .friend-card, .notif-card, .plan-card, .home-day-card, .hud-pane-aside, .profile-card, .balance-card, .rank-overview) {
   border-color: var(--next-edge) !important; border-radius: max(14px, var(--t-radius)) !important;
   background: linear-gradient(145deg, color-mix(in srgb, var(--t-ac) 5%, transparent), transparent 55%), var(--next-panel) !important;
