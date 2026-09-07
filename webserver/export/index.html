@@ -427,7 +427,7 @@ function fmtBytes(n) {
 
 function fmtTs(ts) {
   if (!ts) return null;
-  return new Date(ts).toLocaleString();
+  return new Date(ts).toLocaleString('en-US', { hour12: true });
 }
 
 function getLocalData() {

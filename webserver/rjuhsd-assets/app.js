@@ -49,7 +49,7 @@ function applySchoolIdentity(){
 let lunch=saved("rjuhsd_lunch_"+school,"1"),data=buildData(),calendarCursor;
 function pacific(){const p=Object.fromEntries(new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false}).formatToParts(new Date()).map(x=>[x.type,x.value]));return{date:`${p.year}-${p.month}-${p.day}`,minutes:(+p.hour%24)*60+(+p.minute),seconds:+p.second}}
 function mins(v){if(!v)return 0;const[h,m]=v.split(":").map(Number);return h*60+m}
-function time(v){if(!v)return"—";let[h,m]=v.split(":").map(Number),s=h>=12?"PM":"AM";if(h>12)h-=12;return`${h}:${String(m).padStart(2,"0")} ${s}`}
+function time(v){if(!v)return"—";let[h,m]=v.split(":").map(Number),s=h>=12?"PM":"AM";h=h%12||12;return`${h}:${String(m).padStart(2,"0")} ${s}`}
 function schedule(){if(data.today?.oneLunch)return data.today?.lunch1||data.today?.lunch2||[];return(lunch==="2"?data.today?.lunch2:data.today?.lunch1)||[]}
 function duration(a,b){const n=Math.max(0,mins(b)-mins(a));return`${Math.floor(n/60)}h ${n%60}m`}
 function toast(msg){const e=$("toast");e.textContent=msg;e.classList.add("show");clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove("show"),2200)}

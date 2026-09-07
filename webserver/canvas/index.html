@@ -1779,7 +1779,7 @@ function updateAdminPanel(wx, wy, fromClick) {
   if (d) {
     const who = d.email || d.painter;
     document.getElementById('adm-painter').innerHTML = `<b>${d.email ? 'email' : 'painter'}</b> ${who}`;
-    document.getElementById('adm-time').innerHTML = `<b>painted</b> ${new Date(d.ts).toLocaleString()}`;
+    document.getElementById('adm-time').innerHTML = `<b>painted</b> ${new Date(d.ts).toLocaleString('en-US', { hour12: true })}`;
     document.getElementById('adm-color').innerHTML = `<b>color</b> <span style="display:inline-block;width:10px;height:10px;background:${d.color};border:1px solid #555;vertical-align:middle;border-radius:2px"></span> ${d.color}`;
     document.getElementById('adm-ban-btn').disabled = false;
   } else {

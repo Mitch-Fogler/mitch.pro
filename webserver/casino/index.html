@@ -866,7 +866,7 @@
     $("#history").innerHTML = history.map(function (h) {
       var amount = Number(h.amount || 0);
       var sign = amount > 0 ? "+" : "";
-      var date = h.ts ? new Date(h.ts).toLocaleString() : "";
+      var date = h.ts ? new Date(h.ts).toLocaleString('en-US', { hour12: true }) : "";
       return '<div class="hist"><div><strong>' + esc(h.game || "Casino") + '</strong><span>' +
         esc(h.outcome || "") + " " + esc(date) + '</span></div><strong class="' + tone(amount) + '">' +
         sign + coins(amount) + '</strong></div>';

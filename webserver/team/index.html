@@ -593,7 +593,7 @@ function fmtDate(iso) {
   try {
     const d = new Date(iso), now = new Date();
     if (d.toDateString() === now.toDateString())
-      return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+      return d.toLocaleTimeString('en-US', {hour12:true,hour:'2-digit',minute:'2-digit'});
     if (d.getFullYear() === now.getFullYear())
       return d.toLocaleDateString([], {month:'short',day:'numeric'});
     return d.toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'});
@@ -894,7 +894,7 @@ function openEmail(uid) {
   document.getElementById('v-subject').textContent = m.subject || '(no subject)';
   document.getElementById('v-from').textContent = m.fromName ? `${m.fromName} <${m.from}>` : (m.from || '');
   document.getElementById('v-to').textContent = m.to || 'support@mitch.pro';
-  document.getElementById('v-date').textContent = m.date ? new Date(m.date).toLocaleString() : '';
+  document.getElementById('v-date').textContent = m.date ? new Date(m.date).toLocaleString('en-US', { hour12: true }) : '';
   document.getElementById('uid-tag').textContent = `uid ${uid}`;
 
   setHandledUI(m.handled);
@@ -1050,7 +1050,7 @@ async function sendGmailReply() {
     const wrap = document.getElementById('thread-wrap');
     const bubble = document.createElement('div');
     bubble.className = 'msg-bubble out';
-    bubble.innerHTML = `<div class="msg-meta">mitchell.fogler@student.mitch.pro · ${new Date().toLocaleString()}</div><div class="msg-body">${esc(sentBody)}</div>`;
+    bubble.innerHTML = `<div class="msg-meta">mitchell.fogler@student.mitch.pro · ${new Date().toLocaleString('en-US', { hour12: true })}</div><div class="msg-body">${esc(sentBody)}</div>`;
     wrap.appendChild(bubble);
     wrap.scrollTop = wrap.scrollHeight;
     document.getElementById('reply-text').value = '';

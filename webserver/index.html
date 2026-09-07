@@ -865,7 +865,6 @@ function loadGreeting() {
 
   var _homePrefG = {};
   try { _homePrefG = JSON.parse(localStorage.getItem('_prefHomepage') || '{}'); } catch(e) {}
-  var _clockFmt = _homePrefG.clockFormat || '12';
   var _greetName = _homePrefG.greetingName || '';
 
   function tick() {
@@ -874,12 +873,8 @@ function loadGreeting() {
     var greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     if (greetEl) greetEl.textContent = greeting + ',';
     var mm = String(now.getMinutes()).padStart(2,'0');
-    if (_clockFmt === '24') {
-      clockEl.textContent = String(h).padStart(2,'0') + ':' + mm;
-    } else {
-      var hh = h % 12 || 12, ampm = h < 12 ? 'AM' : 'PM';
-      clockEl.textContent = hh + ':' + mm + ' ' + ampm;
-    }
+    var hh = h % 12 || 12, ampm = h < 12 ? 'AM' : 'PM';
+    clockEl.textContent = hh + ':' + mm + ' ' + ampm;
     if (gamesDayEl) {
       gamesDayEl.textContent = now.toLocaleDateString(undefined, {
         weekday: 'long',
