@@ -186,8 +186,11 @@ body.dark .event-content h3,body.dark .board-heading h3,body.dark .snapshot stro
   .site-header { width:100%; height:58px; }
   .brand-copy strong { font-size:13px; }
   .brand-copy small { font-size:9px; }
-  .hero { display:block; padding:34px 20px 0; }
-  .hero-content { padding-bottom:28px; }
+  /* Bell schedule first: stack the hero as flex and pull the live countdown
+     card above the headline so it's visible without scrolling on phones. */
+  .hero { display:flex; flex-direction:column; padding:20px 20px 0; }
+  .live-card { order:-1; margin-top:0; }
+  .hero-content { order:1; padding-bottom:28px; margin-top:22px; }
   .hero h1 { font-size:35px; letter-spacing:-1px; }
   .hero-actions { flex-direction:row; }
   .live-card { margin:0 -20px; border-left:0; border-top:1px solid rgba(255,255,255,.25); }

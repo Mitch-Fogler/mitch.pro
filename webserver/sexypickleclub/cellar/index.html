@@ -3120,13 +3120,34 @@ async function send() {
 
       const fd = new FormData();
       fd.append('file', fileToUpload, fallbackMode ? (imageToSend.file.name || 'attachment') : 'blob.enc');
-      const upRes = await fetch('/api/dm/attachment/upload', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'X-Mitch-Requested-With': '1' },
-        body: fd
-      });
-      const upData = await upRes.json().catch(() => ({}));
+      // During a CD restart the backend is unreachable for a few seconds and
+      // nginx answers with its own HTML error page. Retry those blips; a real
+      // API response (JSON body — quota, size limit, server error) is never
+      // retried, so the error handling below stays authoritative.
+      let upRes = null;
+      let upData = null;
+      for (let attempt = 0; attempt < 4; attempt++) {
+        if (attempt) await new Promise(r => setTimeout(r, 1200 * attempt));
+        try {
+          upRes = await fetch('/api/dm/attachment/upload', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'X-Mitch-Requested-With': '1' },
+            body: fd
+          });
+        } catch (_) { upRes = null; continue; }
+        upData = await upRes.json().catch(() => null);
+        if (upRes.ok || upData) break;
+      }
+      if (!upRes) {
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          sendBtn.innerHTML = origHtml;
+        }
+        toast('Failed to upload attachment.');
+        return;
+      }
+      if (!upData) upData = {};
       if (!upRes.ok || !upData.success) {
         if (sendBtn) {
           sendBtn.disabled = false;
