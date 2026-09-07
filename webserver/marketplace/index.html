@@ -309,7 +309,7 @@
     </div>
     <div class="market-wallet" aria-label="Your marketplace balance">
       <span>Available balance</span>
-      <strong><b id="myCoins">0.00</b> <small>MitchCoins</small></strong>
+      <strong class="mitch-coin-amount"><b id="myCoins">—</b> <small>MitchCoins</small></strong>
       <a href="/shop/">Open shop →</a>
     </div>
   </header>
@@ -534,7 +534,7 @@
           ${statusTag}
           <div class="listing-header">
             <span class="listing-title">${esc(itemLabel)}</span>
-            <span class="listing-price">${Number(l.price || 0).toLocaleString()} Coins</span>
+            <span class="listing-price mitch-coin-price">${Number(l.price || 0).toLocaleString()} MitchCoins</span>
           </div>
           ${displayTag}
           <p class="listing-desc">${esc(l.description || 'Virtual shop cosmetic trade.')}</p>
