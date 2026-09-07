@@ -79,6 +79,42 @@
     font-size: 0.9rem;
     line-height: 1.55;
   }
+  /* Status board: what day/school/lunch the live view is locked to */
+  .bell-day-board {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+  }
+  .bell-day-board > div {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: var(--radius);
+    padding: 0.6rem 0.9rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .bell-day-board span {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--t-fg2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .bell-day-board strong {
+    font-size: 0.92rem;
+    letter-spacing: -0.01em;
+  }
+  .bell-day-date #autoFullDate {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 0.72rem;
+  }
+  @media (max-width: 640px) {
+    .bell-day-board { grid-template-columns: 1fr; }
+  }
   .lunch-selector {
     display: flex;
     justify-content: space-between;
