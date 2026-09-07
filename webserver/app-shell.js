@@ -42,6 +42,82 @@
     (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
   }
 
+  function enhanceMobileShell() {
+    if (IS_RJUHSD || location.pathname.indexOf('/rjuhsd/') === 0 || document.getElementById('mobile-dock')) return;
+    document.body.classList.add('mitch-next');
+    var homeBar = document.querySelector('.home-masthead');
+    if (homeBar) {
+      homeBar.id = 'site-topbar';
+      ['theme-btn', 'sw-notif-btn'].forEach(function (id) { var control = document.getElementById(id); if (control) homeBar.appendChild(control); });
+    }
+    var style = document.createElement('link');
+    style.rel = 'stylesheet';
+    style.href = '/mitch-ui.css?v=1';
+    document.head.appendChild(style);
+    var paths = {
+      home: '<path d="m3 10 9-7 9 7v10H3Z"/><path d="M9 20v-7h6v7"/>',
+      games: '<path d="M7 7h10c3 0 5 11 3 12-2 1-5-3-5-3H9s-3 4-5 3C2 18 4 7 7 7Z"/><path d="M7 10v5m-2-2h4m6-2h.01M18 14h.01"/>',
+      chat: '<path d="M4 4h16v12H9l-5 4Z"/><path d="M8 8h8M8 12h5"/>',
+      people: '<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m2-16a3 3 0 0 1 0 6m1 3a5 5 0 0 1 3 5v2"/>',
+      more: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>'
+    };
+    function icon(name) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + paths[name] + '</svg>'; }
+    var dock = document.createElement('nav');
+    dock.id = 'mobile-dock';
+    dock.setAttribute('aria-label', 'Mobile navigation');
+    [['/', 'Home', 'home'], ['/game-portal/', 'Games', 'games'], ['/encrypt/', 'Chat', 'chat'], ['/members/', 'People', 'people']].forEach(function (item) {
+      var link = document.createElement('a');
+      link.href = item[0];
+      link.innerHTML = icon(item[2]) + '<span>' + item[1] + '</span>';
+      var path = currentPath();
+      if (path === item[0].replace(/\/$/, '') || (item[0] === '/' && path === '/') || (item[2] === 'games' && /^\/(games|game-portal|msn-games)/.test(path)) || (item[2] === 'chat' && /^\/(encrypt|public-chat)/.test(path))) link.setAttribute('aria-current', 'page');
+      dock.appendChild(link);
+    });
+    var more = document.createElement('button');
+    more.type = 'button';
+    more.innerHTML = icon('more') + '<span>More</span>';
+    more.setAttribute('aria-haspopup', 'dialog');
+    more.setAttribute('aria-controls', 'mobile-menu');
+    dock.appendChild(more);
+    var menu = document.createElement('dialog');
+    menu.id = 'mobile-menu';
+    menu.setAttribute('aria-labelledby', 'mobile-menu-title');
+    menu.innerHTML = '<header><h2 id="mobile-menu-title">mitch.pro</h2><button type="button" aria-label="Close menu">×</button></header><nav aria-label="All sections"></nav>';
+    var links = menu.querySelector('nav');
+    [['/profile/', 'My profile'], ['/preferences/', 'Customizer'], ['/friends/', 'Friends'], ['/shop/', 'Shop'], ['/marketplace/', 'Marketplace'], ['/inventory/', 'Inventory'], ['/leaderboard/', 'Leaderboard'], ['/bell/', 'Bell schedule'], ['/public-chat/', 'Public chat'], ['/canvas/', 'Canvas'], ['/vms/', 'VM Lab'], ['/notifications/', 'Notifications'], ['/blog/', 'Blog'], ['/invite/', 'Invite friends'], ['/feedback/', 'Feedback'], ['/faq/', 'Help']].forEach(function (item) {
+      var link = document.createElement('a'); link.href = item[0]; link.textContent = item[1]; links.appendChild(link);
+    });
+    more.addEventListener('click', function () { menu.showModal(); });
+    menu.querySelector('button').addEventListener('click', function () { menu.close(); });
+    menu.addEventListener('click', function (event) { if (event.target === menu) { var box = menu.getBoundingClientRect(); if (event.clientY < box.top || event.clientY > box.bottom || event.clientX < box.left || event.clientX > box.right) menu.close(); } });
+    menu.addEventListener('close', function () { more.focus(); });
+    var mobile = matchMedia('(max-width: 760px)');
+    mobile.addEventListener('change', function () { if (!mobile.matches && menu.open) menu.close(); });
+    document.body.appendChild(dock);
+    document.body.appendChild(menu);
+    if (window.visualViewport) {
+      function syncMobileKeyboard() {
+        var editing = document.activeElement && document.activeElement.matches('input, textarea, [contenteditable="true"]');
+        document.body.classList.toggle('mobile-keyboard', !!editing && innerHeight - visualViewport.height > 140);
+      }
+      visualViewport.addEventListener('resize', syncMobileKeyboard);
+      document.addEventListener('focusin', syncMobileKeyboard);
+      document.addEventListener('focusout', function () { setTimeout(syncMobileKeyboard, 0); });
+    }
+    var profile = document.getElementById('member-profile-panel');
+    if (profile) {
+      var close = document.createElement('button');
+      close.className = 'chat-profile-close'; close.type = 'button'; close.textContent = 'Close details';
+      close.addEventListener('click', function () {
+        document.body.classList.remove('chat-details-open');
+        var trigger = document.getElementById('chat-details-btn');
+        if (trigger) { trigger.setAttribute('aria-expanded', 'false'); trigger.focus(); }
+      });
+      profile.prepend(close);
+      new MutationObserver(function () { if (!profile.contains(close)) profile.prepend(close); }).observe(profile, { childList: true });
+    }
+  }
+
   function ensureViewport() {
     var current = document.querySelector('meta[name="viewport"]');
     if (current) {
@@ -205,6 +281,7 @@
     ensureFonts();
     ensureRelaunchStyles();
     ensurePortalStyles();
+    enhanceMobileShell();
     enhanceInterface();
     if (!shouldInject()) {
       window.MitchShell = { ready: true, injected: false };
