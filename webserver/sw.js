@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v30';
+const CACHE_NAME = 'mitch-pro-cache-v31';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -32,6 +32,12 @@ self.addEventListener('activate', (e) => {
       );
     }).then(() => self.clients.claim())
   );
+});
+
+// Pages can push a version bump through immediately: postMessage({type:'SKIP_WAITING'})
+// moves a waiting worker into control (activate's cleanup then purges old caches).
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 function isHtmlRequest(request) {

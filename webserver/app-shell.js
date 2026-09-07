@@ -1,6 +1,33 @@
 (function () {
   'use strict';
 
+  // ── Service worker freshness ────────────────────────────────────────────────
+  // The SW keeps caching on (network-first for pages/code, cache-first for
+  // media) but a phone can sit on an old worker whose cache predates the
+  // current site. Navigation-triggered update checks are throttled by
+  // browsers, so every page that runs the app shell forces one: register the
+  // worker (updateViaCache:'none' bypasses the HTTP cache for the script
+  // itself), call update() on load and every 30 minutes, and reload once when
+  // a freshly deployed worker takes control so the page refetches through it.
+  if ('serviceWorker' in navigator) {
+    var seenSW;
+    try { seenSW = JSON.parse(sessionStorage.getItem('sw-scripts') || '{}'); } catch (_) { seenSW = {}; }
+    if (navigator.serviceWorker.controller) seenSW[navigator.serviceWorker.controller.scriptURL] = 1;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      var s = navigator.serviceWorker.controller;
+      if (!s || seenSW[s.scriptURL]) return;
+      seenSW[s.scriptURL] = 1;
+      try { sessionStorage.setItem('sw-scripts', JSON.stringify(seenSW)); } catch (_) {}
+      location.reload();
+    });
+    navigator.serviceWorker.register('/sw.js?v=11', { scope: '/', updateViaCache: 'none' })
+      .then(function (reg) {
+        try { reg.update(); } catch (_) {}
+        setInterval(function () { try { reg.update(); } catch (_) {} }, 30 * 60 * 1000);
+      })
+      .catch(function () {});
+  }
+
   // rjuhsd.school shares this webroot for its sub-apps (bell, chat,
   // preferences) — its topbar gets the school brand and only links that
   // exist there (the mitch-only sections 404 under that host).

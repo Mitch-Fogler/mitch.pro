@@ -4056,7 +4056,9 @@ async function premiumMaintenanceWorker() {
              console.log(`[premium] warning ${email} about inactivity (5d)`);
              const subject = "Urgent: Your mitch.pro Premium is about to expire";
              const html = makePremiumAlertHtml(email, subject, "Our records show you haven't logged in to mitch.pro for 5 days. If you do not log on in the next 2 days, your Premium status will be automatically revoked. Simply visit mitch.pro and log in to keep your perks!", siteUrl(email), "Login to mitch.pro");
-             spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), email, subject, html]);
+             // sendEmailBg routes school addresses through the Gmail script —
+             // support@mitch.pro via Hostinger SMTP bounces at rjuhsd.us.
+             sendEmailBg(email, subject, html);
              if (!stats[norm]) stats[norm] = {};
              stats[norm].last_premium_warn = now;
              statsChanged = true;
@@ -4112,7 +4114,9 @@ function sendPremiumEmailOffer(targetEmail) {
   const html = makePremiumAlertHtml(toEmail, subject, "Congratulations on getting Premium! As a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address! Claim yours now by submitting your application.", base + "/premium-email", "Claim Email Address");
   
   try {
-    spawn(process.execPath, [join(BASE, 'mail', 'support_send.js'), toEmail, subject, html]);
+    // Same deliverability rule as the expiry warning: school addresses must
+    // ride the Gmail script (sendEmailBg), not support@mitch.pro SMTP.
+    sendEmailBg(toEmail, subject, html);
     console.log(`[premium] Sent premium email offer to ${toEmail} (original target: ${targetEmail})`);
   } catch (e) {
     console.error(`[premium] Failed to send email offer to ${toEmail}: ${e.message}`);
@@ -21224,7 +21228,12 @@ function loadAllGamesList() {
 
         const agreeB = Buffer.from('<div id="_agree_footer" style="position:fixed;bottom:5px;left:0;right:0;text-align:center;pointer-events:none;z-index:2147483647;font-size:.65rem;color:rgba(255,255,255,.15);font-family:system-ui,sans-serif;letter-spacing:.01em;">By using mitch.pro you agree to the <a href="/use-agreement.html" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">use agreement<\/a> and <a href="/privacy.html" style="color:rgba(255,255,255,.15);pointer-events:all;" target="_blank">privacy policy<\/a>.<\/div>');
 
-        if (!raw.includes(Buffer.from('_agree_footer'))) {
+        // The chat app manages a full-viewport layout with its own bottom dock,
+        // and the fixed footer collides with it on phones — skip injecting it
+        // there on mitch hosts. rjuhsd.school/encrypt keeps the footer.
+        const isEncryptAppPage = path === '/encrypt' || path === '/encrypt/' || path === '/encrypt/index.html';
+        const isRjuhsdHost = reqHost === 'rjuhsd.school' || reqHost.endsWith('.rjuhsd.school');
+        if (!raw.includes(Buffer.from('_agree_footer')) && !(isEncryptAppPage && !isRjuhsdHost)) {
           const bi = raw.lastIndexOf(Buffer.from('<\/body>'));
           raw = bi >= 0
             ? Buffer.concat([raw.slice(0, bi), agreeB, raw.slice(bi)])

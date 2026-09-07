@@ -659,6 +659,10 @@
     var r = document.documentElement.style;
     document.documentElement.classList.toggle('theme-light', !!(t.light));
     document.documentElement.style.colorScheme = t.light ? 'light' : 'dark';
+    // Announce every application — not just toggles from the button this
+    // script builds — so pages that wire their own #theme-btn (rjuhsd hub)
+    // can re-sync their body class and icon after __theme.apply().
+    try { window.dispatchEvent(new CustomEvent('themechange', { detail: t.name })); } catch (_) {}
     applyCustomizationPrefs();
     r.setProperty('--t-bg',  t.bg);
     r.setProperty('--t-bg2', t.bg2);
@@ -823,8 +827,7 @@
       e.stopPropagation();
       var next = getCookie() === 'light' ? 'dark' : 'light';
       setCookie(next);
-      applyTheme(next);
-      window.dispatchEvent(new CustomEvent('themechange', { detail: next }));
+      applyTheme(next); // applyTheme dispatches the themechange event
     };
 
     var mounted = mountToggle(btn);
