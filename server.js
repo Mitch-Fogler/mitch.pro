@@ -18,6 +18,7 @@ import {
   rebuildCoreTablesFromDocuments,
 } from './lib/data_store.js';
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
+import { RJUHSD_ORIGIN, bellScheduleRedirect } from './lib/site_redirects.js';
 
 try {
   if (dns && dns.setDefaultResultOrder) {
@@ -5299,7 +5300,6 @@ function requestHost(req) {
 // ── rjuhsd.school: second site identity on this same server ──────────────────
 // Same accounts, same chats, same data — just a school-branded front door.
 const RJUHSD_DOMAIN = 'rjuhsd.school';
-const RJUHSD_ORIGIN = 'https://rjuhsd.school';
 
 // Every school in the Roseville Joint Union High School District (from the
 // district site, rjuhsd.us). The hub lets visitors pick theirs once and
@@ -7549,6 +7549,9 @@ async function handleRequest(req, server) {
   const url    = new URL(req.url);
   const path   = url.pathname;
   const method = req.method;
+
+  const bellRedirect = bellScheduleRedirect(url, method);
+  if (bellRedirect) return Response.redirect(bellRedirect, 302);
 
   const csrfFailure = csrfFailureIfUnsafe(req, path, method);
   if (csrfFailure) return csrfFailure;
@@ -20589,7 +20592,7 @@ function loadAllGamesList() {
             { src: "/rjuhsd-assets/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
           ],
           shortcuts: [
-            { name: "Bell Schedule", short_name: "Bells", description: "Live RJUHSD bell schedules", url: "/bell/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] },
+            { name: "Bell Schedule", short_name: "Bells", description: "Live RJUHSD bell schedules", url: "/?utm_source=pwa-shortcut#schedule-panel", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] },
             { name: "Encrypted Chat", short_name: "Chat", description: "Open end-to-end encrypted messages", url: "/encrypt/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] }
           ]
         };
