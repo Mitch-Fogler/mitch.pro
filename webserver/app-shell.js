@@ -47,6 +47,14 @@
     document.body.classList.add('mitch-next');
     var homeBar = document.querySelector('.home-masthead');
     if (homeBar) {
+      // broadcast.js builds its floating bell toolbar during parsing, before
+      // this deferred script runs — fold it into the masthead instead of
+      // leaving a second fixed #site-topbar stacked in the top-right corner.
+      var floatBar = document.getElementById('site-topbar');
+      if (floatBar && floatBar !== homeBar) {
+        while (floatBar.firstChild) homeBar.appendChild(floatBar.firstChild);
+        floatBar.remove();
+      }
       homeBar.id = 'site-topbar';
       ['theme-btn', 'sw-notif-btn'].forEach(function (id) { var control = document.getElementById(id); if (control) homeBar.appendChild(control); });
     }

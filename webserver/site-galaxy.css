@@ -326,7 +326,7 @@ pre, code, .code, .terminal, .log, .console {
 }
 
 #_agree_footer { color: var(--t-fg2) !important; }
-#_agree_footer a { color: var(--t-ac) !important; }
+#_agree_footer a { color: var(--t-ac) !important; text-decoration: underline !important; }
 
 @media (max-width: 900px) {
   .app-topbar { width: calc(100% - 16px) !important; margin-top: 8px !important; border-radius: 18px !important; }

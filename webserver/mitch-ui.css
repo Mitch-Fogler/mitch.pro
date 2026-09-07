@@ -199,7 +199,7 @@ body.mitch-design.mitch-next.encrypt-page .modal-card { background: var(--t-bg) 
   body.home.mitch-next .home-staff-rail { position: static !important; width: 100% !important; max-width: none !important; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; transform: none !important; }
   body.mitch-next #site-footer { position: static !important; width: 100%; padding: 18px 16px; }
   body.mitch-next #_agree_footer { position: static !important; width: 100%; padding: 18px 16px; font-size: 12px !important; line-height: 1.6; color: var(--t-fg2) !important; }
-  body.mitch-next #_agree_footer a { color: var(--t-fg2) !important; }
+  body.mitch-next #_agree_footer a { color: var(--t-ac) !important; text-decoration: underline !important; }
   html body.mitch-design.mitch-next.encrypt-page { padding: 0 !important; }
   body.mitch-design.mitch-next.encrypt-page :is(#app-topbar, #site-topbar) { display: none !important; }
   body.mitch-design.mitch-next.encrypt-page #app:not(.chat-active) { height: calc(var(--vvh, 100dvh) - var(--mobile-dock-space)) !important; max-height: calc(var(--vvh, 100dvh) - var(--mobile-dock-space)) !important; }
