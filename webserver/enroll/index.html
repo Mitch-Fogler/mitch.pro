@@ -22,6 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,400..800&amp;family=DM+Sans:opsz,wght@9..40,400..700&amp;family=IBM+Plex+Mono:wght@500;600&amp;display=swap" rel="stylesheet">
 <script src="/theme.js?v=11"></script>
 <script src="/api.js"></script>
+<script src="/vendor/simplewebauthn.browser.min.js?v=1" defer></script>
 
 <style>
   /* Enroll-only layout — tokens from theme.js (--t-*) */
@@ -586,6 +587,7 @@
         <a class="forgot-link" href="javascript:void(0)" onclick="switchTab('reset')">Forgot password?</a>
 
         <button id="login-btn" class="btn-primary" type="button" onclick="login()">Log In</button>
+        <button id="passkey-btn" class="btn-primary" type="button" onclick="loginWithPasskey()" style="margin-top:10px;">Use a passkey instead</button>
         <div id="login-msg"></div>
         <div id="login-2fa-panel" style="display:none;">
           <label class="field-label" id="login-2fa-label" for="login-2fa-code">Verification Code</label>
@@ -1423,6 +1425,76 @@ async function verifyLogin2fa() {
   } catch (e) {
     msg.className = 'err';
     msg.textContent = 'Server error.';
+    btn.disabled = false;
+  }
+}
+
+// Passkey / YubiKey sign-in. Passwordless: the WebAuthn assertion replaces
+// the password entirely (the server issues the same session cookies as
+// /api/login). No typed password means Secure Chat's password-wrapped key
+// can't be unwrapped here — restoreE2EKeysAfterAuth is skipped and the key
+// unlocks the next time the password is entered.
+async function loginWithPasskey() {
+  const msg = document.getElementById('login-msg');
+  const btn = document.getElementById('passkey-btn');
+  msg.className = '';
+  if (!(window.SimpleWebAuthnBrowser && SimpleWebAuthnBrowser.browserSupportsWebAuthn && SimpleWebAuthnBrowser.browserSupportsWebAuthn())) {
+    msg.className = 'err';
+    msg.textContent = 'This browser or connection doesn\'t support passkeys.';
+    return;
+  }
+  btn.disabled = true;
+  msg.textContent = 'Waiting for your passkey...';
+  try {
+    const email = document.getElementById('login-email').value.trim();
+    const o = await fetch('/api/webauthn/login/options', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email || undefined })
+    });
+    const od = await o.json();
+    if (!o.ok || !od.success) throw new Error(od.message || 'Could not start passkey sign-in.');
+
+    let assertion;
+    try {
+      assertion = await SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: od.options });
+    } catch (e) {
+      btn.disabled = false;
+      msg.className = '';
+      msg.textContent = 'Passkey prompt dismissed.';
+      return;
+    }
+
+    msg.textContent = 'Verifying passkey...';
+    const r = await fetch('/api/webauthn/login/verify', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(assertion)
+    });
+    const d = await r.json();
+    if (d.success) {
+      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
+      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      msg.className = 'ok';
+      msg.textContent = 'Signed in.';
+      window.location.href = postLoginDestination();
+    } else if (d.twofa_required) {
+      window._login2faToken = d.temp_token || '';
+      window._login2faType = d.twofa_type || 'email';
+      document.getElementById('login-2fa-label').textContent = window._login2faType === 'totp' ? 'Authenticator Code' : 'Email Verification Code';
+      document.getElementById('login-2fa-code').value = '';
+      document.getElementById('login-2fa-panel').style.display = 'block';
+      msg.className = 'ok';
+      msg.textContent = window._login2faType === 'totp' ? 'Enter your authenticator app code.' : 'Check your email for a login code.';
+      btn.disabled = false;
+    } else {
+      msg.className = 'err';
+      msg.textContent = d.message || 'Passkey sign-in failed.';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    msg.className = 'err';
+    msg.textContent = e && e.message ? e.message : 'Server error.';
     btn.disabled = false;
   }
 }

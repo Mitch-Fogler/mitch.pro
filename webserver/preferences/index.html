@@ -5,6 +5,7 @@
 <title>Preferences — mitch.pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="/theme.js?v=11"></script>
+<script src="/vendor/simplewebauthn.browser.min.js?v=1" defer></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
 <link rel="stylesheet" href="/preferences-galaxy.css?v=9">
@@ -595,6 +596,28 @@
     margin-bottom: 0.35rem;
   }
 
+  /* Passkeys & security keys list */
+  .passkey-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+  .passkey-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    background: var(--t-bg2, rgba(255,255,255,0.04));
+    border: 1px solid var(--t-bd, rgba(255,255,255,0.08));
+    border-radius: 10px;
+    padding: 0.6rem 0.8rem;
+    flex-wrap: wrap;
+  }
+  .passkey-row .passkey-main { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+  .passkey-row .field-sub { font-size: 0.72rem; }
+  .passkey-row .passkey-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+
   #logoutCurrentBtn {
     background: #ff453a;
     border: 1px solid #ff453a;
@@ -1149,6 +1172,18 @@
         <button class="soft-btn danger" type="button" id="disable2faBtn">Disable 2FA</button>
       </div>
       <div class="status-line" id="twofaMessage"></div>
+    </div>
+
+    <hr class="divider soft">
+
+    <div class="action-center">
+      <h3 class="subsection-title">Passkeys &amp; Security Keys</h3>
+      <p class="section-sub">Sign in without a password using a passkey (fingerprint, face, or PIN) or a YubiKey-style security key. Enroll once per device. Credentials are bound to the domain you enroll on — add one on mitch.pro and another on the mirror if you use both.</p>
+      <div id="passkeyList" class="passkey-list"></div>
+      <div class="session-actions">
+        <button class="soft-btn" id="passkeyAddBtn" type="button">Add passkey</button>
+      </div>
+      <div class="status-line" id="passkeyStatus"></div>
     </div>
 
     <hr class="divider soft">
@@ -1873,6 +1908,95 @@ async function disable2fa() {
   } catch (e) {
     setStatus('twofaMessage', e.message || 'Could not disable 2FA.');
   }
+}
+
+// ── Passkeys & security keys ─────────────────────────────────────────────────
+// WebAuthn credentials enrolled per-domain: a passkey made on mitch.pro only
+// signs in on mitch.pro, one made on the mirror only on the mirror. The list
+// shows each credential's domain so it's clear which is which.
+function passkeyFetch(path, opts) {
+  return fetch(path, Object.assign({ credentials: 'include', headers: { 'Content-Type': 'application/json' } }, opts || {}))
+    .then(function(r) { return r.json().catch(function() { return {}; }).then(function(d) { return { ok: r.ok, d: d }; }); });
+}
+
+async function loadPasskeyList() {
+  var listEl = document.getElementById('passkeyList');
+  try {
+    var res = await passkeyFetch('/api/webauthn/credentials');
+    if (!res.ok || !res.d.success) { listEl.innerHTML = ''; return; }
+    var creds = res.d.credentials || [];
+    if (!creds.length) {
+      listEl.innerHTML = '<p class="field-sub">No passkeys yet — add one to sign in without your password.</p>';
+      return;
+    }
+    var now = Date.now();
+    listEl.innerHTML = creds.map(function(c) {
+      var created = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '';
+      var used = c.lastUsedAt ? ('Last used ' + new Date(c.lastUsedAt).toLocaleDateString()) : 'Never used';
+      var kind = c.deviceType === 'multiDevice' ? 'synced passkey' : (c.transports && c.transports.indexOf('usb') >= 0 ? 'security key' : 'this device');
+      var here = res.d.currentRpId && c.rpId === res.d.currentRpId;
+      return '<div class="passkey-row" data-id="' + c.id + '">' +
+        '<div class="passkey-main"><strong>' + escapeHtmlText(c.name) + '</strong>' +
+        '<span class="field-sub">' + (c.rpId || '') + ' · ' + kind + ' · added ' + created + ' · ' + used + (here ? '' : ' (enroll a copy here to use it on this domain)') + '</span></div>' +
+        '<div class="passkey-actions">' +
+        '<button class="soft-btn" type="button" onclick="renamePasskey(this)">Rename</button>' +
+        '<button class="soft-btn danger" type="button" onclick="deletePasskey(this)">Delete</button>' +
+        '</div></div>';
+    }).join('');
+  } catch (e) {
+    listEl.innerHTML = '';
+  }
+}
+
+function escapeHtmlText(s) {
+  return String(s || '').replace(/[&<>"']/g, function(ch) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+  });
+}
+
+async function enrollPasskey() {
+  var btn = document.getElementById('passkeyAddBtn');
+  var status = 'passkeyStatus';
+  if (!(window.SimpleWebAuthnBrowser && SimpleWebAuthnBrowser.browserSupportsWebAuthn && SimpleWebAuthnBrowser.browserSupportsWebAuthn())) {
+    setStatus('passkeyStatus', 'This browser or connection doesn\'t support passkeys.');
+    return;
+  }
+  btn.disabled = true;
+  setStatus('passkeyStatus', 'Waiting for your authenticator...');
+  try {
+    var o = await passkeyFetch('/api/webauthn/register/options', { method: 'POST', body: JSON.stringify({}) });
+    if (!o.ok || !o.d.success) throw new Error(o.d.message || 'Could not start registration.');
+    var attestation = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON: o.d.options });
+    var v = await passkeyFetch('/api/webauthn/register/verify', { method: 'POST', body: JSON.stringify(attestation) });
+    if (!v.ok || !v.d.success) throw new Error(v.d.message || 'Registration failed.');
+    setStatus('passkeyStatus', 'Passkey added.');
+    await loadPasskeyList();
+  } catch (e) {
+    setStatus('passkeyStatus', e && e.message ? e.message : 'Could not add passkey.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function renamePasskey(btnEl) {
+  var row = btnEl.closest('.passkey-row');
+  var id = row.getAttribute('data-id');
+  var current = row.querySelector('strong').textContent;
+  var name = prompt('Passkey name', current);
+  if (name === null) return;
+  var res = await passkeyFetch('/api/webauthn/credentials/rename', { method: 'POST', body: JSON.stringify({ id: id, name: name }) });
+  if (res.ok && res.d.success) { setStatus('passkeyStatus', 'Renamed.'); loadPasskeyList(); }
+  else setStatus('passkeyStatus', res.d.message || 'Could not rename passkey.');
+}
+
+async function deletePasskey(btnEl) {
+  var row = btnEl.closest('.passkey-row');
+  var id = row.getAttribute('data-id');
+  var name = row.querySelector('strong').textContent;
+  if (!confirm('Delete "' + name + '"? You will no longer be able to sign in with it.')) return;
+  var res = await passkeyFetch('/api/webauthn/credentials/delete', { method: 'POST', body: JSON.stringify({ id: id }) });
+  if (res.ok && res.d.success) { setStatus('passkeyStatus', 'Deleted.'); loadPasskeyList(); }
+  else setStatus('passkeyStatus', res.d.message || 'Could not delete passkey.');
 }
 
 function updateSummaries() {
@@ -2608,6 +2732,8 @@ async function deleteAccount() {
   document.getElementById('setupTotpBtn').onclick = setupTotp2fa;
   document.getElementById('enableEmail2faBtn').onclick = function() { enable2fa('email'); };
   document.getElementById('disable2faBtn').onclick = disable2fa;
+  document.getElementById('passkeyAddBtn').onclick = enrollPasskey;
+  loadPasskeyList();
 
   var vk = load(VFX_CONFIG_KEY, { snow: true, stars: true, rain: true, particles: true });
   document.getElementById('vfxSnowToggle').checked      = !!vk.snow;

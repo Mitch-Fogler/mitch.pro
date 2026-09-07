@@ -19,6 +19,13 @@ import {
 } from './lib/data_store.js';
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
 import { RJUHSD_ORIGIN, bellScheduleRedirect } from './lib/site_redirects.js';
+import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
+import {
+  generateAuthenticationOptions,
+  generateRegistrationOptions,
+  verifyAuthenticationResponse,
+  verifyRegistrationResponse,
+} from '@simplewebauthn/server';
 
 try {
   if (dns && dns.setDefaultResultOrder) {
@@ -135,6 +142,7 @@ const DOCKER_LOG_SERVICES = new Set([
 // Core Data Files
 const TOKENS_FILE           = join(DATA_DIR, 'tokens.json');
 const PASSWORDS_FILE         = join(DATA_DIR, 'passwords.json');
+const PASSKEYS_FILE          = join(DATA_DIR, 'passkeys.json');
 const SIGNUP_CODES_FILE      = join(DATA_DIR, 'signup_codes.json');
 const AUTH_SESSIONS_FILE     = join(DATA_DIR, 'auth_sessions.json');
 const NEWSLETTER_UNSUB_FILE   = join(DATA_DIR, 'newsletter_unsub.json');
@@ -1374,6 +1382,13 @@ const NEWSLETTER_BAN_THRESH   = 10;
 const NEWSLETTER_BAN_DURATION = 7 * 24 * 3600;
 
 const RATE_LIMITS = {
+  '/api/webauthn/login/options':   [10,  60],
+  '/api/webauthn/login/verify':    [10,  60],
+  '/api/webauthn/register/options': [20,  60],
+  '/api/webauthn/register/verify': [20,  60],
+  '/api/webauthn/credentials':     [60,  60],
+  '/api/webauthn/credentials/rename': [20,  60],
+  '/api/webauthn/credentials/delete': [10,  60],
   '/api/request-access':       [10,   600],
   '/api/claim-token':          [10,  3600],
   '/api/pass':                 [60,  60],
@@ -2668,6 +2683,8 @@ function devTestRequestAllowed(req) {
   } catch { return false; }
 }
 const PUBLIC_API_PATHS = new Set([
+  '/api/webauthn/login/options',
+  '/api/webauthn/login/verify',
   '/api/signup',
   '/api/bad-passwords',
   '/api/verify-signup',
@@ -5351,6 +5368,36 @@ function isMitchSsoHost(hostname) {
     if (h === new URL(origin).hostname) return true;
   }
   return false;
+}
+
+// ── WebAuthn / passkeys ──────────────────────────────────────────────────────
+// Passkeys are origin-bound: a credential created with rpID "mitch.pro" can
+// only ever be exercised on mitch.pro, and vice versa for the mitchdog.com
+// mirror. Both are accepted for the same account, each remembering which RP
+// ID it was created under, so a student on the school network (where
+// mitch.pro is blocked) enrolls and signs in on the mirror. Pure helpers
+// live in lib/webauthn.js; these adapters wire them to the request.
+const webauthnChallenges = makeChallengeStore();
+
+function webauthnRpForHost(req) {
+  const h = String(requestHost(req) || '').toLowerCase().split(':')[0];
+  // Test instance: http://localhost:PORT is the only secure context available,
+  // so let the CDP virtual-authenticator tests exercise the flow there.
+  if (process.env.NODE_ENV === 'test' && (h === 'localhost' || h === '127.0.0.1')) {
+    let port = '';
+    try { port = new URL(req.url).port; } catch {}
+    return { rpId: h, origin: 'http://' + h + (port ? ':' + port : '') };
+  }
+  return rpForHost(h, [...mitchSsoOrigins()]);
+}
+
+function loadPasskeys()  { return loadJson(PASSKEYS_FILE, {}); }
+async function savePasskeys(p) { await saveJson(PASSKEYS_FILE, p); }
+
+// Credentials for one account, filtered (or not) by the RP ID of the
+// origin the request came in on.
+function passkeysForEmail(passkeys, normEmail, rpId = null) {
+  return (passkeys[normEmail] || []).filter(c => !rpId || c.rpId === rpId);
 }
 
 function ssoBackAllowed(rawBack, req) {
@@ -11763,6 +11810,227 @@ async function handleRequest(req, server) {
         return authSuccessResponse(req, { success: true }, rec.normEmail, rec.normEmail);
       } catch (e) {
         return jsonResp(500, { success: false, message: '2FA verification failed.' });
+      }
+    }
+
+    // ── WebAuthn / passkeys (also covers YubiKeys as roaming security keys) ───
+    // Passwordless sign-in as an alternative to /api/login. Credentials are
+    // stored per-account with the RP ID they were created under; the RP ID
+    // always comes from the request host so a credential minted on the mirror
+    // only works there and one minted on mitch.pro only works there.
+    if (path === '/api/webauthn/login/options' && method === 'POST') {
+      try {
+        const rl = checkRateLimit(req, path); if (rl) return rl;
+        const rp = webauthnRpForHost(req);
+        if (!rp) return jsonResp(400, { success: false, message: 'Passkeys are not available on this domain.' });
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+
+        // A typed email narrows the prompt to that account's credentials for
+        // this domain. Unknown emails get identical options (no enumeration) —
+        // the client falls back to the discoverable (username-less) flow.
+        let allow = [];
+        let hintEmail = '';
+        const typed = String(body.email || '').trim();
+        if (typed) {
+          const norm = resolveLoginIdentifier(typed.toLowerCase());
+          if (norm) {
+            const matching = passkeysForEmail(loadPasskeys(), norm, rp.rpId);
+            if (matching.length) {
+              allow = matching;
+              hintEmail = norm;
+            }
+          }
+        }
+        const options = await generateAuthenticationOptions({
+          rpID: rp.rpId,
+          allowCredentials: (allow || []).map(c => ({ id: c.id, transports: c.transports })),
+          userVerification: 'preferred',
+        });
+        webauthnChallenges.issue('login', hintEmail, rp.rpId, options.challenge);
+        return jsonResp(200, { success: true, options });
+      } catch (e) {
+        console.error('[webauthn] login/options failed:', e);
+        return jsonResp(500, { success: false, message: 'Could not start passkey sign-in.' });
+      }
+    }
+
+    if (path === '/api/webauthn/login/verify' && method === 'POST') {
+      try {
+        const rl = checkRateLimit(req, path); if (rl) return rl;
+        const rp = webauthnRpForHost(req);
+        if (!rp) return jsonResp(400, { success: false, message: 'Passkeys are not available on this domain.' });
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+
+        // The client's assertion carries the challenge it signed; only the
+        // SHA-256 of each issued challenge is kept server-side.
+        let clientData = null;
+        try { clientData = JSON.parse(Buffer.from(body.response?.clientDataJSON || '', 'base64url').toString('utf8')); } catch {}
+        const issued = webauthnChallenges.take(clientData?.challenge, 'login');
+        if (!issued) return jsonResp(400, { success: false, message: 'Sign-in expired. Try again.' });
+
+        const passkeys = loadPasskeys();
+        let cred = null, credEmail = '';
+        for (const [norm, list] of Object.entries(passkeys)) {
+          const hit = (list || []).find(c => c.id === body.id);
+          if (hit) { cred = hit; credEmail = norm; break; }
+        }
+        if (!cred || cred.rpId !== rp.rpId) return jsonResp(401, { success: false, message: 'Unknown passkey.' });
+
+        const verification = await verifyAuthenticationResponse({
+          response: body,
+          // Compare by hash: the raw challenge is never stored.
+          expectedChallenge: (c) => createHash('sha256').update(String(c || '')).digest('hex') === issued.key,
+          expectedOrigin: rp.origin,
+          expectedRPID: rp.rpId,
+          credential: { id: cred.id, publicKey: Buffer.from(cred.publicKey, 'base64'), counter: cred.counter || 0, transports: cred.transports },
+          requireUserVerification: false,
+        });
+        if (!verification.verified) return jsonResp(401, { success: false, message: 'Passkey verification failed.' });
+
+        cred.counter = verification.authenticationInfo.newCounter;
+        cred.lastUsedAt = Date.now();
+        const list = passkeys[credEmail] || [];
+        const idx = list.findIndex(c => c.id === cred.id);
+        if (idx >= 0) list[idx] = cred;
+        await savePasskeys(passkeys);
+
+        const twofa = twoFactorConfig(credEmail);
+        if (twofa.enabled) {
+          const tempToken = createTempToken();
+          const rec = { normEmail: credEmail, type: twofa.type, attempts: 0, expires: Date.now() + 5 * 60 * 1000 };
+          if (twofa.type === 'email') {
+            rec.code = Math.floor(100000 + Math.random() * 900000).toString();
+            sendEmailBg(credEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
+          }
+          pendingTwoFactor.set(tempToken, rec);
+          writeAppLog('info', 'webauthn', 'Passkey login requires 2FA', { email: credEmail, type: twofa.type, ip });
+          return jsonResp(200, { success: false, twofa_required: true, twofa_type: twofa.type, temp_token: tempToken });
+        }
+
+        writeAppLog('info', 'webauthn', 'Passkey login successful', { email: credEmail, ip });
+        return authSuccessResponse(req, { success: true }, credEmail, credEmail);
+      } catch (e) {
+        console.error('[webauthn] login/verify failed:', e);
+        return jsonResp(500, { success: false, message: 'Passkey sign-in failed.' });
+      }
+    }
+
+    if (path === '/api/webauthn/register/options' && method === 'POST') {
+      try {
+        const rl = checkRateLimit(req, path); if (rl) return rl;
+        const rp = webauthnRpForHost(req);
+        if (!rp) return jsonResp(400, { success: false, message: 'Passkeys are not available on this domain.' });
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid)) return jsonResp(401, { success: false, message: 'auth required' });
+        const email = emailFromSid(sid);
+        if (!email) return jsonResp(403, { success: false, message: 'email not found' });
+        const normEmail = normalizeEmail(email);
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+
+        const existing = passkeysForEmail(loadPasskeys(), normEmail, rp.rpId);
+        const options = await generateRegistrationOptions({
+          rpName: site().name || 'mitch.pro',
+          rpID: rp.rpId,
+          userName: normEmail,
+          userID: new TextEncoder().encode(normEmail),
+          userDisplayName: email,
+          // Same domain re-enrollment replaces cleanly; other domains' keys stay.
+          excludeCredentials: existing.map(c => ({ id: c.id, transports: c.transports })),
+          authenticatorSelection: { residentKey: 'preferred', userVerification: 'preferred' },
+        });
+        webauthnChallenges.issue('register', normEmail, rp.rpId, options.challenge);
+        return jsonResp(200, { success: true, options });
+      } catch (e) {
+        console.error('[webauthn] register/options failed:', e);
+        return jsonResp(500, { success: false, message: 'Could not start passkey registration.' });
+      }
+    }
+
+    if (path === '/api/webauthn/register/verify' && method === 'POST') {
+      try {
+        const rl = checkRateLimit(req, path); if (rl) return rl;
+        const rp = webauthnRpForHost(req);
+        if (!rp) return jsonResp(400, { success: false, message: 'Passkeys are not available on this domain.' });
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid)) return jsonResp(401, { success: false, message: 'auth required' });
+        const email = emailFromSid(sid);
+        if (!email) return jsonResp(403, { success: false, message: 'email not found' });
+        const normEmail = normalizeEmail(email);
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+
+        let clientData = null;
+        try { clientData = JSON.parse(Buffer.from(body.response?.clientDataJSON || '', 'base64url').toString('utf8')); } catch {}
+        const issued = webauthnChallenges.take(clientData?.challenge, 'register');
+        if (!issued || issued.email !== normEmail) return jsonResp(400, { success: false, message: 'Registration expired. Try again.' });
+
+        const verification = await verifyRegistrationResponse({
+          response: body,
+          expectedChallenge: (c) => createHash('sha256').update(String(c || '')).digest('hex') === issued.key,
+          expectedOrigin: rp.origin,
+          expectedRPID: rp.rpId,
+          requireUserVerification: false,
+        });
+        if (!verification.verified || !verification.registrationInfo) {
+          return jsonResp(400, { success: false, message: 'Passkey registration failed.' });
+        }
+        const info = verification.registrationInfo;
+        const record = {
+          id: info.credential.id,
+          publicKey: Buffer.from(info.credential.publicKey).toString('base64'),
+          counter: info.credential.counter || 0,
+          transports: info.credential.transports || null,
+          deviceType: info.credentialDeviceType,
+          backedUp: !!info.credentialBackedUp,
+          name: String(body.name || '').trim().slice(0, 60) || guessCredentialName(req.headers.get('user-agent') || ''),
+          rpId: rp.rpId,
+          aaguid: info.aaguid || '',
+          createdAt: Date.now(),
+          lastUsedAt: null,
+        };
+
+        const passkeys = loadPasskeys();
+        const list = passkeys[normEmail] || (passkeys[normEmail] = []);
+        const idx = list.findIndex(c => c.id === record.id);
+        if (idx >= 0) list[idx] = record; else list.push(record);
+        await savePasskeys(passkeys);
+
+        writeAppLog('info', 'webauthn', 'Passkey registered', { email: normEmail, rpId: rp.rpId, ip });
+        return jsonResp(200, { success: true, credential: publicCredentialView(record) });
+      } catch (e) {
+        console.error('[webauthn] register/verify failed:', e);
+        return jsonResp(500, { success: false, message: 'Passkey registration failed.' });
+      }
+    }
+
+    if ((path === '/api/webauthn/credentials/rename' || path === '/api/webauthn/credentials/delete') && method === 'POST') {
+      try {
+        const rl = checkRateLimit(req, path); if (rl) return rl;
+        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (!sid || !validId(sid)) return jsonResp(401, { success: false, message: 'auth required' });
+        const email = emailFromSid(sid);
+        if (!email) return jsonResp(403, { success: false, message: 'email not found' });
+        const normEmail = normalizeEmail(email);
+        const id = String(body.id || '');
+        const passkeys = loadPasskeys();
+        const list = passkeys[normEmail] || [];
+        const idx = list.findIndex(c => c.id === id);
+        if (idx < 0) return jsonResp(404, { success: false, message: 'Passkey not found.' });
+        if (path === '/api/webauthn/credentials/rename') {
+          const name = String(body.name || '').trim().slice(0, 60);
+          if (!name) return jsonResp(400, { success: false, message: 'Name required.' });
+          list[idx].name = name;
+        } else {
+          list.splice(idx, 1);
+          if (!list.length) delete passkeys[normEmail];
+        }
+        await savePasskeys(passkeys);
+        return jsonResp(200, { success: true });
+      } catch (e) {
+        return jsonResp(500, { success: false, message: 'Passkey update failed.' });
       }
     }
 
@@ -20090,6 +20358,22 @@ function loadAllGamesList() {
 
   // ── GET routes ──────────────────────────────────────────────────────────────
   if (method === 'GET') {
+    // /api/webauthn/credentials — list the signed-in account's passkeys
+    // (GET requests are routed through this separate branch; see 405 fallthrough)
+    if (path === '/api/webauthn/credentials') {
+      const rp = webauthnRpForHost(req);
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid)) return jsonResp(401, { success: false, message: 'auth required' });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(403, { success: false, message: 'email not found' });
+      return jsonResp(200, {
+        success: true,
+        currentRpId: rp ? rp.rpId : null,
+        credentials: passkeysForEmail(loadPasskeys(), normalizeEmail(email)).map(publicCredentialView),
+      });
+    }
+
     // /api/bad-passwords
     if (path === '/api/bad-passwords') {
       try {
@@ -20963,6 +21247,7 @@ function loadAllGamesList() {
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
       '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
+      '/vendor/simplewebauthn.browser.min.js',
       '/home-redesign.css', '/welcome.css',
       '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
       '/rjuhsd-assets/calendar.js', '/rjuhsd-assets/woodcreek-logo.png', '/rjuhsd-assets/roseville-logo.png', '/rjuhsd-assets/granitebay-logo.png', '/rjuhsd-assets/antelope-logo.png', '/rjuhsd-assets/westpark-logo.png', '/rjuhsd-assets/oakmont-logo.png',
