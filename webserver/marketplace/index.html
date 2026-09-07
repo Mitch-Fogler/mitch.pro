@@ -502,7 +502,7 @@
           <span><strong>Seller:</strong> ${esc(l.seller)}</span>
           ${l.buyer ? `<span><strong>Buyer:</strong> ${esc(l.buyer)}</span>` : ''}
           ${l.mediator ? `<span><strong>Mediator:</strong> ${esc(l.mediator)}</span>` : ''}
-          ${l.bought_at ? `<span><strong>Traded:</strong> ${new Date(l.bought_at).toLocaleString()}</span>` : ''}
+          ${l.bought_at ? `<span><strong>Traded:</strong> ${new Date(l.bought_at).toLocaleString('en-US', { hour12: true })}</span>` : ''}
         </div>
       `;
 

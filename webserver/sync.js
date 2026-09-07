@@ -102,9 +102,9 @@
     } catch (e) {}
     var detail = lines.length ? lines.join(' • ') : 'Saved progress found on MitchSync.';
 
-    var savedDate = new Date(serverTs).toLocaleString([], {
+    var savedDate = new Date(serverTs).toLocaleString('en-US', {
       month: 'short', day: 'numeric',
-      hour: 'numeric', minute: '2-digit',
+      hour: 'numeric', minute: '2-digit', hour12: true,
     });
 
     var style = document.createElement('style');

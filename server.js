@@ -14505,7 +14505,7 @@ function loadAllGamesList() {
       if (Date.now() - lastClaimed < oneWeekMs) {
         const nextClaimTime = new Date(lastClaimed + oneWeekMs);
         return jsonResp(400, {
-          error: `Reward already claimed this week. You can claim it again after ${nextClaimTime.toLocaleString()}`
+          error: `Reward already claimed this week. You can claim it again after ${nextClaimTime.toLocaleString('en-US', { hour12: true })}`
         });
       }
 
@@ -21632,7 +21632,7 @@ setTimeout(() => {
   if (process.env.SEND_STARTUP_TEST_EMAIL === '1' && testTarget) {
     console.log(`[startup] Sending requested startup test email to ${testTarget}...`);
     sendEmailBg(testTarget, "mitch.pro - Server Startup Test",
-      `The mitch.pro server restarted successfully at ${new Date().toLocaleString()}.`);
+      `The mitch.pro server restarted successfully at ${new Date().toLocaleString('en-US', { hour12: true })}.`);
   }
 
   console.log(`[startup] All systems active.`);
