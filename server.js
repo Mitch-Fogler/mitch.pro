@@ -18,7 +18,7 @@ import {
   rebuildCoreTablesFromDocuments,
 } from './lib/data_store.js';
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
-import { RJUHSD_ORIGIN, bellScheduleRedirect } from './lib/site_redirects.js';
+import { RJUHSD_ORIGIN, bellScheduleRedirect, blooketBotRedirect } from './lib/site_redirects.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
 import {
   generateAuthenticationOptions,
@@ -7603,6 +7603,8 @@ async function handleRequest(req, server) {
 
   const bellRedirect = bellScheduleRedirect(url, method);
   if (bellRedirect) return Response.redirect(bellRedirect, 302);
+  const botRedirect = blooketBotRedirect(url, method);
+  if (botRedirect) return Response.redirect(botRedirect, 302);
 
   const csrfFailure = csrfFailureIfUnsafe(req, path, method);
   if (csrfFailure) return csrfFailure;
