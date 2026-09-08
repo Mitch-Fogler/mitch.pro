@@ -30,6 +30,14 @@ try {
   await page.locator('#cloak-launcher').click();
   const bounds = await page.locator('#cloak-dialog').boundingBox();
   assert(bounds.x >= 0 && bounds.x + bounds.width <= 390);
+  for (const [width, height] of [[1366, 650], [1280, 600]]) {
+    await page.setViewportSize({ width, height });
+    const fits = await page.locator('#cloak-dialog').evaluate(el => {
+      const box = el.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= innerHeight && el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight;
+    });
+    assert(fits, `Cloak controls must fit a ${width}×${height} Chromebook viewport without scrolling`);
+  }
   await page.addScriptTag({ url: 'https://cloak.test/tab-cloak.js' });
   assert.equal(await page.locator('#cloak-launcher').count(), 1);
   console.log('Cloak: apply, title guard, refresh persistence, reset, favicon restoration, shield, mobile bounds, duplicate initialization passed.');
