@@ -21303,6 +21303,7 @@ function loadAllGamesList() {
 
     // Public assets whitelist
     const PUBLIC_ASSETS = new Set([
+      '/tab-cloak.js', '/tab-cloak.css', '/cloak-google-classroom.svg', '/cloak-google-drive.svg', '/cloak-google-docs.svg', '/cloak-clever.png',
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
       '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',

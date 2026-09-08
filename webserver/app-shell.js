@@ -410,4 +410,12 @@
   } else {
     inject();
   }
+  function loadCloak() {
+    if (document.querySelector('script[data-mitch-cloak]')) return;
+    var script = document.createElement('script');
+    script.src = '/tab-cloak.js?v=1'; script.dataset.mitchCloak = '1';
+    document.head.appendChild(script);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadCloak);
+  else loadCloak();
 })();
