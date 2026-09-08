@@ -14,8 +14,7 @@ FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
-ARG SERVICES="mitch-server mitch-ssh-gateway mitch-mail"
-RUN cargo build --release -p mitch-lib ${SERVICES:+$(for s in ${SERVICES}; do echo "-p $s"; done)}
+RUN cargo build --release --workspace
 
 FROM alpine:3.20
 RUN addgroup -S app && adduser -S app -G app

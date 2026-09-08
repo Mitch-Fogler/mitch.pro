@@ -218,4 +218,18 @@ async function runWithReconnect() {
   }
 }
 
-runWithReconnect();
+// ── mitch-mail (Rust) shim ── while the Rust service's IMAP watcher is
+// healthy, hold this supervisor slot (server.js restarts us every 10s on any
+// exit) WITHOUT double-watching. If the service goes away we fall through to
+// the original imapflow watcher below, which takes over seamlessly.
+(async () => {
+  const { rsWatcherActive } = await import('./_rs_shim.js');
+  if (await rsWatcherActive()) {
+    console.log('[imap-watcher] mitch-mail service owns watching — holding supervisor slot');
+    while (await rsWatcherActive()) {
+      await new Promise(r => setTimeout(r, 60_000));
+    }
+    console.log('[imap-watcher] mitch-mail service gone — taking over watching');
+  }
+  runWithReconnect();
+})();

@@ -13,10 +13,22 @@ mitch-lib = { path = "../mitch-lib" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+axum = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-# Real deps land in plan Step 2: lettre + mail-builder (SMTP send),
-# imap + mail-parser (IMAP watcher), axum (HTTP shim service on :6902).
+# SMTP send (replaces nodemailer). rustls keeps the build OpenSSL-free.
+lettre = { version = "0.11", default-features = false, features = [
+    "builder", "smtp-transport", "rustls-tls",
+] }
+mail-parser = "0.11"
+rand = "0.9"
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# IMAP watcher (replaces imapflow). native-tls initially; revisit at Step 15
+# for a musl-static build (rustls-native-certs based connector if needed).
+imap = "2.4.1"
+native-tls = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 
 [lints.rust]
 unsafe_code = "forbid"

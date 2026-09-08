@@ -141,6 +141,25 @@ services:
     environment:
       - PORT=6820
 
+  # Rust mail pipeline (plan Step 2 of the Rust rewrite, on the rust branch).
+  # Replaces the mail/*.js nodemailer CLIs + imap_watcher; the JS scripts
+  # forward here and fall back to nodemailer when this service is down.
+  mail-rs:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: mitch-mail-rs
+    restart: unless-stopped
+    expose:
+      - "6902"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - MITCH_SERVICE=mitch-mail
+      - MITCH_BASE=/app
+      - MAIL_RS_PORT=6902
+
   # Node.js + Xvfb Stream Proxy (Port 8081)
   proxy:
     build:

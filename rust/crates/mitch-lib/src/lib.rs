@@ -13,6 +13,9 @@
 //! Compatibility contract: these modules must stay byte-compatible with the
 //! Bun implementation (`server.js`, `lib/data_store.js`, `lib/jsonStore.js`).
 
+// Tests may unwrap; production code may not (Cargo.toml lints).
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 pub mod auth;
 pub mod config;
 pub mod crypto;

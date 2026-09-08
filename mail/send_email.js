@@ -2,6 +2,7 @@
 // Usage: node send_email.js <to> <subject> <body>
 //   or: echo "body" | node send_email.js <to> <subject>
 import path from 'path';
+import { tryForward } from './_rs_shim.js';
 import {
   configureDataStore,
   appendAppLog,
@@ -78,6 +79,10 @@ if (!to || !subject) {
   process.exit(1);
 }
 
+// ── mitch-mail (Rust) shim ── forwards to the mail service when it is up and
+// exits; on unreachable service we fall through to nodemailer below.
+await tryForward('gmail', { to, subject, bodyArgs, inReplyTo, alt: useAlt, raw: useRaw });
+
 const rawGmailUser = useAlt ? process.env.GMAIL_USER_ALT : process.env.GMAIL_USER;
 const rawGmailPass = useAlt ? process.env.GMAIL_PASS_ALT : process.env.GMAIL_PASS;
 
@@ -93,6 +98,7 @@ if (!GMAIL_USER || !GMAIL_PASS) {
 
 async function getBody() {
   if (bodyArgs.length > 0) return bodyArgs.join(' ');
+  if (globalThis.__mitchMailBody != null) return globalThis.__mitchMailBody; // stdin consumed by the mitch-mail shim
   return new Promise(res => {
     let data = '';
     process.stdin.setEncoding('utf8');

@@ -4,6 +4,7 @@
 //   or:  echo "body" | node support_send.js <to> <subject>
 
 import path from 'path';
+import { tryForward } from './_rs_shim.js';
 import {
   configureDataStore,
   readDocument,
@@ -85,8 +86,13 @@ if (!to || !subject) {
   process.exit(1);
 }
 
+// ── mitch-mail (Rust) shim ── forwards to the mail service when it is up and
+// exits; on unreachable service we fall through to nodemailer below.
+await tryForward('support', { to, subject, bodyArgs, inReplyTo, raw: useRaw });
+
 async function getBody() {
   if (bodyArgs.length > 0) return bodyArgs.join(' ');
+  if (globalThis.__mitchMailBody != null) return globalThis.__mitchMailBody; // stdin consumed by the mitch-mail shim
   return new Promise(res => {
     let data = '';
     process.stdin.setEncoding('utf8');
