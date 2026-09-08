@@ -5050,7 +5050,13 @@ function errResp(code, message, explain) {
 
 function jsonResp(code, obj) {
   return new Response(JSON.stringify(obj),
-    { status: code, headers: { 'Content-Type': 'application/json' } });
+    { status: code, headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Vary': 'Cookie',
+      'X-Content-Type-Options': 'nosniff'
+    } });
 }
 
 async function fetchWithDeadline(url, options = {}, timeoutMs = 8000) {
@@ -13112,9 +13118,51 @@ function loadAllGamesList() {
         console.log(`[profile] ${email} claimed profile setup bonus (+500 coins)`);
       }
 
-      saveJson(PROFILES_FILE, profiles);
+      // A user-facing save must not report success if persistence failed.
+      try {
+        writeDocument(PROFILES_FILE, profiles);
+      } catch (error) {
+        console.error(`[profile] failed to persist profile for ${norm}:`, error);
+        return jsonResp(503, { error: 'Profile could not be saved. Please try again.' });
+      }
+      const savedProfile = loadJson(PROFILES_FILE, {})[norm];
+      if (!savedProfile || savedProfile.updatedAt !== profiles[norm].updatedAt) {
+        console.error(`[profile] verification failed after saving profile for ${norm}`);
+        return jsonResp(503, { error: 'Profile could not be verified. Please try again.' });
+      }
       _dmAddrIdx = null;
-      return jsonResp(200, { ok: true, bonusGranted, bonusAmount: bonusGranted ? 500 : 0 });
+      _displayEmailProfiles = null;
+      _displayEmailProfilesTs = 0;
+
+      const profileUpdatePayload = JSON.stringify({
+        type: 'profile_updated',
+        handle: savedProfile.username,
+        updatedAt: savedProfile.updatedAt
+      });
+      for (const ws of allSockets) {
+        if (ws.data?.isBroadcast) {
+          try { ws.send(profileUpdatePayload); } catch {}
+        }
+      }
+
+      return jsonResp(200, {
+        ok: true,
+        bonusGranted,
+        bonusAmount: bonusGranted ? 500 : 0,
+        profile: {
+          displayName: savedProfile.displayName || '',
+          username: savedProfile.username || '',
+          nickname: savedProfile.nickname || '',
+          gradYear: savedProfile.gradYear || '',
+          gender: savedProfile.gender || '',
+          referralSource: savedProfile.referralSource || '',
+          bio: savedProfile.bio || '',
+          website: savedProfile.website || '',
+          pfp: savedProfile.pfp || '',
+          background: savedProfile.background || '',
+          updatedAt: savedProfile.updatedAt
+        }
+      });
     }
 
     if (path === '/api/me/complete-tutorial' && method === 'POST') {
