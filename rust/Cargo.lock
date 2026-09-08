@@ -1540,6 +1540,7 @@ dependencies = [
 name = "mitch-lib"
 version = "0.1.0"
 dependencies = [
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",
@@ -1573,12 +1574,15 @@ name = "mitch-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "form_urlencoded",
  "mitch-lib",
+ "regex",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
@@ -3164,6 +3168,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+ "serde_derive",
 ]
 
 [[package]]

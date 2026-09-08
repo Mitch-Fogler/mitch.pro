@@ -9,6 +9,7 @@ Record one row per plan step; report honestly — partial passes are data.
 | 1 | scaffold (no endpoints) | 2026-09-07 | 0 | ~80 | baseline pending Step 4 server |
 | 2 | mail pipeline (mitch-mail + shims) | 2026-09-07 | n/a | n/a | see checks below — send path verified via parity + local TLS SMTP sink |
 | 3 | ssh-gateway (russh + tokio-tungstenite) | 2026-09-08 | 13/13 | 13 | same suite passes against JS gateway too — parity proven |
+| 4 | core skeleton (hosts, static, pipeline) | 2026-09-08 | 52/52 urls | 52+ | headers AND bodies byte-identical vs bun (104 checks) |
 
 ## Step 2 verification log (2026-09-08)
 
@@ -29,6 +30,15 @@ Record one row per plan step; report honestly — partial passes are data.
   2. the russh session `Handle` was dropped when `open_shell` returned, killing the driver task — it is now held for the connection lifetime and disconnected on teardown.
 - Documented divergence: error-message TEXT for SSH-layer failures differs from ssh2's wording (e.g. "Connection refused (os error 111)"); protocol-level error strings ("Invalid JSON", "Missing message type", "Already connected", "host and username are required") are byte-identical.
 - Compose: `ssh-gateway-rs` sidecar on 6821; cutover = flip `SSH_GATEWAY_URL` to it.
+
+## Step 4 verification log (2026-09-08)
+
+- `tests/parity_static.js` (52 URL cases × both servers, sequential): **headers AND response bodies byte-identical** across mitch.pro / rjuhsd.school / sexypickleclub.com — static assets, injected HTML pages (`/`, `/enroll/`, `/encrypt/`, `/preferences/`, `/index-sales.html`…), directory redirects (301/302), bell/blooket redirects, per-host manifests, 404s, protected files, CSRF-blocked POST, unified password gate.
+- Discovery that simplified the port: **bun's static serving has no etag/Last-Modified/304/range support at all** — the contract is the mime map + three Cache-Control classes + COOP/COEP/CORP for `/webvm`.
+- Bugs the parity harness caught and fixed, in order: viewport meta replacement dropped the tag's closing group; `safeWebrootPath` lacked `path.resolve`-style `..` normalization; `</head>` insertion sliced past the tag (JS inserts *before* it and keeps it); `jsonResp` built its headers but never attached them; the prelude's unified password gate and the rjuhsd-hub `/index.html` mapping were missing; SSO-bridge redirect targets needed `encodeURIComponent`.
+- Session-dependent pieces stubbed unauthenticated (Step 6): `checkPasswordCookie`, bans, SSO bridge tokens, rate limits. The deferred `/images/*` captcha-proxy route is a later step (excluded from the test with a comment).
+- The rewrite's progress logging flows into the shared `app_logs` table (category `rust-rewrite`) via `mitch-lib::log` + the `rust_log` example CLI; the admin panel log viewer was upgraded in the same pass (structured rows, level pills, click-to-expand details, debounced search, 10s live tail).
+- Dev-note: this sandbox's Docker port-forwarding eats connections; parity runs used host processes (`bun server.js` on 6802 vs rust on 6801) with the dev container stopped to avoid double IMAP watchers, then restored.
 
 ## Static parity (tests/parity_static.js, added Step 4)
 

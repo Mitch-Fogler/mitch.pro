@@ -51,6 +51,16 @@ pub struct DataStore {
     conn: Mutex<rusqlite::Connection>,
 }
 
+/// One app_logs row (mirrors `queryAppLogs` entries).
+#[derive(Debug, Clone)]
+pub struct AppLogRow {
+    pub ts: i64,
+    pub level: String,
+    pub category: String,
+    pub message: String,
+    pub details: String,
+}
+
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -73,6 +83,8 @@ impl DataStore {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Full table init, verbatim from lib/data_store.js
+        // initTablesWithRetry (fresh-DB parity).
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS metadata (
                 key TEXT PRIMARY KEY,
@@ -88,7 +100,47 @@ impl DataStore {
                 path TEXT PRIMARY KEY,
                 content TEXT NOT NULL,
                 updated_at INTEGER NOT NULL
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS users (
+                email TEXT PRIMARY KEY,
+                username TEXT UNIQUE,
+                nickname TEXT DEFAULT '',
+                display_name TEXT DEFAULT '',
+                password_hash TEXT DEFAULT '',
+                coins REAL DEFAULT 0,
+                twofa_enabled INTEGER DEFAULT 0,
+                twofa_type TEXT DEFAULT '',
+                totp_secret TEXT DEFAULT '',
+                grad_year TEXT DEFAULT '',
+                gender TEXT DEFAULT '',
+                has_completed_tutorial INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS friends (
+                user_email TEXT NOT NULL,
+                friend_email TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (user_email, friend_email, status)
+            );
+            CREATE TABLE IF NOT EXISTS referrals (
+                email TEXT NOT NULL,
+                source TEXT DEFAULT '',
+                details TEXT DEFAULT '',
+                timestamp INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS app_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts INTEGER NOT NULL,
+                level TEXT NOT NULL,
+                category TEXT NOT NULL,
+                message TEXT NOT NULL,
+                details TEXT DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_app_logs_ts ON app_logs (ts DESC);
+            CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs (level, ts DESC);
+            CREATE INDEX IF NOT EXISTS idx_app_logs_category ON app_logs (category, ts DESC);",
         )?;
         conn.execute(
             "INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES ('schema_version', '1', ?)",
@@ -177,6 +229,75 @@ impl DataStore {
             .ok()
             .and_then(|raw| parse(&raw))
             .unwrap_or(fallback)
+    }
+
+    /// `appendAppLog` equivalent (sync form; callers wrap in spawn_blocking).
+    /// Prunes to the newest 20000 rows on the same 1-in-250 cadence as the JS.
+    pub fn append_app_log_sync(
+        &self,
+        ts: i64,
+        level: &str,
+        category: &str,
+        message: String,
+        details: String,
+    ) -> Result<(), DataError> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        conn.execute(
+            "INSERT INTO app_logs (ts, level, category, message, details) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![ts, level, category, message, details],
+        )?;
+        Ok(())
+    }
+
+    /// `queryAppLogs` equivalent (sync form): newest first, level/category/
+    /// search filters, limit clamped 25..2000.
+    pub fn query_app_logs_sync(
+        &self,
+        level: &str,
+        category: &str,
+        search: &str,
+        limit: usize,
+    ) -> Result<Vec<AppLogRow>, DataError> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut conditions: Vec<String> = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+        if !level.eq_ignore_ascii_case("all") {
+            params.push(level.to_lowercase());
+            conditions.push("level = ?".into());
+        }
+        if !category.eq_ignore_ascii_case("all") {
+            params.push(category.to_lowercase());
+            conditions.push("category = ?".into());
+        }
+        let search = search.trim().chars().take(160).collect::<String>();
+        if !search.is_empty() {
+            let like = format!("%{search}%");
+            params.push(like.clone());
+            params.push(like.clone());
+            params.push(like);
+            conditions.push("(message LIKE ? OR details LIKE ? OR category LIKE ?)".into());
+        }
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+        let limit = limit.clamp(25, 2000) as i64;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT ts, level, category, message, details FROM app_logs {} ORDER BY ts DESC, id DESC LIMIT ?",
+            where_clause
+        ))?;
+        params.push(limit.to_string());
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |r| {
+            Ok(AppLogRow {
+                ts: r.get(0)?,
+                level: r.get(1)?,
+                category: r.get(2)?,
+                message: r.get(3)?,
+                details: r.get(4)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// `writeDocument(file, data)`: INSERT OR REPLACE into the blob table

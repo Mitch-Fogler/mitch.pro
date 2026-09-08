@@ -2,15 +2,28 @@
 //! sexypickleclub.com.
 //!
 //! `main.rs` only wires: config, State build, router assembly, serve. All
-//! handler logic lives in the per-subsystem route modules (one route group per
-//! file) and `mitch-lib`. server.js must not be reborn as one big file here.
+//! handler logic lives in the per-subsystem modules (one concern per file)
+//! and `mitch-lib`.
 //!
-//! Status: scaffold — hosts/static/auth/routes land in plan Steps 4-14.
+//! Step 4 scope: host routing, static serving, HTML injection pipeline,
+//! request prelude, /enroll/ health. Session-dependent pieces are stubbed
+//! (Step 6); API routes are later steps.
 
-use axum::{routing::get, Router};
+use axum::extract::State;
+use axum::http::Request;
+use axum::response::Response;
+use axum::Router;
+use std::sync::Arc;
 
+mod env_file;
+mod errors;
+mod handler;
 mod hosts;
+mod inject;
+mod manifests;
+mod pipeline;
 mod routes;
+mod state;
 mod static_files;
 mod workers;
 mod ws;
@@ -24,9 +37,21 @@ async fn main() {
         )
         .init();
 
-    let app = Router::new()
-        .route("/enroll/", get(|| async { "mitch-server rust scaffold" }))
-        .with_state(());
+    let cfg = hosts::SiteConfig::load();
+    let store = Arc::new(
+        mitch_lib::data::DataStore::open(&cfg.base_dir, &cfg.data_dir)
+            .unwrap_or_else(|e| panic!("open data store at {}: {e}", cfg.data_dir.display())),
+    );
+    let state = Arc::new(state::AppState::new(cfg.clone(), store.clone()));
+
+    mitch_lib::log::log_rewrite(
+        &store,
+        "info",
+        "mitch-server (rust) core skeleton listening — host routing, static serving, HTML pipeline ported",
+    )
+    .await;
+
+    let app: Router = Router::new().fallback(get_any).with_state(state);
 
     let port = std::env::var("PORT")
         .ok()
@@ -35,8 +60,20 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
         .await
         .unwrap_or_else(|e| panic!("bind 0.0.0.0:{port}: {e}"));
-    tracing::info!("mitch-server (rust scaffold) listening on 0.0.0.0:{port}");
+    tracing::info!("mitch-server (rust) listening on 0.0.0.0:{port}");
     axum::serve(listener, app)
         .await
         .unwrap_or_else(|e| panic!("serve: {e}"));
+}
+
+/// Every request funnels through the ported flow, exactly like bun's single
+/// `handleRequest`.
+async fn get_any(
+    State(state): State<Arc<state::AppState>>,
+    req: Request<axum::body::Body>,
+) -> Response {
+    let method = req.method().clone();
+    let headers = req.headers().clone();
+    let uri = req.uri().clone();
+    handler::handle(state, method, &uri, &headers).await
 }

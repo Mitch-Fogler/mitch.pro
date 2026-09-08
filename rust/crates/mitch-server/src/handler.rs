@@ -1,0 +1,636 @@
+//! The request flow — port of `handleRequest`'s GET path (server.js), in the
+//! exact order: bell/blooket redirects → CSRF → /api/bg → rate limit →
+//! /swift → ban/maintenance gates → page block (manifests, site hubs, site
+//! page roots, redirects, HTML gates, injection pipeline, public assets) →
+//! serveStatic. Non-GET falls to 405.
+//!
+//! Session-dependent pieces (`checkPasswordCookie`, bans, rate limits, SSO
+//! bridge tokens) are stubbed unauthenticated until Step 6 — parity tests run
+//! without cookies, so the unauthenticated paths match bun exactly.
+#![allow(clippy::expect_used)] // infallible static responses + static regexes
+
+use axum::http::{HeaderMap, Method, StatusCode};
+use axum::response::Response;
+use std::sync::Arc;
+
+use crate::errors::{err_resp, json_resp};
+use crate::hosts::{is_pickle_host, is_rjuhsd_host, request_host, sso_back_allowed};
+use crate::inject::{inject_readability, inject_shared_head, recaptcha_loader_str};
+use crate::state::AppState;
+use crate::static_files::{pickle_asset_response, redirect, safe_webroot_path, serve_static};
+
+/// `HTML_OPEN` — pages public on every host.
+pub const HTML_OPEN: &[&str] = &[
+    "/roblox",
+    "/enroll",
+    "/claim",
+    "/password",
+    "/appeal",
+    "/unsubscribe",
+    "/admin",
+    "/faq",
+    "/use-agreement",
+    "/privacy",
+    "/bell",
+    "/bell/index",
+    "/preferences",
+    "/preferences/index",
+    "/swift",
+    "/swift/index",
+    "/larp",
+    "/larp/index",
+    "/larp/rezero",
+    "/larp/rezero/index",
+];
+
+/// `PROTECTED_FILES`.
+pub const PROTECTED_FILES: &[&str] = &["senpai-cafe.webp", "adrian-lopez.webp"];
+
+/// `PUBLIC_ASSETS` allowlist.
+pub const PUBLIC_ASSETS: &[&str] = &[
+    "/auth.js",
+    "/sync.js",
+    "/auth-non-enrolled.js",
+    "/assistant.js",
+    "/broadcast.js",
+    "/cookie-consent.js",
+    "/api.js",
+    "/app-shell.js",
+    "/mitch-coins.js",
+    "/mitch-coins.css",
+    "/mitchcoin.png",
+    "/app.css",
+    "/relaunch.css",
+    "/site-galaxy.css",
+    "/portal-redesign.css",
+    "/mitch-ui.css",
+    "/auth-liquid.css",
+    "/encrypt-galaxy.css",
+    "/vendor/simplewebauthn.browser.min.js",
+    "/home-redesign.css",
+    "/welcome.css",
+    "/rjuhsd-assets/app.js",
+    "/rjuhsd-assets/styles.css",
+    "/rjuhsd-assets/reference-theme.css",
+    "/rjuhsd-assets/woodcreek.png",
+    "/rjuhsd-assets/calendar.js",
+    "/rjuhsd-assets/woodcreek-logo.png",
+    "/rjuhsd-assets/roseville-logo.png",
+    "/rjuhsd-assets/granitebay-logo.png",
+    "/rjuhsd-assets/antelope-logo.png",
+    "/rjuhsd-assets/westpark-logo.png",
+    "/rjuhsd-assets/oakmont-logo.png",
+    "/rjuhsd-assets/icon-192.png",
+    "/rjuhsd-assets/icon-512.png",
+    "/rjuhsd-assets/maskable-512.png",
+    "/rjuhsd-assets/apple-touch-icon.png",
+    "/rjuhsd-assets/favicon-32.png",
+    "/liquid-glass.js",
+    "/jsmpeg.min.js",
+    "/open.css",
+    "/readability.css",
+    "/theme.js",
+    "/sw.js",
+    "/popup.js",
+    "/pwa-install.js",
+    "/games/chess-bot/chessboard.min.js",
+    "/games/chess-bot/chessboard.min.css",
+    "/bell/schedule.js",
+    "/favicon.ico",
+    "/manifest.json",
+    "/apple-touch-icon.png",
+    "/icon-192.png",
+    "/icon-512.png",
+    "/home-burning-cherry.webp",
+    "/robots.txt",
+];
+
+/// Query-string map (URLSearchParams-like, first value wins).
+pub fn query(search: &str) -> std::collections::HashMap<String, String> {
+    use form_urlencoded::parse;
+    parse(search.as_bytes())
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect()
+}
+
+fn manifest_response(manifest: serde_json::Value) -> Response {
+    Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header(
+            axum::http::header::CONTENT_TYPE,
+            "application/manifest+json; charset=utf-8",
+        )
+        .header(axum::http::header::CACHE_CONTROL, "public, max-age=3600")
+        .body(axum::body::Body::from(
+            serde_json::to_string_pretty(&manifest).unwrap_or_default(),
+        ))
+        .expect("static response")
+}
+
+/// lib/site_redirects.js bellScheduleRedirect — GET/HEAD only.
+fn bell_schedule_redirect(path: &str, method: &Method, search: &str) -> Option<Response> {
+    if method != Method::GET && method != Method::HEAD {
+        return None;
+    }
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"(?i)^/(?:rjuhsd/)?bell(?:\.html?|/(?:index(?:\.html?)?/?)?)?$")
+            .expect("static regex")
+    });
+    if re.is_match(path) {
+        return Some(redirect(&format!("https://rjuhsd.school/{search}"), 302));
+    }
+    None
+}
+
+/// lib/site_redirects.js blooketBotRedirect — GET/HEAD only.
+fn blooket_bot_redirect(path: &str, method: &Method, search: &str) -> Option<Response> {
+    if method != Method::GET && method != Method::HEAD {
+        return None;
+    }
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"(?i)^/blooket-bot(?:\.html?|/(?:index(?:\.html?)?/?)?)?$")
+            .expect("static regex")
+    });
+    if re.is_match(path) {
+        return Some(redirect(&format!("https://woodcreek.site/{search}"), 302));
+    }
+    None
+}
+
+/// The full ported flow. `authenticated` is the session stub (Step 6 wires
+/// the real `checkPasswordCookie`).
+pub async fn handle(
+    state: Arc<AppState>,
+    method: Method,
+    uri: &axum::http::Uri,
+    headers: &HeaderMap,
+) -> Response {
+    let path = uri.path().to_string();
+    let search = uri.query().unwrap_or("").to_string();
+
+    // Non-GET/HEAD/OPTIONS on any path → 405 page (the JS falls through every
+    // route block to errResp(405)); CSRF still applies to /api POSTs first.
+    let is_get_like = method == Method::GET || method == Method::HEAD || method == Method::OPTIONS;
+    if !is_get_like {
+        if let Some(resp) = csrf_check(headers, &path, &method) {
+            return resp;
+        }
+        return err_resp(405, None, None);
+    }
+
+    // 1. Bell/blooket redirects.
+    if let Some(resp) = bell_schedule_redirect(&path, &method, &search) {
+        return resp;
+    }
+    if let Some(resp) = blooket_bot_redirect(&path, &method, &search) {
+        return resp;
+    }
+
+    // 2. CSRF for mutating /api/ calls (GET is skipped inside csrf_check).
+    if let Some(resp) = csrf_check(headers, &path, &method) {
+        return resp;
+    }
+
+    // 3. /swift → 301.
+    if path == "/swift" {
+        return redirect(&format!("/swift/{search}"), 301);
+    }
+
+    // 4. Soft-maintenance gate.
+    if state.soft_maintenance_active() {
+        let exempt = path == "/maintenance.html"
+            || path == "/cookie-consent.js"
+            || path == "/favicon.ico"
+            || path == "/favicon.webp"
+            || path.starts_with("/api/admin")
+            || path.starts_with("/api/moderator")
+            || path == "/api/login"
+            || path == "/api/userdata"
+            || (path.contains('.') && !path.ends_with(".html"));
+        if !exempt {
+            if path.starts_with("/api/") {
+                return json_resp(
+                    503,
+                    serde_json::json!({
+                        "error": "maintenance",
+                        "message": "System is currently undergoing offline maintenance."
+                    }),
+                );
+            }
+            return redirect("/maintenance.html", 302);
+        }
+    }
+
+    let cfg = &state.cfg;
+    let webroot = cfg.webroot.clone();
+
+    // 4b. Password Enforcement (Unified) — server.js ~8272-8297.
+    let clean_path = {
+        let trimmed = path.trim_end_matches('/');
+        if path.ends_with('/') && path != "/" {
+            trimmed.to_string()
+        } else {
+            path.clone()
+        }
+    };
+    let is_exempt = clean_path == "/enroll"
+        || clean_path == "/larp"
+        || clean_path == "/larp/rezero"
+        || clean_path == "/bell"
+        || clean_path == "/preferences"
+        || clean_path == "/api/bell/override"
+        || clean_path == "/claim"
+        || clean_path == "/unsubscribe"
+        || path.starts_with("/unsubscribe/")
+        || crate::state::PUBLIC_API_PATHS.contains(&clean_path.as_str())
+        || path.starts_with("/api/puzzle/")
+        || path == "/api/sms-reply"
+        || path.starts_with("/admin")
+        || path.starts_with("/moderator");
+    let is_asset = path.contains('.') && !path.ends_with(".html");
+    if !is_exempt
+        && !is_asset
+        && path != "/ws"
+        && path != "/"
+        && !state.check_password_cookie(headers, None)
+        && !is_pickle_host(headers)
+        && !is_rjuhsd_host(headers)
+    {
+        if path.starts_with("/api/") {
+            return json_resp(
+                403,
+                serde_json::json!({
+                    "error": "password required",
+                    "message": "Please set a password at /enroll/ to continue."
+                }),
+            );
+        }
+        return redirect("/enroll/", 302);
+    }
+
+    // 5. /team route (GET) — injectReadability of the team page.
+    if path == "/team" || path == "/team/" || path == "/team/index.html" {
+        if let Ok(html) = std::fs::read_to_string(webroot.join("team/index.html")) {
+            return html_response(inject_readability(&html, &path));
+        }
+    }
+
+    let req_host = request_host(headers);
+    let pickle_host = is_pickle_host(headers);
+    let rjuhsd_host = is_rjuhsd_host(headers);
+
+    // 6. Per-host manifests (default host falls through to static).
+    if path == "/manifest.json" {
+        if pickle_host {
+            return manifest_response(crate::manifests::pickle_manifest());
+        }
+        if rjuhsd_host {
+            return manifest_response(crate::manifests::rjuhsd_manifest());
+        }
+    }
+
+    // 7. Site hubs and previews.
+    let pickle_hub_html = || -> Option<String> {
+        std::fs::read_to_string(webroot.join("sexypickleclub").join("index.html"))
+            .ok()
+            .map(|h| inject_shared_head(&h))
+    };
+    let rjuhsd_hub_html = || -> Option<String> {
+        std::fs::read_to_string(webroot.join("rjuhsd").join("index.html"))
+            .ok()
+            .map(|h| inject_shared_head(&h))
+    };
+
+    if (path == "/" || path == "/index.html") && pickle_host {
+        if let Some(html) = pickle_hub_html() {
+            return html_response(html);
+        }
+    }
+    if (path == "/" || path == "/index.html") && rjuhsd_host {
+        if let Some(html) = rjuhsd_hub_html() {
+            return html_response(html);
+        }
+    }
+    if path == "/sexypickleclub"
+        || path == "/sexypickleclub/"
+        || path == "/sexypickleclub/index.html"
+    {
+        if let Some(html) = pickle_hub_html() {
+            return html_response(html);
+        }
+        return err_resp(404, Some("Not found"), None);
+    }
+    if pickle_host && path != "/" && path != "/index.html" {
+        if let Some(resp) = site_page_block(
+            &webroot.join("sexypickleclub"),
+            &path, &search, true, "sexypickleclub.com",
+            "pickle-bridge",
+            "This page isn't part of the Sexy Pickle Club.",
+            "The whole club lives on one page — sexypickleclub.com/ — and the rest of the network is over on mitch.pro. Sign in from the front door and you're in.",
+            headers, state.clone(),
+        ) {
+            return resp;
+        }
+        // Site-local assets; everything else falls through to the shared root.
+        if let Some(resp) = pickle_asset_response(&webroot, &path) {
+            return resp;
+        }
+    }
+    if path == "/rjuhsd" || path == "/rjuhsd/" || path == "/rjuhsd/index.html" {
+        if let Some(html) = rjuhsd_hub_html() {
+            return html_response(html);
+        }
+        return err_resp(404, Some("Not found"), None);
+    }
+    if rjuhsd_host && path != "/" {
+        if let Some(resp) = site_page_block(
+            &webroot.join("rjuhsd"),
+            &path, &search, false, "rjuhsd.school",
+            "rjuhsd-bridge",
+            "This page isn't part of rjuhsd.school.",
+            "Looking for something else? The rjuhsd.school hub lives here — mitch.pro pages have their own home at mitch.pro.",
+            headers, state.clone(),
+        ) {
+            return resp;
+        }
+    }
+
+    // 8. Trailing-slash redirect for directories under WEBROOT.
+    if path != "/" && !path.ends_with('/') {
+        if let Some(disk) = safe_webroot_path(&webroot, &path) {
+            if std::fs::metadata(&disk)
+                .map(|m| m.is_dir())
+                .unwrap_or(false)
+            {
+                return redirect(&format!("{path}/{search}"), 302);
+            }
+        }
+    }
+
+    // 9. Enroll: signed-in ?next= skip (SSO bridge; real gate at Step 6).
+    if path == "/enroll/" || path == "/enroll/index.html" || path == "/enroll.html" {
+        let has_enroll_param = ["ref", "email", "code", "token", "claim", "reset"]
+            .iter()
+            .any(|k| query(&search).contains_key(*k));
+        let next_raw = query(&search).get("next").cloned().unwrap_or_default();
+        if method == Method::GET && !next_raw.is_empty() && !has_enroll_param {
+            if let Some(_next) = sso_back_allowed(&state.cfg, &next_raw, &req_host) {
+                // checkPasswordCookie stub is false — no redirect yet (Step 6).
+            }
+        }
+    }
+
+    // 10. HTML auth gate (unauthenticated stub: non-open pages → /enroll/).
+    let mut html_base = path.clone();
+    if html_base.ends_with(".html") {
+        html_base = html_base[..html_base.len() - 5].to_string();
+    }
+    if html_base.ends_with('/') && html_base.len() > 1 {
+        html_base = html_base[..html_base.len() - 1].to_string();
+    }
+    let is_html_request = path.ends_with(".html") || path.ends_with('/');
+    let is_open_html_page = is_html_request && HTML_OPEN.contains(&html_base.as_str());
+    if is_html_request
+        && !is_open_html_page
+        && !path.starts_with("/unsubscribe/")
+        && !state.check_password_cookie(headers, None)
+        && path != "/"
+    {
+        return redirect("/enroll/", 302);
+    }
+    // .html → sibling-directory 302 (file missing but <dir>/index.html exists).
+    if path.ends_with(".html") {
+        let missing = safe_webroot_path(&webroot, &path)
+            .map(|p| !p.exists())
+            .unwrap_or(true);
+        if missing {
+            let dir_name = &path[1..path.len() - 5];
+            if !dir_name.is_empty() {
+                if let Some(index_path) =
+                    safe_webroot_path(&webroot, &format!("{dir_name}/index.html"))
+                {
+                    if index_path.exists() {
+                        return redirect(&format!("/{dir_name}/{search}"), 302);
+                    }
+                }
+            }
+        }
+    }
+
+    // 11. Main injection pipeline for .html / / pages.
+    if (path.ends_with(".html") || path == "/" || (path.ends_with('/') && path.len() > 1))
+        && path != "/admin.html"
+        && path != "/roblox.html"
+    {
+        let file_path: Option<std::path::PathBuf> = if path == "/" {
+            // Unauthenticated stub → index-sales.html (Step 6 adds the authed branch).
+            Some(webroot.join("index-sales.html"))
+        } else if path.ends_with('/') {
+            safe_webroot_path(
+                &webroot,
+                &format!("{}index.html", path.trim_start_matches('/')),
+            )
+        } else {
+            safe_webroot_path(&webroot, &path)
+        };
+        if let Some(fp) = file_path {
+            if fp.exists() && std::fs::metadata(&fp).map(|m| !m.is_dir()).unwrap_or(false) {
+                if let Ok(raw) = std::fs::read(&fp) {
+                    if let Ok(mut html) = String::from_utf8(raw) {
+                        return html_response(crate::pipeline::inject_page(
+                            &state, headers, &path, &html_base, &mut html,
+                        ));
+                    }
+                }
+            }
+        }
+        // fall through to static serving on failure
+    }
+
+    // 12. Protected theme files (unauthenticated → bare 403).
+    let base_name = path.rsplit('/').next().unwrap_or("");
+    if PROTECTED_FILES.contains(&base_name) {
+        return Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(axum::body::Body::empty())
+            .expect("static response");
+    }
+
+    // 13. Public assets gate (unauthenticated).
+    let clean_path = html_base.clone();
+    let is_piece_svg = path.starts_with("/games/chess-bot/pieces-svg/") && path.ends_with(".svg");
+    let public_api = crate::state::PUBLIC_API_PATHS.contains(&clean_path.as_str());
+    let is_larp = path == "/larp" || path.starts_with("/larp/");
+    if !is_open_html_page
+        && !public_api
+        && !PUBLIC_ASSETS.contains(&path.as_str())
+        && !is_piece_svg
+        && !path.starts_with("/unsubscribe/")
+        && !path.starts_with("/images/")
+        && !path.starts_with("/backgrounds/")
+        && !is_larp
+        && !state.check_password_cookie(headers, None)
+    {
+        return redirect("/enroll/", 302);
+    }
+
+    // 14. Static.
+    serve_static(&state.static_cache, &webroot, &path, |html| {
+        crate::pipeline::serve_static_html(&state, headers, &path, html)
+    })
+}
+
+fn html_response(html: String) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(axum::body::Body::from(html))
+        .expect("static response")
+}
+
+/// `csrfFailureIfUnsafe` — only mutating /api/ requests, minus the exempt set.
+fn csrf_check(headers: &HeaderMap, path: &str, method: &Method) -> Option<Response> {
+    if !path.starts_with("/api/") {
+        return None;
+    }
+    if method == Method::GET || method == Method::HEAD || method == Method::OPTIONS {
+        return None;
+    }
+    if crate::state::CSRF_EXEMPT_PATHS.contains(&path) {
+        return None;
+    }
+    let requested_with = headers
+        .get("x-mitch-requested-with")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    if requested_with != "1" {
+        return Some(json_resp(403, serde_json::json!({"error": "csrf_blocked"})));
+    }
+    if !crate::hosts::same_origin_request(headers) {
+        return Some(json_resp(403, serde_json::json!({"error": "csrf_blocked"})));
+    }
+    None
+}
+
+/// The pickle/rjuhsd site page blocks (shared shape in server.js ~20990-21125).
+#[allow(clippy::too_many_arguments)]
+fn site_page_block(
+    site_webroot: &std::path::Path,
+    path: &str,
+    query: &str,
+    members_open: bool,
+    domain: &str,
+    bridge_kind: &str,
+    not_found_title: &str,
+    not_found_detail: &str,
+    headers: &HeaderMap,
+    state: Arc<AppState>,
+) -> Option<Response> {
+    static PAGE_EXT: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let is_page_path = path.ends_with('/')
+        || PAGE_EXT
+            .get_or_init(|| regex::Regex::new(r"(?i)\.html?$").expect("static regex"))
+            .is_match(path);
+    if !is_page_path {
+        return None;
+    }
+    let mut rel = if path == "/index.html" {
+        "/".to_string()
+    } else {
+        path.to_string()
+    };
+    if !rel.ends_with('/') {
+        let stripped = rel.trim_start_matches('/');
+        let as_dir = format!(
+            "/{}",
+            PAGE_EXT
+                .get()
+                .map(|re| re.replace_all(stripped, "").to_string())
+                .unwrap_or_else(|| stripped.to_string())
+        );
+        let is_dir = std::fs::metadata(site_webroot.join(as_dir.trim_start_matches('/')))
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        if is_dir {
+            return Some(redirect(&format!("{rel}/{query}"), 302));
+        }
+        rel = format!("{as_dir}/");
+    }
+    if rel.contains("..") {
+        return Some(err_resp(404, None, None));
+    }
+    let file = site_webroot.join(format!("{}/index.html", rel.trim_start_matches('/')));
+    let stat = std::fs::metadata(&file).ok();
+    if stat.is_none() || stat.map(|s| s.is_dir()).unwrap_or(true) {
+        return Some(err_resp(404, Some(not_found_title), Some(not_found_detail)));
+    }
+    // Gate: open pages pass; everything else redirects via the SSO bridge.
+    let page_base = format!("/{}", rel.trim_start_matches('/').trim_end_matches('/'));
+    let mut open = page_base.is_empty() || members_open;
+    if !open {
+        let open_index = format!("{page_base}/index");
+        open = HTML_OPEN.contains(&page_base.as_str()) || HTML_OPEN.contains(&open_index.as_str());
+    }
+    if !open {
+        // ban + session checks (bans stubbed; sessions come at Step 6).
+        if !state.check_password_cookie(headers, None) {
+            let _ = bridge_kind;
+            // encodeURIComponent(origin + rel), like the JS.
+            let origin = format!("https://{domain}");
+            let encoded = encode_uri_component(&format!("{origin}{rel}"));
+            return Some(redirect(&format!("/api/sso/bridge?back={encoded}"), 302));
+        }
+    }
+    match std::fs::read_to_string(&file) {
+        Ok(mut html) => {
+            html = inject_shared_head(&html);
+            let rc_key = std::env::var("RECAPTCHA_SITE_KEY")
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            let recaptcha_host = std::env::var("RECAPTCHA_SCRIPT_HOST")
+                .unwrap_or_else(|_| "www.recaptcha.net".into())
+                .trim()
+                .to_string();
+            if !rc_key.is_empty() && !html.contains("recaptcha/api.js") {
+                html = html.replacen(
+                    "</head>",
+                    &format!(
+                        "{}{}",
+                        recaptcha_loader_str(&recaptcha_host, &rc_key),
+                        "</head>"
+                    ),
+                    1,
+                );
+            }
+            Some(html_response(html))
+        }
+        Err(_) => Some(err_resp(404, None, None)),
+    }
+}
+
+/// `encodeURIComponent` — leaves A-Za-z0-9 and `-_.!~*'()` unescaped.
+fn encode_uri_component(v: &str) -> String {
+    let mut out = String::with_capacity(v.len());
+    for b in v.bytes() {
+        match b {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'!'
+            | b'~'
+            | b'*'
+            | b'\''
+            | b'('
+            | b')' => out.push(b as char),
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}

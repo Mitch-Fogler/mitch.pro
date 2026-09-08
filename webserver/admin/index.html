@@ -423,6 +423,49 @@
       word-break: break-word;
       background: color-mix(in srgb, var(--t-bg) 94%, #000);
       color: var(--t-fg2);
+    }
+    .log-rows {
+      max-height: 560px;
+      overflow: auto;
+      background: color-mix(in srgb, var(--t-bg) 94%, #000);
+      border: 1px solid color-mix(in srgb, var(--t-fg2) 14%, transparent);
+      border-radius: 10px;
+      font-size: .8rem;
+    }
+    .log-row {
+      padding: 4px 10px;
+      border-bottom: 1px solid color-mix(in srgb, var(--t-fg2) 7%, transparent);
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: auto auto minmax(90px, max-content) 1fr;
+      gap: 8px;
+      align-items: baseline;
+    }
+    .log-row:hover { background: color-mix(in srgb, var(--t-fg2) 5%, transparent); }
+    .log-row:last-child { border-bottom: none; }
+    .log-time { opacity: .65; font-size: .75rem; white-space: nowrap; }
+    .log-level {
+      font-size: .65rem; font-weight: 700; padding: 1px 7px; border-radius: 99px;
+      text-transform: uppercase; letter-spacing: .04em; justify-self: start;
+    }
+    .log-level-debug { color: #38bdf8; background: rgba(56,189,248,.12); }
+    .log-level-info  { color: #4ade80; background: rgba(74,222,128,.10); }
+    .log-level-warn  { color: #fbbf24; background: rgba(251,191,36,.12); }
+    .log-level-error { color: #f87171; background: rgba(248,113,113,.14); }
+    .log-cat { opacity: .8; font-size: .72rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .log-msg { word-break: break-word; }
+    .log-details {
+      grid-column: 1 / -1;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: color-mix(in srgb, var(--t-bg) 60%, #000);
+      border-left: 2px solid color-mix(in srgb, var(--t-fg2) 25%, transparent);
+      padding: 6px 10px;
+      margin: 4px 0;
+      font-size: .72rem;
+      opacity: .9;
+    }
+    .log-more { opacity: .55; font-size: .7rem; font-style: italic; }
       border: 1px solid var(--t-bd);
       border-radius: var(--t-radius, 8px);
       padding: 12px;
@@ -930,7 +973,11 @@
             <button type="button" onclick="loadAppLogs()" style="width:auto; margin:0;">Refresh App Logs</button>
           </div>
           <div id="app-log-status" class="form-status"></div>
-          <pre id="app-log-output" class="logs-output">Open this section to load application logs.</pre>
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:.75rem; margin-top:8px;">
+            <input type="checkbox" id="app-log-live" checked style="width:auto; margin:0;">
+            <span class="muted">Live refresh (10s)</span>
+          </label>
+          <div id="app-log-output" class="log-rows" style="margin-top:8px;">Open this section to load application logs.</div>
         </div>
         <div class="action-card" style="grid-column: 1 / -1;">
           <h2>Docker Logs</h2>
@@ -1623,6 +1670,7 @@
       list.innerHTML = (d.sessions || []).map(s => '<div class="feed-entry"><span class="feed-ts">Active</span><span class="feed-msg">' + s.id + ' (Display ' + s.display + ')</span></div>').join('') || '<div class="empty">No active sessions</div>';
     }
 
+    let appLogExpanded = new Set(); // row keys kept open across refreshes
     async function loadAppLogs() {
       const level = document.getElementById('app-log-level')?.value || 'all';
       const category = document.getElementById('app-log-category')?.value || 'all';
@@ -1649,12 +1697,52 @@
           categorySelect.value = [...categorySelect.options].some(o => o.value === current) ? current : 'all';
         }
 
-        const lines = (d.logs || []).map(row => {
-          const details = row.details ? ' ' + row.details : '';
-          return `[${fmtTime(row.ts)}] ${String(row.level || '').toUpperCase().padEnd(5)} ${String(row.category || 'general').padEnd(14)} ${row.message || ''}${details}`;
-        });
+        // Structured rows: time | level pill | category | message, with the
+        // (previously raw-concatenated) details hidden behind a click.
+        const expanded = appLogExpanded;
         if (output) {
-          output.textContent = lines.join('\n') || 'No matching application logs.';
+          const rows = d.logs || [];
+          output.textContent = '';
+          if (!rows.length) {
+            output.textContent = 'No matching application logs.';
+          }
+          for (const row of rows) {
+            const key = row.ts + '|' + String(row.message || '').slice(0, 60);
+            const div = document.createElement('div');
+            div.className = 'log-row';
+            const level = String(row.level || 'info').toLowerCase();
+            const time = document.createElement('span');
+            time.className = 'log-time';
+            time.textContent = fmtTime(row.ts);
+            const pill = document.createElement('span');
+            pill.className = 'log-level log-level-' + level;
+            pill.textContent = level;
+            const cat = document.createElement('span');
+            cat.className = 'log-cat';
+            cat.textContent = String(row.category || 'general');
+            const msg = document.createElement('span');
+            msg.className = 'log-msg';
+            msg.textContent = String(row.message || '');
+            div.append(time, pill, cat, msg);
+            if (row.details) {
+              const more = document.createElement('span');
+              more.className = 'log-more';
+              more.textContent = appLogExpanded.has(key) ? '▲ details' : '▼ details';
+              msg.appendChild(more);
+              if (appLogExpanded.has(key)) {
+                const det = document.createElement('pre');
+                det.className = 'log-details';
+                det.textContent = String(row.details);
+                div.appendChild(det);
+              }
+              div.addEventListener('click', () => {
+                if (appLogExpanded.has(key)) appLogExpanded.delete(key);
+                else appLogExpanded.add(key);
+                loadAppLogs();
+              });
+            }
+            output.appendChild(div);
+          }
           output.dataset.loaded = '1';
         }
         setStatus('app-log-status', 'Loaded ' + (d.logs || []).length + ' application logs.', 'ok');
@@ -1663,6 +1751,20 @@
         setStatus('app-log-status', err.message, 'err');
       }
     }
+    // Debounced search: the field now filters without pressing Refresh.
+    let appLogSearchTimer = null;
+    document.getElementById('app-log-search')?.addEventListener('input', () => {
+      clearTimeout(appLogSearchTimer);
+      appLogSearchTimer = setTimeout(loadAppLogs, 300);
+    });
+    // Live tail: refresh every 10s while the logs section is active.
+    setInterval(() => {
+      if (!document.getElementById('app-log-live')?.checked) return;
+      if (!location.hash.startsWith('#logs-tools')) return;
+      if (!currentUser || !currentUser.isAdmin) return;
+      const output = document.getElementById('app-log-output');
+      if (output && output.dataset.loaded) loadAppLogs();
+    }, 10000);
 
     async function loadDockerLogs() {
       const service = document.getElementById('docker-log-service')?.value || 'all';

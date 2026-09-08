@@ -21,6 +21,7 @@ pub mod config;
 pub mod crypto;
 pub mod data;
 pub mod email;
+pub mod log;
 pub mod state;
 
 /// Library version, matching the workspace version.
