@@ -1178,7 +1178,7 @@ function e2eStorageKey(name) {
   return `_e2e_${name}_v3:${encodeURIComponent(normEmail(myEmail))}`;
 }
 function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
-function fmtTime(ts) { return new Date(ts || Date.now()).toLocaleTimeString('en-US', { hour12:false, hour:'2-digit', minute:'2-digit' }); }
+function fmtTime(ts) { return new Date(ts || Date.now()).toLocaleTimeString('en-US', { hour12:true, hour:'2-digit', minute:'2-digit' }); }
 function fmtDay(ts) { return new Date(ts || Date.now()).toLocaleDateString(undefined, { month:'short', day:'numeric', year:'numeric' }); }
 function atBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 60; }
 function msgId(m) { return String(m.clientId || m.id || [m.from, m.to, m.groupId, m.ts, m.text].join('|')); }

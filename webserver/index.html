@@ -76,7 +76,7 @@ function showBannedPopup(reason) {
 
 function launchSite(type, href) {
   href = href || '/';
-  if (/^https:\/\/rjuhsd\.school(?:[/?#]|$)/i.test(href)) {
+  if (/^https:\/\/(?:rjuhsd\.school|woodcreek\.site)(?:[/?#]|$)/i.test(href)) {
     window.location.href = href;
     return;
   }
@@ -865,7 +865,6 @@ function loadGreeting() {
 
   var _homePrefG = {};
   try { _homePrefG = JSON.parse(localStorage.getItem('_prefHomepage') || '{}'); } catch(e) {}
-  var _clockFmt = _homePrefG.clockFormat || '12';
   var _greetName = _homePrefG.greetingName || '';
 
   function tick() {
@@ -874,12 +873,8 @@ function loadGreeting() {
     var greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
     if (greetEl) greetEl.textContent = greeting + ',';
     var mm = String(now.getMinutes()).padStart(2,'0');
-    if (_clockFmt === '24') {
-      clockEl.textContent = String(h).padStart(2,'0') + ':' + mm;
-    } else {
-      var hh = h % 12 || 12, ampm = h < 12 ? 'AM' : 'PM';
-      clockEl.textContent = hh + ':' + mm + ' ' + ampm;
-    }
+    var hh = h % 12 || 12, ampm = h < 12 ? 'AM' : 'PM';
+    clockEl.textContent = hh + ':' + mm + ' ' + ampm;
     if (gamesDayEl) {
       gamesDayEl.textContent = now.toLocaleDateString(undefined, {
         weekday: 'long',
@@ -3358,7 +3353,7 @@ if (document.readyState === 'loading') {
 <body data-shell="off" class="home">
 <nav class="home-masthead" aria-label="Primary">
   <a class="home-wordmark" href="/" aria-label="mitch.pro home"><img class="site-logo" src="/icon-192.png" alt="" width="35" height="35">mitch<span>.pro</span></a>
-  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/encrypt/">Chat</a><a href="/game-portal/">Games</a><a href="/members/">People</a><a href="https://rjuhsd.school/">Schedule</a></div>
+  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/encrypt/">Chat</a><a href="/game-portal/">Games</a><a href="https://woodcreek.site/">Blooket Bot</a><a href="/members/">People</a><a href="https://rjuhsd.school/">Schedule</a></div>
   <a class="home-account-link" href="/profile/">My account <span aria-hidden="true">↗</span></a>
 </nav>
 
@@ -3513,7 +3508,7 @@ if (document.readyState === 'loading') {
         <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="m12 3 6 6-6 12L6 9z"/><path d="M6 9h12M9 9l3-6 3 6-3 12z"/></svg></span><span class="action-copy"><b>Market</b><small>Browse drops</small></span></a>
         <a class="hub-action" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span><span class="action-copy"><b>Games</b><small>Choose your arcade</small></span></a>
         <a class="hub-action" href="/vms/" onclick="openHomeHref(event, '/vms/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M13 2 5.5 13H11l-1 9 8.5-12H13z"/></svg></span><span class="action-copy"><b>VM Lab</b><small>Open workspace</small></span></a>
-        <button type="button" class="hub-action hub-daily" id="hub-daily-chip" hidden>Daily claim</button>
+        <button type="button" class="hub-action hub-daily mitch-coin-amount" id="hub-daily-chip" hidden>Daily claim</button>
       </nav>
 
   <!-- Live dayboard: weather · calendar · bells -->
@@ -3666,7 +3661,7 @@ if (document.readyState === 'loading') {
             </div>
           </div>
         </div>
-        <button id="daily-login-btn" class="daily-login-claim-btn" disabled>Claim</button>
+        <button id="daily-login-btn" class="daily-login-claim-btn mitch-coin-amount" disabled>Claim</button>
       </div>
 
       <section class="account-perks" aria-labelledby="account-perks-title">

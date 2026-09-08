@@ -1270,8 +1270,7 @@
   <div class="field">
     <label>Clock Format</label>
     <div class="chip-row">
-      <button class="chip active" data-clock="12" onclick="selectChip(this,'[data-clock]','activeClock')">12-hour</button>
-      <button class="chip" data-clock="24" onclick="selectChip(this,'[data-clock]','activeClock')">24-hour</button>
+      <button class="chip active" data-clock="12" onclick="selectChip(this,'[data-clock]','activeClock')">12-hour (AM/PM)</button>
     </div>
   </div>
 
@@ -2766,7 +2765,7 @@ async function deleteAccount() {
   activeCount = hc.topCount != null ? hc.topCount : 5;
   var ac = document.querySelector('[data-count="' + activeCount + '"]');
   if (ac) { document.querySelectorAll('[data-count]').forEach(function(b){b.classList.remove('active');}); ac.classList.add('active'); }
-  activeClock = hc.clockFormat || '12';
+  activeClock = '12';
   pinnedGames = new Set(hc.pinnedGames || []);
   widgetOrder = hc.widgetOrder || ['stats', 'ab', 'games'];
   var wlist = document.getElementById('widgetOrderList');

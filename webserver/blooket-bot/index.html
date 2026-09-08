@@ -978,7 +978,7 @@
             card.style.padding = '12px 16px';
             card.style.fontSize = '0.9rem';
             
-            const timeStr = new Date(r.ts * 1000).toLocaleString();
+            const timeStr = new Date(r.ts * 1000).toLocaleString('en-US', { hour12: true });
             card.innerHTML = `
               <div style="display: flex; justify-content: space-between; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 6px;">
                 <strong style="color: var(--ac);">${r.email}</strong>

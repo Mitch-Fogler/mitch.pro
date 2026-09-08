@@ -18,7 +18,7 @@ import {
   rebuildCoreTablesFromDocuments,
 } from './lib/data_store.js';
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
-import { RJUHSD_ORIGIN, bellScheduleRedirect } from './lib/site_redirects.js';
+import { RJUHSD_ORIGIN, bellScheduleRedirect, blooketBotRedirect } from './lib/site_redirects.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
 import {
   generateAuthenticationOptions,
@@ -7603,6 +7603,8 @@ async function handleRequest(req, server) {
 
   const bellRedirect = bellScheduleRedirect(url, method);
   if (bellRedirect) return Response.redirect(bellRedirect, 302);
+  const botRedirect = blooketBotRedirect(url, method);
+  if (botRedirect) return Response.redirect(botRedirect, 302);
 
   const csrfFailure = csrfFailureIfUnsafe(req, path, method);
   if (csrfFailure) return csrfFailure;
@@ -14505,7 +14507,7 @@ function loadAllGamesList() {
       if (Date.now() - lastClaimed < oneWeekMs) {
         const nextClaimTime = new Date(lastClaimed + oneWeekMs);
         return jsonResp(400, {
-          error: `Reward already claimed this week. You can claim it again after ${nextClaimTime.toLocaleString()}`
+          error: `Reward already claimed this week. You can claim it again after ${nextClaimTime.toLocaleString('en-US', { hour12: true })}`
         });
       }
 
@@ -21255,7 +21257,7 @@ function loadAllGamesList() {
     const PUBLIC_ASSETS = new Set([
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
-      '/api.js', '/app-shell.js', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
+      '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/vendor/simplewebauthn.browser.min.js',
       '/home-redesign.css', '/welcome.css',
       '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
@@ -21632,7 +21634,7 @@ setTimeout(() => {
   if (process.env.SEND_STARTUP_TEST_EMAIL === '1' && testTarget) {
     console.log(`[startup] Sending requested startup test email to ${testTarget}...`);
     sendEmailBg(testTarget, "mitch.pro - Server Startup Test",
-      `The mitch.pro server restarted successfully at ${new Date().toLocaleString()}.`);
+      `The mitch.pro server restarted successfully at ${new Date().toLocaleString('en-US', { hour12: true })}.`);
   }
 
   console.log(`[startup] All systems active.`);

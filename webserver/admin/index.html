@@ -1225,7 +1225,7 @@
       if (!ts) return '';
       const d = typeof ts === 'string' ? new Date(ts) : new Date(Number(ts));
       if (isNaN(d.getTime())) return String(ts);
-      return d.toLocaleString();
+      return d.toLocaleString('en-US', { hour12: true });
     }
 
     function textOf(v) {
@@ -1471,7 +1471,7 @@
         const traffic = document.getElementById('traffic-feed');
         traffic.innerHTML = data.traffic.map(t => `
           <div class="feed-entry">
-            <span class="feed-ts">${new Date(t.ts).toLocaleTimeString()}</span>
+            <span class="feed-ts">${new Date(t.ts).toLocaleTimeString('en-US', { hour12: true })}</span>
             <span class="feed-msg">${esc(t.user)} -> ${esc(t.page)}</span>
           </div>
         `).join('');
@@ -2231,7 +2231,7 @@
           const row = document.createElement('tr');
           row.style.borderBottom = '1px solid var(--t-bd)';
           
-          const dateStr = app.appliedAt ? new Date(app.appliedAt).toLocaleString() : 'N/A';
+          const dateStr = app.appliedAt ? new Date(app.appliedAt).toLocaleString('en-US', { hour12: true }) : 'N/A';
           
           let statusBadge = '';
           if (app.status === 'pending') {

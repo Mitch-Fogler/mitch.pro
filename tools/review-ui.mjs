@@ -11,6 +11,7 @@ const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
 const jwk = privateKey.export({ format: 'jwk' });
 const pub = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, 'base64url'), Buffer.from(jwk.y, 'base64url')]).toString('hex');
 const email = 'alex@example.test';
+let coinBalance = 1250.25, coinStatus = 200, coinRequests = 0;
 const members = [
   { email: 'jamie@example.test', nickname: 'Jamie Chen', displayName: 'Jamie Chen', handle: 'jamie', online: true, unread: 2, bio: 'Usually up for a game of chess.', lastSeen: Date.now(), pubKey: pub },
   { email: 'sam@example.test', nickname: 'Sam Rivera', displayName: 'Sam Rivera', handle: 'sam', online: true, lastSeen: Date.now(), pubKey: pub },
@@ -29,6 +30,10 @@ await context.route('**/*', async route => {
   const url = new URL(route.request().url());
   if (!['127.0.0.1', 'localhost'].includes(url.hostname)) return route.abort();
   if (!url.pathname.startsWith('/api/')) return route.continue();
+  if (url.pathname === '/api/me/coins') {
+    coinRequests++;
+    return route.fulfill({ status: coinStatus, contentType: 'application/json', body: JSON.stringify(coinStatus === 200 ? { coins: coinBalance, achievements: [], stats: {} } : { error: 'unavailable' }) });
+  }
   let data = { success: true, ok: true, items: [], notifications: [], requests: [], members: [], messages: [], groups: [], listings: [], friends: [], games: [], entries: [], events: [], profile: {} };
   if (url.pathname === '/api/me') data = { email, nickname: 'Alex', pubKeyHex: pub, isAdmin: false, isPremium: false, coins: 1250, balance: 1250 };
   if (url.pathname === '/api/members') data = { members };
@@ -49,7 +54,7 @@ const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 const routes = process.argv.includes('--all')
   ? ['/', '/index-sales.html', '/maintenance.html', ...(await readdir('webserver', { withFileTypes: true })).filter(x => x.isDirectory()).map(x => '/' + x.name + '/')]
-  : ['/', '/encrypt/', '/game-portal/', '/preferences/', '/members/', '/shop/', '/profile/', '/enroll/', '/bell/', '/feedback/', '/faq/', '/admin/', '/index-sales.html'];
+  : ['/', '/encrypt/', '/game-portal/', '/preferences/', '/members/', '/shop/', '/marketplace/', '/inventory/', '/leaderboard/', '/invite/', '/casino/', '/profile/', '/enroll/', '/bell/', '/feedback/', '/faq/', '/admin/', '/index-sales.html'];
 const results = [];
 for (const route of routes) {
   errors.length = 0;
@@ -58,12 +63,24 @@ for (const route of routes) {
     if (response.status() === 404) continue;
     await page.locator('body').waitFor();
     await page.waitForTimeout(350);
+    if (!route.startsWith('/rjuhsd') && await page.locator('.mitch-wallet').count()) {
+      await page.waitForFunction(() => document.querySelector('.mitch-wallet')?.dataset.state === 'ready');
+      if (!(await page.locator('.mitch-wallet img').first().evaluate(el => el.complete && el.naturalWidth > 0))) throw new Error('Coin image did not load');
+    }
     const state = await page.evaluate(() => ({ title: document.title, width: innerWidth, scrollWidth: document.documentElement.scrollWidth, designed: document.body.classList.contains('mitch-design'), text: document.body.innerText.slice(0, 130) }));
     const slug = route.replaceAll('/', '_').replaceAll('.html', '') || 'home';
     await page.screenshot({ path: `${out}/${slug}-desktop.png`, fullPage: false });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({ path: `${out}/${slug}-mobile.png`, fullPage: false });
     const mobile = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth }));
+    for (const width of [320, 768, 1024]) {
+      await page.setViewportSize({ width, height: 844 });
+      const walletHeaders = await page.locator('.has-mitch-wallet').evaluateAll(headers => headers.map(header => {
+        const rects = [...header.children].map(child => child.getBoundingClientRect()).filter(r => r.width && r.height);
+        return { id: header.id || header.className, fits: rects.every(r => r.left >= -1 && r.right <= innerWidth + 1), overlaps: rects.some((r, i) => rects.slice(i + 1).some(b => Math.min(r.right, b.right) > Math.max(r.left, b.left) + 1 && Math.min(r.bottom, b.bottom) > Math.max(r.top, b.top) + 1)) };
+      }));
+      if (walletHeaders.some(header => !header.fits || header.overlaps)) throw new Error('Wallet header collision at ' + width + ': ' + JSON.stringify(walletHeaders));
+    }
     results.push({ route, ...state, mobile, errors: [...errors] });
     await page.setViewportSize({ width: 1440, height: 1000 });
   } catch (error) { results.push({ route, error: error.message }); }
@@ -119,6 +136,36 @@ for (const width of [320, 390, 430]) {
   await page.locator('#chat-back-btn').click();
 }
 await page.goto('http://127.0.0.1:4317/');
+await page.waitForFunction(() => document.querySelector('.mitch-wallet')?.dataset.state === 'ready');
+if (!(await page.locator('.mitch-wallet').getAttribute('title')).includes('1,250.25')) throw new Error('Wallet does not show the spendable balance');
+coinBalance = 950.25;
+await page.evaluate(async () => {
+  const response = await fetch('/api/shop/buy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  if (!(await response.json()).success) throw new Error('Wallet monitoring consumed the purchase response');
+});
+await page.waitForFunction(() => document.querySelector('.mitch-wallet-value').textContent === '950.25');
+await page.reload();
+await page.waitForFunction(() => document.querySelector('.mitch-wallet-value')?.textContent === '950.25');
+await page.addScriptTag({ url: 'http://127.0.0.1:4317/mitch-coins.js?v=duplicate' });
+if (await page.locator('.mitch-wallet').count() !== 1) throw new Error('Duplicate wallets after repeated initialization');
+coinStatus = 401;
+await page.evaluate(() => window.MitchCoins.refresh());
+if (await page.locator('.mitch-wallet').getAttribute('href') !== '/enroll/') throw new Error('Signed-out wallet retained account data');
+coinStatus = 500;
+await page.evaluate(() => window.MitchCoins.refresh());
+if (await page.locator('.mitch-wallet-value').textContent() !== '—') throw new Error('Failed balance request displayed an invented balance');
+coinStatus = 200; coinBalance = 1234567.89;
+await page.evaluate(() => window.MitchCoins.refresh());
+for (const width of [320, 390, 480, 768]) {
+  await page.setViewportSize({ width, height: 844 });
+  const bounds = await page.locator('.home-masthead').evaluate(el => {
+    const rects = [...el.children].map(child => child.getBoundingClientRect()).filter(r => r.width && r.height);
+    return { fits: rects.every(r => r.left >= 0 && r.right <= innerWidth), overlaps: rects.some((r, i) => rects.slice(i + 1).some(b => Math.min(r.right, b.right) > Math.max(r.left, b.left) + 1 && Math.min(r.bottom, b.bottom) > Math.max(r.top, b.top) + 1)) };
+  });
+  if (!bounds.fits || bounds.overlaps) throw new Error('Wallet crowded mobile header: ' + width + ' ' + JSON.stringify(bounds));
+}
+coinBalance = 1250.25;
+await page.evaluate(() => window.MitchCoins.refresh());
 for (const width of [1024, 1440, 1920]) {
   await page.setViewportSize({ width, height: 1000 });
   const bar = await page.locator('.home-masthead').evaluate(el => {
