@@ -106,7 +106,7 @@
     if (!state.shortcut || event.repeat || !event.altKey || !event.shiftKey || event.code !== 'KeyC' || event.target.closest?.('input,textarea,[contenteditable="true"]')) return;
     event.preventDefault(); save({ mode: state.mode === 'classroom' ? '' : 'classroom' });
   });
-  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/tab-cloak.css?v=1'; document.head.append(css);
+  const css = document.createElement('link'); css.rel = 'stylesheet'; css.href = '/tab-cloak.css?v=2'; document.head.append(css);
   const bar = document.querySelector('.home-masthead, #app-topbar');
   if (bar) { const button = document.createElement('button'); button.id = 'cloak-launcher'; button.textContent = 'Cloak'; button.title = 'Tab cloak settings'; button.onclick = open; bar.append(button); }
   document.querySelectorAll('[data-open-cloak]').forEach(button => button.onclick = open);
