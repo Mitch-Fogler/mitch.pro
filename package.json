@@ -10,6 +10,7 @@
     "test:unit": "bun tests/test_daily_login_unit.js && bun tests/test_roles_unit.js && bun tests/test_background_defaults_unit.js && bun tests/test_site_redirects_unit.js && bun tests/test_mitch_coins_unit.js && bun tests/test_time_format_unit.js && bun tests/test_profile_updates_unit.js && bun tests/test_staff_design_unit.js",
     "test:integration": "bun tests/test_runner.js",
     "test:integration:daily-login": "bun tests/test_daily_login.js",
+    "test:gateway": "bun tests/ssh_gateway_test.js",
     "test": "bun run test:unit && bun run test:integration"
   },
   "dependencies": {

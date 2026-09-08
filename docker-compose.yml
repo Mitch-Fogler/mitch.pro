@@ -160,6 +160,21 @@ services:
       - MITCH_BASE=/app
       - MAIL_RS_PORT=6902
 
+  # Rust ssh-gateway (plan Step 3 of the Rust rewrite). Runs in parallel with
+  # the JS gateway; cutover is a one-line change of the webserver's
+  # SSH_GATEWAY_URL. Protocol is identical (tests/ssh_gateway_test.js).
+  ssh-gateway-rs:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: mitch-ssh-gateway-rs
+    restart: unless-stopped
+    expose:
+      - "6821"
+    environment:
+      - MITCH_SERVICE=mitch-ssh-gateway
+      - PORT=6821
+
   # Node.js + Xvfb Stream Proxy (Port 8081)
   proxy:
     build:

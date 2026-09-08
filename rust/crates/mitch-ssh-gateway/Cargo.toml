@@ -15,7 +15,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-# Real deps land in plan Step 3: tokio-tungstenite (WS server) + russh (SSH client).
+# WS server (internal, plain ws://) + SSH client. Host keys are accepted
+# without verification — matching ssh2's accept-all default in the JS gateway.
+tokio-tungstenite = "0.29"
+russh = "0.63"
+futures-util = "0.3"
 
 [lints.rust]
 unsafe_code = "forbid"
