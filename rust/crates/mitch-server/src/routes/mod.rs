@@ -1,0 +1,22 @@
+//! Route modules — one subsystem per file, mirroring server.js's endpoint
+//! groups. No module reaches into another's internals; shared concerns go
+//! through `mitch-lib`/`State`.
+//!
+//! Groups land in plan Steps 7-13, in this order:
+//! misc (7) → admin (8) → me + pickle (9) → canvas (10) → dm (11) →
+//! games/casino/jeopardy/battleship/chess_vs (12) → team/vm (13).
+
+pub mod admin;
+pub mod battleship;
+pub mod canvas;
+pub mod casino;
+pub mod chess_vs;
+pub mod dm;
+pub mod games;
+pub mod jeopardy;
+pub mod me;
+pub mod misc;
+pub mod pickle;
+pub mod push;
+pub mod team;
+pub mod vm;

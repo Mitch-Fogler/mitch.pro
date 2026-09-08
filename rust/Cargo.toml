@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/mitch-lib",
+    "crates/mitch-server",
+    "crates/mitch-ssh-gateway",
+    "crates/mitch-mail",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+# preserve_order: persisted documents are stored as JSON.stringify text with
+# insertion order; serde_json's default BTreeMap would silently re-sort every
+# document on first Rust write. Never remove this flag. See plan Step 5.
+serde_json = { version = "1", features = ["preserve_order"] }
+axum = { version = "0.8", features = ["ws"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"

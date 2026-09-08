@@ -1,0 +1,26 @@
+[package]
+name = "mitch-ssh-gateway"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mitch-ssh-gateway"
+path = "src/main.rs"
+
+[dependencies]
+mitch-lib = { path = "../mitch-lib" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+# Real deps land in plan Step 3: tokio-tungstenite (WS server) + russh (SSH client).
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
