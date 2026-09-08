@@ -90,3 +90,7 @@ webserver/games/gfiles/
 webserver/games/shs/
 webserver/games/sub/
 webserver/games/*.zip
+
+# Rust rewrite (private, origin-only)
+rust/target/
+rust/.cargo/

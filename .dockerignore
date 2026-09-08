@@ -22,3 +22,5 @@ github_deploy_key*
 .github
 *.tar.gz
 games_external
+rust
+rust/target

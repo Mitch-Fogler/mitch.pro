@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# pre-push guardrail for the Rust rewrite.
+#
+# Rules:
+#   1. Any ref named `rust` (or ending in `/rust`) may ONLY be pushed to `origin`
+#      — never to the `public` mirror or any other remote.
+#   2. The `public` remote accepts ONLY `refs/heads/master`.
+#
+# stdin: lines of "local_ref local_sha remote_ref remote_sha"; $1 = remote name.
+
+remote="$1"
+rust_to_non_origin=0
+
+while read -r lref _lsha rref _rsha; do
+    case "$lref" in
+        rust|*/rust) rust_to_non_origin=1 ;;
+    esac
+    if [ "$remote" = "public" ] && [ "$rref" != "refs/heads/master" ]; then
+        echo "BLOCKED: 'public' accepts only refs/heads/master (got $rref)." >&2
+        echo "Use tools/publish_public.sh to publish to the public mirror." >&2
+        exit 1
+    fi
+done
+
+if [ "$rust_to_non_origin" = 1 ] && [ "$remote" != "origin" ]; then
+    echo "BLOCKED: ref 'rust' may only be pushed to 'origin' (attempted: $remote)." >&2
+    exit 1
+fi
+
+exit 0
