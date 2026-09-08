@@ -235,25 +235,25 @@ function calculatePlaytime(stats) {
   return hrs + 'h ' + mins + 'm';
 }
 
-async function load() {
+async function load(forceNetwork) {
   const wrap = document.getElementById('wrap');
   let profile = null;
   let stats = {}, achs = [];
 
-  if (window.PUBLIC_PROFILE) {
+  if (window.PUBLIC_PROFILE && !forceNetwork) {
     profile = window.PUBLIC_PROFILE;
     stats = profile.stats || {};
     achs = profile.achievements || [];
   } else {
     try {
       if (targetEmail) {
-        const r = await fetch('/api/profile/' + encodeURIComponent(targetEmail));
+        const r = await fetch('/api/profile/' + encodeURIComponent(targetEmail), { credentials: 'include', cache: 'no-store' });
         if (!r.ok) { showNotFound(wrap); return; }
         profile = await r.json();
         stats = profile.stats || {};
         achs = profile.achievements || [];
       } else {
-        const r = await fetch('/api/profile');
+        const r = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
         if (r.status === 401) { location.href = '/enroll.html'; return; }
         profile = await r.json();
         stats = profile.stats || {};
@@ -341,6 +341,7 @@ function showNotFound(wrap) {
 }
 
 load();
+window.addEventListener('mitch-profile-updated', function () { load(true); });
 // Hide the home button when the profile is embedded in the home page's
 // frame — the parent already has its own navigation there.
 try {
