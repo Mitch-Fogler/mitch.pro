@@ -1675,21 +1675,10 @@ function profileYearOptions(current) {
 async function loadAccountProfile() {
   try {
     profileYearOptions('');
-    var r = await fetch('/api/profile', { credentials: 'include' });
+    var r = await fetch('/api/profile', { credentials: 'include', cache: 'no-store' });
     if (!r.ok) throw new Error('Profile unavailable.');
     var p = await r.json();
-    document.getElementById('profileDisplayName').value = p.displayName || '';
-    document.getElementById('profileUsername').value = p.username || '';
-    document.getElementById('profileNickname').value = p.nickname || '';
-    document.getElementById('profileBio').value = p.bio || '';
-    document.getElementById('profileWebsite').value = p.website || '';
-    document.getElementById('profilePfp').value = p.pfp || '';
-    document.getElementById('profileBackground').value = p.background || '';
-    document.getElementById('profileBackground').disabled = !p.isPremium;
-    document.getElementById('profileBackgroundHint').textContent = p.isPremium ? 'This background appears on your public profile.' : 'Premium members can set a profile background image.';
-    profileYearOptions(p.gradYear || '');
-    setSelectValue('profileGender', p.gender || '');
-    setSelectValue('profileReferralSource', p.referralSource || '');
+    applyAccountProfile(p);
     setStatus('profileStatus', 'Profile loaded.');
     setTwofaStatus(p);
     var enabled = !!(p.twofa_enabled || p.twofaEnabled || p.twoFactorEnabled);
@@ -1701,6 +1690,24 @@ async function loadAccountProfile() {
     setStatus('twofaStatus', 'Unavailable');
     setPasswordChangeVerificationUi('email');
   }
+}
+
+function applyAccountProfile(p) {
+  p = p || {};
+  document.getElementById('profileDisplayName').value = p.displayName || '';
+  document.getElementById('profileUsername').value = p.username || '';
+  document.getElementById('profileNickname').value = p.nickname || '';
+  document.getElementById('profileBio').value = p.bio || '';
+  document.getElementById('profileWebsite').value = p.website || '';
+  document.getElementById('profilePfp').value = p.pfp || '';
+  document.getElementById('profileBackground').value = p.background || '';
+  if (typeof p.isPremium === 'boolean') {
+    document.getElementById('profileBackground').disabled = !p.isPremium;
+    document.getElementById('profileBackgroundHint').textContent = p.isPremium ? 'This background appears on your public profile.' : 'Premium members can set a profile background image.';
+  }
+  profileYearOptions(p.gradYear || '');
+  setSelectValue('profileGender', p.gender || '');
+  setSelectValue('profileReferralSource', p.referralSource || '');
 }
 
 function imageFileToAvatarDataUrl(file) {
@@ -1788,12 +1795,22 @@ async function saveAccountProfile() {
     var r = await fetch('/api/profile', {
       method: 'POST',
       credentials: 'include',
+      cache: 'no-store',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     var d = await r.json().catch(function() { return {}; });
     if (!r.ok) throw new Error(d.error || 'Profile save failed.');
-    setStatus('profileStatus', d.bonusGranted ? 'Profile saved. +500 MitchCoins bonus granted.' : 'Profile saved.');
+    if (!d.profile) throw new Error('The server did not confirm the saved profile. Please try again.');
+    applyAccountProfile(d.profile);
+    try {
+      localStorage.setItem('_mitchProfileUpdated', JSON.stringify({
+        handle: d.profile.username || '',
+        updatedAt: d.profile.updatedAt || Date.now()
+      }));
+    } catch (_) {}
+    window.dispatchEvent(new CustomEvent('mitch-profile-updated', { detail: d.profile }));
+    setStatus('profileStatus', d.bonusGranted ? 'Profile saved. +500 MitchCoins bonus granted.' : 'Profile saved. Changes are live now.');
   } catch (e) {
     setStatus('profileStatus', e.message || 'Profile save failed.');
   } finally {

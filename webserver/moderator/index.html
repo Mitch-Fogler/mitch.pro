@@ -40,6 +40,7 @@
     .links a:hover { border-color: var(--t-bda); }
   </style>
   <link rel="stylesheet" href="/staff-galaxy.css?v=4">
+  <link rel="stylesheet" href="/staff-command-v2.css?v=1">
 </head>
 <body class="moderator-page">
   <main>
@@ -58,6 +59,14 @@
       <a id="moderator-admin-link" href="/admin/"><span>&#9881;</span><b>Admin tools</b><small>Control center</small></a>
       <a class="active" href="/moderator/"><span>&#10003;</span><b>Moderator tools</b><small>Safety workspace</small></a>
     </nav>
+    <section class="moderator-hero" aria-labelledby="moderator-hero-title">
+      <div>
+        <span class="moderator-kicker"><i></i> Live safety workspace</span>
+        <h2 id="moderator-hero-title">Review. Decide. Keep it moving.</h2>
+        <p>Reports, requests, and moderation history are organized below.</p>
+      </div>
+      <div class="moderator-hero-mark" aria-hidden="true"><span>&#10003;</span></div>
+    </section>
     <section class="panel" id="panel">
       <div class="empty">Loading moderator tools...</div>
     </section>

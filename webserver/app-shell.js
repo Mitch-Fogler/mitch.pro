@@ -53,6 +53,24 @@
 
   var NAV = IS_RJUHSD ? NAV_RJUHSD : NAV_MITCH;
 
+  var profileRefreshTimer = null;
+  function refreshProfileSurfaces(detail) {
+    window.dispatchEvent(new CustomEvent('mitch-profile-updated', { detail: detail || {} }));
+    clearTimeout(profileRefreshTimer);
+    profileRefreshTimer = setTimeout(function () {
+      if (typeof window.loadMembers === 'function') window.loadMembers();
+      if (typeof window.loadOnlineMembers === 'function') window.loadOnlineMembers();
+    }, 40);
+  }
+  window.addEventListener('ws-broadcast-message', function (event) {
+    if (event.detail && event.detail.type === 'profile_updated') refreshProfileSurfaces(event.detail);
+  });
+  window.addEventListener('storage', function (event) {
+    if (event.key !== '_mitchProfileUpdated' || !event.newValue) return;
+    try { refreshProfileSurfaces(JSON.parse(event.newValue)); }
+    catch (_) { refreshProfileSurfaces({}); }
+  });
+
   function ensureRelaunchStyles() {
     if (document.getElementById('mitch-relaunch') || document.querySelector('link[href="/relaunch.css"], link[href^="/relaunch.css?"]')) return;
     var link = document.createElement('link');
