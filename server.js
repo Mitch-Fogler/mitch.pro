@@ -312,6 +312,14 @@ const PREMIUM_COLORS         = new Set([
 ]);
 const INVITE_SENT_FILE       = join(DATA_DIR, 'invite_sent.json');    // { normEmail -> [sentTo, ...] }
 const ADMIN_KEY_FILE         = join(BASE, 'admin', 'admin.key');
+// Team inbox/support routes. TEAM_INBOX_CACHE must match the file
+// mail/imap_watcher.js writes (data/team_inbox_cache.json, tmp+rename on
+// disk) — these reads/writes must hit the same file, never the DB blob
+// store, or a saved row would shadow the watcher's refetches forever.
+const TEAM_INBOX_CACHE       = join(DATA_DIR, 'team_inbox_cache.json');
+const TEAM_HANDLED_FILE      = join(DATA_DIR, 'team_handled.json');
+// Must match admin/make_team_token.js (FILE = <repo>/admin/team_tokens.json).
+const TEAM_TOKENS_FILE       = join(BASE, 'admin', 'team_tokens.json');
 const PREMIUM_GIFTS_SENT_FILE = join(DATA_DIR, 'premium_gifts_sent.json');
 const MAINTENANCE_FILE       = join(DATA_DIR, 'soft_maintenance.json');
 let softMaintenanceActive    = false;
@@ -15543,7 +15551,9 @@ function loadAllGamesList() {
     if (path === '/api/team/inbox') {
       if (!checkTeamToken(req)) return jsonResp(401, { error: 'Invalid team token' });
       try {
-        const cached  = loadJson(TEAM_INBOX_CACHE, []);
+        let cached = [];
+        try { cached = JSON.parse(readFileSync(TEAM_INBOX_CACHE, 'utf8')); } catch {}
+        if (!Array.isArray(cached)) cached = [];
         const handled = loadJson(TEAM_HANDLED_FILE, {});
         const messages = cached.map(m => ({
           ...m,
@@ -15558,7 +15568,9 @@ function loadAllGamesList() {
       if (!checkTeamToken(req)) return jsonResp(401, { error: 'Invalid team token' });
       const uid = qs.get('uid');
       if (!uid) return jsonResp(400, { error: 'uid required' });
-      const cached = loadJson(TEAM_INBOX_CACHE, []);
+      let cached = [];
+      try { cached = JSON.parse(readFileSync(TEAM_INBOX_CACHE, 'utf8')); } catch {}
+      if (!Array.isArray(cached)) cached = [];
       const msg = cached.find(m => String(m.uid) === uid && m.mailbox === 'INBOX');
       if (!msg) return jsonResp(404, { error: 'not found' });
       return jsonResp(200, msg);
@@ -18284,9 +18296,13 @@ function loadAllGamesList() {
     if (r.status !== 0) return jsonResp(500, { error: r.stderr?.trim() || 'send failed' });
     console.log(`[team] reply to ${to} by ${member.name}`);
 
-    // Append sent message to cache so it shows up immediately on next inbox fetch
+    // Append sent message to cache so it shows up immediately on next inbox
+    // fetch. Written straight to the same disk file the IMAP watcher owns
+    // (tmp+rename) — a DB blob here would shadow the watcher's refetches.
     try {
-      const cache = loadJson(TEAM_INBOX_CACHE, []);
+      let cache = [];
+      try { cache = JSON.parse(readFileSync(TEAM_INBOX_CACHE, 'utf8')); } catch {}
+      if (!Array.isArray(cache)) cache = [];
       cache.push({
         uid: Date.now(),
         mailbox: 'Sent',
@@ -18302,7 +18318,9 @@ function loadAllGamesList() {
         body: replyBody,
       });
       cache.sort((a, b) => new Date(b.date) - new Date(a.date));
-      saveJson(TEAM_INBOX_CACHE, cache);
+      const cacheTmp = TEAM_INBOX_CACHE + '.tmp';
+      writeFileSync(cacheTmp, JSON.stringify(cache, null, 2));
+      renameSync(cacheTmp, TEAM_INBOX_CACHE);
     } catch {}
 
     return jsonResp(200, { ok: true });
