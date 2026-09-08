@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { bellScheduleRedirect, RJUHSD_ORIGIN } from '../lib/site_redirects.js';
+import { bellScheduleRedirect, blooketBotRedirect, RJUHSD_ORIGIN, BLOOKET_BOT_ORIGIN } from '../lib/site_redirects.js';
 
 for (const host of ['mitch.pro', 'rjuhsd.school', 'woodcreek.rjuhsd.school']) {
   for (const path of ['/bell', '/bell/', '/bell.html', '/bell/index', '/bell/index/', '/bell/index.html', '/bell/index.htm', '/rjuhsd/bell/']) {
@@ -17,6 +17,16 @@ for (const path of ['/', '/bell/schedule.js?v=5', '/api/bell/override', '/rjuhsd
 }
 assert.equal(bellScheduleRedirect(new URL('https://mitch.pro/bell/'), 'POST'), null);
 
+for (const path of ['/blooket-bot', '/blooket-bot/', '/blooket-bot.html', '/blooket-bot/index', '/blooket-bot/index/', '/blooket-bot/index.html']) {
+  for (const method of ['GET', 'HEAD']) {
+    assert.equal(blooketBotRedirect(new URL('https://mitch.pro' + path + '?pin=123456'), method), BLOOKET_BOT_ORIGIN + '/?pin=123456');
+  }
+}
+for (const path of ['/', '/api/blooket-bot/status', '/previousblooket/', '/blooket-bot.css']) {
+  assert.equal(blooketBotRedirect(new URL('https://mitch.pro' + path)), null, `${path} must not redirect`);
+}
+assert.equal(blooketBotRedirect(new URL('https://mitch.pro/blooket-bot/'), 'POST'), null);
+
 for (const file of ['webserver/index.html', 'webserver/index-sales.html', 'webserver/app-shell.js']) {
   const source = readFileSync(file, 'utf8');
   assert(source.includes('https://rjuhsd.school/'), `${file} must link to the school hub`);
@@ -29,8 +39,14 @@ const context = vm.createContext({ URL, location, window: { location }, localSto
 vm.runInContext(home.slice(home.indexOf('function launchSite('), home.indexOf('function openInNewTab(')), context);
 context.launchSite('iframe', 'https://rjuhsd.school/?school=oakmont');
 assert.equal(location.href, 'https://rjuhsd.school/?school=oakmont');
+context.launchSite('iframe', 'https://woodcreek.site/?pin=123456');
+assert.equal(location.href, 'https://woodcreek.site/?pin=123456', 'Blooket Bot must bypass iframe/game launch preferences');
 
 // Installed Mitch PWAs require a same-origin shortcut; the server redirects it.
 const shortcut = JSON.parse(readFileSync('webserver/manifest.json', 'utf8')).shortcuts.find(item => item.name === 'Bell Schedule');
 assert.equal(bellScheduleRedirect(new URL(shortcut.url, 'https://mitch.pro')), RJUHSD_ORIGIN + '/?utm_source=pwa-shortcut');
-console.log('Bell links, legacy redirects, query preservation, assets, PWA shortcuts, and direct navigation passed.');
+for (const file of ['webserver/app-shell.js', 'webserver/index.html', 'webserver/index-sales.html', 'data/sites']) {
+  assert(readFileSync(file, 'utf8').includes('https://woodcreek.site/'), `${file} must point Blooket Bot to woodcreek.site`);
+}
+assert(readFileSync('webserver/app-shell.js', 'utf8').includes("label: 'Blooket Bot'"), 'Blooket Bot must be in the shared top navigation');
+console.log('Bell and Blooket links, legacy redirects, query preservation, assets, PWA shortcuts, and direct navigation passed.');
