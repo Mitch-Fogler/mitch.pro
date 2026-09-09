@@ -44,6 +44,11 @@ function normalizeEmail(email) {
 const dynamicEmail = `test_premium_${Date.now()}@student.rjuhsd.us`;
 
 const tests = [
+  {
+    name: 'Public top-bar wallet has a clean signed-out state',
+    path: '/api/me/coins', method: 'GET', token: null, expectedStatus: 200,
+    verify: data => data.authenticated === false && data.coins === null
+  },
   // --- VM ownership isolation ---
   {
     name: "User A cannot view User B's computer",

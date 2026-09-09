@@ -8366,6 +8366,7 @@ async function handleRequest(req, server) {
   // ── Password Enforcement (Unified) ──────────────────────────────────────────
   const cleanPath = (path.endsWith('/') && path !== '/') ? path.slice(0, -1) : path;
   const isExempt = cleanPath === '/enroll' ||
+                   cleanPath === '/api/me/coins' ||
                    cleanPath === '/larp' ||
                    cleanPath === '/larp/rezero' ||
                    cleanPath === '/bell' ||
