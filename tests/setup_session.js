@@ -6,9 +6,9 @@
 //
 // Idempotent: re-running just overwrites the test entries.
 
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { createHash, createHmac } from 'crypto';
+import { createHash, createHmac, randomBytes } from 'crypto';
 import { configureDataStore, readDocument, writeDocument, upsertVirtualMachine } from '../lib/data_store.js';
 
 const REPO_ROOT = import.meta.dir + '/..';
@@ -22,12 +22,16 @@ const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const INVITE_CODES_FILE = join(DATA_DIR, 'invite_codes.json');
 const ADMINS_FILE = join(DATA_DIR, 'admins.json');
 
-if (!existsSync(ID_SECRET_FILE)) {
-  console.error('FATAL: id_secret.key not found at', ID_SECRET_FILE);
-  console.error('Run the server once to generate it, or restore from a backup.');
-  process.exit(1);
+let ID_SECRET;
+try {
+  ID_SECRET = readFileSync(ID_SECRET_FILE);
+} catch {
+  if (!existsSync(DATA_DIR)) {
+    mkdirSync(DATA_DIR, { recursive: true });
+  }
+  ID_SECRET = randomBytes(32);
+  writeFileSync(ID_SECRET_FILE, ID_SECRET);
 }
-const ID_SECRET = readFileSync(ID_SECRET_FILE);
 
 function normalizeEmail(email) {
   if (!email) return '';

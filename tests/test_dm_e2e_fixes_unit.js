@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { readFileSync, existsSync } from 'node:fs';
-import { createHash, createHmac } from 'node:crypto';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { configureDataStore, readDocument, writeDocument } from '../lib/data_store.js';
 
 const REPO_ROOT = join(import.meta.dir, '..');
@@ -9,8 +9,16 @@ const DATA_DIR = join(REPO_ROOT, 'data');
 configureDataStore({ baseDir: REPO_ROOT, dataDir: DATA_DIR });
 
 const ID_SECRET_FILE = join(DATA_DIR, 'id_secret.key');
-assert(existsSync(ID_SECRET_FILE), 'id_secret.key must exist');
-const ID_SECRET = readFileSync(ID_SECRET_FILE);
+let ID_SECRET;
+try {
+  ID_SECRET = readFileSync(ID_SECRET_FILE);
+} catch {
+  if (!existsSync(DATA_DIR)) {
+    mkdirSync(DATA_DIR, { recursive: true });
+  }
+  ID_SECRET = randomBytes(32);
+  writeFileSync(ID_SECRET_FILE, ID_SECRET);
+}
 const NAMES_FILE = join(DATA_DIR, 'names.json');
 const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
 const DMS_FILE = join(DATA_DIR, 'dms.json');
