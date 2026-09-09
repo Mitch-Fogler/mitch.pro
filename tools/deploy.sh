@@ -3,6 +3,13 @@
 
 set -euo pipefail
 
+# GitHub pushes can arrive close together. Only one process may choose and
+# replace a blue/green slot at a time, otherwise both runs can target the same
+# inactive container and interrupt a healthy release.
+exec 9>/tmp/mitch-pro-deploy.lock
+echo "[deploy] Waiting for the deployment lock..."
+flock -w 900 9 || { echo '[deploy] Timed out waiting for another deployment to finish.'; exit 1; }
+
 CADDYFILE_PATH="/home/mitch/server/bun/caddy/Caddyfile"
 PROJECT_DIR="/home/mitch/server/bun"
 if [ -d "$PROJECT_DIR" ]; then
