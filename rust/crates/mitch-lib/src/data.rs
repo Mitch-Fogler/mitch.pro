@@ -5,17 +5,15 @@
 //!   `busy_timeout=15000`, `journal_mode=WAL`, `synchronous=NORMAL`,
 //!   `foreign_keys=ON`.
 //! - `loadJson(file)` / `saveJson(file, obj)` map to the `json_documents`
-//!   table (`path` → `content` TEXT), path keys normalized posix-relative to
+//!   table (`path` -> `content` TEXT), path keys normalized posix-relative to
 //!   the base dir (absolute when outside it).
 //! - `PRESERVED_DATA_FILES` bypass the DB and hit real disk.
-//! - Content for objects is `JSON.stringify(data, null, 2)` — serde_json's
-//!   `to_string_pretty` matches (2-space indent). serde_json MUST have
-//!   `preserve_order` enabled or every persisted document gets re-sorted.
-//! - Untouched documents must pass through as TEXT (see Step 5); reads parse
-//!   and fall back to the on-disk file when no DB row exists.
-//!
-//! Minimal implementation (document read/write) landed in Step 2 for the mail
-//! pipeline; full parity (core-table sync, migration/backup tools) is Step 5.
+//! - Content for objects is `JSON.stringify(data, null, 2)` — reproduced by
+//!   [`js_stringify_pretty`] (serde_json's pretty printer differs on floats
+//!   and would re-sort keys without the `preserve_order` feature). Untouched
+//!   documents must pass through as TEXT.
+//! - Full table init (all core tables + indexes) on open, matching
+//!   `initTablesWithRetry` including the SQLITE_BUSY retry ladder.
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -45,11 +43,12 @@ pub const PRESERVED_DATA_FILES: &[&str] = &[
     "wordle_dictionary.txt",
 ];
 
-pub struct DataStore {
-    base_dir: PathBuf,
-    data_dir: PathBuf,
-    conn: Mutex<rusqlite::Connection>,
-}
+/// PRESERVED_ROOT_FILES — empty in the JS today, kept for parity.
+pub const PRESERVED_ROOT_FILES: &[&str] = &[];
+
+/// Store error: rusqlite or filesystem. Boxed to keep the public surface
+/// simple without pulling in an error-crate dependency.
+pub type DataError = Box<dyn std::error::Error + Send + Sync>;
 
 /// One app_logs row (mirrors `queryAppLogs` entries).
 #[derive(Debug, Clone)]
@@ -61,6 +60,14 @@ pub struct AppLogRow {
     pub details: String,
 }
 
+pub struct DataStore {
+    base_dir: PathBuf,
+    data_dir: PathBuf,
+    conn: Mutex<rusqlite::Connection>,
+    /// `appLogWriteCount` from the JS — prune fires on every 250th write.
+    app_log_writes: std::sync::atomic::AtomicUsize,
+}
+
 fn now_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -68,13 +75,25 @@ fn now_millis() -> i64 {
         .unwrap_or(0)
 }
 
-/// Store error: rusqlite or filesystem. Boxed to keep the public surface
-/// simple without pulling in an error-crate dependency.
-pub type DataError = Box<dyn std::error::Error + Send + Sync>;
+#[allow(dead_code)] // used by the 30-min revalidation in later steps
+fn mtime_of(md: &std::fs::Metadata) -> u128 {
+    md.modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis())
+        .unwrap_or(0)
+}
+
+/// A static regex that must compile; failure is a programming error.
+#[allow(clippy::expect_used)]
+fn static_regex(pattern: &str) -> regex::Regex {
+    regex::Regex::new(pattern).expect("static regex")
+}
 
 impl DataStore {
-    /// Opens (or creates) the store with the same pragmas as
-    /// `configureDataStore()`.
+    /// `configureDataStore()` — opens the DB, sets the exact pragmas, and
+    /// creates all core tables + indexes with the same SQLITE_BUSY retry
+    /// ladder (10 retries, 100ms * attempt).
     pub fn open(base_dir: &Path, data_dir: &Path) -> Result<Self, DataError> {
         std::fs::create_dir_all(data_dir)?;
         let db_path = data_dir.join("mitchpro.db");
@@ -83,79 +102,109 @@ impl DataStore {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
-        // Full table init, verbatim from lib/data_store.js
-        // initTablesWithRetry (fresh-DB parity).
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS metadata (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS json_documents (
-                path TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS jsonl_documents (
-                path TEXT PRIMARY KEY,
-                content TEXT NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS users (
-                email TEXT PRIMARY KEY,
-                username TEXT UNIQUE,
-                nickname TEXT DEFAULT '',
-                display_name TEXT DEFAULT '',
-                password_hash TEXT DEFAULT '',
-                coins REAL DEFAULT 0,
-                twofa_enabled INTEGER DEFAULT 0,
-                twofa_type TEXT DEFAULT '',
-                totp_secret TEXT DEFAULT '',
-                grad_year TEXT DEFAULT '',
-                gender TEXT DEFAULT '',
-                has_completed_tutorial INTEGER DEFAULT 0,
-                created_at INTEGER NOT NULL,
-                updated_at INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS friends (
-                user_email TEXT NOT NULL,
-                friend_email TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at INTEGER NOT NULL,
-                PRIMARY KEY (user_email, friend_email, status)
-            );
-            CREATE TABLE IF NOT EXISTS referrals (
-                email TEXT NOT NULL,
-                source TEXT DEFAULT '',
-                details TEXT DEFAULT '',
-                timestamp INTEGER NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS app_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts INTEGER NOT NULL,
-                level TEXT NOT NULL,
-                category TEXT NOT NULL,
-                message TEXT NOT NULL,
-                details TEXT DEFAULT ''
-            );
-            CREATE INDEX IF NOT EXISTS idx_app_logs_ts ON app_logs (ts DESC);
-            CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs (level, ts DESC);
-            CREATE INDEX IF NOT EXISTS idx_app_logs_category ON app_logs (category, ts DESC);",
-        )?;
+
+        // initTablesWithRetry: 10 attempts, 100ms * attempt backoff on BUSY.
+        let init_tables = |conn: &rusqlite::Connection| -> Result<(), rusqlite::Error> {
+            for attempt in 0..10u32 {
+                let result = conn.execute_batch(
+                    "CREATE TABLE IF NOT EXISTS metadata (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS json_documents (
+                        path TEXT PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS jsonl_documents (
+                        path TEXT PRIMARY KEY,
+                        content TEXT NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS users (
+                        email TEXT PRIMARY KEY,
+                        username TEXT UNIQUE,
+                        nickname TEXT DEFAULT '',
+                        display_name TEXT DEFAULT '',
+                        password_hash TEXT DEFAULT '',
+                        coins REAL DEFAULT 0,
+                        twofa_enabled INTEGER DEFAULT 0,
+                        twofa_type TEXT DEFAULT '',
+                        totp_secret TEXT DEFAULT '',
+                        grad_year TEXT DEFAULT '',
+                        gender TEXT DEFAULT '',
+                        has_completed_tutorial INTEGER DEFAULT 0,
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS friends (
+                        user_email TEXT NOT NULL,
+                        friend_email TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        created_at INTEGER NOT NULL,
+                        PRIMARY KEY (user_email, friend_email, status)
+                    );
+                    CREATE TABLE IF NOT EXISTS referrals (
+                        email TEXT NOT NULL,
+                        source TEXT DEFAULT '',
+                        details TEXT DEFAULT '',
+                        timestamp INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS app_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts INTEGER NOT NULL,
+                        level TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        details TEXT DEFAULT ''
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_app_logs_ts ON app_logs (ts DESC);
+                    CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs (level, ts DESC);
+                    CREATE INDEX IF NOT EXISTS idx_app_logs_category ON app_logs (category, ts DESC);",
+                );
+                match result {
+                    Ok(()) => return Ok(()),
+                    Err(err) => {
+                        let busy = err.to_string().to_lowercase().contains("locked")
+                            || matches!(
+                                err,
+                                rusqlite::Error::SqliteFailure(
+                                    _code,
+                                    Some(ref message),
+                                ) if message.to_lowercase().contains("locked")
+                            )
+                            || err.sqlite_error_code() == Some(rusqlite::ErrorCode::DatabaseBusy);
+                        if busy && attempt < 9 {
+                            std::thread::sleep(std::time::Duration::from_millis(
+                                100 * (u64::from(attempt) + 1),
+                            ));
+                            continue;
+                        }
+                        return Err(err);
+                    }
+                }
+            }
+            Ok(())
+        };
+        init_tables(&conn)?;
+
         conn.execute(
             "INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES ('schema_version', '1', ?)",
             rusqlite::params![now_millis()],
         )?;
+
         Ok(Self {
             base_dir: base_dir.to_path_buf(),
             data_dir: data_dir.to_path_buf(),
             conn: Mutex::new(conn),
+            app_log_writes: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 
     /// Path key semantics of `relativeKey()`: posix-relative to baseDir,
     /// absolute when the file lives outside it.
-    fn relative_key(&self, file: &Path) -> String {
+    pub fn relative_key(&self, file: &Path) -> String {
         let rel = file.strip_prefix(&self.base_dir).ok();
         let key = match rel {
             Some(rel) => rel.to_path_buf(),
@@ -164,40 +213,52 @@ impl DataStore {
         key.to_string_lossy().replace('\\', "/")
     }
 
-    /// `shouldStoreInDb()`: .json/.jsonl under dataDir/ or baseDir/mail/,
-    /// excluding PRESERVED_DATA_FILES and database files.
-    pub fn should_store_in_db(&self, file: &Path) -> bool {
-        let is_json_like = file
-            .to_str()
-            .is_some_and(|f| f.ends_with(".json") || f.ends_with(".jsonl"));
-        if !is_json_like {
-            return false;
-        }
+    /// `isPreservedFile()`: PRESERVED_DATA_FILES under dataDir,
+    /// PRESERVED_ROOT_FILES under baseDir, plus database files.
+    pub fn is_preserved_file(&self, file: &Path) -> bool {
         let name = file.file_name().unwrap_or_default().to_string_lossy();
-        if name.ends_with(".db")
-            || name.ends_with(".db-wal")
-            || name.ends_with(".db-shm")
-            || name == "mitchpro.db"
-        {
-            return false;
-        }
         if file.parent().is_some_and(|p| p == self.data_dir)
             && PRESERVED_DATA_FILES.contains(&name.as_ref())
         {
+            return true;
+        }
+        if file.parent().is_some_and(|p| p == self.base_dir)
+            && PRESERVED_ROOT_FILES.contains(&name.as_ref())
+        {
+            return true;
+        }
+        name == "mitchpro.db"
+            || name.ends_with(".db")
+            || name.ends_with(".db-wal")
+            || name.ends_with(".db-shm")
+    }
+
+    /// `shouldStoreInDb(file)`: .json/.jsonl under dataDir/ or baseDir/mail/,
+    /// excluding preserved files.
+    pub fn should_store_in_db(&self, file: &Path) -> bool {
+        let json_like = file
+            .to_str()
+            .is_some_and(|f| f.ends_with(".json") || f.ends_with(".jsonl"));
+        if !json_like {
             return false;
         }
-        let in_data_dir = file.starts_with(&self.data_dir);
-        let in_mail_dir = file.starts_with(self.base_dir.join("mail"));
-        in_data_dir || in_mail_dir
+        if self.is_preserved_file(file) {
+            return false;
+        }
+        let data_prefix = format!("{}/", self.data_dir.to_string_lossy());
+        let mail_prefix = format!("{}/", self.base_dir.join("mail").to_string_lossy());
+        let abs = file.to_string_lossy().into_owned();
+        abs.starts_with(&data_prefix) || abs.starts_with(&mail_prefix)
     }
 
     /// `readDocument(file, fallback)`: DB row first, then the on-disk file,
-    /// then the fallback. .jsonl rows return the raw string.
+    /// then the fallback. `.jsonl` rows return the raw string.
     pub fn read_document(&self, file: &Path, fallback: Value) -> Value {
+        // .jsonl rows pass through as raw strings; .json rows are JSON.parse'd.
         let is_jsonl = file.to_str().is_some_and(|f| f.ends_with(".jsonl"));
         let parse = |raw: &str| -> Option<Value> {
             if is_jsonl {
-                Some(Value::String(raw.to_string()))
+                Some(Value::String(raw.to_owned()))
             } else {
                 serde_json::from_str(raw).ok()
             }
@@ -231,83 +292,8 @@ impl DataStore {
             .unwrap_or(fallback)
     }
 
-    /// `appendAppLog` equivalent (sync form; callers wrap in spawn_blocking).
-    /// Prunes to the newest 20000 rows on the same 1-in-250 cadence as the JS.
-    pub fn append_app_log_sync(
-        &self,
-        ts: i64,
-        level: &str,
-        category: &str,
-        message: String,
-        details: String,
-    ) -> Result<(), DataError> {
-        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        conn.execute(
-            "INSERT INTO app_logs (ts, level, category, message, details) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![ts, level, category, message, details],
-        )?;
-        Ok(())
-    }
-
-    /// `queryAppLogs` equivalent (sync form): newest first, level/category/
-    /// search filters, limit clamped 25..2000.
-    pub fn query_app_logs_sync(
-        &self,
-        level: &str,
-        category: &str,
-        search: &str,
-        limit: usize,
-    ) -> Result<Vec<AppLogRow>, DataError> {
-        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
-        let mut conditions: Vec<String> = Vec::new();
-        let mut params: Vec<String> = Vec::new();
-        if !level.eq_ignore_ascii_case("all") {
-            params.push(level.to_lowercase());
-            conditions.push("level = ?".into());
-        }
-        if !category.eq_ignore_ascii_case("all") {
-            params.push(category.to_lowercase());
-            conditions.push("category = ?".into());
-        }
-        let search = search.trim().chars().take(160).collect::<String>();
-        if !search.is_empty() {
-            let like = format!("%{search}%");
-            params.push(like.clone());
-            params.push(like.clone());
-            params.push(like);
-            conditions.push("(message LIKE ? OR details LIKE ? OR category LIKE ?)".into());
-        }
-        let where_clause = if conditions.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", conditions.join(" AND "))
-        };
-        let limit = limit.clamp(25, 2000) as i64;
-        let mut stmt = conn.prepare(&format!(
-            "SELECT ts, level, category, message, details FROM app_logs {} ORDER BY ts DESC, id DESC LIMIT ?",
-            where_clause
-        ))?;
-        params.push(limit.to_string());
-        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |r| {
-            Ok(AppLogRow {
-                ts: r.get(0)?,
-                level: r.get(1)?,
-                category: r.get(2)?,
-                message: r.get(3)?,
-                details: r.get(4)?,
-            })
-        })?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
-    }
-
-    /// `writeDocument(file, data)`: INSERT OR REPLACE into the blob table
-    /// (pretty 2-space JSON, like `JSON.stringify(data, null, 2)`), or a plain
-    /// file write for non-DB paths.
-    pub fn write_document(&self, file: &Path, data: &Value) -> Result<(), DataError> {
-        let content = match data {
-            Value::String(s) => s.clone(),
-            other => serde_json::to_string_pretty(other).unwrap_or_default(),
-        };
+    /// Raw content insert — mirrors JS `writeDocument(file, stringData)`.
+    pub fn write_document_raw(&self, file: &Path, content: &str) -> Result<(), DataError> {
         if !self.should_store_in_db(file) {
             std::fs::write(file, content)?;
             return Ok(());
@@ -327,6 +313,289 @@ impl DataStore {
         )?;
         Ok(())
     }
+
+    /// `writeDocument(file, data)`: INSERT OR REPLACE into the blob table
+    /// (pretty 2-space JSON via [`js_stringify_pretty`], like
+    /// `JSON.stringify(data, null, 2)`), or a plain file write for non-DB
+    /// paths. `data` as a string is stored verbatim (JS
+    /// `typeof data === 'string'` branch).
+    pub fn write_document(&self, file: &Path, data: &Value) -> Result<(), DataError> {
+        let content = match data {
+            Value::String(s) => s.clone(),
+            other => js_stringify_pretty(other),
+        };
+        self.write_document_raw(file, &content)
+    }
+
+    /// Clone the inner connection handle (parity tooling convenience).
+    pub fn conn_clone(&self) -> &DataStore {
+        self
+    }
+
+    /// List every `json_documents` key (parity tooling:
+    /// `examples/data_parity.rs`).
+    pub fn list_json_document_paths(&self) -> Result<Vec<String>, DataError> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = conn.prepare("SELECT path FROM json_documents")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Raw content read — mirrors `SELECT content FROM json_documents WHERE
+    /// path = ?` (parity tooling: `examples/data_parity.rs` passthrough mode).
+    /// Falls back to the on-disk file when no DB row exists.
+    pub fn read_document_raw(&self, file: &Path) -> Result<Option<String>, DataError> {
+        if !self.should_store_in_db(file) {
+            return Ok(std::fs::read_to_string(file).ok());
+        }
+        let key = self.relative_key(file);
+        let table = if file.to_str().is_some_and(|f| f.ends_with(".jsonl")) {
+            "jsonl_documents"
+        } else {
+            "json_documents"
+        };
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let row: Option<String> = conn
+            .query_row(
+                &format!("SELECT content FROM {table} WHERE path = ?1"),
+                rusqlite::params![key],
+                |r| r.get(0),
+            )
+            .ok();
+        if let Some(content) = row {
+            return Ok(Some(content));
+        }
+        Ok(std::fs::read_to_string(file).ok())
+    }
+
+    /// `appendAppLog` (sync form; callers wrap in spawn_blocking). Prunes to
+    /// the newest 20000 rows on the same 1-in-250 cadence as the JS.
+    pub fn append_app_log_sync(
+        &self,
+        ts: i64,
+        level: &str,
+        category: &str,
+        message: String,
+        details: String,
+    ) -> Result<(), DataError> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        conn.execute(
+            "INSERT INTO app_logs (ts, level, category, message, details) VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![ts, level, category, message, details],
+        )?;
+        // JS parity: appLogWriteCount++ then prune on every 250th write,
+        // id-ordered (NOT ts — out-of-order ts values would misprune).
+        let writes = self
+            .app_log_writes
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+        if writes.is_multiple_of(250) {
+            conn.execute(
+                "DELETE FROM app_logs WHERE id NOT IN (
+                    SELECT id FROM app_logs ORDER BY id DESC LIMIT 20000
+                )",
+                [],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// `queryAppLogs` equivalent (sync form). Filters: level/category/search,
+    /// newest first, limit clamped 25..2000.
+    pub fn query_app_logs_sync(
+        &self,
+        level: &str,
+        category: &str,
+        search: &str,
+        limit: usize,
+    ) -> Result<Vec<AppLogRow>, DataError> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut conditions: Vec<String> = Vec::new();
+        let mut params: Vec<String> = Vec::new();
+        if !level.eq_ignore_ascii_case("all") {
+            params.push(normalize_log_level(level));
+            conditions.push("level = ?".into());
+        }
+        if !category.eq_ignore_ascii_case("all") {
+            params.push(normalize_log_category(category));
+            conditions.push("category = ?".into());
+        }
+        let search = search.trim().chars().take(160).collect::<String>();
+        if !search.is_empty() {
+            let like = format!("%{search}%");
+            params.push(like.clone());
+            params.push(like.clone());
+            params.push(like);
+            conditions.push("(message LIKE ? OR details LIKE ? OR category LIKE ?)".into());
+        }
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+        let limit = limit.clamp(25, 2000) as i64;
+        let mut stmt = conn.prepare(&format!(
+            "SELECT ts, level, category, message, details FROM app_logs {where_clause} ORDER BY ts DESC, id DESC LIMIT ?",
+            where_clause = where_clause
+        ))?;
+        params.push(limit.to_string());
+        let rows = stmt.query_map(rusqlite::params_from_iter(params.iter()), |r| {
+            Ok(AppLogRow {
+                ts: r.get(0)?,
+                level: r.get(1)?,
+                category: r.get(2)?,
+                message: r.get(3)?,
+                details: r.get(4)?,
+            })
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+}
+
+fn normalize_log_level(level: &str) -> String {
+    match level.to_lowercase().trim() {
+        "debug" => "debug".into(),
+        "warn" => "warn".into(),
+        "error" => "error".into(),
+        _ => "info".into(),
+    }
+}
+
+fn normalize_log_category(category: &str) -> String {
+    let re = static_regex(r"[^a-z0-9._-]");
+    let lowered = category.to_lowercase();
+    let collapsed = re.replace_all(lowered.trim(), "-");
+    let collapsed = collapsed.replace("--", "-").replace("--", "-");
+    let collapsed = collapsed.trim_matches('-');
+    let out = if collapsed.is_empty() {
+        "general"
+    } else {
+        collapsed
+    };
+    out.chars().take(48).collect()
+}
+
+/// `JSON.stringify(value, null, 2)` with JS number semantics (integers print
+/// without a decimal point below 1e21, `-0` prints as `0`, exponential
+/// notation outside 1e-6..1e21). serde_json's default f64 formatting would
+/// emit `1.0` where JS emits `1`.
+pub fn js_stringify_pretty(value: &Value) -> String {
+    let mut out = String::new();
+    js_write(value, 0, &mut out);
+    out
+}
+
+fn push_indent(out: &mut String, depth: usize) {
+    for _ in 0..depth {
+        out.push_str("  ");
+    }
+}
+
+fn js_write(value: &Value, depth: usize, out: &mut String) {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(true) => out.push_str("true"),
+        Value::Bool(false) => out.push_str("false"),
+        Value::Number(n) => out.push_str(&js_number(n)),
+        Value::String(s) => out.push_str(&js_quote(s)),
+        Value::Array(items) => {
+            if items.is_empty() {
+                out.push_str("[]");
+                return;
+            }
+            out.push_str("[\n");
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(",\n");
+                }
+                push_indent(out, depth + 1);
+                js_write(item, depth + 1, out);
+            }
+            out.push('\n');
+            push_indent(out, depth);
+            out.push(']');
+        }
+        Value::Object(map) => {
+            if map.is_empty() {
+                out.push_str("{}");
+                return;
+            }
+            out.push_str("{\n");
+            for (i, (k, v)) in map.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(",\n");
+                }
+                push_indent(out, depth + 1);
+                out.push_str(&js_quote(k));
+                out.push_str(": ");
+                js_write(v, depth + 1, out);
+            }
+            out.push('\n');
+            push_indent(out, depth);
+            out.push('}');
+        }
+    }
+}
+
+fn js_number(n: &serde_json::Number) -> String {
+    if let Some(i) = n.as_i64() {
+        return i.to_string();
+    }
+    if let Some(u) = n.as_u64() {
+        return u.to_string();
+    }
+    let f = n.as_f64().unwrap_or(0.0);
+    js_f64(f)
+}
+
+/// JS `Number.prototype.toString()` rules (which JSON.stringify uses):
+/// decimal notation for 1e-6 <= |x| < 1e21, exponential outside that, `-0`
+/// printed as `0`.
+fn js_f64(f: f64) -> String {
+    if f == 0.0 {
+        return "0".to_string();
+    }
+    let abs = f.abs();
+    if (1e-6..1e21).contains(&abs) {
+        if f.fract() == 0.0 && abs < 9.007_199_254_740_992e18 {
+            return format!("{}", f as i64);
+        }
+        return format!("{f}");
+    }
+    // Exponential notation, JS style: mantissa + e[+-]exp.
+    let exp_str = format!("{f:e}");
+    match exp_str.split_once('e') {
+        Some((mantissa, exp)) => {
+            if let Some(stripped) = exp.strip_prefix('-') {
+                format!("{mantissa}e-{stripped}")
+            } else {
+                format!("{mantissa}e+{exp}")
+            }
+        }
+        None => exp_str,
+    }
+}
+
+/// `JSON.stringify(string)` escaping: quotes, backslashes, control chars as
+/// short escapes or `\uXXXX`, non-ASCII kept raw.
+fn js_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            other => out.push(other),
+        }
+    }
+    out.push('"');
+    out
 }
 
 #[cfg(test)]
@@ -335,15 +604,15 @@ mod tests {
     use serde_json::json;
 
     fn temp_base(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "mitch-lib-test-{tag}-{}",
+        let base = std::env::temp_dir().join(format!(
+            "mitch-lib-data-test-{tag}-{}",
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_nanos()
         ));
-        std::fs::create_dir_all(dir.join("data")).unwrap();
-        dir
+        std::fs::create_dir_all(base.join("data")).expect("mkdir");
+        base
     }
 
     #[test]
@@ -358,6 +627,8 @@ mod tests {
         assert!(store.should_store_in_db(&mail_json));
         let txt = base.join("data").join("notes.txt");
         assert!(!store.should_store_in_db(&txt));
+        let db = base.join("data").join("mitchpro.db-wal");
+        assert!(!store.should_store_in_db(&db));
         std::fs::remove_dir_all(base).ok();
     }
 
@@ -371,7 +642,7 @@ mod tests {
         let back = store.read_document(&file, Value::Null);
         assert_eq!(back, value);
         // Key uses posix-relative path.
-        let conn = store.conn.lock().unwrap();
+        let conn = store.conn.lock().unwrap_or_else(|e| e.into_inner());
         let (path, content): (String, String) = conn
             .query_row(
                 "SELECT path, content FROM json_documents WHERE path LIKE '%unsubscribe%'",
@@ -389,31 +660,13 @@ mod tests {
     }
 
     #[test]
-    fn preserved_file_written_to_disk() {
-        let base = temp_base("disk");
-        let store = DataStore::open(&base, &base.join("data")).unwrap();
-        let file = base.join("data").join("site.json");
-        let value = json!({"primary": "https://mitch.pro", "alternate": "https://mitchdog.com"});
-        store.write_document(&file, &value).unwrap();
-        let raw = std::fs::read_to_string(&file).unwrap();
-        assert!(raw.contains("\"primary\""));
-        let conn = store.conn.lock().unwrap();
-        let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM json_documents", [], |r| r.get(0))
-            .unwrap();
-        drop(conn);
-        assert_eq!(count, 0, "site.json must not land in the DB");
-        std::fs::remove_dir_all(base).ok();
-    }
-
-    #[test]
     fn key_order_is_preserved_not_sorted() {
         let base = temp_base("order");
         let store = DataStore::open(&base, &base.join("data")).unwrap();
         let file = base.join("data").join("order_check.json");
         let value = json!({"zebra": 1, "apple": 2, "mango": 3});
         store.write_document(&file, &value).unwrap();
-        let conn = store.conn.lock().unwrap();
+        let conn = store.conn.lock().unwrap_or_else(|e| e.into_inner());
         let content: String = conn
             .query_row(
                 "SELECT content FROM json_documents WHERE path LIKE '%order_check%'",
@@ -429,6 +682,24 @@ mod tests {
     }
 
     #[test]
+    fn preserved_file_written_to_disk() {
+        let base = temp_base("disk");
+        let store = DataStore::open(&base, &base.join("data")).unwrap();
+        let file = base.join("data").join("site.json");
+        let value = json!({"primary": "https://mitch.pro", "alternate": "https://mitchdog.com"});
+        store.write_document(&file, &value).unwrap();
+        let raw = std::fs::read_to_string(&file).unwrap();
+        assert!(raw.contains("\"primary\""));
+        let conn = store.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM json_documents", [], |r| r.get(0))
+            .unwrap();
+        drop(conn);
+        assert_eq!(count, 0, "site.json must not land in the DB");
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
     fn missing_row_falls_back_to_disk_file() {
         let base = temp_base("diskfallback");
         let store = DataStore::open(&base, &base.join("data")).unwrap();
@@ -437,5 +708,62 @@ mod tests {
         let back = store.read_document(&file, Value::Null);
         assert_eq!(back["primary"], "https://mitch.pro");
         std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn traversal_is_blocked_lexically() {
+        let base = temp_base("traversal");
+        let store = DataStore::open(&base, &base.join("data")).unwrap();
+        // .. escapes the base dir, so the key is absolute (JS relativeKey
+        // behavior) — but content still round-trips, keyed by absolute path.
+        let file = base.join("data").join("..").join("outside.json");
+        let value = json!({"escaped": true});
+        store.write_document(&file, &value).unwrap();
+        let back = store.read_document(&file, Value::Null);
+        assert_eq!(back, value);
+        std::fs::remove_dir_all(base.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn js_stringify_matches_json_stringify_pretty() {
+        // Integers below 1e21 print without ".0".
+        assert_eq!(js_stringify_pretty(&json!(1.0)), "1");
+        assert_eq!(js_stringify_pretty(&json!(1.5)), "1.5");
+        assert_eq!(js_stringify_pretty(&json!(25.5)), "25.5");
+        assert_eq!(js_stringify_pretty(&json!(-0.75)), "-0.75");
+        assert_eq!(
+            js_stringify_pretty(&json!(9007199254740992u64)),
+            "9007199254740992"
+        );
+        assert_eq!(js_stringify_pretty(&json!(-2.75)), "-2.75");
+        // Empty containers match JS ("{}" / "[]").
+        assert_eq!(js_stringify_pretty(&json!({})), "{}");
+        assert_eq!(js_stringify_pretty(&json!([])), "[]");
+        // Nested pretty layout: 2-space indent, \n separators.
+        let nested = json!({"a": [1, {"b": "c"}], "d": null, "e": true, "f": "s\"\\n"});
+        let out = js_stringify_pretty(&nested);
+        let expected = "{\n  \"a\": [\n    1,\n    {\n      \"b\": \"c\"\n    }\n  ],\n  \"d\": null,\n  \"e\": true,\n  \"f\": \"s\\\"\\\\n\"\n}";
+        assert_eq!(out, expected, "js_stringify_pretty: {out}");
+    }
+
+    #[test]
+    fn js_stringify_escapes_match_json() {
+        let s = js_stringify_pretty(&json!("a\"b\\c\nd\te\u{1}"));
+        assert_eq!(s, "\"a\\\"b\\\\c\\nd\\te\\u0001\"");
+        // Non-ASCII stays raw (parity with JS JSON.stringify).
+        let uni = js_stringify_pretty(&json!("héllo ✅"));
+        assert!(uni.contains("héllo"), "{uni}");
+    }
+
+    #[test]
+    fn js_f64_matches_js_number_to_string() {
+        assert_eq!(js_f64(0.0), "0");
+        assert_eq!(js_f64(-0.0), "0");
+        assert_eq!(js_f64(1.0), "1");
+        assert_eq!(js_f64(-1.5), "-1.5");
+        assert_eq!(js_f64(0.000001), "0.000001");
+        assert_eq!(js_f64(0.0000001), "1e-7");
+        assert_eq!(js_f64(1e20), "100000000000000000000");
+        assert_eq!(js_f64(1e21), "1e+21");
     }
 }
