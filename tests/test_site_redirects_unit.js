@@ -55,4 +55,39 @@ const rjuhsdHtml = readFileSync('webserver/rjuhsd/index.html', 'utf8');
 assert(rjuhsdHtml.includes('<a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img class="site-logo" src="/icon-192.png"'), 'rjuhsd top left brand must use mitch.pro logo');
 assert(!/<a class="brand"[^>]*><span class="brand-logo"><img[^>]*src="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd brand must not use school-based logo');
 
-console.log('Bell and Blooket links, legacy redirects, query preservation, assets, PWA shortcuts, and direct navigation passed.');
+// SEO & All-Schools bell schedules verification
+const schools = ['woodcreek', 'roseville', 'granitebay', 'antelope', 'westpark', 'oakmont'];
+const schoolDisplayNames = [
+  'Woodcreek High School Bell Schedule',
+  'Roseville High School Bell Schedule',
+  'Granite Bay High School Bell Schedule',
+  'Antelope High School Bell Schedule',
+  'West Park High School Bell Schedule',
+  'Oakmont High School Bell Schedule'
+];
+
+for (const name of schoolDisplayNames) {
+  assert(rjuhsdHtml.includes(`<h3>${name}</h3>`), `rjuhsd/index.html must include heading for ${name}`);
+}
+
+for (const s of schools) {
+  assert(rjuhsdHtml.includes(`data-school-card="${s}"`), `rjuhsd/index.html must have school card for ${s}`);
+  assert(rjuhsdHtml.includes(`data-switch-school="${s}"`), `rjuhsd/index.html must have school switcher for ${s}`);
+}
+
+assert(rjuhsdHtml.includes('"@type": "ItemList"'), 'rjuhsd/index.html must have Schema.org ItemList');
+assert(rjuhsdHtml.includes('"@type": "FAQPage"'), 'rjuhsd/index.html must have Schema.org FAQPage');
+assert(rjuhsdHtml.includes('id="schools"'), 'rjuhsd/index.html must have #schools section');
+assert(rjuhsdHtml.includes('id="faq"'), 'rjuhsd/index.html must have #faq section');
+
+const sitemap = readFileSync('webserver/sitemap.xml', 'utf8');
+assert(sitemap.includes('https://rjuhsd.school/'), 'sitemap.xml must include rjuhsd.school');
+for (const s of schools) {
+  assert(sitemap.includes(`https://rjuhsd.school/?school=${s}`), `sitemap.xml must include ${s}`);
+}
+
+const robots = readFileSync('webserver/robots.txt', 'utf8');
+assert(robots.includes('Allow: /?school=*'), 'robots.txt must allow school queries');
+assert(robots.includes('Sitemap: https://rjuhsd.school/sitemap.xml'), 'robots.txt must reference sitemap.xml');
+
+console.log('Bell and Blooket links, legacy redirects, query preservation, assets, PWA shortcuts, all-school SEO, sitemaps, and direct navigation passed.');

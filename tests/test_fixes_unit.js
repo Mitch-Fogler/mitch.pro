@@ -113,6 +113,47 @@ try {
   assert(rjPrevHtml.includes('https://mitchdog.com/api/sso/bridge'), 'Preview must inject alternate bridge url');
   console.log('/rjuhsd/ preview injection passed');
 
+  console.log('\n--- 5. Testing /sitemap.xml and RJUHSD school-specific SSR personalization ---');
+  // GET /sitemap.xml on rjuhsd.school
+  const smRes = await fetch(`${BASE_URL}/sitemap.xml`, {
+    headers: { 'Host': 'rjuhsd.school' }
+  });
+  assert.equal(smRes.status, 200, 'GET /sitemap.xml must return 200');
+  assert(smRes.headers.get('content-type')?.includes('xml'), 'sitemap content-type must be xml');
+  const smText = await smRes.text();
+  assert(smText.includes('https://rjuhsd.school/'), 'sitemap must include rjuhsd.school');
+  assert(smText.includes('https://rjuhsd.school/?school=roseville'), 'sitemap must include roseville');
+  console.log('GET /sitemap.xml on rjuhsd.school passed');
+
+  // GET /sitemap.xml on mitch.pro
+  const smMitchRes = await fetch(`${BASE_URL}/sitemap.xml`, {
+    headers: { 'Host': 'mitch.pro' }
+  });
+  assert.equal(smMitchRes.status, 200);
+  const smMitchText = await smMitchRes.text();
+  assert(smMitchText.includes('https://mitch.pro/'), 'mitch.pro sitemap must include mitch.pro');
+  assert(smMitchText.includes('https://mitch.pro/rjuhsd/'), 'mitch.pro sitemap must include rjuhsd');
+  console.log('GET /sitemap.xml on mitch.pro passed');
+
+  // GET /?school=roseville on rjuhsd.school
+  const roseRes = await fetch(`${BASE_URL}/?school=roseville`, {
+    headers: { 'Host': 'rjuhsd.school' }
+  });
+  assert.equal(roseRes.status, 200);
+  const roseHtml = await roseRes.text();
+  assert(roseHtml.includes('Roseville High School Bell Schedule'), 'Must personalize title for Roseville');
+  assert(roseHtml.includes('https://rjuhsd.school/?school=roseville'), 'Must personalize canonical URL for Roseville');
+  console.log('GET /?school=roseville personalized SSR passed');
+
+  // GET /?school=granitebay on rjuhsd.school
+  const gbRes = await fetch(`${BASE_URL}/?school=granitebay`, {
+    headers: { 'Host': 'rjuhsd.school' }
+  });
+  assert.equal(gbRes.status, 200);
+  const gbHtml = await gbRes.text();
+  assert(gbHtml.includes('Granite Bay High School Bell Schedule'), 'Must personalize title for Granite Bay');
+  console.log('GET /?school=granitebay personalized SSR passed');
+
   console.log('\n=== ALL FIXES VERIFIED SUCCESSFULLY! ===\n');
 } finally {
   serverProc.kill();

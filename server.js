@@ -21006,6 +21006,25 @@ async function handleRequest(req, server) {
         });
       }
     }
+    if (path === '/sitemap.xml') {
+      const sitemapDomain = isRjuhsdHost(req) ? 'https://rjuhsd.school' : 'https://mitch.pro';
+      const sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+        `  <url><loc>${sitemapDomain}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=woodcreek</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=roseville</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=granitebay</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=antelope</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=westpark</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=oakmont</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/encrypt/</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/public-chat/</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n` +
+        (isRjuhsdHost(req) ? '' : '  <url><loc>https://mitch.pro/rjuhsd/</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n') +
+        '</urlset>';
+      return new Response(sitemapXml, {
+        headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }
+      });
+    }
     function prepareRjuhsdHtml(rawHtml, r) {
       let html = injectSharedHead(rawHtml);
       const s = site();
@@ -21095,6 +21114,42 @@ async function handleRequest(req, server) {
         } else {
           html += verifyScript;
         }
+      }
+
+      // SEO & School personalization for server-rendered HTML
+      let reqSchool = '';
+      if (r && r.url) {
+        try {
+          const u = new URL(r.url, 'https://' + reqHost);
+          reqSchool = (u.searchParams.get('school') || '').toLowerCase().trim();
+        } catch {}
+      }
+      const schoolMeta = {
+        woodcreek:  { name: 'Woodcreek High School',  short: 'Woodcreek',  mascot: 'Timberwolves' },
+        roseville:  { name: 'Roseville High School',  short: 'Roseville',  mascot: 'Tigers' },
+        granitebay: { name: 'Granite Bay High School', short: 'Granite Bay', mascot: 'Grizzlies' },
+        antelope:   { name: 'Antelope High School',   short: 'Antelope',   mascot: 'Titans' },
+        westpark:   { name: 'West Park High School',  short: 'West Park',  mascot: 'Panthers' },
+        oakmont:    { name: 'Oakmont High School',    short: 'Oakmont',    mascot: 'Vikings' }
+      }[reqSchool];
+
+      if (schoolMeta) {
+        const schoolTitle = `${schoolMeta.name} Bell Schedule | RJUHSD Hub`;
+        const schoolDesc = `Live ${schoolMeta.name} bell schedule, period countdowns, daily times, and calendar for the ${schoolMeta.mascot} in Roseville Joint Union High School District (RJUHSD).`;
+        const schoolCanonical = `https://${reqHost}${backPath}?school=${reqSchool}`;
+
+        html = html.replace(/<title>.*?<\/title>/i, `<title>${schoolTitle}</title>`);
+        html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/i, `$1${schoolDesc}$2`);
+        html = html.replace(/(<link\s+rel="canonical"\s+href=")[^"]*(")/i, `$1${schoolCanonical}$2`);
+        html = html.replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/i, `$1${schoolTitle}$2`);
+        html = html.replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/i, `$1${schoolDesc}$2`);
+        html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/i, `$1${schoolCanonical}$2`);
+        html = html.replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*(")/i, `$1${schoolTitle}$2`);
+        html = html.replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*(")/i, `$1${schoolDesc}$2`);
+
+        html = html.replace(/<p class="hero-overline" id="hero-overline">.*?<\/p>/, `<p class="hero-overline" id="hero-overline">${schoolMeta.name.toUpperCase()}</p>`);
+        html = html.replace(/<span id="school-heading">.*?<\/span>/, `<span id="school-heading">${schoolMeta.short}</span>`);
+        html = html.replace(/<span class="period-range" id="current-range">.*?<\/span>/, `<span class="period-range" id="current-range">${schoolMeta.name}</span>`);
       }
 
       return html;
@@ -21482,6 +21537,7 @@ async function handleRequest(req, server) {
       '/bell/schedule.js',
       '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/home-burning-cherry.webp',
       '/robots.txt',
+      '/sitemap.xml',
       '/verify-open.json'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
