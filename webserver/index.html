@@ -51,7 +51,10 @@ async function loadSites() {
       headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
       body: JSON.stringify({})
     });
-    if (!request.ok) throw new Error('Network error');
+    if (!request.ok) {
+      try { await request.text(); } catch (_) {}
+      throw new Error('Network error');
+    }
     const data = await request.json();
     if (data && data.banned) {
       showBannedPopup(data.reason || 'This account is banned from the website.');
@@ -727,12 +730,16 @@ async function loadTopGames() {
     fetch('/api/games', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({hash, limit: 100})}).catch(()=>null),
     fetch('/api/game-stats').catch(()=>null),
   ]);
-  if (statsRes && statsRes.ok) _topStats = ((await statsRes.json().catch(()=>({}))).stats) || {};
-  if (gamesRes && gamesRes.ok) {
-    var gameData = await gamesRes.json().catch(()=>({}));
-    var text = gameData.content || '';
-    _topEntries = [];
-    text.split('\n').forEach(function(line) {
+  if (statsRes) {
+    if (statsRes.ok) _topStats = ((await statsRes.json().catch(()=>({}))).stats) || {};
+    else statsRes.text().catch(()=>{});
+  }
+  if (gamesRes) {
+    if (gamesRes.ok) {
+      var gameData = await gamesRes.json().catch(()=>({}));
+      var text = gameData.content || '';
+      _topEntries = [];
+      text.split('\n').forEach(function(line) {
       line = line.trim();
       if (!line) return;
       var parts = line.split(' ');
@@ -837,7 +844,7 @@ try { const _hp = JSON.parse(localStorage.getItem('_prefHomepage') || '{}'); if 
   /* TASK4 */ async function loadUserPersonalization() {
     try {
       const r = await fetch('/api/profile');
-      if (!r.ok) return;
+      if (!r.ok) { r.text().catch(()=>{}); return; }
       const d = await r.json();
       _userStats = d.stats || {};
       
@@ -1325,6 +1332,7 @@ async function loadOnlineMembers() {
       cache: 'no-store'
     });
     if (!r.ok) {
+      r.text().catch(()=>{});
       window._onlineMembersSignature = '';
       list.innerHTML = '<span class="side-empty">Sign in to see online members</span>';
       wrap.style.display = '';
@@ -1350,11 +1358,11 @@ async function loadOnlineMembers() {
 // ── Friends and Presence Client Side Logic ──────────────────────────────────
 async function sendPresenceHeartbeat() {
   try {
-    await fetch('/api/presence/heartbeat', {
+    fetch('/api/presence/heartbeat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ playing: window.currentPlayingActivity || 'Dashboard' })
-    });
+    }).then(r => r.text()).catch(()=>{});
   } catch(e) {}
 }
 
@@ -1364,6 +1372,7 @@ async function loadFriends() {
   try {
     const r = await fetch('/api/friends/list?t=' + Date.now(), { credentials: 'include' });
     if (!r.ok) {
+      r.text().catch(()=>{});
       window._friendsSignature = '';
       friendsList.innerHTML = '<span class="side-empty">Log in to view friends</span>';
       return;
@@ -1462,7 +1471,7 @@ async function loadPendingFriendRequests() {
   if (!pendingList) return;
   try {
     const r = await fetch('/api/friends/requests/pending?t=' + Date.now(), { credentials: 'include' });
-    if (!r.ok) return;
+    if (!r.ok) { r.text().catch(()=>{}); return; }
     const d = await r.json();
     const incoming = d.incoming || [];
     const outgoing = d.outgoing || [];
@@ -1679,7 +1688,7 @@ function initFriendsSystem() {
 
 async function initHome() {
     /* TASK4 */ optimizeForDevice();
-    /* TASK4 */ await loadUserPersonalization();
+    /* TASK4 */ loadUserPersonalization();
   applyWidgetOrder();
   setupHomeSearch();
   setupAboutBlankToggle();
@@ -1713,6 +1722,7 @@ async function initVmWorkspaceDashboard() {
 async function pollVmStatus() {
   try {
     const res = await fetch('/api/vm/status');
+    if (!res.ok) { res.text().catch(()=>{}); return; }
     const data = await res.json();
     
     const panel = document.getElementById('vm-workspace-panel');
@@ -3799,7 +3809,9 @@ var origShow = showIframe;
   }
   (async function() {
     try {
-      const { members } = await (await fetch('/api/owner-members')).json();
+      const res = await fetch('/api/owner-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       renderMemberChips('owner-members-wrap', 'owner-members-list', members, {
         icon: '&#9733;',
         color: '#eab308',
@@ -3811,7 +3823,9 @@ var origShow = showIframe;
   })();
   (async function() {
     try {
-      const { members } = await (await fetch('/api/premium-members')).json();
+      const res = await fetch('/api/premium-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       const list = (members || []).slice();
       for (let i = list.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -3830,7 +3844,9 @@ var origShow = showIframe;
   })();
   (async function() {
     try {
-      const { members } = await (await fetch('/api/admin-members')).json();
+      const res = await fetch('/api/admin-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       renderMemberChips('admin-members-wrap', 'admin-members-list', members, {
         icon: '&#9873;',
         color: '#ef4444',
@@ -3841,7 +3857,9 @@ var origShow = showIframe;
   })();
   (async function() {
     try {
-      const { members } = await (await fetch('/api/moderator-members')).json();
+      const res = await fetch('/api/moderator-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       renderMemberChips('moderator-members-wrap', 'moderator-members-list', members, {
         icon: '&#9873;',
         color: '#38bdf8',

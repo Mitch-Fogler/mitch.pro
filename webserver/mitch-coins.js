@@ -35,14 +35,17 @@
     if (stopped || document.hidden || pending || (!force && Date.now() - lastRequest < 15000)) return pending;
     lastRequest = Date.now();
     controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 4000);
     pending = (async function () {
       try {
         const response = await originalFetch.call(window, '/api/me/coins', { credentials: 'include', cache: 'no-store', signal: controller.signal });
         if (response.status === 401 || response.status === 403) {
+          try { await response.text(); } catch (_) {}
           balance = null; status = 'guest'; render(); return;
         }
-        if (!response.ok || !accept(await response.json())) throw new Error('Balance unavailable');
+        let data = null;
+        try { data = await response.json(); } catch (_) {}
+        if (!response.ok || !accept(data)) throw new Error('Balance unavailable');
       } catch (error) {
         if (!stopped) { balance = null; status = 'unavailable'; render(); }
       } finally { clearTimeout(timeout); pending = null; }
@@ -96,7 +99,8 @@
     clearInterval(timer);
     timer = setInterval(() => refresh(false), 60000);
     if (window.fetch === originalFetch) window.fetch = watchFetch;
-    refresh(false);
+    if (document.readyState === 'complete') refresh(false);
+    else window.addEventListener('load', () => setTimeout(() => refresh(false), 50), { once: true });
   }
 
   function pause() {
