@@ -53,3 +53,11 @@ Record one row per plan step; report honestly — partial passes are data.
 
 | Step | URLs checked | Diffs | Notes |
 |------|--------------|-------|-------|
+## Step 5 verification log (2026-09-08)
+
+- `tests/data_parity.js` + `rust/crates/mitch-lib/examples/data_parity.rs`: **8/8 paths byte-identical** through both passthrough (stored TEXT verbatim) and reserialize (parse + js_stringify_pretty) modes — mixed shapes: strings, ints, floats (1.5, -2.75, 0.000001, 9007199254740992), nested objects, empty object/array, null, booleans, unicode, escaped quotes/backslashes/newlines, key ordering.
+- `js_stringify_pretty`: JS JSON.stringify parity port — serde_json's default f64 formatting would emit `1.0` where JS emits `1`; the custom printer handles the JS Number.toString rules (decimal for 1e-6..1e21, exponential outside, `-0` as `0`).
+- crypto.rs: `enc1:` seal/open ported (AES-256-GCM, key = HMAC-SHA256(ID_SECRET, purpose), purposes `dm-at-rest-v1`/`totp-at-rest-v1`); round-trip + RFC 4231 HMAC vector tests; ID_SECRET bootstrap (32 random bytes persisted on first boot).
+- app_logs: append/query ported with the prune cadence (every 250th write, id-ordered, 20000 cap) — the admin log viewer's data source.
+- Full table init parity: all core tables + indexes created on open with the SQLITE_BUSY retry ladder (10 retries, 100ms*attempt).
+- Bugs the parity harness caught: the reserialize mode corrupted non-JSON string docs (JS writeDocument's string branch stores arbitrary text; JS readDocument returns the fallback on parse failure — the example now skips unparseable docs); the harness's string-doc expectation needed the same writeDocument ternary.

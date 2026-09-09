@@ -29,23 +29,27 @@ fn main() {
 
     for path in paths {
         let file = base.join(&path);
-        let fallback = serde_json::Value::Null;
-        let value = store.read_document(&file, fallback);
         match mode.as_str() {
             "passthrough" => {
-                // JS `typeof data === 'string'` branch: stored verbatim.
-                if let serde_json::Value::String(text) = &value {
-                    store.write_document_raw(&file, text).unwrap();
-                } else {
-                    panic!("passthrough mode requires string-valued docs: {path}");
-                }
+                // Read the stored TEXT and write it back verbatim.
+                let stored = store.read_document_raw(&file).unwrap().unwrap();
+                store.write_document_raw(&file, &stored).unwrap();
             }
             "reserialize" => {
                 // JS `JSON.stringify(data, null, 2)` branch: parse + re-emit.
-                let text = js_stringify_pretty(&value);
-                store
-                    .write_document(&file, &serde_json::Value::String(text))
-                    .unwrap();
+                // Skip docs whose stored content isn't valid JSON (JS
+                // writeDocument's string branch allows arbitrary text) — JS
+                // readDocument would return the fallback for those too.
+                let Some(raw) = store.read_document_raw(&file).unwrap() else {
+                    println!("(missing {path})");
+                    continue;
+                };
+                let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) else {
+                    println!("(skipped non-JSON {path})");
+                    continue;
+                };
+                let text = js_stringify_pretty(&parsed);
+                store.write_document_raw(&file, &text).unwrap();
             }
             other => panic!("unknown mode: {other}"),
         }
