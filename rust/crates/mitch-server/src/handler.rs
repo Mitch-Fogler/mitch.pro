@@ -159,6 +159,113 @@ fn blooket_bot_redirect(path: &str, method: &Method, search: &str) -> Option<Res
     None
 }
 
+/// `getRealIp(req)` — precedence: public socket peer -> CF-Connecting-IP ->
+/// True-Client-IP -> X-Mitch-Client-IP -> first public XFF -> X-Real-IP ->
+/// X-Client-IP -> RFC 7239 Forwarded -> private fallbacks -> 127.0.0.1.
+/// `peer_ip` comes from the socket (None when behind a proxy).
+pub fn get_real_ip(headers: &HeaderMap, peer_ip: Option<&str>) -> String {
+    fn valid_ip(v: &str) -> bool {
+        v.parse::<std::net::IpAddr>().is_ok()
+    }
+    fn is_private(v: &str) -> bool {
+        v.parse::<std::net::IpAddr>()
+            .map(|ip| match ip {
+                std::net::IpAddr::V4(v4) => v4.is_private(),
+                std::net::IpAddr::V6(v6) => v6.is_loopback(),
+            })
+            .unwrap_or(false)
+    }
+    let header_ip = |name: &str| -> Option<String> {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty() && valid_ip(v) && !is_private(v))
+    };
+
+    // 0. Public socket peer.
+    if let Some(peer) = peer_ip {
+        if valid_ip(peer) && !is_private(peer) {
+            return peer.to_string();
+        }
+    }
+    for name in ["CF-Connecting-IP", "True-Client-IP", "X-Mitch-Client-IP"] {
+        if let Some(ip) = header_ip(name) {
+            return ip;
+        }
+    }
+    // XFF: first public entry.
+    if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        for part in xff.split(',') {
+            let p = part.trim();
+            if !p.is_empty() && valid_ip(p) && !is_private(p) {
+                return p.to_string();
+            }
+        }
+    }
+    for name in ["X-Real-IP", "X-Client-IP"] {
+        if let Some(ip) = header_ip(name) {
+            return ip;
+        }
+    }
+    // RFC 7239 Forwarded: for=
+    if let Some(fwd) = headers.get("forwarded").and_then(|v| v.to_str().ok()) {
+        static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let re = RE.get_or_init(|| {
+            regex::Regex::new(r#"for=(?:"?\[?)([a-zA-Z0-9:.]+)(?:\]?"?)"#).expect("static regex")
+        });
+        if let Some(m) = re.captures(fwd) {
+            let ip = m[1].to_string();
+            if valid_ip(&ip) && !is_private(&ip) {
+                return ip;
+            }
+        }
+    }
+    // Private/bridge fallback chain.
+    const BRIDGE: &str = r"^172\.(1[6-9]|2[0-9]|3[0-1])\.";
+    static BRIDGE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let bridge = BRIDGE_RE.get_or_init(|| regex::Regex::new(BRIDGE).expect("static regex"));
+    let raw_mitch = headers
+        .get("x-mitch-client-ip")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    let raw_real = headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    let is_usable = |v: &str| -> bool {
+        valid_ip(v) && !v.eq_ignore_ascii_case("127.0.0.1") && v != "::1" && !bridge.is_match(v)
+    };
+    if !raw_mitch.is_empty() && is_usable(raw_mitch) {
+        return raw_mitch.to_string();
+    }
+    if !raw_real.is_empty() && is_usable(raw_real) {
+        return raw_real.to_string();
+    }
+    if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
+        for part in xff.split(',') {
+            let p = part.trim();
+            if !p.is_empty() && is_usable(p) {
+                return p.to_string();
+            }
+        }
+    }
+    if let Some(peer) = peer_ip {
+        if is_usable(peer) {
+            return peer.to_string();
+        }
+    }
+    if !raw_mitch.is_empty() && valid_ip(raw_mitch) {
+        return raw_mitch.to_string();
+    }
+    if !raw_real.is_empty() && valid_ip(raw_real) {
+        return raw_real.to_string();
+    }
+    "127.0.0.1".to_string()
+}
+
 /// The full ported flow. `authenticated` is the session stub (Step 6 wires
 /// the real `checkPasswordCookie`).
 pub async fn handle(
@@ -196,6 +303,18 @@ pub async fn handle(
     // 3. /swift → 301.
     if path == "/swift" {
         return redirect(&format!("/swift/{search}"), 301);
+    }
+
+    let node_env_test = std::env::var("NODE_ENV").unwrap_or_default() == "test";
+    // 3b. Rate limiting — only /api/ paths (server.js ~7658). The parity
+    // harness hits unlisted paths which get the __default__ [100, 60] per
+    // ip+anon bucket; sequential runs stay under it.
+    if path.starts_with("/api/") && !node_env_test {
+        let ip = get_real_ip(headers, None);
+        let id_key = "anon"; // cookie-derived id key lands with sessions
+        if let Some((code, message)) = state.rate_limit_check(&ip, id_key, &path) {
+            return json_resp(code, serde_json::json!({ "error": message }));
+        }
     }
 
     // 4. Soft-maintenance gate.

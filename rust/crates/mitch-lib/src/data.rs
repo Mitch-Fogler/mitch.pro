@@ -61,7 +61,8 @@ pub struct AppLogRow {
 }
 
 pub struct DataStore {
-    base_dir: PathBuf,
+    /// Repo root (pub for auth/session file paths under it).
+    pub base_dir: PathBuf,
     data_dir: PathBuf,
     conn: Mutex<rusqlite::Connection>,
     /// `appLogWriteCount` from the JS — prune fires on every 250th write.
@@ -578,7 +579,7 @@ fn js_f64(f: f64) -> String {
 
 /// `JSON.stringify(string)` escaping: quotes, backslashes, control chars as
 /// short escapes or `\uXXXX`, non-ASCII kept raw.
-fn js_quote(s: &str) -> String {
+pub fn js_quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('"');
     for c in s.chars() {

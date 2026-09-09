@@ -11,6 +11,7 @@ Record one row per plan step; report honestly — partial passes are data.
 | 3 | ssh-gateway (russh + tokio-tungstenite) | 2026-09-08 | 13/13 | 13 | same suite passes against JS gateway too — parity proven |
 | 4 | core skeleton (hosts, static, pipeline) | 2026-09-08 | 52/52 urls | 52+ | headers AND bodies byte-identical vs bun (104 checks) |
 | 5 | data layer + crypto | 2026-09-08 | 8/8 paths | 8 | data parity harness: passthrough + reserialize byte-identical; 29 rust tests green |
+| 6a | auth/sessions + rate limits | 2026-09-09 | 102/102 urls | 102+ | parity holds with the live rate limiter + real checkPasswordCookie; 6a test bypass order fixed |
 
 ## Step 4 verification log (2026-09-08)
 
@@ -62,3 +63,12 @@ Record one row per plan step; report honestly — partial passes are data.
 - app_logs: append/query ported with the prune cadence (every 250th write, id-ordered, 20000 cap) — the admin log viewer's data source.
 - Full table init parity: all core tables + indexes created on open with the SQLITE_BUSY retry ladder (10 retries, 100ms*attempt).
 - Bugs the parity harness caught: the reserialize mode corrupted non-JSON string docs (JS writeDocument's string branch stores arbitrary text; JS readDocument returns the fallback on parse failure — the example now skips unparseable docs); the harness's string-doc expectation needed the same writeDocument ternary.
+
+## Step 6a verification log (2026-09-09)
+
+- `mitch-lib::auth`: normalizeEmail (reserved-locals domain folding), makeEmailId/validId (sha256[0..24] + HMAC-SHA256[0..16] with timing-safe compare), getCookies (legacy-cookie deletion + mitch_session re-derivation), authSessionFromToken (expiry + generation check + 5-min lastSeen refresh + names.json write-back), bannedInfoForEmail/Sid/Ip, issueLoginSession, cookie_path_attrs, checkPasswordCookie (full gate in JS order).
+- Rate limiting: RATE_LIMITS table verbatim (~110 entries), sliding-window rlLog, anon = floor(max/5), detectNonHumanTiming (>=4 intervals within 10s, spread < 50ms), checkRateLimit with the polling-path exemptions, WHITELISTED_IPS.
+- Wired into mitch-server: real check_password_cookie replaces the stub; get_real_ip (full header-precedence chain with the 172.16-31 bridge fallbacks); rate-limit gate in the prelude for /api/ paths.
+- Parity: 102/102 headers+bodies byte-identical with the live rate limiter — the harness's ~51 sequential requests stay under the default [100, 60] bucket.
+- Functional: hammering /api/stats on the rust server returns 429 after the bucket fills (verified with a 105-request curl loop).
+- Test-semantics fix: the NODE_ENV=test bypass fires AFTER sid validation and email resolution (matching the JS order), not before — the test was asserting the wrong order.

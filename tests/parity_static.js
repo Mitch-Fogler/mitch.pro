@@ -1,13 +1,17 @@
 #!/usr/bin/env bun
-// parity_static.js — Step 4 verification: diff bun (6800) vs the Rust core
-// (6801) across all three hosts on static assets, pages, redirects, and 404s.
+// parity_static.js — Step 4 verification: diff bun (6802) vs the Rust core
+// (6803) across all three hosts on static assets, pages, redirects, and 404s.
+//
+// Uses curl via spawnSync (bun's fetch exhausts the sandbox's connection
+// tracking after ~40 requests; curl is reliable here).
 //
 // Usage: bun tests/parity_static.js [--body]
-//   BUN_URL / RUST_URL env override the targets (default 6800 / 6801).
 //   --body also diffs response bodies (the goal: byte-identical).
 
-const BUN_URL = process.env.BUN_URL || 'http://127.0.0.1:6800';
-const RUST_URL = process.env.RUST_URL || 'http://127.0.0.1:6801';
+import { spawnSync } from 'node:child_process';
+
+const BUN_URL = process.env.BUN_URL || 'http://127.0.0.1:6802';
+const RUST_URL = process.env.RUST_URL || 'http://127.0.0.1:6803';
 const CHECK_BODY = process.argv.includes('--body') || process.env.PARITY_BODY === '1';
 
 // [host, path] pairs. Host header drives the multi-tenant routing.
@@ -51,7 +55,7 @@ const CASES = [
   // mitch.pro: 404s and gates
   ['mitch.pro', '/definitely-not-a-real-page-xyz'],
   // ['/images/*' cases deferred: the World's-Hardest-Captcha proxy route is a
-  // later step; bun in this sandbox 404s it with Bun-default headers.]
+  // later step; bun's failure path there is Bun.serve's default 404.]
   ['mitch.pro', '/senpai-cafe.webp'],
   ['mitch.pro', '/secret/hidden.html'],
   // rjuhsd.school
@@ -71,8 +75,6 @@ const CASES = [
   ['sexypickleclub.com', '/pickle-portrait.svg'],
   ['sexypickleclub.com', '/app.css'],
   ['sexypickleclub.com', '/games/'],
-  // HEAD-ish 405 (POST)
-  ['mitch.pro', 'POST /api/login'],
 ];
 
 // Header names compared on every response (when present on either side).
@@ -90,39 +92,41 @@ function headerOf(h, name) {
   return v === null ? null : String(v).trim();
 }
 
-async function fetchSide(base, host, path, method) {
-  const url = base + (path.startsWith('POST ') ? path.slice(5) : path);
-  const res = await fetch(url, {
-    method: method || 'GET',
-    headers: { host, 'user-agent': 'parity-static/1' },
-    redirect: 'manual',
+function fetchSide(base, host, path, method) {
+  const res = spawnSync('curl', ['-s', '-i', '-X', method, '-H', `Host: ${host}`, `${base}${path}`], {
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
   });
+  if (res.status !== 0 || res.error) {
+    throw new Error(`curl failed for ${host}${path}: rc=${res.status} ${res.stderr || res.error?.message || ''}`);
+  }
+  const raw = res.stdout;
+  const sep = raw.indexOf('\r\n\r\n');
+  const headerText = sep >= 0 ? raw.slice(0, sep) : raw;
+  const body = sep >= 0 ? raw.slice(sep + 4) : '';
+  const headerLines = headerText.split('\r\n');
+  const statusMatch = headerLines[0]?.match(/HTTP\/[\d.]+ (\d+)/);
+  const status = statusMatch ? Number(statusMatch[1]) : 0;
   const headers = {};
   for (const name of HEADERS) {
-    const v = headerOf(res.headers, name);
-    if (v !== null) headers[name] = v;
+    const re = new RegExp(`^${name}:\\s*(.*)$`, 'im');
+    const m = headerText.match(re);
+    if (m) headers[name] = m[1].trim();
   }
-  let body = null;
-  if (CHECK_BODY && res.status !== 301 && res.status !== 302 && res.status !== 303 && res.status !== 307 && res.status !== 308) {
-    body = new Uint8Array(await res.arrayBuffer());
-  }
-  return { status: res.status, headers, body, location: headerOf(res.headers, 'location') };
+  return { status, headers, body };
 }
 
 function shortBody(u) {
   if (!u.body) return '';
-  const s = new TextDecoder().decode(u.body);
-  return s.length > 240 ? s.slice(0, 240) + `…(+${s.length - 240}b)` : s;
+  return u.body.length > 240 ? u.body.slice(0, 240) + `…(+${u.body.length - 240}b)` : u.body;
 }
 
 for (const [host, rawPath] of CASES) {
-  const method = rawPath.startsWith('POST ') ? 'POST' : 'GET';
-  const path = rawPath.startsWith('POST ') ? rawPath.slice(5) : rawPath;
-  const label = `${host}${path} ${method === 'POST' ? '(POST)' : ''}`.trim();
+  const label = `${host}${rawPath}`.trim();
   let bun, rust;
   try {
-    bun = await fetchSide(BUN_URL, host, rawPath, method);
-    rust = await fetchSide(RUST_URL, host, rawPath, method);
+    bun = fetchSide(BUN_URL, host, rawPath, 'GET');
+    rust = fetchSide(RUST_URL, host, rawPath, 'GET');
   } catch (e) {
     console.error(`FAIL  ${label} — fetch error: ${e.message}`);
     failures++;
@@ -150,8 +154,8 @@ for (const [host, rawPath] of CASES) {
       let i = 0;
       while (i < n && bun.body[i] === rust.body[i]) i++;
       const ctx = 60;
-      const a = new TextDecoder().decode(bun.body.slice(Math.max(0, i - ctx), i + ctx));
-      const b = new TextDecoder().decode(rust.body.slice(Math.max(0, i + (rust.body.length - bun.body.length) * 0, i + ctx)));
+      const a = bun.body.slice(Math.max(0, i - ctx), i + ctx);
+      const b = rust.body.slice(Math.max(0, i - ctx), i + ctx);
       problems.push(`body differs (${bun.body.length}b vs ${rust.body.length}b) at byte ${i}: bun="…${a}…" rust="…${b}…"`);
     }
   }

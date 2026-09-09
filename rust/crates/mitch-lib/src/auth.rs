@@ -1,24 +1,968 @@
-//! Sessions, cookies, CSRF, and rate-limit tables (plan Step 6).
+//! Sessions, cookies, bans, and rate limiting — port of server.js's auth
+//! surface (getCookies ~5576, authSessionFromToken ~2789, checkPasswordCookie
+//! ~5748, checkRateLimit ~5812, bans ~2864-2911).
 //!
-//! Contract (from `server.js`):
-//! - Cookie `mitch_session` with exact attributes:
-//!   `Path=/; Max-Age=2592000; SameSite=Lax; Secure; HttpOnly`
-//!   (`Secure` driven by `SESSION_COOKIE_SECURE`/NODE_ENV, never by
-//!   `X-Forwarded-Proto`). Drift logs out every user at cutover.
-//! - Mutating `/api/*` requires same-origin Origin/Referer +
-//!   `X-Mitch-Requested-With: 1` unless in `PUBLIC_API_PATHS`.
-//! - Rate-limit tables: in-memory maps with periodic sweepers.
-//!
-//! Status: scaffold stub — implemented in plan Step 6.
+//! Contract highlights:
+//! - Cookie `mitch_session` (AUTH_COOKIE): value = raw 32-byte base64url
+//!   token; only sha256(token).hex is stored (auth_sessions.json key).
+//! - `studentId`/`id`/`adminId` client cookies are DELETED (except
+//!   NODE_ENV=test) and re-derived from the server-side session.
+//! - `makeEmailId`: sha256(email|email:vN).hex[0..24] = 'e'+hash, sig =
+//!   HMAC-SHA256(ID_SECRET, raw).hex[0..16], joined with '.'.
+//! - `normalizeEmail`: lowercase+trim, strip +suffix, strip dots from local,
+//!   fold mitch.pro/student.mitch.pro -> student.rjuhsd.us unless the local
+//!   part is admin/support/noreply/mitch.
+//! - Rate limits: sliding windows of float-epoch timestamps, two buckets per
+//!   endpoint (`ip:<ip>` and `id:<sid>`/`anon`), anon = floor(max/5),
+//!   timing-bot detection (>=4 intervals within 10s each, spread < 50ms).
 
-#![allow(dead_code)]
+use crate::data::DataStore;
+use serde_json::Value;
+use std::collections::HashMap;
 
-/// Auth provider, not yet wired.
-pub struct Auth;
+/// Minimal header access without coupling mitch-lib to a web framework.
+pub mod http {
+    #[derive(Default)]
+    pub struct HeaderMap(std::collections::HashMap<String, String>);
 
-impl Auth {
-    /// Placeholder so the module compiles; replaced in Step 6.
-    pub fn placeholder() -> Self {
-        Self
+    impl HeaderMap {
+        #[allow(clippy::new_without_default)]
+        pub fn new() -> Self {
+            Self(std::collections::HashMap::new())
+        }
+        pub fn get(&self, name: &str) -> Option<String> {
+            self.0.get(&name.to_lowercase()).cloned()
+        }
+        pub fn insert(&mut self, name: &str, value: &str) {
+            self.0.insert(name.to_lowercase(), value.to_string());
+        }
+    }
+
+    impl From<&[(String, String)]> for HeaderMap {
+        fn from(pairs: &[(String, String)]) -> Self {
+            let mut m = Self::new();
+            for (k, v) in pairs {
+                m.insert(k, v);
+            }
+            m
+        }
+    }
+}
+
+pub const AUTH_COOKIE: &str = "mitch_session";
+/// 30 days in ms (server.js:2681).
+pub const AUTH_SESSION_TTL_MS: i64 = 30 * 24 * 60 * 60 * 1000;
+pub const DEV_TEST_EMAIL: &str = "admin@mitch.pro";
+pub const WHITELISTED_IPS: &[&str] = &["66.60.183.124"];
+
+/// `normalizeEmail(email)` — server.js:2054.
+pub fn normalize_email(email: &str) -> String {
+    if email.is_empty() {
+        return String::new();
+    }
+    let e = email.to_lowercase().trim().to_string();
+    if !e.contains('@') {
+        return e;
+    }
+    let Some(at) = e.rfind('@') else {
+        return e;
+    };
+    let local_raw = e[..at].split('+').next().unwrap_or("").to_string();
+    let domain_raw = e[at + 1..].to_string();
+    let local = local_raw.replace('.', "");
+    let reserved = ["admin", "support", "noreply", "mitch"];
+    let domain = if (domain_raw == "student.mitch.pro" || domain_raw == "mitch.pro")
+        && !reserved.contains(&local.as_str())
+    {
+        "student.rjuhsd.us".to_string()
+    } else {
+        domain_raw
+    };
+    format!("{local}@{domain}")
+}
+
+/// `makeEmailId(email, gen)` — server.js:2645. Raw bytes of ID_SECRET as the
+/// HMAC key (data/id_secret.key is read as a Buffer, not a string).
+pub fn make_email_id(email: &str, gen: u64, id_secret: &[u8]) -> String {
+    let key = if gen == 0 {
+        email.to_string()
+    } else {
+        format!("{email}:v{gen}")
+    };
+    let email_hash = crate::crypto::sha256_hex(key.as_bytes());
+    let raw = format!("e{}", &email_hash[..24]);
+    let sig = &crate::crypto::hmac_sha256_hex(id_secret, raw.as_bytes())[..16];
+    format!("{raw}.{sig}")
+}
+
+/// `validId(token)` — server.js:2651.
+pub fn valid_id(token: &str, id_secret: &[u8]) -> bool {
+    if token.is_empty() || !token.contains('.') {
+        return false;
+    }
+    let Some(last_dot) = token.rfind('.') else {
+        return false;
+    };
+    let raw = &token[..last_dot];
+    let sig = &token[last_dot + 1..];
+    let expected = &crate::crypto::hmac_sha256_hex(id_secret, raw.as_bytes())[..16];
+    crate::crypto::timing_safe_equal(sig.as_bytes(), expected.as_bytes())
+}
+
+/// `hashSessionToken(token)` — sha256(token).hex.
+pub fn hash_session_token(token: &str) -> String {
+    crate::crypto::sha256_hex(token.as_bytes())
+}
+
+/// `devTestAccessEnabled()` — server.js:2683.
+pub fn dev_test_access_enabled() -> bool {
+    std::env::var("NODE_ENV").unwrap_or_default() != "production"
+        && std::env::var("DEV_TEST_ACCESS").unwrap_or_default() == "1"
+}
+
+/// Parsed cookie jar — mirrors the JS getCookies() return value.
+#[derive(Debug, Default, Clone)]
+pub struct Cookies {
+    pub map: HashMap<String, String>,
+    /// Pre-deletion legacy values (JS cookies.rawStudentId / rawId).
+    pub raw_student_id: String,
+    pub raw_id: String,
+}
+
+impl Cookies {
+    pub fn get(&self, name: &str) -> Option<&str> {
+        self.map.get(name).map(|s| s.as_str())
+    }
+    /// `authSidFromCookies`.
+    pub fn auth_sid(&self) -> String {
+        self.get("studentId").unwrap_or("").to_string()
+    }
+}
+
+/// `getCookies(req)` — header-map variant. Framework-agnostic core below.
+pub fn get_cookies(
+    headers: &http::HeaderMap,
+    store: &DataStore,
+    id_secret: &[u8],
+    node_env_test: bool,
+) -> Cookies {
+    let cookie_header = headers.get("cookie").unwrap_or_default();
+    get_cookies_from_header_value(&cookie_header, store, id_secret, node_env_test)
+}
+
+/// String-based core (works with any framework's header extraction).
+pub fn get_cookies_from_header_value(
+    cookie_header: &str,
+    store: &DataStore,
+    id_secret: &[u8],
+    node_env_test: bool,
+) -> Cookies {
+    let mut cookies = Cookies::default();
+    for part in cookie_header.split(';') {
+        let t = part.trim();
+        if let Some(eq) = t.find('=') {
+            let name = t[..eq].trim().to_string();
+            let raw = t[eq + 1..].trim().to_string();
+            let decoded = percent_decode(&raw).unwrap_or(raw);
+            cookies.map.insert(name, decoded);
+        }
+    }
+
+    let raw_student_id = cookies.get("studentId").unwrap_or("").to_string();
+    let raw_id = cookies.get("id").unwrap_or("").to_string();
+    cookies.raw_student_id = raw_student_id;
+    cookies.raw_id = raw_id;
+
+    // Display-only legacy cookies — never treat as auth proof.
+    if !node_env_test {
+        cookies.map.remove("studentId");
+        cookies.map.remove("id");
+        cookies.map.remove("adminId");
+    }
+
+    if let Some(token) = cookies.get(AUTH_COOKIE).map(str::to_string) {
+        if let Some(session) = auth_session_from_token(&token, store, id_secret) {
+            if !session.email.is_empty() || !session.norm_email.is_empty() {
+                let mut sid = session.sid.clone();
+                if sid.is_empty() || !valid_id(&sid, id_secret) {
+                    sid = make_email_id(
+                        session.norm_email.trim_matches('@'),
+                        session.gen as u64,
+                        id_secret,
+                    );
+                }
+                cookies.map.insert("studentId".into(), sid.clone());
+                cookies.map.insert("id".into(), sid);
+                cookies
+                    .map
+                    .insert("_authSession".into(), session.serialize());
+            }
+        }
+    }
+    cookies
+}
+
+fn percent_decode(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 3 <= bytes.len() {
+            let hex_pair = raw.get(i + 1..i + 3)?;
+            let byte = u8::from_str_radix(hex_pair, 16).ok()?;
+            out.push(byte);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+/// One auth_sessions.json record (server.js:2773-2784).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct AuthSession {
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    #[serde(rename = "normEmail")]
+    pub norm_email: String,
+    #[serde(default)]
+    pub sid: String,
+    #[serde(default)]
+    pub gen: i64,
+    #[serde(rename = "createdAt", default)]
+    pub created_at: i64,
+    #[serde(rename = "lastSeen", default)]
+    pub last_seen: i64,
+    #[serde(rename = "expiresAt", default)]
+    pub expires_at: i64,
+    #[serde(rename = "userAgent", default)]
+    pub user_agent: String,
+    #[serde(default)]
+    pub ip: String,
+    #[serde(rename = "devSuperuser", default)]
+    pub dev_superuser: bool,
+}
+
+impl AuthSession {
+    fn serialize(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+}
+
+fn sessions_file() -> std::path::PathBuf {
+    std::path::PathBuf::from("data/auth_sessions.json")
+}
+
+fn names_file() -> std::path::PathBuf {
+    std::path::PathBuf::from("data/names.json")
+}
+
+fn generations_file() -> std::path::PathBuf {
+    std::path::PathBuf::from("data/generations.json")
+}
+
+fn now_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// `currentSessionGeneration(normEmail)` — generations.json value or 0.
+pub fn current_session_generation(store: &DataStore, norm: &str) -> i64 {
+    let gens = store.read_document(&store.base_dir.join(generations_file()), Value::Null);
+    match gens.get(norm) {
+        Some(Value::Object(m)) => m.get("gen").and_then(|v| v.as_i64()).unwrap_or(0),
+        Some(Value::Number(n)) => n.as_i64().unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// `issueLoginSession(normEmail, originalEmail)` — makeEmailId + names.json
+/// write-back (sid -> display email).
+pub fn issue_login_session(
+    store: &DataStore,
+    id_secret: &[u8],
+    norm_email: &str,
+    original_email: &str,
+) -> String {
+    let gen = current_session_generation(store, norm_email);
+    let student_id = make_email_id(norm_email, gen as u64, id_secret);
+    let names_path = store.base_dir.join(names_file());
+    let mut names = store.read_document(&names_path, serde_json::json!({}));
+    if names.get(&student_id).and_then(|v| v.as_str()) != Some(original_email) {
+        if let Some(map) = names.as_object_mut() {
+            map.insert(
+                student_id.clone(),
+                Value::String(original_email.to_string()),
+            );
+        }
+        let _ = store.write_document(&names_path, &names);
+    }
+    student_id
+}
+
+/// `authSessionFromToken(token)` — validate + refresh (expiry, generation,
+/// 5-min lastSeen). Returns None + lazily deletes expired/stale records.
+pub fn auth_session_from_token(
+    token: &str,
+    store: &DataStore,
+    id_secret: &[u8],
+) -> Option<AuthSession> {
+    if token.is_empty() {
+        return None;
+    }
+    let key = hash_session_token(token);
+    let sessions_path = store.base_dir.join(sessions_file());
+    let mut sessions = store.read_document(&sessions_path, serde_json::json!({}));
+    let now = now_millis();
+
+    let mut rec = sessions.get(&key).cloned()?;
+    let rec_obj = rec.as_object_mut()?;
+
+    let expires_at = rec_obj
+        .get("expiresAt")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if expires_at == 0 || now > expires_at {
+        if let Some(map) = sessions.as_object_mut() {
+            map.remove(&key);
+        }
+        let _ = store.write_document(&sessions_path, &sessions);
+        return None;
+    }
+
+    let norm_email = rec_obj
+        .get("normEmail")
+        .or_else(|| rec_obj.get("email"))
+        .and_then(|v| v.as_str())
+        .map(normalize_email)
+        .unwrap_or_default();
+    if norm_email.is_empty() {
+        return None;
+    }
+
+    let rec_gen = rec_obj.get("gen").and_then(|v| v.as_i64()).unwrap_or(0);
+    if rec_gen != current_session_generation(store, &norm_email) {
+        if let Some(map) = sessions.as_object_mut() {
+            map.remove(&key);
+        }
+        let _ = store.write_document(&sessions_path, &sessions);
+        return None;
+    }
+
+    let email = rec_obj
+        .get("email")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let sid = issue_login_session(store, id_secret, &norm_email, &email);
+    let stored_sid = rec_obj.get("sid").and_then(|v| v.as_str()).unwrap_or("");
+    let last_seen = rec_obj
+        .get("lastSeen")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    if stored_sid != sid || now - last_seen > 5 * 60 * 1000 {
+        rec_obj.insert("sid".into(), Value::String(sid.clone()));
+        rec_obj.insert("lastSeen".into(), Value::Number(now.into()));
+        let _ = store.write_document(&sessions_path, &sessions);
+    }
+
+    let mut session: AuthSession = serde_json::from_value(rec).unwrap_or_default();
+    session.sid = sid;
+    session.norm_email = norm_email;
+    Some(session)
+}
+
+/// `bannedInfoForEmail(email)` — blacklist.json lookup.
+pub fn banned_info_for_email(store: &DataStore, email: &str) -> Option<Value> {
+    if email.is_empty() {
+        return None;
+    }
+    let bl = store.read_document(
+        &store.base_dir.join("data/blacklist.json"),
+        serde_json::json!({}),
+    );
+    let norm = normalize_email(email);
+    bl.get(&norm)
+        .or_else(|| bl.get(email.to_lowercase().as_str()))
+        .cloned()
+}
+
+/// `bannedInfoForSid(sid)` — sid -> email -> blacklist.
+pub fn banned_info_for_sid(store: &DataStore, id_secret: &[u8], sid: &str) -> Option<Value> {
+    if sid.is_empty() || !valid_id(sid, id_secret) {
+        return None;
+    }
+    let email = email_from_sid(store, id_secret, sid);
+    email.and_then(|e| banned_info_for_email(store, &e))
+}
+
+/// `bannedInfoForIp(ip)` — banned_ips.json lookup.
+pub fn banned_info_for_ip(store: &DataStore, ip: &str) -> Option<Value> {
+    if ip.is_empty() {
+        return None;
+    }
+    let ips = store.read_document(
+        &store.base_dir.join("data/banned_ips.json"),
+        serde_json::json!({}),
+    );
+    ips.get(ip).cloned()
+}
+
+/// `emailFromSid(sid)` — names.json first, then tokens.json (incl. infinite
+/// tokens with generation matching). Port of server.js:5844.
+pub fn email_from_sid(store: &DataStore, id_secret: &[u8], sid: &str) -> Option<String> {
+    if sid.is_empty() {
+        return None;
+    }
+    let names = store.read_document(&store.base_dir.join(names_file()), serde_json::json!({}));
+    if let Some(email) = names.get(sid).and_then(|v| v.as_str()) {
+        let norm = normalize_email(email);
+        let gen = current_session_generation(store, &norm);
+        if sid == make_email_id(&norm, gen as u64, id_secret)
+            || sid == make_email_id(email, gen as u64, id_secret)
+        {
+            return Some(email.to_string());
+        }
+        return None;
+    }
+    // tokens.json: direct sid key, then infinite tokens by generation.
+    let tokens = store.read_document(
+        &store.base_dir.join("data/tokens.json"),
+        serde_json::json!({}),
+    );
+    if let Some(rec) = tokens.get(sid) {
+        return rec
+            .get("email")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+    }
+    for (_tok, rec) in tokens.as_object()?.iter() {
+        if !rec
+            .get("infinite")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let norm = rec
+            .get("norm_email")
+            .or_else(|| rec.get("email"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_default();
+        let norm = normalize_email(&norm);
+        let gen = rec.get("claim_count").and_then(|v| v.as_i64()).unwrap_or(0);
+        if sid == make_email_id(&norm, gen as u64, id_secret) {
+            return Some(
+                rec.get("email")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+                    .unwrap_or(norm),
+            );
+        }
+    }
+    None
+}
+
+/// The full `checkPasswordCookie(req, providedSid)` gate — server.js:5748.
+/// `node_env_test` mirrors `process.env.NODE_ENV === 'test'` (always-true
+/// bypass); `dev_test_access` mirrors `devTestAccessEnabled()`.
+pub fn check_password_cookie(
+    store: &DataStore,
+    id_secret: &[u8],
+    cookies: &Cookies,
+    provided_sid: Option<&str>,
+    node_env_test: bool,
+    dev_test_access: bool,
+) -> bool {
+    let sid = cookies
+        .get("studentId")
+        .or_else(|| cookies.get("id"))
+        .unwrap_or("");
+    if sid.is_empty() {
+        return false;
+    }
+    if let Some(provided) = provided_sid {
+        if provided != sid {
+            return false;
+        }
+    }
+    if !valid_id(sid, id_secret) {
+        return false;
+    }
+    if banned_info_for_sid(store, id_secret, sid).is_some() {
+        return false;
+    }
+
+    let auth_session = cookies
+        .get("_authSession")
+        .and_then(|s| serde_json::from_str::<serde_json::Map<String, Value>>(s).ok());
+    let email = auth_session
+        .as_ref()
+        .and_then(|s| s.get("email"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .or_else(|| email_from_sid(store, id_secret, sid))
+        .or_else(|| {
+            store
+                .read_document(&store.base_dir.join(names_file()), serde_json::json!({}))
+                .get(sid)
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        });
+    let Some(email) = email else { return false };
+
+    let norm = normalize_email(&email);
+    let dev_superuser = auth_session
+        .as_ref()
+        .and_then(|s| s.get("devSuperuser"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if dev_superuser && dev_test_access && norm == DEV_TEST_EMAIL {
+        return true;
+    }
+    if node_env_test {
+        return true;
+    }
+    let passwords = store.read_document(
+        &store.base_dir.join("data/passwords.json"),
+        serde_json::json!({}),
+    );
+    passwords.get(&norm).is_some()
+}
+
+/// `cookiePathAttrs(req, maxAge, httpOnly)` — exact attribute string.
+pub fn cookie_path_attrs(
+    session_cookie_secure: &str,
+    node_env_production: bool,
+    max_age: i64,
+    http_only: bool,
+) -> String {
+    let secure_flag = session_cookie_secure.trim();
+    let secure =
+        secure_flag == "1" || secure_flag.eq_ignore_ascii_case("true") || node_env_production;
+    let mut parts = vec![
+        "Path=/".to_string(),
+        format!("Max-Age={max_age}"),
+        "SameSite=Lax".to_string(),
+    ];
+    if secure {
+        parts.push("Secure".to_string());
+    }
+    if http_only {
+        parts.push("HttpOnly".to_string());
+    }
+    parts.join("; ")
+}
+
+/// `setCookieHeader(name, value, req, maxAge, httpOnly)`.
+pub fn set_cookie_header(
+    name: &str,
+    value: &str,
+    secure_flag: &str,
+    node_env_production: bool,
+    max_age: i64,
+    http_only: bool,
+) -> String {
+    format!(
+        "{name}={}; {}",
+        crate::data::js_quote(value),
+        cookie_path_attrs(secure_flag, node_env_production, max_age, http_only)
+    )
+}
+
+// ── Rate limiting ────────────────────────────────────────────────────────────
+
+/// `RATE_LIMITS` — [maxRequests, windowSeconds] per exact endpoint path.
+/// Verbatim from server.js:1392-1506.
+pub fn rate_limit_for(endpoint: &str) -> (u32, u32) {
+    match endpoint {
+        "/api/webauthn/login/options" => (10, 60),
+        "/api/webauthn/login/verify" => (10, 60),
+        "/api/webauthn/register/options" => (20, 60),
+        "/api/webauthn/register/verify" => (20, 60),
+        "/api/webauthn/credentials" => (60, 60),
+        "/api/webauthn/credentials/rename" => (20, 60),
+        "/api/webauthn/credentials/delete" => (10, 60),
+        "/api/request-access" => (10, 600),
+        "/api/claim-token" => (10, 3600),
+        "/api/pass" => (60, 60),
+        "/api/e2e/verify-password" => (5, 60),
+        "/api/content" => (120, 60),
+        "/api/ping" => (120, 60),
+        "/api/me/notif-prefs" => (30, 60),
+        "/api/ai" => (20, 60),
+        "/api/script" => (600, 60),
+        "/api/admin/js" => (5, 60),
+        "/api/admin/trigger-daily-summary" => (10, 60),
+        "/api/admin/gift-coins" => (10, 60),
+        "/api/admin/grant-premium" => (10, 60),
+        "/api/admin/revoke-premium" => (10, 60),
+        "/api/admin/send-notification" => (20, 60),
+        "/api/admin/unsend-notification" => (20, 60),
+        "/api/admin/blog-contributors" => (20, 60),
+        "/api/admin/blog-deletions" => (20, 60),
+        "/api/blog/posts" => (30, 60),
+        "/api/blog/write" => (6, 60),
+        "/api/blog/comment" => (10, 60),
+        "/api/blog/upload" => (10, 60),
+        "/api/backgrounds/upload" => (6, 120),
+        "/api/backgrounds/delete" => (20, 60),
+        "/api/dm/attachment/upload" => (20, 60),
+        "/api/dm/attachments/delete" => (30, 60),
+        "/api/blog/subscription" => (20, 60),
+        "/api/newsletter-signup" => (3, 60),
+        "/api/newsletter/unsubscribe-direct" => (10, 600),
+        "/api/invite/send" => (5, 3600),
+        "/api/invite/set-code" => (3, 60),
+        "/api/apply" => (2, 3600),
+        "/api/suggest" => (3, 60),
+        "/api/migrateid" => (20, 60),
+        "/api/vpn-check" => (30, 60),
+        "/api/me/coins" => (30, 60),
+        "/api/daily-login/state" => (120, 60),
+        "/api/daily-login/claim" => (30, 60),
+        "/api/puzzles/claim" => (30, 60),
+        "/api/puzzles/list" => (60, 60),
+        "/api/me/logout-other" => (5, 60),
+        "/api/leaderboard" => (10, 60),
+        "/api/friends/list" => (30, 60),
+        "/api/friends/request" => (10, 60),
+        "/api/friends/request/cancel" => (15, 60),
+        "/api/friends/requests/pending" => (30, 60),
+        "/api/friends/request/respond" => (15, 60),
+        "/api/friends/remove" => (10, 60),
+        "/api/profile/report" => (5, 300),
+        "/api/admin/profile-reports/resolve" => (20, 60),
+        "/api/presence/heartbeat" => (60, 60),
+        "/api/premium-chat/history" => (60, 60),
+        "/api/premium-chat/send" => (3, 10),
+        "/api/public-chat/history" => (60, 60),
+        "/api/public-chat/send" => (3, 10),
+        "/api/pickle-chat/history" => (60, 60),
+        "/api/pickle-chat/send" => (3, 10),
+        "/api/pickle-chat/react" => (30, 10),
+        "/api/pickle-chat/presence" => (10, 60),
+        "/api/pickle-club/vote" => (5, 60),
+        "/api/pickle-club/crunch" => (5, 60),
+        "/api/pickle-club/membership" => (60, 60),
+        "/api/pickle-club/join" => (3, 300),
+        "/api/pickle-club/applicants" => (30, 60),
+        "/api/pickle-club/decide" => (30, 60),
+        "/api/pickle-club/owners" => (30, 60),
+        "/api/pickle-bulletin/state" => (120, 60),
+        "/api/pickle-bulletin/post" => (5, 300),
+        "/api/pickle-bulletin/react" => (30, 10),
+        "/api/pickle-bulletin/delete" => (10, 60),
+        "/api/dm/send" => (20, 10),
+        "/api/marketplace/list" => (1, 30),
+        "/api/marketplace/buy" => (1, 30),
+        "/api/marketplace/cancel" => (2, 30),
+        "/api/marketplace/mediate" => (1, 30),
+        "/api/marketplace/appeal" => (1, 30),
+        "/api/marketplace/items" => (60, 60),
+        "/api/chess/puzzle-solved" => (15, 3600),
+        "/api/claim-sebastians-reward" => (10, 60),
+        "/api/games/sebastians-piccolo/payout" => (10, 60),
+        "/api/games/lillians-logic/solve" => (10, 60),
+        "/api/chess-vs/challenge" => (5, 600),
+        "/api/chess-vs/move" => (60, 60),
+        "/api/canvas/pixel" => (1000, 60),
+        "/api/canvas/pixels/bulk" => (1000, 60),
+        "/api/canvas/history" => (10, 60),
+        "/api/battleship/challenge" => (5, 600),
+        "/api/battleship/respond" => (10, 60),
+        "/api/battleship/place" => (5, 60),
+        "/api/battleship/fire" => (60, 60),
+        "/api/battleship/state" => (60, 60),
+        "/api/battleship/resign" => (5, 60),
+        "/api/jeopardy/create" => (5, 600),
+        "/api/jeopardy/join" => (10, 60),
+        "/api/jeopardy/start" => (5, 60),
+        "/api/jeopardy/select" => (30, 60),
+        "/api/jeopardy/buzz" => (30, 60),
+        "/api/jeopardy/answer" => (30, 60),
+        "/api/jeopardy/wager" => (10, 60),
+        "/api/jeopardy/visibility" => (120, 60),
+        "/api/jeopardy/state" => (300, 60),
+        "/api/jeopardy/final/wager" => (10, 60),
+        "/api/jeopardy/final/answer" => (10, 60),
+        _ => (100, 60), // __default__
+    }
+}
+
+/// In-memory `rlLog` — sliding windows of float-epoch timestamps keyed by
+/// `<rateKey>::<endpoint>`. Mirrors the JS module-level map.
+#[derive(Default)]
+pub struct RateLimiter {
+    log: std::sync::Mutex<HashMap<String, Vec<f64>>>,
+    /// timing::<key> -> (lastTime, intervals) — detectNonHumanTiming state.
+    timing_log: std::sync::Mutex<HashMap<String, (f64, Vec<f64>)>>,
+}
+
+impl RateLimiter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// `rateLimited(rateKey, endpoint)` — true when over the limit.
+    pub fn rate_limited(&self, rate_key: &str, endpoint: &str) -> bool {
+        let (max_req, window) = rate_limit_for(endpoint);
+        let limit = if rate_key == "anon" {
+            (max_req / 5).max(1)
+        } else {
+            max_req
+        } as f64;
+        let key = format!("{rate_key}::{endpoint}");
+        let now = now_millis() as f64 / 1000.0;
+        let mut log = self.log.lock().unwrap_or_else(|e| e.into_inner());
+        let ts = log.entry(key).or_default();
+        ts.retain(|t| now - t < window as f64);
+        if ts.len() as f64 >= limit {
+            return true;
+        }
+        ts.push(now);
+        false
+    }
+
+    /// `detectNonHumanTiming(key)` — >=4 intervals within the last 10s each
+    /// and spread < 50ms. Returns true when flagged.
+    pub fn detect_non_human_timing(&self, key: &str) -> bool {
+        const MAX_GAP_MS: i64 = 10_000;
+        const KEEP: usize = 5;
+        const MIN_INTERVALS: usize = 4;
+        const SPREAD_MS: i64 = 50;
+        let now = now_millis();
+        let mut timing_log = self.timing_log.lock().unwrap_or_else(|e| e.into_inner());
+        let (last_time, intervals) = timing_log
+            .entry(format!("timing::{key}"))
+            .or_insert((-1.0, Vec::new()));
+        let diff = now - *last_time as i64;
+        *last_time = now as f64;
+        if *last_time as i64 == now && diff < 0 {
+            return false;
+        }
+        if diff > MAX_GAP_MS {
+            intervals.clear();
+            return false;
+        }
+        intervals.push(diff as f64);
+        if intervals.len() > KEEP {
+            intervals.remove(0);
+        }
+        if intervals.len() >= MIN_INTERVALS {
+            let min = intervals.iter().cloned().fold(f64::INFINITY, f64::min);
+            let max = intervals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            return max - min < SPREAD_MS as f64;
+        }
+        false
+    }
+}
+
+/// `checkRateLimit` — the full per-request gate. `id_key` is the cookie-derived
+/// bucket key (`id:<sid>` or `anon`), computed by the caller post-auth.
+pub fn check_rate_limit(
+    limiter: &RateLimiter,
+    ip: &str,
+    id_key: &str,
+    endpoint: &str,
+) -> Option<(u16, &'static str)> {
+    if WHITELISTED_IPS.contains(&ip) {
+        return None;
+    }
+    let timing_exempt = endpoint.ends_with("/state")
+        || endpoint.contains("/inbox")
+        || endpoint.contains("/heartbeat")
+        || endpoint.contains("/groups")
+        || endpoint.contains("/dm/send")
+        || endpoint.contains("/canvas/")
+        || endpoint.contains("/blooket-bot/status");
+    if !timing_exempt && limiter.detect_non_human_timing(&format!("{ip}:{endpoint}")) {
+        return Some((429, "Non-human request patterns detected"));
+    }
+    if limiter.rate_limited(&format!("ip:{ip}"), endpoint) || limiter.rate_limited(id_key, endpoint)
+    {
+        return Some((429, "Too many requests, slow down"));
+    }
+    None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_store(tag: &str) -> (PathBuf, Arc<DataStore>) {
+        let base = std::env::temp_dir().join(format!(
+            "mitch-lib-auth-test-{tag}-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(base.join("data")).unwrap();
+        let store = DataStore::open(&base, &base.join("data")).unwrap();
+        (base.clone(), Arc::new(store))
+    }
+
+    fn secret() -> Vec<u8> {
+        b"test-id-secret-bytes-0123456789".to_vec()
+    }
+
+    #[test]
+    fn normalize_email_matches_js() {
+        assert_eq!(normalize_email("A.B+x@mitch.pro"), "ab@student.rjuhsd.us");
+        assert_eq!(
+            normalize_email("a.b+x@student.mitch.pro"),
+            "ab@student.rjuhsd.us"
+        );
+        // Reserved locals keep their domain.
+        assert_eq!(normalize_email("admin@mitch.pro"), "admin@mitch.pro");
+        assert_eq!(normalize_email("support@mitch.pro"), "support@mitch.pro");
+        assert_eq!(normalize_email("noreply@mitch.pro"), "noreply@mitch.pro");
+        assert_eq!(normalize_email("mitch@mitch.pro"), "mitch@mitch.pro");
+        // Non-mitch domains pass through.
+        assert_eq!(normalize_email("A.B+x@gmail.com"), "ab@gmail.com");
+        // No @: lowercased/trimmed only.
+        assert_eq!(normalize_email("  MiXeD  "), "mixed");
+        assert_eq!(normalize_email(""), "");
+    }
+
+    #[test]
+    fn make_email_id_and_valid_id_round_trip() {
+        let secret = secret();
+        let id = make_email_id("ab@student.rjuhsd.us", 0, &secret);
+        // Shape: e + 24 hex chars, dot, 16 hex chars.
+        assert_eq!(id.len(), 42);
+        assert!(id.starts_with('e'));
+        assert!(valid_id(&id, &secret));
+        // gen > 0 keys with :vN.
+        let id_gen3 = make_email_id("ab@student.rjuhsd.us", 3, &secret);
+        assert_ne!(id, id_gen3);
+        assert!(valid_id(&id_gen3, &secret));
+        // Wrong secret fails.
+        assert!(!valid_id(&id, b"other-secret"));
+        // Garbage fails.
+        assert!(!valid_id("no-dot", &secret));
+        assert!(!valid_id("", &secret));
+        assert!(!valid_id("e123.sig", &secret));
+    }
+
+    #[test]
+    fn rate_limiter_sliding_window_and_anon_fifth() {
+        // A path NOT in RATE_LIMITS gets the __default__ [100, 60].
+        const UNLISTED: &str = "/api/definitely-not-listed-xyz";
+        let rl = RateLimiter::new();
+        for _ in 0..100 {
+            assert!(!rl.rate_limited("ip:1.2.3.4", UNLISTED));
+        }
+        assert!(rl.rate_limited("ip:1.2.3.4", UNLISTED));
+        // Anon bucket is a fifth: 20 for the default.
+        let rl2 = RateLimiter::new();
+        for _ in 0..20 {
+            assert!(!rl2.rate_limited("anon", UNLISTED));
+        }
+        assert!(rl2.rate_limited("anon", UNLISTED));
+        // Listed endpoints use their own window: /api/dm/send is [20, 10].
+        let rl3 = RateLimiter::new();
+        for _ in 0..20 {
+            assert!(!rl3.rate_limited("ip:1.2.3.4", "/api/dm/send"));
+        }
+        assert!(rl3.rate_limited("ip:1.2.3.4", "/api/dm/send"));
+        // Different endpoints have independent buckets.
+        assert!(!rl3.rate_limited("ip:1.2.3.4", "/api/ping"));
+    }
+
+    #[test]
+    fn timing_detection_flags_regular_intervals() {
+        let rl = RateLimiter::new();
+        let key = "1.2.3.4:/api/login";
+        assert!(!rl.detect_non_human_timing(key));
+        assert!(!rl.detect_non_human_timing(key));
+        assert!(!rl.detect_non_human_timing(key));
+        assert!(!rl.detect_non_human_timing(key));
+        // 5th request with tight intervals triggers.
+        assert!(rl.detect_non_human_timing(key));
+    }
+
+    #[tokio::test]
+    async fn check_password_cookie_full_gate() {
+        let (base, store) = temp_store("cpc");
+        let secret = secret();
+        let norm = "ab@student.rjuhsd.us";
+        let sid = make_email_id(norm, 0, &secret);
+
+        // Seed names + passwords via the store (DB-backed paths).
+        let mut names = serde_json::Map::new();
+        names.insert(sid.clone(), serde_json::json!("a.b+x@mitch.pro"));
+        store
+            .write_document(
+                &base.join("data/names.json"),
+                &serde_json::Value::Object(names),
+            )
+            .unwrap();
+        let mut passwords = serde_json::Map::new();
+        passwords.insert(norm.to_string(), serde_json::json!("argon2id$hash"));
+        store
+            .write_document(
+                &base.join("data/passwords.json"),
+                &serde_json::Value::Object(passwords),
+            )
+            .unwrap();
+
+        // No cookies -> false.
+        let empty = Cookies::default();
+        assert!(!check_password_cookie(
+            &store, &secret, &empty, None, false, false
+        ));
+
+        // With a valid session cookie (simulating getCookies' derivation):
+        let mut jar = Cookies::default();
+        jar.map.insert("studentId".into(), sid.clone());
+        assert!(check_password_cookie(
+            &store, &secret, &jar, None, false, false
+        ));
+
+        // Provided-sid mismatch fails.
+        assert!(!check_password_cookie(
+            &store,
+            &secret,
+            &jar,
+            Some("other"),
+            false,
+            false
+        ));
+
+        // Invalid sid fails.
+        let mut bad = Cookies::default();
+        bad.map.insert("studentId".into(), "garbage".into());
+        assert!(!check_password_cookie(
+            &store, &secret, &bad, None, false, false
+        ));
+
+        // NODE_ENV=test bypass: fires after sid + email resolution, so an
+        // empty cookie jar still returns false (parity with the JS order).
+        assert!(!check_password_cookie(
+            &store, &secret, &empty, None, true, false
+        ));
+        // But a valid sid with NO password entry passes under test mode.
+        let mut no_password = Cookies::default();
+        no_password.map.insert("studentId".into(), sid.clone());
+        assert!(check_password_cookie(
+            &store,
+            &secret,
+            &no_password,
+            None,
+            true,
+            false
+        ));
+        std::fs::remove_dir_all(base).ok();
     }
 }
