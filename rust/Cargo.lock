@@ -1835,6 +1835,7 @@ dependencies = [
  "form_urlencoded",
  "mitch-lib",
  "regex",
+ "reqwest",
  "serde",
  "serde_json",
  "tokio",

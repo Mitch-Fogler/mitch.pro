@@ -17,6 +17,7 @@ pub mod jeopardy;
 pub mod me;
 pub mod misc;
 pub mod pickle;
+pub mod proxy;
 pub mod push;
 pub mod team;
 pub mod vm;

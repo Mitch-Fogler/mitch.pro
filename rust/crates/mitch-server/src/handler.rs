@@ -394,6 +394,24 @@ pub async fn handle(
 
     // 4c. API route dispatch — the ported route groups (plan Step 7).
     if path.starts_with("/api/") {
+        // Captcha proxy (solve/submit/stats/token/next/puzzle/images).
+        if let Some(resp) = crate::routes::proxy::captcha_proxy(
+            &state, &method, &path, headers, &search, body_bytes,
+        )
+        .await
+        {
+            return resp;
+        }
+        if path == "/api/ping" && method == Method::POST {
+            if let Some(resp) = crate::routes::proxy::ping(&state, &body, headers).await {
+                return resp;
+            }
+        }
+        if path == "/api/content" && (method == Method::GET || method == Method::POST) {
+            if let Some(resp) = crate::routes::proxy::content(&state, &body, headers).await {
+                return resp;
+            }
+        }
         if let Some(resp) =
             crate::routes::misc::handle(&state, &method, &path, headers, &search, &body).await
         {

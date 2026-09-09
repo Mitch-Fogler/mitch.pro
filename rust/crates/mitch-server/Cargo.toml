@@ -19,6 +19,7 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 regex = "1"
 form_urlencoded = "1"
+reqwest = { workspace = true }
 
 [lints.rust]
 unsafe_code = "forbid"
