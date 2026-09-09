@@ -21533,74 +21533,10 @@ try { convertBackgroundsToWebm(join(WEBROOT, 'backgrounds')); } catch {}
 
 console.log(`Starting server on http://${HOST}:${PORT}...`);
 
-async function handleRequestWithCompression(req, server) {
-  const res = await handleRequest(req, server);
-  if (!res || !res.body) return res;
-  if (req.method === 'HEAD') return res;
-
-  const status = res.status;
-  if (status === 101 || status === 204 || status === 206 || status === 304 || (status >= 300 && status < 400)) {
-    return res;
-  }
-
-  const headers = res.headers;
-  if (headers.has('Content-Encoding')) {
-    return res;
-  }
-
-  const acceptEncoding = req.headers.get('accept-encoding') || '';
-  if (!acceptEncoding.includes('gzip')) {
-    return res;
-  }
-
-  const contentType = (headers.get('content-type') || '').toLowerCase();
-  if (contentType.includes('event-stream')) {
-    return res;
-  }
-
-  const shouldCompress =
-    contentType.startsWith('text/') ||
-    contentType.includes('application/json') ||
-    contentType.includes('application/javascript') ||
-    contentType.includes('text/javascript') ||
-    contentType.includes('application/xml') ||
-    contentType.includes('application/manifest+json') ||
-    contentType.includes('image/svg+xml');
-
-  if (!shouldCompress) {
-    return res;
-  }
-
-  try {
-    const arrayBuffer = await res.arrayBuffer();
-    if (arrayBuffer.byteLength < 1024) {
-      return new Response(arrayBuffer, {
-        status: res.status,
-        statusText: res.statusText,
-        headers: res.headers
-      });
-    }
-
-    const compressed = Bun.gzipSync(new Uint8Array(arrayBuffer));
-    const newHeaders = new Headers(res.headers);
-    newHeaders.set('Content-Encoding', 'gzip');
-    newHeaders.set('Vary', 'Accept-Encoding');
-    newHeaders.delete('Content-Length');
-
-    return new Response(compressed, {
-      status: res.status,
-      statusText: res.statusText,
-      headers: newHeaders
-    });
-  } catch (_) {
-    return res;
-  }
-}
-
 Bun.serve({
   port: PORT,
   hostname: HOST,
-  fetch: handleRequestWithCompression,
+  fetch: handleRequest,
   websocket: {
     async open(ws) {
       const presenceEmail = ws.data?.isBroadcast ? normalizeEmail(ws.data.email) : '';
