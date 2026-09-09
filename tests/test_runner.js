@@ -75,6 +75,16 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 
 try {
   process.env.NODE_ENV = 'test';
+  process.env.PORT = '6800';
+  process.env.BASE_URL = 'http://localhost:6800';
+  process.env.DATA_DIR = DATA_DIR;
+  process.env.PVE_URL = 'https://127.0.0.1:1';
+  process.env.PVE_TOKEN = 'PVEAPIToken=integration@pve!test=integration-api-secret-do-not-expose';
+  process.env.PROXMOX_HOST = '127.0.0.1';
+  process.env.PROXMOX_PORT = '1';
+  process.env.PROXMOX_NODE = 'tartarus';
+  process.env.PROXMOX_TOKEN_ID = 'integration@pve!test';
+  process.env.PROXMOX_TOKEN_SECRET = 'integration-api-secret-do-not-expose';
   // 2. Setup session tokens and credentials dynamically
   console.log('Setting up temporary credentials...');
   const setupProc = Bun.spawnSync(['bun', join(HERE, 'setup_session.js')]);
@@ -84,7 +94,7 @@ try {
 
   // 3. Start server process for tests
   console.log('Starting test server process...');
-  const serverProc = Bun.spawn(['bun', join(HERE, '..', 'server.js')], {
+  const serverProc = Bun.spawn(['bun', '--preload', join(HERE, 'vm_proxmox_mock.js'), join(HERE, '..', 'server.js')], {
     env: process.env,
     stdio: ['ignore', 'inherit', 'inherit']
   });

@@ -34,6 +34,7 @@
   var IS_RJUHSD = /(^|\.)rjuhsd\.school$/.test(location.hostname || '');
 
   var NAV_MITCH = [
+    { href: '/vms/', label: 'Computer', icon: '▣', match: function (p) { return p.indexOf('/vms') === 0; } },
     { href: '/', label: 'Home', icon: '⌂', match: function (p) { return p === '/' || p === '/index.html'; } },
     { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
     { href: '/games/', label: 'Games', icon: '◆', match: function (p) { return p.indexOf('/games') === 0; } },

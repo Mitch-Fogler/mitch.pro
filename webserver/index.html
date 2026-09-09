@@ -1896,9 +1896,7 @@ function connectVmSsh() {
 }
 
 function connectVmVnc() {
-  if (!currentVmIp) return;
-  const vncUrl = `/novnc/vnc_lite.html?path=vnc/ws?host=${currentVmIp}&port=5900`;
-  openVmConsole(vncUrl);
+  openVmConsole('/vms/');
 }
 
 function getCsrfToken() {
@@ -3612,7 +3610,7 @@ if (document.readyState === 'loading') {
           <div class="vm-actions">
             <button id="vm-power-btn" onclick="controlVmPower()" class="btn-ghost" style="display:none;">Power On</button>
             <button id="vm-ssh-btn" onclick="connectVmSsh()" class="btn-primary" style="display:none;">Terminal Console</button>
-            <button id="vm-vnc-btn" onclick="connectVmVnc()" class="btn-primary" style="display:none;">VNC Desktop</button>
+            <button id="vm-vnc-btn" onclick="connectVmVnc()" class="btn-primary" style="display:none;">Open Desktop</button>
             <button id="vm-reset-btn" onclick="resetFreeVm()" class="btn-primary" style="display:none;">Reset Sandbox</button>
           </div>
         </div>

@@ -9,7 +9,7 @@
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { createHash, createHmac } from 'crypto';
-import { configureDataStore, readDocument, writeDocument } from '../lib/data_store.js';
+import { configureDataStore, readDocument, writeDocument, upsertVirtualMachine } from '../lib/data_store.js';
 
 const REPO_ROOT = import.meta.dir + '/..';
 const DATA_DIR = join(REPO_ROOT, 'data');
@@ -56,9 +56,11 @@ function makeEmailId(email, gen = 0) {
 // Generate valid session tokens
 const adminEmail = 'admin@mitch.pro';
 const userEmail = 'test_normal_user@student.rjuhsd.us';
+const secondUserEmail = 'test_vm_owner_b@student.rjuhsd.us';
 
 const adminSid = makeEmailId(normalizeEmail(adminEmail), 0);
 const userSid = makeEmailId(normalizeEmail(userEmail), 0);
+const secondUserSid = makeEmailId(normalizeEmail(secondUserEmail), 0);
 
 console.log('Generated Admin SID:', adminSid);
 console.log('Generated User SID:', userSid);
@@ -67,6 +69,7 @@ console.log('Generated User SID:', userSid);
 const names = readDocument(NAMES_FILE, {});
 names[adminSid] = adminEmail;
 names[userSid] = userEmail;
+names[secondUserSid] = secondUserEmail;
 writeDocument(NAMES_FILE, names);
 
 // Generate and write temporary admin passphrase
@@ -90,7 +93,24 @@ writeDocument(ADMINS_FILE, adminsConfig);
 const passwords = readDocument(PASSWORDS_FILE, {});
 passwords[normalizeEmail(adminEmail)] = passHash;
 passwords[normalizeEmail(userEmail)] = passHash;
+passwords[normalizeEmail(secondUserEmail)] = passHash;
 writeDocument(PASSWORDS_FILE, passwords);
+
+upsertVirtualMachine({
+  id: 'vm-auth-user-b', ownerEmail: normalizeEmail(secondUserEmail), ownerUserId: secondUserSid,
+  vmid: 302, node: 'tartarus', guestType: 'qemu', friendlyName: 'User B Computer',
+  hostname: 'user-b-computer', operatingSystem: 'Linux Mint Cinnamon', templateVmid: 9000,
+  cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'assigned', createdAt: Date.now(),
+});
+
+for (const [id, vmid] of [['vm-auth-user-a', 303], ['vm-auth-stopped', 304], ['vm-auth-unreachable', 305]]) {
+  upsertVirtualMachine({
+    id, ownerEmail: normalizeEmail(userEmail), ownerUserId: userSid, vmid, node: 'tartarus',
+    guestType: 'qemu', friendlyName: 'Integration Computer', hostname: 'integration-computer',
+    operatingSystem: 'Ubuntu Desktop 24.04 LTS', templateVmid: 9010,
+    cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'assigned', createdAt: Date.now(),
+  });
+}
 
 // Inject referral invite code for the test user
 const inviteCodes = existsSync(INVITE_CODES_FILE) ? readDocument(INVITE_CODES_FILE, {}) : {};
