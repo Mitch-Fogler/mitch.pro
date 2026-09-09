@@ -2285,6 +2285,7 @@ function dmAddressIndex() {
     const norm = normalizeEmail(rawLower);
     if (!norm.includes('@') || emails.has(norm)) return;
     emails.add(norm);
+    addUsername(defaultUsernameForEmail(norm), norm);
     const putMask = (key, val) => {
       key = normalizeEmail(String(key || '').toLowerCase());
       if (key && !byMask.has(key)) byMask.set(key, val);
@@ -2319,7 +2320,12 @@ function resolveMemberRef(raw) {
   if (q.includes('@')) {
     const norm = normalizeEmail(q);
     if (idx.emails.has(norm)) return norm;
-    return idx.byMask.get(normalizeEmail(q)) || '';
+    const byM = idx.byMask.get(norm);
+    if (byM) return byM;
+    const local = norm.split('@')[0].split('+')[0].replace(/\./g, '');
+    const byU = idx.byUsername.get(normalizeUsername(local));
+    if (byU) return byU;
+    return norm;
   }
   return idx.byUsername.get(normalizeUsername(q)) || '';
 }
@@ -15931,9 +15937,18 @@ async function handleRequest(req, server) {
           pubKeyHex = legacyKeys.pubKeyHex;
         }
       }
+      const myNormEmail = email ? normalizeEmail(email) : '';
+      const myProfiles = loadJson(PROFILES_FILE, {});
+      const myProfile = myNormEmail ? (myProfiles[myNormEmail] || {}) : {};
+      const myUsername = myNormEmail ? normalizeUsername(myProfile.username || defaultUsernameForEmail(myNormEmail)) : '';
 
       return jsonResp(200, {
         email: maskEmail(email),
+        rawEmail: email,
+        normEmail: myNormEmail,
+        displayEmail: email ? displayEmail(email) : '',
+        username: myUsername,
+        displayName: myProfile.displayName || myProfile.nickname || myUsername || '',
         isPremium,
         isAdmin,
         isModerator,
@@ -16670,7 +16685,7 @@ async function handleRequest(req, server) {
       const effectiveExpiry = getChatExpiry(convExpiryKey) || expiry;
       const getNotificationBody = (t, img) => encryptedEnvelope
         ? '[Secure Message]'
-        : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));
+        : (img ? '[Secure Message: Attachment]' : '[Secure Message]');
       if (groupId) {
         const groups = loadJson(store.groups, []);
         const group = groups.find(g => g.id === groupId);
@@ -16709,7 +16724,8 @@ async function handleRequest(req, server) {
           }
         }
         } else {
-        msg = { kind: 'dm', from: senderEmail, to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
+        const toCanonical = resolveMemberRef(to) || normalizeEmail(to);
+        msg = { kind: 'dm', from: senderEmail, to: toCanonical || to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
         // Non-E2E messages never touch disk in the clear: seal text+image at rest.
         if (!encryptedEnvelope) {
           const sealed = sealAtRest({ text, image: safeImage });
@@ -16721,17 +16737,17 @@ async function handleRequest(req, server) {
         }
         dms.push(msg);
         saveJson(store.dms, pruneDms(dms, store.pickle));
-        const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
-        if (!recActive && notifAllowed(to, 'dm') && VAPID_PUBLIC && subs[to]) {
-          await sendWebPushClean(subs, to, {
+        const recActive = (toCanonical in e2eUsers) && (Date.now() - e2eUsers[toCanonical].last_seen < 30000);
+        if (!recActive && notifAllowed(toCanonical, 'dm') && VAPID_PUBLIC && subs[toCanonical]) {
+          await sendWebPushClean(subs, toCanonical, {
             title: `Message from ${displayEmail(senderEmail)}`,
             body:  getNotificationBody(text, safeImage),
             // Deep-link: /encrypt/?to=<sender> opens the conversation directly.
             url:   notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))),
             tag:   `dm-${msg.ts}`,
           });
-        } else if (!recActive && notifAllowed(to, 'dm')) {
-          ntfyNotify(to, `Message from ${displayEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))));
+        } else if (!recActive && notifAllowed(toCanonical, 'dm')) {
+          ntfyNotify(toCanonical, `Message from ${displayEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))));
         }
         }
         addCoins(senderEmail, 2.0);
@@ -16762,11 +16778,12 @@ async function handleRequest(req, server) {
           }
         } else {
           const senderNorm = normalizeEmail(senderEmail);
-          const toNorm = normalizeEmail(to);
+          const toNorm = resolveMemberRef(to) || normalizeEmail(to);
+          const toUsername = normalizeUsername((loadJson(PROFILES_FILE, {})[toNorm] || {}).username || defaultUsernameForEmail(toNorm));
           for (const ws of allSockets) {
             if (ws.data && ws.data.isBroadcast && ws.data.email) {
               const wsEmailNorm = normalizeEmail(ws.data.email);
-              if (wsEmailNorm === senderNorm || wsEmailNorm === toNorm) {
+              if (wsEmailNorm === senderNorm || wsEmailNorm === toNorm || (toUsername && ws.data.username === toUsername)) {
                 try { ws.send(wsPayload); } catch {}
               }
             }
@@ -16865,11 +16882,30 @@ async function handleRequest(req, server) {
       const myNormEmail = normalizeEmail(myEmail);
       const myMaskedEmail = maskEmail(myEmail);
       const myUsername = normalizeUsername((loadJson(PROFILES_FILE, {})[myNormEmail] || {}).username || defaultUsernameForEmail(myNormEmail));
+      const myDisplayEmail = normalizeEmail(displayEmail(myNormEmail));
       const isMeRef = (v) => {
         if (!v) return false;
         const nv = normalizeEmail(v);
         if (nv === myNormEmail || (myMaskedEmail && nv === myMaskedEmail)) return true;
+        if (myDisplayEmail && nv === myDisplayEmail) return true;
         return !String(v).includes('@') && normalizeUsername(v) === myUsername;
+      };
+      const withNormEmail = normalizeEmail(withResolved || withUser);
+      const withMaskedEmail = maskEmail(withNormEmail);
+      const withDisplayEmail = normalizeEmail(displayEmail(withNormEmail));
+      const withUsername = normalizeUsername(
+        (loadJson(PROFILES_FILE, {})[withNormEmail] || {}).username ||
+        defaultUsernameForEmail(withNormEmail) ||
+        (!String(withUser).includes('@') ? withUser : '')
+      );
+      const isPeerRef = (v) => {
+        if (!v) return false;
+        const nv = normalizeEmail(v);
+        if (nv === withNormEmail || (withResolved && nv === normalizeEmail(withResolved))) return true;
+        if (nv === normalizeEmail(withUser)) return true;
+        if (withMaskedEmail && nv === normalizeEmail(withMaskedEmail)) return true;
+        if (withDisplayEmail && nv === withDisplayEmail) return true;
+        return !String(v).includes('@') && withUsername && normalizeUsername(v) === withUsername;
       };
       const now = Date.now();
       const msgs = dms.filter(m => {
@@ -16883,10 +16919,14 @@ async function handleRequest(req, server) {
         }
         if (withUser) {
           if (m.kind === 'group') return false;
-          const clearedAt = myCleared['dm:' + normalizeEmail(withUser)] || 0;
-          return ((normalizeEmail(m.from) === myNormEmail && (normalizeEmail(m.to) === withResolved || normalizeEmail(m.to) === normalizeEmail(withUser))) ||
-                  ((normalizeEmail(m.from) === withResolved || normalizeEmail(m.from) === normalizeEmail(withUser)) && normalizeEmail(m.to) === myNormEmail)) &&
-                 (m.ts || 0) > clearedAt;
+          const clearedAt = myCleared['dm:' + withNormEmail] ||
+                            myCleared['dm:' + normalizeEmail(withUser)] ||
+                            (withUsername ? myCleared['dm:' + withUsername] : 0) || 0;
+          const fromMe = isMeRef(m.from);
+          const toMe = isMeRef(m.to);
+          const fromPeer = isPeerRef(m.from);
+          const toPeer = isPeerRef(m.to);
+          return ((fromMe && toPeer) || (fromPeer && toMe)) && (m.ts || 0) > clearedAt;
         }
         // general inbox: my DMs + group messages for my groups
         if (m.kind === 'group') {
@@ -16894,8 +16934,8 @@ async function handleRequest(req, server) {
           const clearedAt = myCleared['group:' + m.groupId] || 0;
           return (m.ts || 0) > clearedAt;
         }
-        const peer = normalizeEmail(m.from) === myNormEmail ? normalizeEmail(m.to || '') : normalizeEmail(m.from || '');
-        const clearedAt = myCleared['dm:' + peer] || 0;
+        const peer = isMeRef(m.from) ? (resolveMemberRef(m.to) || normalizeEmail(m.to || '')) : (resolveMemberRef(m.from) || normalizeEmail(m.from || ''));
+        const clearedAt = myCleared['dm:' + peer] || myCleared['dm:' + normalizeEmail(m.from)] || myCleared['dm:' + normalizeEmail(m.to)] || 0;
         return (isMeRef(m.from) || isMeRef(m.to)) &&
                (m.ts || 0) > clearedAt;
       });
@@ -16956,7 +16996,22 @@ async function handleRequest(req, server) {
           }
         } else {
           const fromResolved = resolveMemberRef(from) || normalizeEmail(from);
-          if ((!m.kind || m.kind === 'dm') && (normalizeEmail(m.to) === normalizeEmail(myEmail) || resolveMemberRef(m.to) === normalizeEmail(myEmail)) && (!from || normalizeEmail(m.from) === fromResolved || normalizeEmail(m.from) === normalizeEmail(from)) && !m.read) {
+          const fromNormEmail = normalizeEmail(fromResolved || from);
+          const fromUsername = normalizeUsername((loadJson(PROFILES_FILE, {})[fromNormEmail] || {}).username || defaultUsernameForEmail(fromNormEmail) || from);
+          const isFromPeer = (v) => {
+            if (!v) return false;
+            const nv = normalizeEmail(v);
+            if (nv === fromNormEmail || nv === normalizeEmail(from)) return true;
+            return !String(v).includes('@') && fromUsername && normalizeUsername(v) === fromUsername;
+          };
+          const isToMe = (v) => {
+            if (!v) return false;
+            const nv = normalizeEmail(v);
+            if (nv === normalizeEmail(myEmail) || resolveMemberRef(v) === normalizeEmail(myEmail)) return true;
+            const myU = normalizeUsername((loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {}).username || defaultUsernameForEmail(normalizeEmail(myEmail)));
+            return !String(v).includes('@') && myU && normalizeUsername(v) === myU;
+          };
+          if ((!m.kind || m.kind === 'dm') && isToMe(m.to) && (!from || isFromPeer(m.from)) && !m.read) {
             m.read = true;
             m.readAt = m.readAt || now;
             marked = true;
@@ -17046,7 +17101,10 @@ async function handleRequest(req, server) {
       } else if (body.groupId) {
         cleared[norm]['group:' + String(body.groupId)] = now;
       } else if (body.with) {
-        cleared[norm]['dm:' + normalizeEmail(String(body.with))] = now;
+        const withRaw = String(body.with);
+        const withRes = resolveMemberRef(withRaw) || normalizeEmail(withRaw);
+        cleared[norm]['dm:' + normalizeEmail(withRaw)] = now;
+        cleared[norm]['dm:' + normalizeEmail(withRes)] = now;
       } else {
         return jsonResp(400, { error: 'missing target' });
       }
@@ -17104,9 +17162,11 @@ async function handleRequest(req, server) {
           if (wsGroupId) {
             matches = m.kind === 'group' && String(m.groupId) === String(wsGroupId);
           } else if (wsWith) {
+            const wsNorm = normalizeEmail(wsWith);
+            const isMeM = (v) => normalizeEmail(v) === norm || resolveMemberRef(v) === norm;
+            const isPeerM = (v) => normalizeEmail(v) === wsNorm || resolveMemberRef(v) === wsNorm;
             matches = m.kind !== 'group' &&
-              ((normalizeEmail(m.from) === norm && (normalizeEmail(m.to) === normalizeEmail(wsWith) || resolveMemberRef(m.to) === normalizeEmail(wsWith))) ||
-               ((normalizeEmail(m.from) === normalizeEmail(wsWith) || resolveMemberRef(m.from) === normalizeEmail(wsWith)) && normalizeEmail(m.to) === norm));
+              ((isMeM(m.from) && isPeerM(m.to)) || (isPeerM(m.from) && isMeM(m.to)));
           }
           if (!matches) return true;
           if (isDmMessageRead(m)) {
