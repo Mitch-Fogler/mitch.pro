@@ -740,17 +740,18 @@ async function loadTopGames() {
       var text = gameData.content || '';
       _topEntries = [];
       text.split('\n').forEach(function(line) {
-      line = line.trim();
-      if (!line) return;
-      var parts = line.split(' ');
-      if (parts.length < 3) return;
-      var type = parts[0], href = parts[1];
-      var label = parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim();
-      if (!label || href === '/report-game.html') return;
-      _topEntries.push({type: type, href: _gameHref(href), label: label, isAdmin: false, category: 'MitchCoin Games'});
-    });
+        line = line.trim();
+        if (!line) return;
+        var parts = line.split(' ');
+        if (parts.length < 3) return;
+        var type = parts[0], href = parts[1];
+        var label = parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim();
+        if (!label || href === '/report-game.html') return;
+        _topEntries.push({type: type, href: _gameHref(href), label: label, isAdmin: false, category: 'MitchCoin Games'});
+      });
+    }
+    updatePopularLaunches();
   }
-  updatePopularLaunches();
 }
 
 function _gameVisits(href) {

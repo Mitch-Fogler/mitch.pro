@@ -1740,11 +1740,10 @@ async function decryptMessageContent(m) {
           m.decryptFailed = true;
         }
       }
+    } catch (e) {
+      // legacy message or parse error (already plain text)
+      m.decrypted = true;
     }
-  } catch (e) {
-    // legacy message or parse error (already plain text)
-    m.decrypted = true;
-  }
   return m;
 }
 
