@@ -245,7 +245,7 @@
     brand.className = 'app-brand';
     brand.href = '/';
     if (IS_RJUHSD) {
-      brand.innerHTML = '<img class="site-logo" src="/rjuhsd-assets/woodcreek.png" alt="" style="object-fit:contain" width="35" height="35"><b>RJUHSD<span>.school</span></b>';
+      brand.innerHTML = '<img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><b>RJUHSD<span>.school</span></b>';
       brand.setAttribute('aria-label', 'rjuhsd.school home');
     } else {
       brand.innerHTML = '<img class="site-logo" src="/icon-192.png" alt="" width="35" height="35"><b>mitch<span>.pro</span></b>';

@@ -49,4 +49,10 @@ for (const file of ['webserver/app-shell.js', 'webserver/index.html', 'webserver
   assert(readFileSync(file, 'utf8').includes('https://woodcreek.site/'), `${file} must point Blooket Bot to woodcreek.site`);
 }
 assert(readFileSync('webserver/app-shell.js', 'utf8').includes("label: 'Blooket Bot'"), 'Blooket Bot must be in the shared top navigation');
+
+// Top-left brand logo on rjuhsd.school must use mitch.pro logo (/icon-192.png)
+const rjuhsdHtml = readFileSync('webserver/rjuhsd/index.html', 'utf8');
+assert(rjuhsdHtml.includes('<a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img class="site-logo" src="/icon-192.png"'), 'rjuhsd top left brand must use mitch.pro logo');
+assert(!/<a class="brand"[^>]*><span class="brand-logo"><img[^>]*src="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd brand must not use school-based logo');
+
 console.log('Bell and Blooket links, legacy redirects, query preservation, assets, PWA shortcuts, and direct navigation passed.');
