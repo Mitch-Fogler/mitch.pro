@@ -2709,6 +2709,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/school-calendar',
   '/api/school-info',
   '/api/site-info',
+  '/api/verify-open',
+  '/verify-open.json',
   '/api/backgrounds/list',
 ]);
 
@@ -5466,14 +5468,18 @@ function sameOriginRequest(req) {
   if (origin) {
     try {
       const u = new URL(origin);
-      if (u.hostname.toLowerCase() === hostName) return true;
+      const originHost = u.hostname.toLowerCase();
+      if (originHost === hostName) return true;
+      if (isMitchSsoHost(hostName) && isMitchSsoHost(originHost)) return true;
     } catch { return false; }
   }
   const referer = req.headers.get('Referer');
   if (referer) {
     try {
       const u = new URL(referer);
-      if (u.hostname.toLowerCase() === hostName) return true;
+      const refererHost = u.hostname.toLowerCase();
+      if (refererHost === hostName) return true;
+      if (isMitchSsoHost(hostName) && isMitchSsoHost(refererHost)) return true;
     } catch { return false; }
   }
   return false;
@@ -5489,6 +5495,10 @@ function sameOriginRequest(req) {
 const CSRF_EXEMPT_PATHS = new Set([
   '/api/sso/exchange',
   '/api/dm/attachment/upload',
+  '/api/games',
+  '/api/premium/email/register',
+  '/api/verify-open',
+  '/verify-open.json',
 ]);
 
 function csrfFailureIfUnsafe(req, path, method) {
@@ -7592,6 +7602,41 @@ function rewriteHtml(html, _targetUrl) {
   return html;
 }
 
+let gamesCache = null;
+let gameCategoriesCache = null;
+function getGameCategories() {
+  if (gameCategoriesCache) return gameCategoriesCache;
+  const cats = loadJson(GAME_CATEGORIES_FILE, {});
+  Object.assign(cats, loadJson(GAME_CATEGORIES_LOCAL, {}));
+  Object.assign(cats, loadJson(GAME_CATEGORIES_EXTERNAL, {}));
+  gameCategoriesCache = cats;
+  return gameCategoriesCache;
+}
+function loadAllGamesList() {
+  if (gamesCache) return gamesCache;
+  const list = [];
+  const seen = new Set();
+  const files = [GAMES_FILE, GAMES_LOCAL_FILE, GAMES_EXTERNAL_FILE];
+  for (const f of files) {
+    try {
+      if (!existsSync(f)) continue;
+      const text = readFileSync(f, 'utf8');
+      text.split('\n').forEach(line => {
+        line = line.trim();
+        if (!line) return;
+        const parts = line.split(' ');
+        if (parts.length < 3) return;
+        const href = parts[1];
+        if (seen.has(href)) return;
+        seen.add(href);
+        list.push({ type: parts[0], href, label: parts.slice(2).join(' ') });
+      });
+    } catch {}
+  }
+  gamesCache = list;
+  return list;
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 const banOpenPaths = new Set([
@@ -7896,6 +7941,40 @@ async function handleRequest(req, server) {
     } catch (error) {
       writeAppLog('warn', 'dayboard', `${path} unavailable`, { error: String(error) });
       return jsonResp(502, { error: path === '/api/weather' ? 'weather unavailable' : (path === '/api/school-info' ? 'school info unavailable' : 'school calendar unavailable') });
+    }
+  }
+
+  // Open verification endpoint for cross-domain reachability checks (e.g. from rjuhsd.school)
+  if (path === '/verify-open.json' || path === '/api/verify-open') {
+    if (method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+      });
+    }
+    if (method === 'GET' || method === 'HEAD') {
+      const payload = {
+        status: 'open',
+        domain: 'mitch.pro',
+        verified: true,
+        token: 'mitch-open-verified-2026',
+      };
+      return new Response(method === 'HEAD' ? null : JSON.stringify(payload), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
     }
   }
 
@@ -8274,6 +8353,13 @@ async function handleRequest(req, server) {
                    cleanPath === '/unsubscribe' ||
                    path.startsWith('/unsubscribe/') ||
                    PUBLIC_API_PATHS.has(cleanPath) ||
+                   cleanPath.startsWith('/games') ||
+                   cleanPath.startsWith('/game-portal') ||
+                   cleanPath.startsWith('/msn-games') ||
+                   cleanPath === '/rjuhsd' ||
+                   cleanPath.startsWith('/rjuhsd/') ||
+                   cleanPath === '/sexypickleclub' ||
+                   cleanPath.startsWith('/sexypickleclub/') ||
                    path.startsWith('/api/puzzle/') ||
                    path === '/api/sms-reply' ||
                    path.startsWith('/admin') || 
@@ -8286,6 +8372,100 @@ async function handleRequest(req, server) {
       return jsonResp(403, { error: 'password required', message: 'Please set a password at /enroll/ to continue.' });
     }
     return Response.redirect('/enroll/', 302);
+  }
+
+  // /api/games (public game list, supports GET and POST)
+  if (path === '/api/games') {
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    try {
+      if (method === 'POST') {
+        await tryParseJson();
+      }
+      const qs = url.searchParams;
+      // If body or query contains reload:true, clear cache
+      const reload = body.reload || qs.get('reload') === '1' || qs.get('reload') === 'true';
+      if (reload) {
+        gamesCache = null;
+        gameCategoriesCache = null;
+      }
+
+      const all = loadAllGamesList();
+      const query = String(body.q !== undefined ? body.q : (qs.get('q') || '')).trim().toLowerCase();
+      const category = String(body.cat !== undefined ? body.cat : (qs.get('cat') || '')).trim().toLowerCase();
+      const offset = parseInt(body.offset !== undefined ? body.offset : qs.get('offset')) || 0;
+      const limit = parseInt(body.limit !== undefined ? body.limit : qs.get('limit')) || 50;
+
+      let filtered = all;
+      
+      // 1. Filter by Category
+      if (category && category !== 'all') {
+        const cats = getGameCategories();
+        filtered = filtered.filter(g => {
+          const c = cats[g.href] || cats[g.href.replace(/^\/games\//, '')] || 'other';
+          return c.toLowerCase() === category;
+        });
+      }
+
+      // 2. Filter by Search Query
+      if (query) {
+        filtered = filtered.filter(g => g.label.toLowerCase().includes(query));
+      }
+
+      const total = filtered.length;
+      const chunk = filtered.slice(offset, offset + limit);
+      
+      let featured = '';
+      if (offset === 0 && !query && (category === 'all' || !category)) {
+        featured = all.slice()
+          .sort((a,b) => {
+            const va = globalGameStats[a.href] || globalGameStats[a.href.replace(/^\/games\//, '')] || 0;
+            const vb = globalGameStats[b.href] || globalGameStats[b.href.replace(/^\/games\//, '')] || 0;
+            return vb - va;
+          })
+          .slice(0, 8)
+          .map(g => {
+            let href = g.href;
+            if (href.startsWith('https://html5.gamemonetize.co/')) {
+              href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
+            }
+            return `${g.type} ${href} ${g.label}`;
+          }).join('\n');
+      }
+
+      // Convert back to text format for frontend compatibility
+      const content = chunk.map(g => {
+        let href = g.href;
+        if (href.startsWith('https://html5.gamemonetize.co/')) {
+          href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
+        }
+        return `${g.type} ${href} ${g.label}`;
+      }).join('\n');
+
+      const allCats = getGameCategories();
+      const categories = {};
+      for (const g of chunk) {
+        categories[g.href] = allCats[g.href] || allCats[g.href.replace(/^\/games\//, '')] || 'other';
+      }
+      if (featured) {
+        for (const line of featured.split('\n')) {
+          const parts = line.split(' ');
+          if (parts[1]) {
+            categories[parts[1]] = allCats[parts[1]] || allCats[parts[1].replace(/^\/games\//, '')] || 'other';
+          }
+        }
+      }
+
+      return jsonResp(200, { 
+        success: true, 
+        content: content, 
+        featured: featured,
+        categories: categories,
+        total: total,
+        offset: offset,
+        limit: limit,
+        hasMore: (offset + limit) < total
+      });
+    } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
   }
 
   function authedEmailForRequest() {
@@ -11055,7 +11235,8 @@ async function handleRequest(req, server) {
         // If not, mitch.pro's bridge redirects them to /enroll/ to sign in.
         let loginOrigin = selfOrigin;
         if (!isMitchSsoHost(requestHost(req))) {
-          loginOrigin = mitchSsoOrigins().values().next().value || MITCH_ORIGIN;
+          const s = site();
+          loginOrigin = (s.alternate || s.primary || MITCH_ORIGIN).replace(/\/+$/, '');
           return new Response(null, {
             status: 302,
             headers: { Location: loginOrigin + '/api/sso/bridge?back=' + encodeURIComponent(back.toString()) }
@@ -12665,118 +12846,6 @@ async function handleRequest(req, server) {
         saveJson(HEATMAP_FILE, heatmap);
         return jsonResp(200, { ok: true });
       } catch (e) { return jsonResp(400, { error: String(e) }); }
-    }
-
-let gamesCache = null // massive import // final library refresh // force refresh // force reload;
-function loadAllGamesList() {
-  if (gamesCache) return gamesCache;
-  const list = [];
-  const seen = new Set();
-  const files = [GAMES_FILE, GAMES_LOCAL_FILE, GAMES_EXTERNAL_FILE];
-  for (const f of files) {
-    try {
-      if (!existsSync(f)) continue;
-      const text = readFileSync(f, 'utf8');
-      text.split('\n').forEach(line => {
-        line = line.trim();
-        if (!line) return;
-        const parts = line.split(' ');
-        if (parts.length < 3) return;
-        const href = parts[1];
-        if (seen.has(href)) return;
-        seen.add(href);
-        list.push({ type: parts[0], href, label: parts.slice(2).join(' ') });
-      });
-    } catch {}
-  }
-  gamesCache = list;
-  return list;
-}
-
-    // /api/games
-    if (path === '/api/games') {
-      const rl = checkRateLimit(req, path); if (rl) return rl;
-      try {
-        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        const cookies = getCookies(req);
-        const hash = (body.hash || cookies['studentId'] || cookies['id'] || '').trim();
-
-        if (checkPasswordCookie(req, hash)) {
-          // If body contains reload:true, clear cache
-          if (body.reload) gamesCache = null;
-
-          const all = loadAllGamesList();
-          const query = String(body.q || '').trim().toLowerCase();
-          const category = String(body.cat || '').trim().toLowerCase();
-          const offset = parseInt(body.offset) || 0;
-          const limit = parseInt(body.limit) || 50;
-
-          let filtered = all;
-          
-          // 1. Filter by Category
-          if (category && category !== 'all') {
-            const cats = loadJson(GAME_CATEGORIES_FILE, {});
-            Object.assign(cats, loadJson(GAME_CATEGORIES_LOCAL, {}));
-            Object.assign(cats, loadJson(GAME_CATEGORIES_EXTERNAL, {}));
-            filtered = filtered.filter(g => {
-              const c = cats[g.href] || cats[g.href.replace(/^\/games\//, '')] || 'other';
-              return c.toLowerCase() === category;
-            });
-          }
-
-          // 2. Filter by Search Query
-          if (query) {
-            filtered = filtered.filter(g => g.label.toLowerCase().includes(query));
-          }
-
-          const total = filtered.length;
-          const chunk = filtered.slice(offset, offset + limit);
-          
-          let featured = '';
-          if (offset === 0 && !query && (category === 'all' || !category)) {
-            featured = all.slice()
-              .sort((a,b) => {
-                const va = globalGameStats[a.href] || globalGameStats[a.href.replace(/^\/games\//, '')] || 0;
-                const vb = globalGameStats[b.href] || globalGameStats[b.href.replace(/^\/games\//, '')] || 0;
-                return vb - va;
-              })
-              .slice(0, 8)
-              .map(g => {
-                let href = g.href;
-                if (href.startsWith('https://html5.gamemonetize.co/')) {
-                  href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
-                }
-                return `${g.type} ${href} ${g.label}`;
-              }).join('\n');
-          }
-
-          // Convert back to text format for frontend compatibility
-          const content = chunk.map(g => {
-            let href = g.href;
-            if (href.startsWith('https://html5.gamemonetize.co/')) {
-              href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
-            }
-            return `${g.type} ${href} ${g.label}`;
-          }).join('\n');
-
-          return jsonResp(200, { 
-            success: true, 
-            content: content, 
-            featured: featured,
-            total: total,
-            offset: offset,
-            limit: limit,
-            hasMore: (offset + limit) < total
-          });
-        }
-        
-        if (!hash || !validId(hash)) return jsonResp(200, { success: false, error: 'no_valid_token' });
-        const email = emailFromSid(hash);
-        if (!email || !loadPasswords()[normalizeEmail(email)]) {
-           return jsonResp(200, { success: false, error: 'password_required', email });
-        }
-        return jsonResp(200, { success: false, error: 'unauthorized' });
-      } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
     }
 
     // /api/migrateid
@@ -15895,10 +15964,8 @@ function loadAllGamesList() {
     }
 
     if (path === '/api/game-categories') {
-      const cats = loadJson(GAME_CATEGORIES_FILE, {});
-      Object.assign(cats, loadJson(GAME_CATEGORIES_LOCAL, {}));
-      Object.assign(cats, loadJson(GAME_CATEGORIES_EXTERNAL, {}));
-      return jsonResp(200, { categories: cats });
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      return jsonResp(200, { categories: getGameCategories() });
     }
 
     if (path === '/api/puzzle') {
@@ -20939,10 +21006,103 @@ function loadAllGamesList() {
         });
       }
     }
-    const rjuhsdHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8'));
+    function prepareRjuhsdHtml(rawHtml, r) {
+      let html = injectSharedHead(rawHtml);
+      const s = site();
+      let primaryOrigin = 'https://mitch.pro';
+      let primaryHost = 'mitch.pro';
+      try {
+        const pu = new URL(s.primary || 'https://mitch.pro');
+        primaryOrigin = pu.origin;
+        primaryHost = pu.hostname;
+      } catch {}
+
+      let altOrigin = '';
+      let altHost = '';
+      if (s.alternate) {
+        try {
+          const au = new URL(s.alternate);
+          altOrigin = au.origin;
+          altHost = au.hostname;
+        } catch {}
+      }
+
+      const reqHost = (r ? requestHost(r) : '') || (r && isRjuhsdHost(r) ? RJUHSD_DOMAIN : primaryHost);
+      const isPreview = !r || !isRjuhsdHost(r);
+      const backPath = isPreview ? '/rjuhsd/' : '/';
+      const backUrl = 'https://' + reqHost + backPath;
+
+      const effectiveOrigin = altOrigin || primaryOrigin;
+
+      if (altHost && altHost !== primaryHost) {
+        // 1. Injected alternate domain by default into sign-in buttons
+        const signinPrimaryRegex = new RegExp('Sign in with\\s+' + primaryHost.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        html = html.replace(signinPrimaryRegex, 'Sign in with ' + altHost);
+
+        // Update href of js-signin-link / SSO bridge
+        const altBridgeUrl = effectiveOrigin + '/api/sso/bridge?back=' + encodeURIComponent(backUrl);
+        html = html.replaceAll('href="/api/sso/bridge?back=%2F"', 'href="' + altBridgeUrl + '"');
+
+        // 2. Client verification probe script:
+        // UNLESS it can fetch the verification file (verify-open.json) on main domain,
+        // in which case it uses main domain (primaryHost) instead.
+        const verifyScript = '<script>\n' +
+          '(function() {\n' +
+          '  var primaryOrigin = ' + JSON.stringify(primaryOrigin) + ';\n' +
+          '  var primaryHost = ' + JSON.stringify(primaryHost) + ';\n' +
+          '  var altHost = ' + JSON.stringify(altHost) + ';\n' +
+          '  var verifyUrl = primaryOrigin + "/verify-open.json";\n' +
+          '  var backTarget = ' + JSON.stringify(backUrl) + ';\n' +
+          '  function checkOpen() {\n' +
+          '    var ctl = window.AbortController ? new AbortController() : null;\n' +
+          '    var timer = setTimeout(function() { if (ctl) ctl.abort(); }, 4000);\n' +
+          '    fetch(verifyUrl, {\n' +
+          '      method: "GET",\n' +
+          '      mode: "cors",\n' +
+          '      cache: "no-store",\n' +
+          '      signal: ctl ? ctl.signal : undefined\n' +
+          '    }).then(function(res) {\n' +
+          '      clearTimeout(timer);\n' +
+          '      if (!res.ok) throw new Error("not ok");\n' +
+          '      return res.json();\n' +
+          '    }).then(function(data) {\n' +
+          '      if (data && data.verified === true && data.token === "mitch-open-verified-2026") {\n' +
+          '        var links = document.querySelectorAll(".js-signin-link");\n' +
+          '        var bridgeUrl = primaryOrigin + "/api/sso/bridge?back=" + encodeURIComponent(window.location.href || backTarget);\n' +
+          '        links.forEach(function(el) {\n' +
+          '          if (el.classList.contains("is-signed-in")) return;\n' +
+          '          el.href = bridgeUrl;\n' +
+          '          if (el.textContent && el.textContent.includes(altHost)) {\n' +
+          '            el.textContent = el.textContent.replace(altHost, primaryHost);\n' +
+          '          } else if (el.textContent && el.textContent.includes("Sign in with")) {\n' +
+          '            el.textContent = "Sign in with " + primaryHost;\n' +
+          '          }\n' +
+          '        });\n' +
+          '      }\n' +
+          '    }).catch(function() {\n' +
+          '      clearTimeout(timer);\n' +
+          '    });\n' +
+          '  }\n' +
+          '  if (document.readyState === "loading") {\n' +
+          '    document.addEventListener("DOMContentLoaded", checkOpen);\n' +
+          '  } else {\n' +
+          '    checkOpen();\n' +
+          '  }\n' +
+          '})();\n' +
+          '</script>';
+        if (html.includes('</body>')) {
+          html = html.replace('</body>', verifyScript + '\n</body>');
+        } else {
+          html += verifyScript;
+        }
+      }
+
+      return html;
+    }
+    const rjuhsdHubHtml = (r = req) => prepareRjuhsdHtml(readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8'), r);
     if ((path === '/' || path === '/index.html') && isRjuhsdHost(req)) {
       try {
-        return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        return new Response(rjuhsdHubHtml(req), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       } catch {}
     }
     // sexypickleclub.com — a pickle-branded landing (webserver/sexypickleclub/)
@@ -20956,7 +21116,9 @@ function loadAllGamesList() {
                                 '/appeal', '/unsubscribe', '/admin',
                                 '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
                                 '/preferences', '/preferences/index',
-                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
+                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index',
+                                '/games', '/games/index', '/game-portal', '/game-portal/index', '/msn-games', '/msn-games/index',
+                                '/rjuhsd', '/rjuhsd/index', '/sexypickleclub', '/sexypickleclub/index']);
     const pickleHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'sexypickleclub', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isPickleHost(req)) {
       try {
@@ -21044,7 +21206,7 @@ function loadAllGamesList() {
     // Preview of the school hub from mitch.pro (same page, no DNS needed).
     if (path === '/rjuhsd' || path === '/rjuhsd/' || path === '/rjuhsd/index.html') {
       try {
-        return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        return new Response(rjuhsdHubHtml(req), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       } catch { return errResp(404, 'Not found'); }
     }
 
@@ -21090,7 +21252,7 @@ function loadAllGamesList() {
           }
         }
         try {
-          let html = injectSharedHead(readFileSync(file, 'utf8'));
+          let html = prepareRjuhsdHtml(readFileSync(file, 'utf8'), req);
           // reCAPTCHA loader: rjuhsd.school pages bypass the main injection
           // below, so add it here or getCaptchaToken never exists and chat
           // sends fail with "reCAPTCHA failed". Mirrors the main block's
@@ -21136,7 +21298,7 @@ function loadAllGamesList() {
     if (htmlBase.endsWith('.html')) htmlBase = htmlBase.slice(0, -5);
     if (htmlBase.endsWith('/') && htmlBase.length > 1) htmlBase = htmlBase.slice(0, -1);
     const isHtmlRequest = path.endsWith('.html') || path.endsWith('/');
-    const isOpenHtmlPage = isHtmlRequest && HTML_OPEN.has(htmlBase);
+    const isOpenHtmlPage = isHtmlRequest && (HTML_OPEN.has(htmlBase) || htmlBase.startsWith('/games'));
 	    if (isHtmlRequest && !isOpenHtmlPage && !path.startsWith('/unsubscribe/')) {
 	      const cookies = getCookies(req);
 	      const sid = cookies['studentId'] || cookies['id'] || '';
@@ -21319,10 +21481,11 @@ function loadAllGamesList() {
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
       '/bell/schedule.js',
       '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/home-burning-cherry.webp',
-      '/robots.txt'
+      '/robots.txt',
+      '/verify-open.json'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !path.startsWith('/games') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);
@@ -21370,10 +21533,74 @@ try { convertBackgroundsToWebm(join(WEBROOT, 'backgrounds')); } catch {}
 
 console.log(`Starting server on http://${HOST}:${PORT}...`);
 
+async function handleRequestWithCompression(req, server) {
+  const res = await handleRequest(req, server);
+  if (!res || !res.body) return res;
+  if (req.method === 'HEAD') return res;
+
+  const status = res.status;
+  if (status === 101 || status === 204 || status === 206 || status === 304 || (status >= 300 && status < 400)) {
+    return res;
+  }
+
+  const headers = res.headers;
+  if (headers.has('Content-Encoding')) {
+    return res;
+  }
+
+  const acceptEncoding = req.headers.get('accept-encoding') || '';
+  if (!acceptEncoding.includes('gzip')) {
+    return res;
+  }
+
+  const contentType = (headers.get('content-type') || '').toLowerCase();
+  if (contentType.includes('event-stream')) {
+    return res;
+  }
+
+  const shouldCompress =
+    contentType.startsWith('text/') ||
+    contentType.includes('application/json') ||
+    contentType.includes('application/javascript') ||
+    contentType.includes('text/javascript') ||
+    contentType.includes('application/xml') ||
+    contentType.includes('application/manifest+json') ||
+    contentType.includes('image/svg+xml');
+
+  if (!shouldCompress) {
+    return res;
+  }
+
+  try {
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength < 1024) {
+      return new Response(arrayBuffer, {
+        status: res.status,
+        statusText: res.statusText,
+        headers: res.headers
+      });
+    }
+
+    const compressed = Bun.gzipSync(new Uint8Array(arrayBuffer));
+    const newHeaders = new Headers(res.headers);
+    newHeaders.set('Content-Encoding', 'gzip');
+    newHeaders.set('Vary', 'Accept-Encoding');
+    newHeaders.delete('Content-Length');
+
+    return new Response(compressed, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: newHeaders
+    });
+  } catch (_) {
+    return res;
+  }
+}
+
 Bun.serve({
   port: PORT,
   hostname: HOST,
-  fetch: handleRequest,
+  fetch: handleRequestWithCompression,
   websocket: {
     async open(ws) {
       const presenceEmail = ws.data?.isBroadcast ? normalizeEmail(ws.data.email) : '';

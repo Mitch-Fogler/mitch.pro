@@ -6,7 +6,7 @@
 <title>mitch.pro Games</title>
 <script src="/theme.js?v=11"></script>
 <link rel="stylesheet" href="/app.css">
-<script src="/api.js"></script>
+<script src="/api.js" defer></script>
 <script src="/app-shell.js" defer></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -899,28 +899,42 @@ async function loadSites(append = false) {
       cat: currentCat
     };
 
-    var results = await Promise.all([
-      fetch('/api/games', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(function(){ return null; }),
-      fetch('/api/game-stats').catch(function(){ return null; }),
-      fetch('/api/game-categories').catch(function(){ return null; })
-    ]);
-    
+    var needStats = (!append && Object.keys(gameStats).length === 0);
+    var fetches = [
+      fetch('/api/games', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Mitch-Requested-With': '1'
+        },
+        credentials: 'include',
+        body: JSON.stringify(body)
+      }).catch(function(){ return null; })
+    ];
+    if (needStats) {
+      fetches.push(fetch('/api/game-stats').catch(function(){ return null; }));
+    }
+
+    var results = await Promise.all(fetches);
     var gamesRes = results[0];
-    var statsRes = results[1];
-    var catsRes = results[2];
+    var statsRes = needStats ? results[1] : null;
     
     if (statsRes && statsRes.ok) {
       var sd = await statsRes.json().catch(function(){ return {}; });
       gameStats = sd.stats || {};
     }
-    if (catsRes && catsRes.ok) {
-      var cd = await catsRes.json().catch(function(){ return {}; });
-      gameCats = cd.categories || {};
-    }
     
     if (gamesRes && gamesRes.ok) {
       var gd = await gamesRes.json().catch(function(){ return {}; });
-      hasMoreGames = gd.hasMore;
+      if (gd && gd.success !== false) {
+        hasMoreGames = gd.hasMore;
+        if (gd.categories) {
+          Object.assign(gameCats, gd.categories);
+        } else if (!append && Object.keys(gameCats).length === 0) {
+          fetch('/api/game-categories').then(function(r){ return r.json(); }).then(function(cd){
+            if (cd && cd.categories) Object.assign(gameCats, cd.categories);
+          }).catch(function(){});
+        }
       
       if (!append) {
         document.getElementById('game-total-stat').textContent = String(gd.total || 0);
@@ -939,6 +953,7 @@ async function loadSites(append = false) {
       currentOffset += limitPerPage;
       isLoading = false;
       return;
+      }
     }
   } catch(e) { console.error(e); }
   isLoading = false;
@@ -1003,6 +1018,7 @@ function parseGamesChunk(text, append) {
     return;
   }
 
+  var frag = document.createDocumentFragment();
   lines.forEach(function(line) {
     var parts = line.split(' ');
     if (parts.length < 3) return;
@@ -1012,8 +1028,9 @@ function parseGamesChunk(text, append) {
       label: parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim()
     };
     entry.cat = categoryForHref(entry.href);
-    container.appendChild(makeGameAnchor(entry, catInfo(entry.cat).icon));
+    frag.appendChild(makeGameAnchor(entry, catInfo(entry.cat).icon));
   });
+  container.appendChild(frag);
 
   setupInfiniteScroll();
 }

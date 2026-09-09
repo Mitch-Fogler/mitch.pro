@@ -377,10 +377,12 @@
   // ── SSO: sign in through a reachable mitch.pro identity origin ─────────────
   async function reachable(origin, timeoutMs) {
     try {
-      const opts = { mode: 'no-cors', cache: 'no-store' };
+      const opts = { mode: 'cors', cache: 'no-store' };
       if (window.AbortSignal && AbortSignal.timeout) opts.signal = AbortSignal.timeout(timeoutMs);
-      await fetch(origin + '/api/site-info', opts);
-      return true;
+      const res = await fetch(origin + '/verify-open.json', opts);
+      if (!res.ok) return false;
+      const data = await res.json();
+      return !!(data && data.verified === true && data.token === 'mitch-open-verified-2026');
     } catch (_) { return false; }
   }
 
