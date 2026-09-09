@@ -55,6 +55,13 @@ const rjuhsdHtml = readFileSync('webserver/rjuhsd/index.html', 'utf8');
 assert(rjuhsdHtml.includes('<a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img class="site-logo" src="/icon-192.png"'), 'rjuhsd top left brand must use mitch.pro logo');
 assert(!/<a class="brand"[^>]*><span class="brand-logo"><img[^>]*src="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd brand must not use school-based logo');
 
+// Favicon on rjuhsd.school must use mitch.pro favicon (/favicon.ico)
+assert(rjuhsdHtml.includes('<link rel="icon" href="/favicon.ico">'), 'rjuhsd favicon must use mitch.pro /favicon.ico');
+assert(!/<link\s+rel="icon"[^>]*href="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd must not use rjuhsd-assets favicon');
+
+const appJs = readFileSync('webserver/rjuhsd-assets/app.js', 'utf8');
+assert(!appJs.includes("href=brand.logo"), 'app.js must not overwrite favicon with school logo');
+
 // SEO & All-Schools bell schedules verification
 const schools = ['woodcreek', 'roseville', 'granitebay', 'antelope', 'westpark', 'oakmont'];
 const schoolDisplayNames = [
