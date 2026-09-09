@@ -94,3 +94,4 @@ webserver/games/*.zip
 # Rust rewrite (private, origin-only)
 rust/target/
 rust/.cargo/
+rust/data/
