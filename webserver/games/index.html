@@ -1271,11 +1271,16 @@ function playFeatured() {
   launchEntry(featuredEntry);
 }
 
-window.onload = function() {
+function initGamesPage() {
   setupSearchTools();
   setupAboutBlankToggle();
   loadSites();
-};
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initGamesPage);
+} else {
+  initGamesPage();
+}
 </script>
 <script src="/cookie-consent.js" defer></script>
 </body>

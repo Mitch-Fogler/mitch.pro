@@ -84,7 +84,7 @@
     if (!host || host.querySelector('.mitch-wallet')) return;
     const widget = document.createElement('a');
     widget.className = 'mitch-wallet' + (placement ? ' ' + placement : '');
-    widget.innerHTML = '<img class="mitch-coin-icon" src="' + icon + '" width="32" height="32" alt="" decoding="async"><span class="mitch-wallet-copy"><span class="mitch-wallet-label">MitchCoins</span><strong class="mitch-wallet-value">—</strong></span>';
+    widget.innerHTML = '<img class="mitch-coin-icon" src="' + icon + '" width="32" height="32" alt="" decoding="async" loading="lazy" fetchpriority="low"><span class="mitch-wallet-copy"><span class="mitch-wallet-label">MitchCoins</span><strong class="mitch-wallet-value">—</strong></span>';
     const account = host.querySelector('.app-account-link, .home-account-link, #nav-login');
     host.insertBefore(widget, account || null);
     host.classList.add('has-mitch-wallet');

@@ -21468,7 +21468,7 @@ async function handleRequest(req, server) {
       '/tab-cloak.js', '/tab-cloak.css', '/cloak-google-classroom.svg', '/cloak-google-drive.svg', '/cloak-google-docs.svg', '/cloak-clever.png',
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
-      '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
+      '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/mitchcoin.webp', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/vendor/simplewebauthn.browser.min.js',
       '/home-redesign.css', '/welcome.css',
       '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
