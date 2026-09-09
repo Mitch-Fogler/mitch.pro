@@ -22,7 +22,10 @@ pub mod crypto;
 pub mod data;
 pub mod email;
 pub mod log;
+pub mod sso;
 pub mod state;
+pub mod totp;
+pub mod webauthn;
 
 /// Library version, matching the workspace version.
 pub fn version() -> &'static str {

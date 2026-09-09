@@ -26,7 +26,7 @@ use crate::data::DataError;
 type HmacSha256 = Hmac<Sha256>;
 
 pub const DM_AT_REST_PREFIX: &str = "enc1:";
-pub const TOTP_AT_REST_PREFIX: &str = "enc1:";
+pub const TOTP_AT_REST_PREFIX: &str = "totp1:";
 pub const DM_AT_REST_PURPOSE: &str = "dm-at-rest-v1";
 pub const TOTP_AT_REST_PURPOSE: &str = "totp-at-rest-v1";
 
@@ -118,6 +118,44 @@ pub fn open_at_rest(key: &[u8; 32], sealed: &str, prefix: &str) -> Value {
         serde_json::from_str::<Value>(std::str::from_utf8(&plain).ok()?).ok()
     })();
     opened.unwrap_or_else(|| Value::String(sealed.to_owned()))
+}
+
+/// `randomBytes(n)` — n random bytes.
+pub fn random_bytes(n: usize) -> Vec<u8> {
+    use rand::RngCore;
+    let mut out = vec![0u8; n];
+    rand::rng().fill_bytes(&mut out);
+    out
+}
+
+/// `randomBytes(n).toString('hex')`.
+pub fn random_bytes_hex(n: usize) -> String {
+    use rand::RngCore;
+    let mut out = vec![0u8; n];
+    rand::rng().fill_bytes(&mut out);
+    let mut hex = String::with_capacity(out.len() * 2);
+    for b in out {
+        hex.push_str(&format!("{b:02x}"));
+    }
+    hex
+}
+
+/// Raw AES-256-GCM decrypt — returns the plaintext string without JSON
+/// parsing (for `openTotpSecret` which returns the raw base32 secret, not a
+/// JSON value).
+pub fn decrypt_raw(key: &[u8; 32], sealed: &str, prefix: &str) -> Option<String> {
+    let body = &sealed[prefix.len()..];
+    let i1 = body.find(':')?;
+    let i2 = body[i1 + 1..].find(':')? + i1 + 1;
+    let iv = unhex(&body[..i1])?;
+    let ct = unhex(&body[i1 + 1..i2])?;
+    let tag = unhex(&body[i2 + 1..])?;
+    let cipher = Aes256Gcm::new_from_slice(key).ok()?;
+    let nonce = GenericArray::from_slice(&iv);
+    let mut combined = ct.clone();
+    combined.extend_from_slice(&tag);
+    let plain = cipher.decrypt(nonce, combined.as_ref()).ok()?;
+    String::from_utf8(plain).ok()
 }
 
 /// `timingSafeEqual(a, b)` — constant-time compare; false on length mismatch
