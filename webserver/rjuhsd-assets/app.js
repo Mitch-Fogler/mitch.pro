@@ -29,7 +29,7 @@ function applySchoolIdentity(){
  document.documentElement.style.setProperty("--school-primary",brand.primary);
  document.documentElement.style.setProperty("--school-secondary",brand.secondary);
  document.querySelectorAll('img[src*="/rjuhsd-assets/"]:not(.brand-logo img):not(.site-logo):not(.district-school-logo)').forEach(img=>{img.src=brand.logo;img.alt=img.closest('[aria-hidden="true"]')?"":schoolName()+" logo"});
- document.querySelector('link[rel="icon"]').href=brand.logo;
+ const fi=document.querySelector('link[rel="icon"]');if(fi)fi.href="/favicon.ico";
  const tc=document.querySelector('meta[name="theme-color"]');if(tc)tc.content=document.documentElement.classList.contains("theme-light")?"#f7f4f4":"#0c0809";
  $("schedule-mode").innerHTML='<option value="auto">Automatic</option><option value="regular">Regular day</option>'+Object.keys(brand.specials).map(k=>'<option value="'+k+'">'+safe(window.RJUHSD_CALENDAR.labels[k])+'</option>').join("");
  $("schedule-mode").value=scheduleMode;
