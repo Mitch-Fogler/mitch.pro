@@ -273,6 +273,7 @@ pub async fn handle(
     method: Method,
     uri: &axum::http::Uri,
     headers: &HeaderMap,
+    body_bytes: &[u8],
 ) -> Response {
     let path = uri.path().to_string();
     let search = uri.query().unwrap_or("").to_string();
@@ -306,6 +307,8 @@ pub async fn handle(
     }
 
     let node_env_test = std::env::var("NODE_ENV").unwrap_or_default() == "test";
+    let body: serde_json::Value =
+        serde_json::from_slice(body_bytes).unwrap_or(serde_json::json!({}));
     // 3b. Rate limiting — only /api/ paths (server.js ~7658). The parity
     // harness hits unlisted paths which get the __default__ [100, 60] per
     // ip+anon bucket; sequential runs stay under it.
@@ -387,6 +390,16 @@ pub async fn handle(
             );
         }
         return redirect("/enroll/", 302);
+    }
+
+    // 4c. API route dispatch — the ported route groups (plan Step 7).
+    if path.starts_with("/api/") {
+        if let Some(resp) =
+            crate::routes::misc::handle(&state, &method, &path, headers, &search, &body).await
+        {
+            return resp;
+        }
+        // Unmatched /api/ paths fall through to static 404 (same as bun).
     }
 
     // 5. /team route (GET) — injectReadability of the team page.

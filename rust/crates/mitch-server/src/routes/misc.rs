@@ -1,14 +1,462 @@
-//! First ported route group (plan Step 7): read-heavy, low-coupling endpoints
-//! — `/api/games`, `/api/stats`, `/api/solve`, `/api/submit`, `/api/log-click`,
-//! `/api/weather`, `/api/school-calendar`, `/api/school-info`, `/api/site-info`,
-//! `/api/backgrounds/list`, `/api/bad-passwords`. Status: stub.
+//! First ported route group (plan Step 7): read-heavy, low-coupling API
+//! endpoints. Each returns `Some(Response)` for a match, `None` for
+//! fallthrough to the page block (which 404s unmatched /api/ paths).
+//!
+//! Ported in this pass (simplest subset):
+//! - `GET /api/site-info` — reads data/site.json (PRESERVED disk file)
+//! - `GET /api/bad-passwords` — raw passthrough of data/bad_passwords.json
+//! - `GET /api/backgrounds/list` — scans webserver/backgrounds/ for .webp/.webm
+//! - `POST /api/log-click` — appends to data/heatmap.json (trimmed to 1000)
+//! - `GET /api/leaderboard` — coins/profiles/cosmetics ranked by coins desc
+//! - `GET /api/games` — game list with category/query filters + featured
+//!
+//! Deferred to a later pass (needs external proxies or coins/presence):
+//! `/api/ping` (heaviest), `/api/solve|submit|stats` (captcha proxy),
+//! `/api/weather|school-calendar|school-info` (external fetches),
+//! `/api/content` (complex injection ladder).
 
-#![allow(dead_code)]
+use crate::state::AppState;
+use axum::http::{HeaderMap, Method, StatusCode};
+use axum::response::Response;
+use serde_json::{json, Value};
+use std::sync::Arc;
 
-pub struct Misc;
-
-impl Misc {
-    pub fn placeholder() -> Self {
-        Self
+/// API route dispatch — called from handler.rs after the auth gates.
+/// Returns `Some(Response)` for a matched route, `None` for fallthrough.
+pub async fn handle(
+    state: &Arc<AppState>,
+    method: &Method,
+    path: &str,
+    headers: &HeaderMap,
+    _search: &str,
+    body: &serde_json::Value,
+) -> Option<Response> {
+    if path == "/api/site-info" && *method == Method::GET {
+        return Some(site_info(state));
     }
+    if path == "/api/bad-passwords" && *method == Method::GET {
+        return Some(bad_passwords(state));
+    }
+    if path == "/api/backgrounds/list" && *method == Method::GET {
+        return Some(backgrounds_list(state));
+    }
+    if path == "/api/log-click" && *method == Method::POST {
+        return Some(log_click(state, body));
+    }
+    if path == "/api/leaderboard" && *method == Method::GET {
+        return Some(leaderboard(state, headers));
+    }
+    if path == "/api/games" && (*method == Method::GET || *method == Method::POST) {
+        return Some(games(state, body, headers));
+    }
+    None
+}
+
+fn json_response(code: u16, obj: serde_json::Value) -> Response {
+    crate::errors::json_resp(code, obj)
+}
+
+/// `GET /api/site-info` — server.js:7912-7918.
+fn site_info(state: &Arc<AppState>) -> Response {
+    let site = state
+        .store
+        .read_document(&state.cfg.data_dir.join("site.json"), json!({}));
+    json_response(
+        200,
+        json!({
+            "primary": site.get("primary").and_then(|v| v.as_str()).unwrap_or("https://mitch.pro"),
+            "alternate": site.get("alternate").and_then(|v| v.as_str()).unwrap_or(""),
+            "name": site.get("name").and_then(|v| v.as_str()).unwrap_or("mitch.pro"),
+        }),
+    )
+}
+
+/// `GET /api/bad-passwords` — server.js:20450-20459. Raw file passthrough.
+fn bad_passwords(state: &Arc<AppState>) -> Response {
+    let file = state.cfg.data_dir.join("bad_passwords.json");
+    match std::fs::read_to_string(&file) {
+        Ok(raw) => Response::builder()
+            .status(StatusCode::OK)
+            .header(axum::http::header::CONTENT_TYPE, "application/json")
+            .body(axum::body::Body::from(raw))
+            .unwrap_or_else(|_| json_response(500, json!([]))),
+        Err(_) => json_response(200, json!([])),
+    }
+}
+
+/// `GET /api/backgrounds/list` — server.js:8448-8469 (without the ffmpeg
+/// conversion side effect — webp/webm files only, sorted by filename).
+fn backgrounds_list(state: &Arc<AppState>) -> Response {
+    let dir = state.cfg.base_dir.join("webserver/backgrounds");
+    let items = list_backgrounds(&dir);
+    json_response(200, json!({ "ok": true, "items": items }))
+}
+
+fn list_backgrounds(dir: &std::path::Path) -> serde_json::Value {
+    let mut items = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut files: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let name = e.file_name().to_string_lossy().to_lowercase();
+                name.ends_with(".webp") || name.ends_with(".webm")
+            })
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .collect();
+        files.sort();
+        for file in files {
+            let stem = file
+                .trim_end_matches(".webp")
+                .trim_end_matches(".webm")
+                .trim_start_matches("bg-");
+            let name = title_case(&stem.replace('-', " "));
+            let url = format!("/backgrounds/{file}");
+            let ty = if file.ends_with(".webm") {
+                "video"
+            } else {
+                "image"
+            };
+            items.push(json!({ "id": stem, "name": name, "url": url, "type": ty }));
+        }
+    }
+    serde_json::Value::Array(items)
+}
+
+fn title_case(s: &str) -> String {
+    s.split(' ')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                Some(first) => {
+                    first.to_uppercase().collect::<String>() + &c.as_str().to_lowercase()
+                }
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `POST /api/log-click` — server.js:12662-12677. Appends to heatmap.json
+/// (DB-stored), trimmed to the last 1000 entries per page.
+fn log_click(state: &Arc<AppState>, body: &serde_json::Value) -> Response {
+    let page = body.get("page").and_then(|v| v.as_str()).unwrap_or("");
+    let x = body.get("x").and_then(|v| v.as_f64());
+    let y = body.get("y").and_then(|v| v.as_f64());
+    if page.is_empty() || x.is_none() || y.is_none() {
+        return json_response(400, json!({ "error": "invalid data" }));
+    }
+    let file = state.cfg.data_dir.join("heatmap.json");
+    let mut heatmap = state.store.read_document(&file, json!({}));
+    let entry = json!({
+        "x": x.unwrap_or(0.0),
+        "y": y.unwrap_or(0.0),
+    });
+    if let Some(map) = heatmap.as_object_mut() {
+        let list = map.entry(page.to_string()).or_insert(json!([]));
+        if let Some(arr) = list.as_array_mut() {
+            arr.push(entry);
+            if arr.len() > 1000 {
+                arr.drain(0..arr.len() - 1000);
+            }
+        }
+    }
+    match state.store.write_document(&file, &heatmap) {
+        Ok(()) => json_response(200, json!({ "ok": true })),
+        Err(e) => json_response(400, json!({ "error": e.to_string() })),
+    }
+}
+
+/// `GET /api/leaderboard` — server.js:20489-20535. Ranked by coins desc,
+/// tie-break name asc. Reads coins.json + user_stats.json + profiles.json +
+/// cosmetics.json (all DB-stored).
+fn leaderboard(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_header,
+        &state.store,
+        &state.id_secret,
+        false,
+    );
+    let sid = cookies.auth_sid();
+    let viewer_email = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, &sid);
+    let viewer_norm = viewer_email
+        .as_deref()
+        .map(mitch_lib::auth::normalize_email)
+        .unwrap_or_default();
+
+    let coins = state
+        .store
+        .read_document(&state.data_dir().join("coins.json"), json!({}));
+    let profiles = state
+        .store
+        .read_document(&state.data_dir().join("profiles.json"), json!({}));
+    let cosmetics = state
+        .store
+        .read_document(&state.data_dir().join("cosmetics.json"), json!({}));
+    let user_stats = state
+        .store
+        .read_document(&state.data_dir().join("user_stats.json"), json!({}));
+
+    let mut keys: Vec<String> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for source in [&coins, &profiles] {
+        if let Some(map) = source.as_object() {
+            for k in map.keys() {
+                if seen.insert(k.clone()) {
+                    keys.push(k.clone());
+                }
+            }
+        }
+    }
+    if !viewer_norm.is_empty() && seen.insert(viewer_norm.clone()) {
+        keys.push(viewer_norm.clone());
+    }
+
+    let mut rows: Vec<serde_json::Value> = Vec::new();
+    for norm in &keys {
+        let profile = profiles.get(norm).and_then(|v| v.as_object());
+        let stats = user_stats.get(norm).and_then(|v| v.as_object());
+        let cosm = cosmetics.get(norm).and_then(|v| v.as_object());
+        let nickname = profile
+            .and_then(|p| p.get("nickname"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let display_name = profile
+            .and_then(|p| p.get("displayName"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let username = profile
+            .and_then(|p| p.get("username"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let name: &str = if !nickname.is_empty() {
+            nickname
+        } else if !display_name.is_empty() {
+            display_name
+        } else if !username.is_empty() {
+            username
+        } else {
+            &default_username_for_email(norm)
+        };
+        let field = |obj: Option<&serde_json::Map<String, Value>>, key: &str| -> Value {
+            obj.and_then(|o| o.get(key)).cloned().unwrap_or(json!(0))
+        };
+        let badge = cosm
+            .and_then(|c| c.get("activeBadge"))
+            .cloned()
+            .unwrap_or(Value::Null);
+        rows.push(json!({
+            "name": name,
+            "coins": coins.get(norm).cloned().unwrap_or(json!(0.0)),
+            "wins": field(stats, "chess_wins"),
+            "puzzles": field(stats, "puzzles_solved"),
+            "pixels": field(stats, "pixels"),
+            "clicker_pts": field(stats, "clicker_points"),
+            "clicker_coins": field(stats, "clicker_coins"),
+            "typing_races": field(stats, "typing_races"),
+            "typing_coins": field(stats, "typing_coins"),
+            "logic_puzzles": field(stats, "logic_puzzles"),
+            "logic_coins": field(stats, "logic_coins"),
+            "email": if !username.is_empty() { json!(username) } else { json!(norm) },
+            "badge": badge,
+            "isMe": norm == &viewer_norm,
+        }));
+    }
+    // Sort by coins desc, tie-break name asc. Rank is implicit (1-based).
+    rows.sort_by(|a, b| {
+        let ca = a.get("coins").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let cb = b.get("coins").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        cb.partial_cmp(&ca)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                let na = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                let nb = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                na.cmp(nb)
+            })
+    });
+    let total = rows.len();
+    let top = rows.iter().take(10).cloned().collect::<Vec<_>>();
+    let players = rows.iter().take(100).cloned().collect::<Vec<_>>();
+    let me_idx = rows
+        .iter()
+        .position(|r| r.get("isMe").and_then(|v| v.as_bool()).unwrap_or(false));
+    let me_val = me_idx.map(|p| rows[p].clone()).unwrap_or(Value::Null);
+    let me_out = match me_idx {
+        Some(p) if p < 10 => Value::Null, // viewer is in the top 10, no separate "me"
+        Some(_) => me_val,
+        None => me_val, // still include if resolvable
+    };
+    json_response(
+        200,
+        json!({ "top": top, "me": me_out, "players": players, "total": total }),
+    )
+}
+
+fn default_username_for_email(norm: &str) -> String {
+    norm.split('@').next().unwrap_or(norm).to_string()
+}
+
+impl AppState {
+    /// `data/<name>` path under the data dir.
+    pub fn data_dir(&self) -> &std::path::Path {
+        &self.cfg.data_dir
+    }
+}
+
+/// `GET /api/games` — server.js:12705-12783. Reads the line-format game lists
+/// + categories, applies filters, returns content + featured.
+fn games(state: &Arc<AppState>, body: &serde_json::Value, headers: &HeaderMap) -> Response {
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_header,
+        &state.store,
+        &state.id_secret,
+        std::env::var("NODE_ENV").unwrap_or_default() == "test",
+    );
+    let hash = body
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .unwrap_or_else(|| cookies.auth_sid());
+
+    if hash.is_empty() || !mitch_lib::auth::valid_id(&hash, &state.id_secret) {
+        return json_response(200, json!({ "success": false, "error": "no_valid_token" }));
+    }
+
+    let q = body
+        .get("q")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let cat = body
+        .get("cat")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let offset = body.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+    let limit = body
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(50)
+        .clamp(1, 200) as usize;
+
+    // Read the line-format game lists (PRESERVED disk files).
+    let mut game_lines: Vec<String> = Vec::new();
+    for name in ["games", "games_local", "games_external"] {
+        let path = state.cfg.data_dir.join(name);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            game_lines.extend(content.lines().map(str::to_string));
+        }
+    }
+    // Dedup by href (second space-separated field).
+    let mut seen = std::collections::HashSet::new();
+    let all: Vec<String> = game_lines
+        .into_iter()
+        .filter(|line| {
+            let href = line.split(' ').nth(1).unwrap_or("");
+            seen.insert(href.to_string())
+        })
+        .collect();
+
+    // Categories from the three PRESERVED files (external overrides local).
+    let mut cats = state
+        .store
+        .read_document(&state.cfg.data_dir.join("game_categories.json"), json!({}));
+    let local = state.store.read_document(
+        &state.cfg.data_dir.join("game_categories_local.json"),
+        json!({}),
+    );
+    let external = state.store.read_document(
+        &state.cfg.data_dir.join("game_categories_external.json"),
+        json!({}),
+    );
+    for source in [local, external] {
+        if let Some(map) = source.as_object() {
+            for (k, v) in map {
+                if let Some(target) = cats.as_object_mut() {
+                    target.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+    let cats = cats;
+
+    let filtered: Vec<&String> = all
+        .iter()
+        .filter(|line| {
+            let href = line.split(' ').nth(1).unwrap_or("");
+            let label = line.splitn(3, ' ').nth(2).unwrap_or("");
+            if !cat.is_empty() && cat != "all" {
+                let category = cats
+                    .get(href)
+                    .or_else(|| cats.get(href.trim_start_matches("/games/")))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("other");
+                if !category.to_lowercase().contains(&cat) && category.to_lowercase() != cat {
+                    return false;
+                }
+            }
+            if !q.is_empty() && !label.to_lowercase().contains(&q) {
+                return false;
+            }
+            true
+        })
+        .collect();
+    let total = filtered.len();
+    let end = (offset + limit).min(total);
+    let page: Vec<&String> = filtered
+        .iter()
+        .skip(offset)
+        .take(end - offset)
+        .cloned()
+        .collect();
+    let content: Vec<String> = page
+        .iter()
+        .map(|s| s.replace("https://html5.gamemonetize.co/", "/proxy/gamemonetize/"))
+        .collect();
+
+    // Featured: top 8 by play count, only on page 0 with no filters.
+    let featured = if offset == 0 && q.is_empty() && (cat.is_empty() || cat == "all") {
+        let stats = state
+            .store
+            .read_document(&state.data_dir().join("global_game_stats.json"), json!({}));
+        let mut ranked: Vec<(&String, u64)> = all
+            .iter()
+            .map(|line| {
+                let href = line.split(' ').nth(1).unwrap_or("");
+                let count = stats.get(href).and_then(|v| v.as_u64()).unwrap_or(0);
+                (line, count)
+            })
+            .collect();
+        ranked.sort_by_key(|a| std::cmp::Reverse(a.1));
+        let top: Vec<String> = ranked
+            .iter()
+            .take(8)
+            .map(|(line, _)| line.replace("https://html5.gamemonetize.co/", "/proxy/gamemonetize/"))
+            .collect();
+        top.join("\n")
+    } else {
+        String::new()
+    };
+
+    json_response(
+        200,
+        json!({
+            "success": true,
+            "content": content.join("\n"),
+            "featured": featured,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "hasMore": offset + limit < total,
+        }),
+    )
 }

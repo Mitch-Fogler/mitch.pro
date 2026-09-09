@@ -75,5 +75,9 @@ async fn get_any(
     let method = req.method().clone();
     let headers = req.headers().clone();
     let uri = req.uri().clone();
-    handler::handle(state, method, &uri, &headers).await
+    // Read the body (empty for GET/HEAD; bounded for API POSTs).
+    let body_bytes = axum::body::to_bytes(req.into_body(), 256 * 1024)
+        .await
+        .unwrap_or_default();
+    handler::handle(state, method, &uri, &headers, &body_bytes).await
 }
