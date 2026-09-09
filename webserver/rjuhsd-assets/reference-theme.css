@@ -49,8 +49,8 @@ body { font-family: var(--sans); font-size: 15px; line-height: 1.55; color: var(
 
 .site-header { width: 100%; max-width: none; height: 62px; padding: 6px max(16px,calc((100vw - 1120px)/2)); background: #fff; border-bottom: 1px solid #ddd; }
 .brand { gap: 9px; }
-.brand-logo { width: 48px; height: 36px; }
-.brand-logo img { width: 48px; height: 35px; }
+.brand-logo { width: 35px; height: 35px; display: grid; place-items: center; background: transparent; }
+.brand-logo img, .brand-logo .site-logo { width: 35px; height: 35px; object-fit: contain; border-radius: 8px; flex-shrink: 0; display: block; }
 .brand-copy strong { font: 700 17px/1.1 var(--serif); letter-spacing: 0; color: var(--ink); text-transform: none; }
 .brand-copy small { margin-top: 3px; color: var(--wine); font: italic 11px/1.1 var(--serif); letter-spacing: 0; text-transform: none; }
 .site-header nav { gap: 3px; }
@@ -298,7 +298,7 @@ body.dark .weather-symbol{background:#3b2529;border-color:#55363c}
 .school-choice select { max-width: 205px; padding: 9px; border: 1px solid #aaa6; border-radius: 8px; background: inherit; color: inherit; font: inherit; font-size: 14px; }
 body { --wine: var(--school-primary, #500000); --wine2: var(--school-secondary, #333333); --wine-soft: color-mix(in srgb, var(--school-primary, #500000) 10%, #ffffff); }
 body:not(.dark) { color: var(--ink); color-scheme: light; }
-.brand-logo { width: 52px; height: 48px; background: #fff; }
+.brand-logo { width: 35px; height: 35px; background: transparent; }
 .brand-logo img, .onboarding-art img { object-fit: contain; filter: none; }
 .site-header { height: auto; min-height: 76px; border-top: 4px solid var(--school-secondary); }
 .announcement-bar { background: var(--school-primary); }
@@ -685,8 +685,8 @@ nav[aria-label="Primary navigation"] a svg { display: inline-block; vertical-ali
     flex-wrap: nowrap;
   }
   .brand { gap: 8px; flex-shrink: 0; }
-  .brand-logo { width: 34px; height: 26px; }
-  .brand-logo img { width: 34px; height: 26px; }
+  .brand-logo { width: 30px; height: 30px; }
+  .brand-logo img, .brand-logo .site-logo { width: 30px; height: 30px; }
   .brand-copy strong { font-size: 13px; white-space: nowrap; }
   .brand-copy small { display: none; }
   .header-actions {
