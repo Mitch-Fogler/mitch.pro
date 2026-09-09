@@ -28,17 +28,18 @@ function applySchoolIdentity(){
  const brand=window.RJUHSD_SCHOOL_DATA[school];
  document.documentElement.style.setProperty("--school-primary",brand.primary);
  document.documentElement.style.setProperty("--school-secondary",brand.secondary);
- document.querySelectorAll('img[src*="/rjuhsd-assets/"]:not(.brand-logo img):not(.site-logo)').forEach(img=>{img.src=brand.logo;img.alt=img.closest('[aria-hidden="true"]')?"":schoolName()+" logo"});
+ document.querySelectorAll('img[src*="/rjuhsd-assets/"]:not(.brand-logo img):not(.site-logo):not(.district-school-logo)').forEach(img=>{img.src=brand.logo;img.alt=img.closest('[aria-hidden="true"]')?"":schoolName()+" logo"});
  document.querySelector('link[rel="icon"]').href=brand.logo;
  const tc=document.querySelector('meta[name="theme-color"]');if(tc)tc.content=document.documentElement.classList.contains("theme-light")?"#f7f4f4":"#0c0809";
  $("schedule-mode").innerHTML='<option value="auto">Automatic</option><option value="regular">Regular day</option>'+Object.keys(brand.specials).map(k=>'<option value="'+k+'">'+safe(window.RJUHSD_CALENDAR.labels[k])+'</option>').join("");
  $("schedule-mode").value=scheduleMode;
  $("period0-label").hidden=!brand.days[1][1].some(p=>p.name==="Period 0");
- document.title=schoolName()+" bell schedule | rjuhsd.school";
+ document.title=schoolName()+" Bell Schedule | RJUHSD Hub";
  $("school-heading").textContent=SCHOOLS[school].name;
  $("hero-overline").textContent=schoolName();
  document.querySelectorAll(".brand-copy strong").forEach(e=>e.textContent=schoolName());
  document.querySelectorAll(".brand-copy small").forEach(e=>e.textContent="rjuhsd.school");
+ document.querySelectorAll(".district-school-card").forEach(c=>{c.classList.toggle("current-school",c.dataset.schoolCard===school)});
  $("official-bells").href=official()+"/"+SCHOOLS[school].bell;
  document.querySelectorAll('a[href*="woodcreek.rjuhsd.us"]:not(#official-bells)').forEach(a=>a.dataset.schoolLink="true");
  document.querySelectorAll("[data-school-link]").forEach(a=>{a.href=official()+"/"+SCHOOLS[school].calendar;if(a.querySelector(".tool-logo")){a.href=official();a.querySelector("strong").textContent="School website"}});
@@ -99,8 +100,23 @@ async function load(){
  }catch{if(version===requestVersion){calendarVerified=false;$("source-status").textContent="Calendar unavailable · District breaks are included; check school announcements for special days.";$("announcement-text").textContent="Calendar unavailable — showing published weekly times."}}
 }
 $("school-select").innerHTML=Object.entries(SCHOOLS).map(([key,s])=>'<option value="'+key+'">'+s.name+'</option>').join("");
-$("school-select").value=school;
-$("school-select").addEventListener("change",()=>{school=$("school-select").value;remember("rjuhsd_school",school);lunch=saved("rjuhsd_lunch_"+school,"1");events=[];calendarCursor=null;scheduleMode="auto";includePeriod0=false;$("include-period0").checked=false;applySchoolIdentity();load();loadWeather();const url=new URL(location.href);url.searchParams.set("school",school);history.replaceState(null,"",url)});
+function switchSchool(s){
+ if(!SCHOOLS[s]||s===school)return;
+ school=s;
+ if($("school-select"))$("school-select").value=school;
+ remember("rjuhsd_school",school);
+ lunch=saved("rjuhsd_lunch_"+school,"1");
+ events=[];calendarCursor=null;scheduleMode="auto";includePeriod0=false;
+ if($("include-period0"))$("include-period0").checked=false;
+ applySchoolIdentity();
+ data=buildData();
+ render();
+ load();
+ loadWeather();
+ try{const url=new URL(location.href);url.searchParams.set("school",school);history.replaceState(null,"",url)}catch{}
+}
+$("school-select").addEventListener("change",()=>switchSchool($("school-select").value));
+document.addEventListener("click",e=>{const b=e.target.closest("[data-switch-school]");if(b){const s=b.dataset.switchSchool;if(s){switchSchool(s)}}});
 $("schedule-mode").addEventListener("change",()=>{scheduleMode=$("schedule-mode").value;data=buildData();render()});
 $("include-period0").addEventListener("change",()=>{includePeriod0=$("include-period0").checked;data=buildData();render()});
 applySchoolIdentity();
