@@ -7,6 +7,9 @@ const REPO_ROOT = import.meta.dir + '/..';
 configureDataStore({ baseDir: REPO_ROOT, dataDir: join(REPO_ROOT, 'data') });
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:6800';
+if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(BASE_URL).hostname)) {
+  throw new Error('Integration endpoint tests must target a local test server.');
+}
 
 const ID_SECRET = readFileSync(join(REPO_ROOT, 'data', 'id_secret.key'));
 
@@ -41,6 +44,86 @@ function normalizeEmail(email) {
 const dynamicEmail = `test_premium_${Date.now()}@student.rjuhsd.us`;
 
 const tests = [
+  // --- VM ownership isolation ---
+  {
+    name: "User A cannot view User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b', method: 'GET', token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot start User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'start' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot stop User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'force-stop' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot restart User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'restart' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot shut down User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'shutdown' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot create a console for User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/desktop-session', method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: 'Nonexistent computer returns 404',
+    path: '/api/vm/computers/vm-does-not-exist', method: 'GET', token: USER_TOKEN, expectedStatus: 404
+  },
+  {
+    name: 'Malformed computer ID is rejected',
+    path: '/api/vm/computers/not%21a%21record', method: 'GET', token: USER_TOKEN, expectedStatus: 400
+  },
+  {
+    name: 'Normal user cannot view desktop administration',
+    path: '/api/admin/vms/overview', method: 'GET', token: USER_TOKEN, expectedStatus: 403
+  },
+  ...['assign', 'unassign', 'create'].map(operation => ({
+    name: `Normal user cannot ${operation} computers`,
+    path: `/api/admin/vms/${operation}`, method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 403
+  })),
+  {
+    name: 'Normal user cannot open desktop admin page',
+    path: '/admin/vms/', method: 'GET', token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: 'Desktop WebSocket requires authentication',
+    path: '/api/vm/desktop/ws?session=missing', method: 'GET', token: null, expectedStatus: 403,
+    headers: { Upgrade: 'websocket', Origin: BASE_URL }
+  },
+  {
+    name: 'Expired desktop WebSocket session is rejected',
+    path: '/api/vm/desktop/ws?session=expired-session', method: 'GET', token: USER_TOKEN, expectedStatus: 401,
+    headers: { Upgrade: 'websocket', Origin: BASE_URL }
+  },
+  {
+    name: 'Cross-origin desktop WebSocket is rejected',
+    path: '/api/vm/desktop/ws?session=missing', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    headers: { Upgrade: 'websocket', Origin: 'https://untrusted.example' }
+  },
+  {
+    name: 'Owner can view their running computer',
+    path: '/api/vm/computers/vm-auth-user-a', method: 'GET', token: USER_TOKEN, expectedStatus: 200,
+    verify: data => data.computer?.status === 'running' && data.computer?.ipAddress === '10.0.0.23'
+  },
+  {
+    name: 'Stopped computer cannot create desktop session',
+    path: '/api/vm/computers/vm-auth-stopped/desktop-session', method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 409,
+    verify: data => data.code === 'computer_offline'
+  },
+  {
+    name: 'Upstream failure returns friendly computer error',
+    path: '/api/vm/computers/vm-auth-unreachable', method: 'GET', token: USER_TOKEN, expectedStatus: 502,
+    verify: data => data.code === 'computer_unreachable' && data.error === 'Your computer could not be reached.'
+  },
+  {
+    name: 'Owner can create an opaque desktop session',
+    path: '/api/vm/computers/vm-auth-user-a/desktop-session', method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 201,
+    verify: data => data.socketPath?.startsWith('/api/vm/desktop/ws?session=') && data.expiresIn > 0 && !JSON.stringify(data).includes('integration-api-secret-do-not-expose') && !JSON.stringify(data).includes('127.0.0.1')
+  },
   // --- Admin Endpoints ---
   {
     name: 'GET /api/admin/moderators (Admin)',
@@ -286,7 +369,7 @@ const tests = [
     path: '/larp/',
     method: 'GET',
     token: null,
-    expectedStatus: 302
+    expectedStatus: 200
   },
   {
     name: 'GET /larp/rezero (Anonymous)',
@@ -300,7 +383,7 @@ const tests = [
     path: '/larp/rezero/',
     method: 'GET',
     token: null,
-    expectedStatus: 302
+    expectedStatus: 200
   },
   {
     name: 'GET /ssh/ (Authenticated)',
@@ -372,8 +455,12 @@ async function run() {
   for (const t of tests) {
     const url = `${BASE_URL}${t.path}`;
     const headers = {
-      'CF-Connecting-IP': '66.60.183.124'
+      'CF-Connecting-IP': '66.60.183.124',
+      ...t.headers
     };
+    if (t.method === 'POST' && (t.path.startsWith('/api/vm/') || t.path.startsWith('/api/admin/vms/')) && !headers.Origin) {
+      headers.Origin = BASE_URL;
+    }
     if (t.token) {
       headers['Cookie'] = `studentId=${t.token}`;
     }
@@ -396,10 +483,12 @@ async function run() {
       const response = await fetch(url, options);
       const status = response.status;
       
-      const statusMatches = (status === t.expectedStatus) || 
-                            (t.expectedStatus === 403 && (status === 401 || status === 403));
+      const strictAuthorization = t.path.startsWith('/api/vm/') || t.path.startsWith('/api/admin/vms/') || t.path.startsWith('/admin/vms/');
+      const statusMatches = status === t.expectedStatus ||
+                            (!strictAuthorization && t.expectedStatus === 403 && status === 401);
                             
-      if (statusMatches) {
+      const payloadMatches = !t.verify || t.verify(await response.clone().json());
+      if (statusMatches && payloadMatches) {
         console.log(`✅ [PASS] ${t.name} -> Status: ${status}`);
         passedCount++;
       } else {
@@ -413,6 +502,10 @@ async function run() {
       failedCount++;
     }
   }
+
+  const vmPowerResults = await runVmPowerVerification();
+  passedCount += vmPowerResults.passedCount;
+  failedCount += vmPowerResults.failedCount;
   
   // --- Sequential Auth Flow verification ---
   const authResults = await runCrazyAuthVerification();
@@ -445,6 +538,23 @@ async function fetchWithBypass(url, options = {}) {
   options.headers = options.headers || {};
   options.headers['CF-Connecting-IP'] = '66.60.183.124';
   return fetch(url, options);
+}
+
+async function runVmPowerVerification() {
+  const requestPower = () => fetchWithBypass(`${BASE_URL}/api/vm/computers/vm-auth-user-a/power`, {
+    method: 'POST', headers: { Cookie: `studentId=${USER_TOKEN}`, 'Content-Type': 'application/json', Origin: BASE_URL },
+    body: JSON.stringify({ action: 'restart' })
+  });
+  try {
+    const responses = await Promise.all([requestPower(), requestPower()]);
+    const statuses = responses.map(response => response.status).sort();
+    if (statuses[0] !== 202 || statuses[1] !== 409) throw new Error(`Expected one 202 and one 409, got ${statuses.join(', ')}`);
+    console.log('PASS: Concurrent power requests accept one operation and reject the duplicate.');
+    return { passedCount: 1, failedCount: 0 };
+  } catch (error) {
+    console.error('FAIL: Concurrent power request isolation:', error.message);
+    return { passedCount: 0, failedCount: 1 };
+  }
 }
 
 async function runCrazyAuthVerification() {

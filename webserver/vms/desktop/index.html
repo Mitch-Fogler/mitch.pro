@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+  <meta name="referrer" content="same-origin">
+  <meta name="theme-color" content="#090b0f">
+  <title>Desktop · mitch.pro</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/vms/desktop/desktop.css?v=2">
+</head>
+<body class="cloud-desktop" data-shell="off">
+  <main class="desktop-page">
+    <header class="desktop-toolbar">
+      <a href="/vms/" class="back-button" aria-label="Back to computers">‹</a>
+      <div class="machine-heading"><span id="machine-name">My Computer</span><small id="machine-state"><i></i> Connecting</small></div>
+      <div class="toolbar-actions">
+        <button type="button" id="clipboard-button" title="Send clipboard text" data-connected disabled>Clipboard</button>
+        <button type="button" id="cad-button" data-connected disabled>Ctrl+Alt+Del</button>
+        <button type="button" id="fullscreen-button">Fullscreen</button>
+        <button type="button" id="more-button" aria-label="Desktop controls" aria-expanded="false" aria-controls="power-menu">•••</button>
+      </div>
+      <div class="power-menu" id="power-menu" hidden>
+        <button type="button" id="mobile-clipboard" class="mobile-menu-item" data-connected disabled>Clipboard</button>
+        <button type="button" id="mobile-cad" class="mobile-menu-item" data-connected disabled>Ctrl+Alt+Del</button>
+        <button type="button" data-power="restart">Restart Computer</button>
+        <button type="button" data-power="shutdown">Shut Down</button>
+        <button type="button" class="danger" data-power="force-stop">Force Stop</button>
+      </div>
+    </header>
+
+    <section class="display-frame" id="display-frame">
+      <div id="screen" tabindex="0" aria-label="Remote Linux desktop"></div>
+      <div id="connection-cover" class="connection-cover" role="status">
+        <span class="loader" id="connection-spinner" aria-hidden="true"></span>
+        <h1 id="connection-title">Opening your desktop</h1>
+        <p id="connection-copy">Connecting securely…</p>
+        <button type="button" id="retry-button" hidden>Reconnect</button>
+      </div>
+    </section>
+
+    <div class="mobile-dock">
+      <button type="button" id="keyboard-button" data-connected disabled>Keyboard</button>
+      <button type="button" id="mobile-enter" data-connected disabled>Enter</button>
+      <button type="button" id="mobile-escape" data-connected disabled>Esc</button>
+      <button type="button" id="mobile-fullscreen">⛶ Fullscreen</button>
+    </div>
+    <textarea id="mobile-keyboard" class="mobile-keyboard" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Remote keyboard input" tabindex="-1"></textarea>
+    <p id="desktop-notice" class="desktop-notice" role="status"></p>
+  </main>
+
+  <dialog id="clipboard-dialog">
+    <form method="dialog">
+      <h2>Send text to desktop</h2>
+      <p>Paste text here, then send it to your computer.</p>
+      <textarea id="clipboard-text" rows="6" maxlength="10000" autofocus></textarea>
+      <div><button value="cancel">Cancel</button><button value="send" class="primary">Send</button></div>
+    </form>
+  </dialog>
+  <script type="module" src="/vms/desktop/desktop.js?v=2"></script>
+</body>
+</html>

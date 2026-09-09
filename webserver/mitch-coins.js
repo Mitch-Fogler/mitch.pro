@@ -24,6 +24,12 @@
   }
 
   function accept(data) {
+    if (data?.authenticated === false) {
+      balance = null;
+      status = 'guest';
+      render();
+      return true;
+    }
     if (!data || !['number', 'string'].includes(typeof data.coins) || String(data.coins).trim() === '' || !Number.isFinite(Number(data.coins))) return false;
     balance = Math.max(0, Number(data.coins));
     status = 'ready';

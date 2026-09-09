@@ -148,6 +148,23 @@ EOF
 echo "[deploy] Reloading Caddy proxy configuration..."
 run_docker_compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyfile
 
+# Absorb the first post-reload upstream connection inside the deploy. This also
+# verifies the public proxy path before the old slot is removed.
+echo "[deploy] Warming the newly routed application through Caddy..."
+WARMED=false
+for _ in 1 2 3 4 5; do
+    WARM_STATUS=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" -H "Host: mitch.pro" "http://localhost:6800/enroll/" || echo "000")
+    if [ "$WARM_STATUS" = "200" ]; then
+        WARMED=true
+        break
+    fi
+    sleep 1
+done
+if [ "$WARMED" = false ]; then
+    echo "[deploy] Error: Caddy did not reach the new slot after reload. Aborting before stopping the old slot."
+    exit 1
+fi
+
 # 6. Tear down the old container slot
 echo "[deploy] Stopping and tearing down the old webserver-$ACTIVE_SLOT..."
 run_docker_compose stop "webserver-$ACTIVE_SLOT"
