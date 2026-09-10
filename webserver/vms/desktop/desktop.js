@@ -60,7 +60,7 @@ async function connect() {
     if (token !== generation) return;
     const computer = data.computer;
     $('machine-name').textContent = computer?.name || 'My Computer';
-    document.title = `${computer?.name || 'My Computer'} - mitch.pro`;
+    document.title = `${computer?.name || 'My Computer'} - ${location.hostname}`;
     if (computer?.status !== 'running') throw new Error('Your computer is offline. Start it from My Computer, then reconnect.');
     const session = await request(`/api/vm/computers/${encodeURIComponent(id)}/desktop-session`, { method: 'POST', headers, body: '{}', signal });
     if (token !== generation) return;

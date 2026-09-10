@@ -7,18 +7,20 @@
   <meta name="theme-color" content="#090b0f">
   <title>Desktop · mitch.pro</title>
   <link rel="icon" href="/favicon.ico">
-  <link rel="stylesheet" href="/vms/desktop/desktop.css?v=2">
+  <link rel="stylesheet" href="/vms/desktop/desktop.css?v=3">
 </head>
 <body class="cloud-desktop" data-shell="off">
   <main class="desktop-page">
     <header class="desktop-toolbar">
-      <a href="/vms/" class="back-button" aria-label="Back to computers">‹</a>
+      <a href="/vms/" class="back-button" aria-label="Back to computers"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></a>
+      <span class="toolbar-divider" aria-hidden="true"></span>
+      <div class="machine-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
       <div class="machine-heading"><span id="machine-name">My Computer</span><small id="machine-state"><i></i> Connecting</small></div>
       <div class="toolbar-actions">
-        <button type="button" id="clipboard-button" title="Send clipboard text" data-connected disabled>Clipboard</button>
-        <button type="button" id="cad-button" data-connected disabled>Ctrl+Alt+Del</button>
-        <button type="button" id="fullscreen-button">Fullscreen</button>
-        <button type="button" id="more-button" aria-label="Desktop controls" aria-expanded="false" aria-controls="power-menu">•••</button>
+        <button type="button" id="clipboard-button" title="Send clipboard text" data-connected disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="11" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2"/></svg><span>Clipboard</span></button>
+        <button type="button" id="cad-button" data-connected disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8 3 12l4 4M17 8l4 4-4 4M14 4l-4 16"/></svg><span>Ctrl+Alt+Del</span></button>
+        <button type="button" id="fullscreen-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg><span>Fullscreen</span></button>
+        <button type="button" id="more-button" aria-label="Desktop controls" aria-expanded="false" aria-controls="power-menu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg></button>
       </div>
       <div class="power-menu" id="power-menu" hidden>
         <button type="button" id="mobile-clipboard" class="mobile-menu-item" data-connected disabled>Clipboard</button>
@@ -57,6 +59,6 @@
       <div><button value="cancel">Cancel</button><button value="send" class="primary">Send</button></div>
     </form>
   </dialog>
-  <script type="module" src="/vms/desktop/desktop.js?v=2"></script>
+  <script type="module" src="/vms/desktop/desktop.js?v=3"></script>
 </body>
 </html>

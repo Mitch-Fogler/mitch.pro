@@ -5,6 +5,7 @@ const server = readFileSync('server.js', 'utf8');
 const preferences = readFileSync('webserver/preferences/index.html', 'utf8');
 const shell = readFileSync('webserver/app-shell.js', 'utf8');
 const profile = readFileSync('webserver/profile/index.html', 'utf8');
+const home = readFileSync('webserver/index.html', 'utf8');
 
 assert(server.includes("'Cache-Control': 'private, no-cache, no-store, must-revalidate'"), 'JSON responses must not be cached');
 assert(server.includes('writeDocument(PROFILES_FILE, profiles)'), 'Profile saves must expose persistence errors');
@@ -16,5 +17,9 @@ assert(preferences.includes("CustomEvent('mitch-profile-updated'"), 'Profile edi
 assert(shell.includes("event.detail.type === 'profile_updated'"), 'Shared shell must handle server profile updates');
 assert(shell.includes("typeof window.loadMembers === 'function'"), 'Member surfaces must refresh after profile changes');
 assert(profile.includes('load(true)'), 'Open profile pages must refresh after profile changes');
+assert(server.includes("if (!u.hostname || u.username || u.password) return '';"), 'Extensionless HTTPS avatar URLs must be accepted without permitting URL credentials');
+assert(!server.includes('const pathname = u.pathname.toLowerCase();'), 'Profile images must not require a filename extension');
+assert(home.includes("image.classList.contains('member-presence-avatar')"), 'People rail must replace failed images with initials');
+assert(home.includes('referrerpolicy="no-referrer"'), 'People rail images must avoid hotlink referrer failures');
 
 console.log('Immediate, persisted profile update checks passed.');

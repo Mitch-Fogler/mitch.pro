@@ -2,6 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const grid = $('computer-grid');
+  document.title = `My Computer - ${location.hostname}`;
   const dialog = $('confirm-dialog');
   const headers = { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' };
   const pending = new Map();
@@ -9,6 +10,7 @@
   const esc = value => String(value ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const bytes = value => Number(value) ? `${(Number(value) / 1073741824).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB` : '\u2014';
   const uptime = value => { const n = Number(value) || 0, d = Math.floor(n / 86400), h = Math.floor(n % 86400 / 3600), m = Math.floor(n % 3600 / 60); return !n ? '\u2014' : d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
+  const percent = (used, total) => total > 0 ? Math.max(0, Math.min(100, Math.round(Number(used || 0) / Number(total) * 100))) : 0;
   function setState(name) { ['loading-state', 'empty-state', 'error-state', 'computer-grid'].forEach(id => $(id).classList.toggle('is-hidden', id !== name)); }
   function card(vm) {
     const running = vm.status === 'running';
@@ -18,11 +20,30 @@
     const distro = vm.operatingSystem || 'Linux desktop';
     const mark = /mint/i.test(distro) ? 'LM' : /ubuntu/i.test(distro) ? 'U' : 'PC';
     const open = running && !busy && vm.desktopAvailable !== false;
+    const cpuLoad = Math.max(0, Math.min(100, Math.round(Number(vm.cpuUsage || 0) * 100)));
+    const memoryLoad = percent(vm.memoryUsed, vm.memoryTotal);
+    const diskLoad = percent(vm.diskUsed, vm.diskTotal);
+    const previewTag = open ? 'a' : 'div';
+    const previewLink = open ? ` href="/vms/desktop/?id=${encodeURIComponent(vm.id)}" aria-label="Open ${esc(vm.name || 'My Computer')}"` : '';
     return `<article class="computer-card" data-id="${esc(vm.id)}">
-      <div class="desktop-preview"><span class="status-pill ${busy ? 'transitioning' : running ? 'running' : ''}">${esc(status)}</span><div class="desktop-window" aria-hidden="true"><div class="window-bar"><i></i><i></i><i></i></div><div class="window-content"><div class="mint-mark">${mark}</div><p>${esc(distro)}</p></div></div></div>
-      <div class="computer-details"><div class="computer-title-row"><div><h2>${esc(vm.name || 'My Computer')}</h2><p>${esc(distro)}</p></div>${open ? `<a class="primary-button" href="/vms/desktop/?id=${encodeURIComponent(vm.id)}">Open Desktop <span aria-hidden="true">&#8599;</span></a>` : '<button class="primary-button" disabled>Open Desktop</button>'}</div>
-      <div class="spec-grid"><div class="spec"><span>CPU</span><strong>${esc(vm.cpuCores || '\u2014')} cores</strong></div><div class="spec"><span>Memory</span><strong>${bytes(vm.memoryTotal)}</strong></div><div class="spec"><span>Disk</span><strong>${bytes(vm.diskTotal)}</strong></div><div class="spec"><span>Address</span><strong title="${esc(vm.ipAddress)}">${esc(vm.ipAddress || (running ? 'Connecting...' : '\u2014'))}</strong></div><div class="spec"><span>Uptime</span><strong>${uptime(vm.uptime)}</strong></div></div>
-      <div class="computer-actions">${!running ? `<button class="primary-button" data-action="start" ${busy || vm.status !== 'stopped' ? 'disabled' : ''}>${operation || 'Start Computer'}</button>` : ''}<button class="control-button" data-action="restart" ${!running || busy ? 'disabled' : ''}>Restart</button><button class="control-button" data-action="shutdown" ${!running || busy ? 'disabled' : ''}>Shut Down</button></div></div></article>`;
+      <${previewTag} class="desktop-preview ${running ? 'is-running' : 'is-offline'}"${previewLink}>
+        <span class="status-pill ${busy ? 'transitioning' : running ? 'running' : ''}">${esc(status)}</span>
+        <div class="desktop-window" aria-hidden="true">
+          <div class="window-bar"><span class="window-brand">${mark}</span><span class="window-clock">My Computer</span><span class="window-system"><i></i><i></i><i></i></span></div>
+          <div class="window-content"><div class="desktop-emblem">${mark}</div><div class="desktop-dock"><i></i><i></i><i></i><i></i></div></div>
+        </div>
+        ${open ? '<span class="preview-action">Open desktop <b aria-hidden="true">↗</b></span>' : ''}
+      </${previewTag}>
+      <div class="computer-details">
+        <div class="computer-title-row"><div><p class="machine-label">Personal desktop</p><h2>${esc(vm.name || 'My Computer')}</h2><p>${esc(distro)}</p></div>${open ? `<a class="primary-button" href="/vms/desktop/?id=${encodeURIComponent(vm.id)}"><span>Open Desktop</span><b aria-hidden="true">↗</b></a>` : '<button class="primary-button" disabled>Open Desktop</button>'}</div>
+        <div class="machine-facts"><span><small>Address</small><strong title="${esc(vm.ipAddress)}">${esc(vm.ipAddress || (running ? 'Connecting…' : 'Not available'))}</strong></span><span><small>Uptime</small><strong>${uptime(vm.uptime)}</strong></span></div>
+        <div class="resource-grid">
+          <div class="resource"><span><small>CPU</small><b>${esc(vm.cpuCores || '—')} cores</b></span><em>${cpuLoad}%</em><i><b style="width:${cpuLoad}%"></b></i></div>
+          <div class="resource"><span><small>Memory</small><b>${bytes(vm.memoryTotal)}</b></span><em>${memoryLoad}%</em><i><b style="width:${memoryLoad}%"></b></i></div>
+          <div class="resource"><span><small>Storage</small><b>${bytes(vm.diskTotal)}</b></span><em>${diskLoad}%</em><i><b style="width:${diskLoad}%"></b></i></div>
+        </div>
+        <div class="computer-actions">${!running ? `<button class="primary-button" data-action="start" ${busy || vm.status !== 'stopped' ? 'disabled' : ''}>${operation || 'Start Computer'}</button>` : ''}<button class="control-button" data-action="restart" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">↻</span> Restart</button><button class="control-button danger-control" data-action="shutdown" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">⏻</span> Shut Down</button></div>
+      </div></article>`;
   }
   function render() { grid.innerHTML = computers.map(card).join(''); setState(computers.length ? 'computer-grid' : 'empty-state'); }
   async function load() {

@@ -40,6 +40,7 @@ await context.route('**/*', async route => {
   if (url.pathname === '/api/pass') data = { success: true, content: destinations.map(([href, name]) => `url /${href}/ ${name}`).join('\n') };
   if (url.pathname === '/api/profile') data = { email, nickname: 'Alex', name: 'Alex', bio: 'A little bit of everything.', coins: 1250, balance: 1250, handle: 'alex', profile: { nickname: 'Alex', bio: 'A little bit of everything.' } };
   if (url.pathname === '/api/friends/list') data = { friends: members.slice(0, 2) };
+  if (url.pathname === '/api/vm/computers') data = { serviceAvailable: true, computers: [{ id: 'vm-preview', name: 'My Computer', hostname: 'alex-desktop', operatingSystem: 'Ubuntu Desktop 24.04 LTS', status: 'running', cpuCores: 4, cpuUsage: .18, memoryUsed: 2.4 * 1073741824, memoryTotal: 4 * 1073741824, diskUsed: 11 * 1073741824, diskTotal: 40 * 1073741824, ipAddress: '10.0.0.228', uptime: 17420, desktopAvailable: true }] };
   if (url.pathname === '/api/dm/groups') data = { groups: [{ id: 'study', name: 'After school', members: [email, members[0].email, members[1].email] }] };
   if (url.pathname === '/api/dm/inbox') data = { messages: url.searchParams.has('with') ? [
     { id: 'sample1', from: members[0].email, to: email, text: 'Are you around after school?', ts: Date.now() - 600000 },
@@ -54,7 +55,7 @@ const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 const routes = process.argv.includes('--all')
   ? ['/', '/index-sales.html', '/maintenance.html', ...(await readdir('webserver', { withFileTypes: true })).filter(x => x.isDirectory()).map(x => '/' + x.name + '/')]
-  : ['/', '/encrypt/', '/game-portal/', '/preferences/', '/members/', '/shop/', '/marketplace/', '/inventory/', '/leaderboard/', '/invite/', '/casino/', '/profile/', '/enroll/', '/bell/', '/feedback/', '/faq/', '/admin/', '/index-sales.html'];
+  : ['/', '/encrypt/', '/game-portal/', '/preferences/', '/members/', '/shop/', '/marketplace/', '/inventory/', '/leaderboard/', '/invite/', '/casino/', '/profile/', '/enroll/', '/bell/', '/feedback/', '/faq/', '/admin/', '/vms/', '/vms/desktop/', '/index-sales.html'];
 const results = [];
 for (const route of routes) {
   errors.length = 0;

@@ -2049,10 +2049,7 @@ function sanitizeProfileImageUrl(value, opts = {}) {
   try {
     const u = new URL(raw);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
-    const pathname = u.pathname.toLowerCase();
-    if (!/\.(png|jpe?g|gif|webp|svg|avif|ico)$/i.test(pathname)) {
-      return '';
-    }
+    if (!u.hostname || u.username || u.password) return '';
     return u.href;
   } catch {
     return '';
