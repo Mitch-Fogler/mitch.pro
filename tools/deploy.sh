@@ -61,6 +61,11 @@ else
     git -C /home/mitch/server/bun pull origin master
 fi
 
+# Keep /usr/local/bin/deploy.sh synchronized with repo if running as root
+if [ -f "$PROJECT_DIR/tools/deploy.sh" ] && [ "$(id -u)" -eq 0 ]; then
+    cp "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh 2>/dev/null || true
+fi
+
 echo "[deploy] Starting Blue-Green deployment swap..."
 
 # 1. Determine which slot is currently active based on Caddyfile routing
@@ -79,9 +84,9 @@ echo "[deploy] Target inactive slot to boot is: webserver-$INACTIVE_SLOT (Port $
 
 send_notification "Rebuilding and starting webserver-$INACTIVE_SLOT (Port $INACTIVE_PORT)..." "Deploy Started" "default"
 
-# 2. Build and boot the inactive slot container and the SSH gateway
-echo "[deploy] Rebuilding and starting webserver-$INACTIVE_SLOT and ssh-gateway..."
-run_docker_compose --progress=plain up -d --build "webserver-$INACTIVE_SLOT" ssh-gateway
+# 2. Build and boot the inactive slot container, SSH gateway, and conduit
+echo "[deploy] Rebuilding and starting webserver-$INACTIVE_SLOT, ssh-gateway, and conduit..."
+run_docker_compose --progress=plain up -d --build "webserver-$INACTIVE_SLOT" ssh-gateway conduit
 
 # 3. Poll the inactive container's health check until it is fully ready
 echo "[deploy] Waiting for webserver-$INACTIVE_SLOT to be fully started and responsive..."
