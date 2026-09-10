@@ -509,7 +509,7 @@ async function loadFriends() {
               ${escText(statusText)}
             </span>
           </div>
-          <a class="btn-action friend-message" href="/encrypt/?to=${encodeURIComponent(f.handle || email)}">Message</a>
+          <a class="btn-action friend-message" href="/matrix/">Message</a>
           <button onclick="removeFriend('${escText(email)}')" class="btn-remove" title="Remove Friend">✕</button>
         </div>
       `;

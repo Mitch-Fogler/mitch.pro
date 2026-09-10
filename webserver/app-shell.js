@@ -36,7 +36,7 @@
   var NAV_MITCH = [
     { href: '/vms/', label: 'Computer', icon: '▣', match: function (p) { return p.indexOf('/vms') === 0; } },
     { href: '/', label: 'Home', icon: '⌂', match: function (p) { return p === '/' || p === '/index.html'; } },
-    { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
+    { href: '/matrix/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/matrix') === 0 || p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
     { href: '/games/', label: 'Games', icon: '◆', match: function (p) { return p.indexOf('/games') === 0; } },
     { href: 'https://woodcreek.site/', label: 'Blooket Bot', icon: '▣', match: function () { return false; } },
     { href: '/members/', label: 'Members', icon: '●', match: function (p) { return p.indexOf('/members') === 0 || p.indexOf('/friends') === 0 || p.indexOf('/profile') === 0; } },
@@ -47,7 +47,7 @@
 
   var NAV_RJUHSD = [
     { href: '/', label: 'Home', icon: '⌂', match: function (p) { return p === '/' || p === '/index.html'; } },
-    { href: '/encrypt/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
+    { href: '/matrix/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/matrix') === 0 || p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
     { href: '/#schedule-panel', label: 'Bell', icon: '◷', match: function () { return false; } },
     { href: '/preferences/', label: 'Settings', icon: '⚙', match: function (p) { return p.indexOf('/preferences') === 0; } }
   ];
@@ -120,12 +120,12 @@
     var dock = document.createElement('nav');
     dock.id = 'mobile-dock';
     dock.setAttribute('aria-label', 'Mobile navigation');
-    [['/', 'Home', 'home'], ['/game-portal/', 'Games', 'games'], ['/encrypt/', 'Chat', 'chat'], ['/members/', 'People', 'people']].forEach(function (item) {
+    [['/', 'Home', 'home'], ['/game-portal/', 'Games', 'games'], ['/matrix/', 'Chat', 'chat'], ['/members/', 'People', 'people']].forEach(function (item) {
       var link = document.createElement('a');
       link.href = item[0];
       link.innerHTML = icon(item[2]) + '<span>' + item[1] + '</span>';
       var path = currentPath();
-      if (path === item[0].replace(/\/$/, '') || (item[0] === '/' && path === '/') || (item[2] === 'games' && /^\/(games|game-portal|msn-games)/.test(path)) || (item[2] === 'chat' && /^\/(encrypt|public-chat)/.test(path))) link.setAttribute('aria-current', 'page');
+      if (path === item[0].replace(/\/$/, '') || (item[0] === '/' && path === '/') || (item[2] === 'games' && /^\/(games|game-portal|msn-games)/.test(path)) || (item[2] === 'chat' && /^\/(matrix|encrypt|public-chat)/.test(path))) link.setAttribute('aria-current', 'page');
       dock.appendChild(link);
     });
     var more = document.createElement('button');

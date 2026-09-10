@@ -308,6 +308,7 @@ function parseSites(text) {
     '/games/battleship/', '/games/battleship',
     '/casino/', '/casino',
     '/canvas/', '/canvas',
+    '/matrix/', '/matrix',
     '/encrypt/', '/encrypt',
     '/shop/', '/shop',
     '/public-chat/', '/public-chat',
@@ -670,6 +671,7 @@ function updatePopularLaunches() {
     '/games/battleship/', '/games/battleship',
     '/casino/', '/casino',
     '/canvas/', '/canvas',
+    '/matrix/', '/matrix',
     '/encrypt/', '/encrypt',
     '/shop/', '/shop',
     '/public-chat/', '/public-chat',
@@ -3362,7 +3364,7 @@ if (document.readyState === 'loading') {
 <body data-shell="off" class="home">
 <nav class="home-masthead" aria-label="Primary">
   <a class="home-wordmark" href="/" aria-label="mitch.pro home"><img class="site-logo" src="/icon-192.png" alt="" width="35" height="35">mitch<span>.pro</span></a>
-  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/encrypt/">Chat</a><a href="/game-portal/">Games</a><a href="https://woodcreek.site/">Blooket Bot</a><a href="/members/">People</a><a href="https://rjuhsd.school/">Schedule</a></div>
+  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/matrix/">Chat</a><a href="/game-portal/">Games</a><a href="https://woodcreek.site/">Blooket Bot</a><a href="/members/">People</a><a href="https://rjuhsd.school/">Schedule</a></div>
   <a class="home-account-link" href="/profile/">My account <span aria-hidden="true">↗</span></a>
 </nav>
 
@@ -3472,16 +3474,16 @@ if (document.readyState === 'loading') {
           <span><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span>
           <b>Games</b>
         </a>
-        <a class="hud-main-link hud-main-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');">
+        <a class="hud-main-link hud-main-chat" href="/matrix/" onclick="openHomeHref(event, '/matrix/');">
           <span><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></span>
-          <b>Encrypted Chat</b>
+          <b>Matrix Chat</b>
         </a>
       </nav>
 
       <nav class="home-access-rail" aria-label="Quick access">
-        <a class="home-access-link home-access-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');" aria-label="Open encrypted chat">
+        <a class="home-access-link home-access-chat" href="/matrix/" onclick="openHomeHref(event, '/matrix/');" aria-label="Open Matrix chat">
           <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/><path d="M9 9h6M9 12h4"/><path d="M16 5V4a4 4 0 0 0-8 0v1"/></svg></span>
-          <span class="home-access-copy"><b>Encrypted</b><small>Chat</small></span>
+          <span class="home-access-copy"><b>Matrix</b><small>Chat</small></span>
         </a>
         <a class="home-access-link home-access-games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');" aria-label="Choose a games library">
           <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span>
@@ -3496,10 +3498,10 @@ if (document.readyState === 'loading') {
   </header>
 
   <section class="home-features" aria-label="Start here">
-    <a class="home-feature feature-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');">
+    <a class="home-feature feature-chat" href="/matrix/" onclick="openHomeHref(event, '/matrix/');">
       <span class="feature-eyebrow">CHAT</span>
-      <h2>Encrypted chat</h2>
-      <span class="feature-bottom">Direct messages &amp; group conversations <b aria-hidden="true">↗</b></span>
+      <h2>Matrix chat</h2>
+      <span class="feature-bottom">Decentralized E2E channels &amp; direct messages <b aria-hidden="true">↗</b></span>
       <svg class="feature-chat-art" viewBox="0 0 200 160" fill="none" aria-hidden="true"><path d="M28 25h109a12 12 0 0 1 12 12v61a12 12 0 0 1-12 12H75l-28 22v-22H28a12 12 0 0 1-12-12V37a12 12 0 0 1 12-12Z"/><path d="M43 51h77M43 70h51"/><rect x="110" y="87" width="60" height="50" rx="9"/><path d="M129 88V77a13 13 0 0 1 26 0v11M142 107v12"/></svg>
     </a>
     <a class="home-feature feature-games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');">
@@ -3511,7 +3513,7 @@ if (document.readyState === 'loading') {
   </section>
 
       <nav class="home-actions" aria-label="Quick actions">
-        <a class="hub-action hub-action-primary" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M9 9h6M9 12h4"/></svg></span><span class="action-copy"><b>Encrypted Chat</b><small>Open secure messages</small></span></a>
+        <a class="hub-action hub-action-primary" href="/matrix/" onclick="openHomeHref(event, '/matrix/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M9 9h6M9 12h4"/></svg></span><span class="action-copy"><b>Matrix Chat</b><small>Open secure messages</small></span></a>
         <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="16.5" cy="10" r="2.3"/><path d="M3.5 19c.5-3.3 2.2-5 5.5-5s5 1.7 5.5 5M14 15c3.5-.5 5.5.8 6 3.5"/></svg></span><span class="action-copy"><b>People</b><small>See who's here</small></span></button>
         <a class="hub-action" href="/preferences/" onclick="openHomeHref(event, '/preferences/');"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c.6-4.2 2.9-6.3 7-6.3s6.4 2.1 7 6.3"/></svg></span><span class="action-copy"><b>Account</b><small>Profile and preferences</small></span></a>
         <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="m12 3 6 6-6 12L6 9z"/><path d="M6 9h12M9 9l3-6 3 6-3 12z"/></svg></span><span class="action-copy"><b>Market</b><small>Browse drops</small></span></a>

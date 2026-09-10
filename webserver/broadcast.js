@@ -269,7 +269,7 @@
   }
 
   function showMessageToast(message) {
-    if (!message || location.pathname.startsWith('/encrypt')) return;
+    if (!message || location.pathname.startsWith('/encrypt') || location.pathname.startsWith('/matrix')) return;
     removePushPrompt();
     var stack = document.getElementById('sw-message-toasts');
     if (!stack) {
@@ -286,7 +286,7 @@
     toast.className = 'sw-message-toast';
     toast.innerHTML = '<span class="sw-message-toast-icon" aria-hidden="true"><img src="/icon-192.png" alt=""></span>' +
       '<span class="sw-message-toast-copy"><b>' + escText(title) + '</b><span>New encrypted message</span></span>' +
-      '<a href="/encrypt/">Open</a>';
+      '<a href="/matrix/">Open</a>';
     stack.prepend(toast);
     while (stack.children.length > 3) stack.lastElementChild.remove();
     setTimeout(function() { if (toast.parentNode) toast.remove(); }, 9000);

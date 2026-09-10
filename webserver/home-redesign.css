@@ -275,7 +275,7 @@ body.home .home-actions { display:grid; grid-template-columns:repeat(4,minmax(0,
 body.home .home-actions .hub-action { min-height:76px; background:var(--t-bg2)!important; border:1px solid var(--t-bd)!important; border-radius:14px; }
 body.home .home-actions .hub-action .action-copy b { font-size:15px; }
 body.home .home-actions .hub-action .action-copy small { font-size:12px; }
-body.home .home-actions a[href='/encrypt/'],body.home .home-actions a[href='/game-portal/'] { display:none; }
+body.home .home-actions a[href='/encrypt/'],body.home .home-actions a[href='/matrix/'],body.home .home-actions a[href='/game-portal/'] { display:none; }
 body.home .hud-pane-aside { border:0; background:transparent; padding:0; }
 body.home .hud-workspace { grid-template-columns:minmax(0,1fr) 320px; gap:24px; }
 body.home .command-deck-heading { margin-bottom:14px; }
