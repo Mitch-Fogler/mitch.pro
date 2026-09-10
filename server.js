@@ -208,6 +208,7 @@ const CANVAS_HISTORY_FILE    = join(DATA_DIR, 'canvas_history.jsonl');
 const UNLOCKED_AI_FILE       = join(DATA_DIR, 'unlocked_ai.json');
 const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
+const MATRIX_USERS_FILE      = join(DATA_DIR, 'matrix_users.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
 const MODERATOR_PANEL_FILE   = join(DATA_DIR, 'moderator_panel.json');
@@ -2734,6 +2735,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/verify-open',
   '/verify-open.json',
   '/api/backgrounds/list',
+  '/api/matrix/sso-login',
+  '/api/matrix/sso-status',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -5521,6 +5524,7 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/premium/email/register',
   '/api/verify-open',
   '/verify-open.json',
+  '/api/matrix/sso-login',
 ]);
 
 function csrfFailureIfUnsafe(req, path, method) {
@@ -7659,6 +7663,116 @@ function loadAllGamesList() {
   return list;
 }
 
+// ── Matrix Conduit & Mitch.pro SSO Integration ────────────────────────────────
+async function callConduit(subpath, options = {}) {
+  const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'conduit' : '127.0.0.1');
+  const candidateHosts = Array.from(new Set([conduitHost, conduitHost === '127.0.0.1' ? 'conduit' : '127.0.0.1', 'mitch-matrix-conduit']));
+  const headers = new Headers(options.headers || {});
+  headers.set('host', 'mitch.pro');
+  let lastErr = null;
+  for (const hostCandidate of candidateHosts) {
+    try {
+      const url = `http://${hostCandidate}:6167${subpath}`;
+      const res = await fetch(url, {
+        ...options,
+        headers
+      });
+      return res;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Failed to reach Conduit');
+}
+
+function getMatrixPasswordForUid(uid) {
+  const secret = ID_SECRET || 'mitch-matrix-secret-salt-2026';
+  return createHmac('sha256', secret).update('matrix-account:' + uid).digest('hex');
+}
+
+async function loginOrRegisterMatrixUser(uid, desiredUsername, displayName) {
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  let assignedUser = matrixUsers[uid];
+  if (!assignedUser) {
+    assignedUser = normalizeUsername(desiredUsername);
+    if (!assignedUser || assignedUser.length < 2) assignedUser = 'user_' + uid.slice(0, 6);
+  }
+
+  const password = getMatrixPasswordForUid(uid);
+
+  // 1. Try login first
+  let loginRes;
+  try {
+    loginRes = await callConduit('/_matrix/client/v3/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: assignedUser },
+        password,
+        initial_device_display_name: 'Mitch.pro Web'
+      })
+    });
+  } catch (err) {
+    throw new Error('Conduit homeserver unreachable: ' + (err?.message || err));
+  }
+
+  let loginData = await loginRes.json();
+
+  // 2. If login failed (e.g. user does not exist yet), register user
+  if (!loginRes.ok || loginData.errcode === 'M_FORBIDDEN' || loginData.errcode === 'M_USER_DEACTIVATED') {
+    let candidateName = assignedUser;
+    let registered = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const regRes = await callConduit('/_matrix/client/v3/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: candidateName,
+          password,
+          auth: { type: 'm.login.dummy' }
+        })
+      });
+      const regData = await regRes.json();
+      if (regRes.ok && regData.access_token) {
+        loginData = regData;
+        assignedUser = candidateName;
+        registered = true;
+        break;
+      } else if (regData.errcode === 'M_USER_IN_USE') {
+        candidateName = `${assignedUser}-${attempt + 2}`;
+      } else {
+        throw new Error(regData.error || 'Failed to register Matrix account');
+      }
+    }
+    if (!registered && !loginData.access_token) {
+      throw new Error('Failed to create unique Matrix account name');
+    }
+  }
+
+  // Persist mapping
+  if (matrixUsers[uid] !== assignedUser) {
+    matrixUsers[uid] = assignedUser;
+    saveJsonSync(MATRIX_USERS_FILE, matrixUsers);
+  }
+
+  // 3. Update display name on Conduit if token is present
+  if (loginData.access_token && displayName) {
+    try {
+      await callConduit(`/_matrix/client/v3/profile/${encodeURIComponent(loginData.user_id)}/displayname`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.access_token}`
+        },
+        body: JSON.stringify({ displayname: displayName })
+      });
+    } catch (_) {}
+  }
+
+  return { ...loginData, username: assignedUser };
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 const banOpenPaths = new Set([
@@ -7808,6 +7922,75 @@ async function handleRequest(req, server) {
         enabled: false,
         basename: '/matrix'
       }
+    }, {
+      'Access-Control-Allow-Origin': '*'
+    });
+  }
+
+  // Mitch.pro Matrix Single Sign-On (SSO) Login
+  if (path === '/api/matrix/sso-login' && method === 'POST') {
+    const cookies = getCookies(req);
+    const uid = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(uid)) {
+      return jsonResp(401, { ok: false, error: 'Not authenticated on Mitch.pro' }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+    const ban = bannedInfoForSid(uid);
+    if (ban) {
+      return jsonResp(403, { ok: false, error: 'Account is banned', banned: true }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+    const email = emailFromSid(uid);
+    const norm = email ? normalizeEmail(email) : '';
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = norm ? (profiles[norm] || {}) : {};
+    const username = normalizeUsername(prof.username || (email ? defaultUsernameForEmail(norm) : 'user_' + uid.slice(0, 6)));
+    const displayName = prof.displayName || prof.nickname || username;
+
+    try {
+      const authResult = await loginOrRegisterMatrixUser(uid, username, displayName);
+      const host = requestHost(req) || 'mitch.pro';
+      const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
+      const baseUrl = `${proto}${host}`;
+      return jsonResp(200, {
+        ok: true,
+        user_id: authResult.user_id,
+        access_token: authResult.access_token,
+        device_id: authResult.device_id,
+        home_server: authResult.home_server || 'mitch.pro',
+        base_url: baseUrl,
+        username: authResult.username,
+        displayName
+      }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    } catch (err) {
+      console.error('[matrix-sso] Login error:', err?.message || err);
+      return jsonResp(500, { ok: false, error: 'Matrix SSO authentication failed', details: err?.message }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+  }
+
+  // Mitch.pro Matrix SSO Status
+  if (path === '/api/matrix/sso-status' && method === 'GET') {
+    const cookies = getCookies(req);
+    const uid = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(uid) || bannedInfoForSid(uid)) {
+      return jsonResp(200, { authenticated: false }, { 'Access-Control-Allow-Origin': '*' });
+    }
+    const email = emailFromSid(uid);
+    const norm = email ? normalizeEmail(email) : '';
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = norm ? (profiles[norm] || {}) : {};
+    const username = normalizeUsername(prof.username || (email ? defaultUsernameForEmail(norm) : 'user_' + uid.slice(0, 6)));
+    const displayName = prof.displayName || prof.nickname || username;
+    return jsonResp(200, {
+      authenticated: true,
+      username,
+      displayName
     }, {
       'Access-Control-Allow-Origin': '*'
     });
