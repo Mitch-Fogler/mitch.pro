@@ -837,6 +837,51 @@
         <p>Real-time page visits.</p>
         <div id="traffic-feed" class="live-feed"></div>
       </div>
+      <div class="action-card" id="matrix-moderation-card" style="grid-column: 1 / -1;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+          <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#10b981;"></span>
+            Matrix Chat Moderation &amp; Staff
+          </h2>
+          <div style="display:flex; gap:8px;">
+            <a href="/matrix/" target="_blank" style="font-size:0.8rem; color:var(--t-ac); text-decoration:none; border:1px solid var(--t-bd); padding:4px 10px; border-radius:6px; background:var(--t-bg3);">Open Web Chat ↗</a>
+            <button type="button" class="mini" onclick="loadMatrixModeration()">Refresh</button>
+          </div>
+        </div>
+        <p style="margin-top:0; color:var(--t-fg2); font-size:0.82rem;">Official room: <code style="color:var(--t-ac);">#general:mitch.pro</code>. Staff power levels: Admin (100), Moderator (50), Member (0).</p>
+
+        <div style="margin-top: 14px;">
+          <h3 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--t-fg2); margin-bottom: 8px;">Active Room Staff</h3>
+          <div id="matrix-staff-roster" style="min-height: 48px;"><span class="muted">Loading room staff...</span></div>
+        </div>
+
+        <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
+          <!-- User Role & Punishment Form -->
+          <form onsubmit="submitMatrixUserAction(event)" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.15); padding:12px; border-radius:8px; border:1px solid var(--t-bd);">
+            <h4 style="margin:0; font-size:0.85rem;">Manage User / Staff Role</h4>
+            <input id="matrix-target-user" type="text" placeholder="@username:mitch.pro or username" required style="font-size:0.82rem;">
+            <select id="matrix-user-action" style="font-size:0.82rem;">
+              <option value="set_admin">Promote to Admin (Power Level 100)</option>
+              <option value="set_mod">Promote to Moderator (Power Level 50)</option>
+              <option value="set_member">Demote to Member (Power Level 0)</option>
+              <option value="kick">Kick User from General</option>
+              <option value="ban">Ban User from General</option>
+            </select>
+            <input id="matrix-action-reason" type="text" placeholder="Reason (optional)" maxlength="200" style="font-size:0.82rem;">
+            <button type="submit" style="font-size:0.82rem; padding:8px;">Execute Action</button>
+            <div id="matrix-moderation-status" class="form-status"></div>
+          </form>
+
+          <!-- Message Redaction Form -->
+          <form onsubmit="submitMatrixRedact(event)" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.15); padding:12px; border-radius:8px; border:1px solid var(--t-bd);">
+            <h4 style="margin:0; font-size:0.85rem;">Redact Message Event</h4>
+            <input id="matrix-redact-event-id" type="text" placeholder="Event ID ($...)" required style="font-size:0.82rem;">
+            <input id="matrix-redact-reason" type="text" placeholder="Reason for redaction" maxlength="200" style="font-size:0.82rem;">
+            <button type="submit" class="warn" style="font-size:0.82rem; padding:8px;">Redact Message</button>
+            <div id="matrix-redact-status" class="form-status"></div>
+          </form>
+        </div>
+      </div>
       <div class="action-card warning" id="soft-maintenance-card" style="display: none;">
         <h2>Site Access</h2>
         <p>Close the public site for maintenance while keeping staff access available.</p>
@@ -1956,7 +2001,7 @@
         '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td><b>' + esc(r.targetHandle ? '@' + r.targetHandle : r.target) + '</b><div class="muted">' + esc(r.target) + '</div></td><td>' + esc(r.reporter) + '</td><td><div class="chat-text"><b>' + esc(r.reason) + '</b>' + (r.details ? '<br>' + esc(r.details) : '') + '</div></td><td>' + statusPill(r.status) + (r.resolvedBy ? '<div class="muted">By ' + esc(r.resolvedBy) + '</div>' : '') + '</td><td><div class="row-actions"><button type="button" class="mini ok" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"reviewed")\'>Reviewed</button><button type="button" class="mini warn" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"action taken")\'>Action taken</button><button type="button" class="mini" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"dismissed")\'>Dismiss</button></div></td></tr>'
       );
 
-      table('chatReports-table', ['Time', 'Reporter', 'Reason', 'Reported Chat Context'], filtered.chatReports || [], r => {
+      table('chatReports-table', ['Time', 'Reporter', 'Reason', 'Reported Chat Context', 'Actions'], filtered.chatReports || [], r => {
         let transcriptHtml = '';
         if (Array.isArray(r.context) && r.context.length > 0) {
           transcriptHtml = '<div class="chat-transcript" style="font-family: monospace; background: rgba(0,0,0,0.2); border: 1px solid var(--t-bd); border-radius: 4px; padding: 8px; max-height: 200px; overflow-y: auto; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; text-align: left; max-width: 600px;">' +
@@ -1975,7 +2020,26 @@
         } else {
           transcriptHtml = '<span class="muted">No context provided</span>';
         }
-        return '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td><span class="pill ok">' + esc(r.reportedBy) + '</span></td><td>' + esc(r.reason) + '</td><td>' + transcriptHtml + '</td></tr>';
+
+        const isMatrix = !!(r.matrixEventId || (r.id && String(r.id).startsWith('matrix-')));
+        const typeBadge = isMatrix ? '<span class="pill warn" style="font-size:0.7rem; margin-right:4px;">Matrix</span> ' : '';
+        const statusBadge = r.status ? ` <span class="pill ${r.status === 'Resolved' ? 'ok' : 'warn'}" style="font-size:0.7rem;">${esc(r.status)}</span>` : '';
+
+        let actionsHtml = '<div class="row-actions" style="display:flex; flex-wrap:wrap; gap:4px;">';
+        if (isMatrix && r.matrixEventId) {
+          actionsHtml += `<button type="button" class="mini warn" onclick="matrixRedact('${esc(r.matrixRoomId || '')}', '${esc(r.matrixEventId)}', 'Redacted via safety report')">Redact</button>`;
+        }
+        if (isMatrix && r.matrixSender && r.matrixSender !== 'unknown') {
+          actionsHtml += `<button type="button" class="mini danger" onclick="matrixKickUser('${esc(r.matrixSender)}', 'Kicked via report')">Kick</button>`;
+          actionsHtml += `<button type="button" class="mini danger" onclick="matrixBanUser('${esc(r.matrixSender)}', 'Banned via report')">Ban</button>`;
+        }
+        if (r.status !== 'Resolved') {
+          actionsHtml += `<button type="button" class="mini ok" onclick="resolveChatReport(${r.ts}, 'resolve')">Resolve</button>`;
+        }
+        actionsHtml += `<button type="button" class="mini" onclick="resolveChatReport(${r.ts}, 'delete')">Delete</button>`;
+        actionsHtml += '</div>';
+
+        return '<tr><td>' + esc(fmtTime(r.ts)) + statusBadge + '</td><td><span class="pill ok">' + esc(r.reportedBy) + '</span></td><td>' + typeBadge + esc(r.reason) + '</td><td>' + transcriptHtml + '</td><td>' + actionsHtml + '</td></tr>';
       });
 
       table('cheatLogs-table', ['Time', 'Email', 'Game', 'Details', 'IP'], filtered.cheatLogs || [], r =>
@@ -2106,6 +2170,174 @@
       }
     }
 
+    async function resolveChatReport(ts, action = 'resolve') {
+      try {
+        const res = await fetch('/api/admin/chat-reports/resolve', {
+          method: 'POST',
+          credentials: 'include',
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+          body: JSON.stringify({ ts, action })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Failed to update report');
+        await loadData();
+      } catch (err) {
+        alert('Failed to resolve report: ' + err.message);
+      }
+    }
+
+    async function loadMatrixModeration() {
+      const container = document.getElementById('matrix-staff-roster');
+      if (!container) return;
+      try {
+        const res = await fetch('/api/matrix/moderation/overview', {
+          credentials: 'include',
+          headers: getAdminHeaders()
+        });
+        if (!res.ok) {
+          container.innerHTML = '<span class="muted">Could not load Matrix staff roster.</span>';
+          return;
+        }
+        const data = await res.json();
+        if (!data.staff || !data.staff.length) {
+          container.innerHTML = '<span class="muted">No staff currently assigned in official room.</span>';
+          return;
+        }
+        container.innerHTML = data.staff.map(s => {
+          const isAdm = s.powerLevel >= 100;
+          const badgeClass = isAdm ? 'pill ok' : 'pill warn';
+          return `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--t-bd); border-radius:6px; margin-bottom:6px; flex-wrap:wrap; gap:6px;">` +
+            `<div><b>${esc(s.userId)}</b> <span class="${badgeClass}" style="margin-left:6px; font-size:0.75rem;">${esc(s.role)} (PL ${s.powerLevel})</span></div>` +
+            `<div style="display:flex; gap:6px;">` +
+            (isAdm
+              ? `<button type="button" class="mini warn" onclick="matrixSetRole('${esc(s.userId)}', 50)">Set Mod (50)</button>`
+              : `<button type="button" class="mini ok" onclick="matrixSetRole('${esc(s.userId)}', 100)">Set Admin (100)</button>`) +
+            `<button type="button" class="mini danger" onclick="matrixSetRole('${esc(s.userId)}', 0)">Remove Staff (0)</button>` +
+            `</div></div>`;
+        }).join('');
+      } catch (e) {
+        container.innerHTML = '<span class="muted">Error loading Matrix staff: ' + esc(e.message) + '</span>';
+      }
+    }
+
+    async function submitMatrixUserAction(e) {
+      e.preventDefault();
+      const userIdInput = document.getElementById('matrix-target-user');
+      const actionSelect = document.getElementById('matrix-user-action');
+      const reasonInput = document.getElementById('matrix-action-reason');
+      const statusEl = document.getElementById('matrix-moderation-status');
+      if (!userIdInput) return;
+
+      const userId = userIdInput.value.trim();
+      const action = actionSelect.value;
+      const reason = reasonInput.value.trim();
+
+      statusEl.textContent = 'Processing...';
+      statusEl.className = 'form-status';
+
+      try {
+        if (action === 'set_admin' || action === 'set_mod' || action === 'set_member') {
+          const pl = action === 'set_admin' ? 100 : (action === 'set_mod' ? 50 : 0);
+          await matrixSetRole(userId, pl);
+          statusEl.textContent = `Set ${userId} to Power Level ${pl}`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'kick') {
+          await matrixKickUser(userId, reason, true);
+          statusEl.textContent = `User ${userId} was kicked`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'ban') {
+          await matrixBanUser(userId, reason, true);
+          statusEl.textContent = `User ${userId} was banned`;
+          statusEl.className = 'form-status ok';
+        }
+        userIdInput.value = '';
+        reasonInput.value = '';
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'form-status err';
+      }
+    }
+
+    async function submitMatrixRedact(e) {
+      e.preventDefault();
+      const eventIdInput = document.getElementById('matrix-redact-event-id');
+      const reasonInput = document.getElementById('matrix-redact-reason');
+      const statusEl = document.getElementById('matrix-redact-status');
+      if (!eventIdInput) return;
+
+      const eventId = eventIdInput.value.trim();
+      const reason = reasonInput.value.trim();
+
+      statusEl.textContent = 'Redacting...';
+      statusEl.className = 'form-status';
+
+      try {
+        await matrixRedact('', eventId, reason, true);
+        statusEl.textContent = `Event ${eventId} redacted successfully`;
+        statusEl.className = 'form-status ok';
+        eventIdInput.value = '';
+        reasonInput.value = '';
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'form-status err';
+      }
+    }
+
+    async function matrixSetRole(userId, powerLevel) {
+      if (!userId) return;
+      const res = await fetch('/api/matrix/moderation/set-role', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId, powerLevel: Number(powerLevel) })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to update Matrix role');
+      loadMatrixModeration();
+    }
+
+    async function matrixKickUser(userId, reason, skipConfirm = false) {
+      if (!skipConfirm && !confirm(`Kick ${userId} from official room?`)) return;
+      const res = await fetch('/api/matrix/moderation/kick', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId, reason: reason || 'Kicked by staff' })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to kick user');
+      if (!skipConfirm) alert(`User ${userId} was kicked.`);
+      loadMatrixModeration();
+    }
+
+    async function matrixBanUser(userId, reason, skipConfirm = false) {
+      if (!skipConfirm && !confirm(`Permanently BAN ${userId} from official room?`)) return;
+      const res = await fetch('/api/matrix/moderation/ban', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId, reason: reason || 'Banned by staff' })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to ban user');
+      if (!skipConfirm) alert(`User ${userId} was banned.`);
+      loadMatrixModeration();
+    }
+
+    async function matrixRedact(roomId, eventId, reason, skipConfirm = false) {
+      if (!skipConfirm && !confirm(`Redact/delete event ${eventId}?`)) return;
+      const res = await fetch('/api/matrix/moderation/redact', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ roomId, eventId, reason: reason || 'Inappropriate content' })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to redact event');
+      if (!skipConfirm) alert(`Event ${eventId} redacted successfully.`);
+      loadData();
+    }
+
     const MODERATOR_DIRECT_ACTIONS = new Set([
       '/api/admin/restricted-mode',
       '/api/admin/shadow-ban',
@@ -2116,7 +2348,10 @@
       '/api/admin/prox/block',
       '/api/admin/prox/unblock',
       '/api/admin/chat-reports/resolve',
-      '/api/admin/broadcast'
+      '/api/admin/broadcast',
+      '/api/matrix/moderation/kick',
+      '/api/matrix/moderation/ban',
+      '/api/matrix/moderation/redact'
     ]);
 
     async function postAdmin(url, body) {
@@ -2502,6 +2737,7 @@
       await checkPassphraseStatus();
       await loadSoftMaintenanceStatus();
       await loadShopCatalog();
+      await loadMatrixModeration();
       if (currentUser.isAdmin && location.hash === '#logs-tools') {
         loadAppLogs();
       }

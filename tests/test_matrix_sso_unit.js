@@ -22,6 +22,8 @@ try {
 
 const NAMES_FILE = join(DATA_DIR, 'names.json');
 const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
+const MODERATORS_FILE = join(DATA_DIR, 'moderators.json');
+const CHAT_REPORTS_FILE = join(DATA_DIR, 'chat_reports.json');
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -46,29 +48,123 @@ function makeEmailId(email, gen = 0) {
   return raw + '.' + sig;
 }
 
+// 1. Regular test user
 const testEmail = 'matrix_test_user@student.rjuhsd.us';
 const testNormEmail = normalizeEmail(testEmail);
 const testSid = makeEmailId(testNormEmail, 0);
 
-// Ensure test user exists in names.json and profiles.json
+// 2. Admin test user (in test mode, admin@mitch.pro is automatically recognized as admin)
+const adminEmail = 'admin@mitch.pro';
+const adminNormEmail = normalizeEmail(adminEmail);
+const adminSid = makeEmailId(adminNormEmail, 0);
+
+// 3. Moderator test user
+const modEmail = 'matrix_mod_user@student.rjuhsd.us';
+const modNormEmail = normalizeEmail(modEmail);
+const modSid = makeEmailId(modNormEmail, 0);
+
+// Ensure test users exist in names.json and profiles.json
 const names = { ...readDocument(NAMES_FILE, {}) };
 names[testSid] = testEmail;
+names[adminSid] = adminEmail;
+names[modSid] = modEmail;
 writeDocument(NAMES_FILE, names);
 
 const profiles = { ...readDocument(PROFILES_FILE, {}) };
-profiles[testNormEmail] = {
-  username: 'matrixtestuser',
-  displayName: 'Matrix Test User'
-};
+profiles[testNormEmail] = { username: 'matrixtestuser', displayName: 'Matrix Test User' };
+profiles[adminNormEmail] = { username: 'admin', displayName: 'Site Administrator' };
+profiles[modNormEmail] = { username: 'matrixmoduser', displayName: 'Matrix Mod User' };
 writeDocument(PROFILES_FILE, profiles);
+
+// Ensure moderator user is in moderators.json
+const origMods = readDocument(MODERATORS_FILE, []);
+const origReports = readDocument(CHAT_REPORTS_FILE, []);
+const mods = Array.from(new Set([...origMods, modNormEmail]));
+writeDocument(MODERATORS_FILE, mods);
+
+// Start Mock Conduit Server
+const MOCK_CONDUIT_PORT = 6188;
+let mockPowerLevels = { users: { '@mitch_admin:mitch.pro': 100 }, users_default: 0 };
+const kickedUsers = [];
+const bannedUsers = [];
+const redactedEvents = [];
+
+const mockConduit = Bun.serve({
+  port: MOCK_CONDUIT_PORT,
+  async fetch(req) {
+    const url = new URL(req.url);
+    const path = url.pathname;
+    const method = req.method;
+
+    if (path === '/_matrix/client/v3/login' && method === 'POST') {
+      const b = await req.json().catch(() => ({}));
+      const user = b.identifier?.user || 'user';
+      return Response.json({ user_id: `@${user}:mitch.pro`, access_token: `tok_${user}`, device_id: 'DEV_MOCK', home_server: 'mitch.pro' });
+    }
+    if (path === '/_matrix/client/v3/register' && method === 'POST') {
+      const b = await req.json().catch(() => ({}));
+      const user = b.username || 'user';
+      return Response.json({ user_id: `@${user}:mitch.pro`, access_token: `tok_${user}`, device_id: 'DEV_MOCK', home_server: 'mitch.pro' });
+    }
+    if (path.startsWith('/_matrix/client/v3/profile/')) {
+      return Response.json({});
+    }
+    if (path.startsWith('/_matrix/client/v3/directory/room/')) {
+      return Response.json({ room_id: '!official_general:mitch.pro' });
+    }
+    if (path === '/_matrix/client/v3/createRoom') {
+      return Response.json({ room_id: '!official_general:mitch.pro' });
+    }
+    if (path.startsWith('/_matrix/client/v3/join/')) {
+      return Response.json({ room_id: '!official_general:mitch.pro' });
+    }
+    if (path.includes('/state/m.room.power_levels')) {
+      if (method === 'GET') {
+        return Response.json(mockPowerLevels);
+      }
+      if (method === 'PUT') {
+        mockPowerLevels = await req.json();
+        return Response.json({ event_id: '$pl_upd_' + Date.now() });
+      }
+    }
+    if (path.includes('/event/')) {
+      return Response.json({
+        event_id: path.split('/').pop(),
+        sender: '@test_spammer:mitch.pro',
+        content: { body: 'This is a test inappropriate message!' },
+        origin_server_ts: 1725900000000
+      });
+    }
+    if (path.includes('/report/')) {
+      return Response.json({});
+    }
+    if (path.endsWith('/kick')) {
+      const b = await req.json().catch(() => ({}));
+      kickedUsers.push(b.user_id);
+      return Response.json({});
+    }
+    if (path.endsWith('/ban')) {
+      const b = await req.json().catch(() => ({}));
+      bannedUsers.push(b.user_id);
+      return Response.json({});
+    }
+    if (path.includes('/redact/')) {
+      redactedEvents.push(decodeURIComponent(path));
+      return Response.json({ event_id: '$redacted_' + Date.now() });
+    }
+    return Response.json({ error: 'not found' }, { status: 404 });
+  }
+});
 
 // Start a test server instance
 const TEST_PORT = 6855;
 process.env.PORT = String(TEST_PORT);
 process.env.NODE_ENV = 'test';
 process.env.SESSION_COOKIE_SECURE = '0';
+process.env.CONDUIT_PORT = String(MOCK_CONDUIT_PORT);
+process.env.CONDUIT_HOST = '127.0.0.1';
 
-console.log(`--- Starting server for Matrix SSO unit tests on port ${TEST_PORT} ---`);
+console.log(`--- Starting server for Matrix SSO unit tests on port ${TEST_PORT} (mock Conduit port ${MOCK_CONDUIT_PORT}) ---`);
 const serverProc = Bun.spawn(['bun', 'server.js'], {
   cwd: REPO_ROOT,
   env: {
@@ -78,6 +174,8 @@ const serverProc = Bun.spawn(['bun', 'server.js'], {
     SESSION_COOKIE_SECURE: '0',
     PVE_SSH_HOST: '',
     DATA_DIR: DATA_DIR,
+    CONDUIT_PORT: String(MOCK_CONDUIT_PORT),
+    CONDUIT_HOST: '127.0.0.1',
   },
   stdout: 'inherit',
   stderr: 'inherit'
@@ -120,9 +218,7 @@ try {
   // 3. Authenticated SSO status
   console.log('--- 3. Testing authenticated /api/matrix/sso-status ---');
   const resAuthStatus = await fetch(`${BASE_URL}/api/matrix/sso-status`, {
-    headers: {
-      'Cookie': `studentId=${testSid}`
-    }
+    headers: { 'Cookie': `studentId=${testSid}` }
   });
   assert.equal(resAuthStatus.status, 200);
   const dataAuthStatus = await resAuthStatus.json();
@@ -140,7 +236,130 @@ try {
   assert(Array.isArray(configData.homeserverList));
   console.log('/matrix/config.json passed');
 
-  console.log('=== ALL MATRIX SSO UNIT TESTS PASSED SUCCESSFULLY! ===');
+  // 5. Authenticated regular user login & auto-join (Power Level 0)
+  console.log('--- 5. Testing authenticated user /api/matrix/sso-login (member PL 0) ---');
+  const resUserLogin = await fetch(`${BASE_URL}/api/matrix/sso-login`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${testSid}` }
+  });
+  assert.equal(resUserLogin.status, 200);
+  const dataUserLogin = await resUserLogin.json();
+  assert.equal(dataUserLogin.ok, true);
+  assert.equal(dataUserLogin.role, 'member');
+  assert.equal(dataUserLogin.powerLevel, 0);
+  assert.equal(dataUserLogin.officialRoom, '#general:mitch.pro');
+  console.log('Regular member auto-provisioning passed:', dataUserLogin.user_id);
+
+  // 6. Admin user auto-promotion (Power Level 100)
+  console.log('--- 6. Testing Admin auto-promotion to Power Level 100 ---');
+  const resAdminLogin = await fetch(`${BASE_URL}/api/matrix/sso-login`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}` }
+  });
+  assert.equal(resAdminLogin.status, 200);
+  const dataAdminLogin = await resAdminLogin.json();
+  assert.equal(dataAdminLogin.ok, true);
+  assert.equal(dataAdminLogin.role, 'admin');
+  assert.equal(dataAdminLogin.powerLevel, 100);
+  assert.equal(mockPowerLevels.users['@admin:mitch.pro'], 100, 'Admin must be promoted to Power Level 100 in room');
+  console.log('Admin auto-promoted successfully: @admin:mitch.pro -> PL 100');
+
+  // 7. Moderator user auto-promotion (Power Level 50)
+  console.log('--- 7. Testing Moderator auto-promotion to Power Level 50 ---');
+  const resModLogin = await fetch(`${BASE_URL}/api/matrix/sso-login`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${modSid}` }
+  });
+  assert.equal(resModLogin.status, 200);
+  const dataModLogin = await resModLogin.json();
+  assert.equal(dataModLogin.ok, true);
+  assert.equal(dataModLogin.role, 'moderator');
+  assert.equal(dataModLogin.powerLevel, 50);
+  assert.equal(mockPowerLevels.users['@matrixmoduser:mitch.pro'], 50, 'Moderator must be promoted to Power Level 50 in room');
+  console.log('Moderator auto-promoted successfully: @matrixmoduser:mitch.pro -> PL 50');
+
+  // 8. Intercept message report into Mitch.pro Chat Safety Reports
+  console.log('--- 8. Testing Matrix report interception into CHAT_REPORTS_FILE ---');
+  const reportEventId = '$bad_message_test_123';
+  const resReport = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/report/${encodeURIComponent(reportEventId)}`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${testSid}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ reason: 'Toxic language in general chat', score: -100 })
+  });
+  assert.equal(resReport.status, 200);
+  const savedReports = readDocument(CHAT_REPORTS_FILE, []);
+  const foundReport = savedReports.find(r => r.matrixEventId === reportEventId || (r.id && r.id.includes('bad_message_test_123')));
+  assert(foundReport, 'Report must be saved in chat_reports.json');
+  assert(foundReport.reason.includes('Toxic language'));
+  assert.equal(foundReport.matrixRoomId, '!official_general:mitch.pro');
+  assert.equal(foundReport.context[0].from, '@test_spammer:mitch.pro');
+  assert(foundReport.context[0].text.includes('test inappropriate message'));
+  console.log('Matrix chat report intercepted and saved to safety dashboard:', foundReport.id);
+
+  // 9. Matrix Moderation Overview API
+  console.log('--- 9. Testing GET /api/matrix/moderation/overview ---');
+  const resOverview = await fetch(`${BASE_URL}/api/matrix/moderation/overview`, {
+    headers: { 'Cookie': `studentId=${adminSid}` }
+  });
+  assert.equal(resOverview.status, 200);
+  const dataOverview = await resOverview.json();
+  assert.equal(dataOverview.ok, true);
+  assert.equal(dataOverview.officialRoom, '#general:mitch.pro');
+  assert(Array.isArray(dataOverview.staff));
+  const hasAdminStaff = dataOverview.staff.some(s => s.userId === '@admin:mitch.pro' && s.powerLevel === 100);
+  const hasModStaff = dataOverview.staff.some(s => s.userId === '@matrixmoduser:mitch.pro' && s.powerLevel === 50);
+  assert(hasAdminStaff, 'Admin must appear in staff roster');
+  assert(hasModStaff, 'Moderator must appear in staff roster');
+  console.log('Moderation overview passed with staff roster:', dataOverview.staff);
+
+  // 10. Matrix Moderation Role Management (POST /api/matrix/moderation/set-role)
+  console.log('--- 10. Testing POST /api/matrix/moderation/set-role ---');
+  const resSetRole = await fetch(`${BASE_URL}/api/matrix/moderation/set-role`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${adminSid}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ userId: '@matrixtestuser:mitch.pro', powerLevel: 50 })
+  });
+  assert.equal(resSetRole.status, 200);
+  assert.equal(mockPowerLevels.users['@matrixtestuser:mitch.pro'], 50);
+  console.log('Role set successfully: @matrixtestuser:mitch.pro -> PL 50');
+
+  // 11. Matrix Moderation Actions: Kick, Ban, Redact
+  console.log('--- 11. Testing POST /api/matrix/moderation/kick, ban, redact ---');
+  const resKick = await fetch(`${BASE_URL}/api/matrix/moderation/kick`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: '@test_spammer:mitch.pro', reason: 'Trolling' })
+  });
+  assert.equal(resKick.status, 200);
+  assert(kickedUsers.includes('@test_spammer:mitch.pro'), 'User must be kicked');
+
+  const resBan = await fetch(`${BASE_URL}/api/matrix/moderation/ban`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: '@test_spammer:mitch.pro', reason: 'Repeated offenses' })
+  });
+  assert.equal(resBan.status, 200);
+  assert(bannedUsers.includes('@test_spammer:mitch.pro'), 'User must be banned');
+
+  const resRedact = await fetch(`${BASE_URL}/api/matrix/moderation/redact`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eventId: '$bad_message_test_123', reason: 'Violation' })
+  });
+  assert.equal(resRedact.status, 200);
+  assert(redactedEvents.some(r => r.includes('$bad_message_test_123')), 'Message must be redacted');
+  console.log('Kick, ban, redact actions executed successfully');
+
+  console.log('=== ALL MATRIX SSO & MODERATION UNIT TESTS PASSED SUCCESSFULLY! ===');
 } finally {
+  writeDocument(MODERATORS_FILE, origMods);
+  writeDocument(CHAT_REPORTS_FILE, origReports);
+  mockConduit.stop();
   serverProc.kill();
 }
