@@ -5502,8 +5502,15 @@ function passkeysForEmail(passkeys, normEmail, rpId = null) {
 function ssoBackAllowed(rawBack, req) {
   let back;
   try { back = new URL(String(rawBack || ''), 'https://' + (requestHost(req) || RJUHSD_DOMAIN)); } catch { return null; }
-  if (back.protocol !== 'https:') return null;
+  const reqHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+  const isLocalReq = reqHost === 'localhost' || reqHost === '127.0.0.1';
+  if (isLocalReq || process.env.NODE_ENV === 'test') {
+    if (back.protocol !== 'https:' && back.protocol !== 'http:') return null;
+  } else {
+    if (back.protocol !== 'https:') return null;
+  }
   const h = back.hostname.toLowerCase();
+  if ((h === 'localhost' || h === '127.0.0.1') && (isLocalReq || process.env.NODE_ENV === 'test')) return back;
   if (h === RJUHSD_DOMAIN || h.endsWith('.' + RJUHSD_DOMAIN)) return back;
   if (h === PICKLE_DOMAIN || h.endsWith('.' + PICKLE_DOMAIN)) return back;
   if (isMitchSsoHost(h)) return back;
@@ -7746,6 +7753,33 @@ function getMatrixPasswordForUid(uid) {
   return createHmac('sha256', secret).update('matrix-account:' + uid).digest('hex');
 }
 
+function matrixSsoTargetOrigin() {
+  const s = site();
+  const alt = (s && s.alternate) ? String(s.alternate).trim() : '';
+  if (alt) {
+    try {
+      const u = new URL(alt);
+      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
+    } catch {}
+  }
+  const prim = (s && s.primary) ? String(s.primary).trim() : '';
+  if (prim) {
+    try {
+      const u = new URL(prim);
+      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
+    } catch {}
+  }
+  return 'https://mitchdog.com';
+}
+
+function matrixSsoTargetHost() {
+  try {
+    return new URL(matrixSsoTargetOrigin()).host.toLowerCase();
+  } catch {
+    return 'mitchdog.com';
+  }
+}
+
 function getMatrixPowerLevelForSid(sid) {
   if (!sid) return 0;
   const email = emailFromSid(sid);
@@ -8800,7 +8834,8 @@ async function handleRequest(req, server) {
     const host = requestHost(req) || 'mitch.pro';
     const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
     const serverEntry = (host.split(':')[0] === 'localhost' || host.split(':')[0] === '127.0.0.1') ? `${proto}${host}` : host;
-    const serverList = Array.from(new Set([serverEntry, 'mitch.pro'])).filter(Boolean);
+    const targetHost = matrixSsoTargetHost();
+    const serverList = Array.from(new Set([serverEntry, targetHost, 'mitch.pro'])).filter(Boolean);
     return jsonResp(200, {
       defaultHomeserver: 0,
       homeserverList: serverList,
@@ -12698,6 +12733,22 @@ async function handleRequest(req, server) {
         const back = ssoBackAllowed(url.searchParams.get('back') || (RJUHSD_ORIGIN + '/'), req);
         if (!back) return jsonResp(400, { error: 'Invalid back URL.' });
 
+        const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+        const isMatrixPath = back.pathname === '/matrix' || back.pathname.startsWith('/matrix/');
+        const isLocal = selfHost === 'localhost' || selfHost === '127.0.0.1' || back.hostname === 'localhost' || back.hostname === '127.0.0.1';
+
+        // Matrix chat SSO ALWAYS uses whatever alternate is configured in data/site.json.
+        if (isMatrixPath && !isLocal) {
+          const targetOrigin = matrixSsoTargetOrigin();
+          try {
+            const u = new URL(targetOrigin);
+            back.protocol = u.protocol;
+            back.host = u.host;
+            back.hostname = u.hostname;
+            back.port = u.port;
+          } catch {}
+        }
+
         // Already signed in here? Mint a token and hop straight across.
         if (checkPasswordCookie(req)) {
           const cookies = getCookies(req);
@@ -12705,18 +12756,17 @@ async function handleRequest(req, server) {
           const email = sid ? emailFromSid(sid) : '';
           if (email && !bannedInfoForEmail(email)) {
             const token = createSsoBridgeToken(email);
-            const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
             if (back.hostname.toLowerCase() !== selfHost) {
               // Cookies are host-scoped: the token must be exchanged on the
               // destination domain for a session there.
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
               dest.searchParams.set('token', token);
               dest.searchParams.set('back', back.toString());
-              // Matrix keeps its encryption database only on mitch.pro and
-              // does not need to copy the legacy Secure Chat JWK. A normal
-              // top-level redirect also works with the site's form-action
-              // CSP, unlike a cross-origin hidden form.
-              if (back.pathname === '/matrix' || back.pathname.startsWith('/matrix/')) {
+              // Matrix chat keeps its sessions and encryption keys on the alternate
+              // origin configured in site.json and does not need to copy the legacy
+              // Secure Chat JWK. A normal top-level redirect also works with the
+              // site's form-action CSP, unlike a cross-origin hidden form.
+              if (isMatrixPath) {
                 return new Response(null, {
                   status: 302,
                   headers: {
@@ -23336,7 +23386,15 @@ async function handleRequest(req, server) {
 	    if (path.startsWith('/matrix/') && !path.includes('.')) {
 	      const indexPath = join(WEBROOT, 'matrix', 'index.html');
 	      if (existsSync(indexPath)) {
-	        return new Response(readFileSync(indexPath), {
+	        let content = readFileSync(indexPath, 'utf8');
+	        const targetOrigin = matrixSsoTargetOrigin();
+	        const injectTag = `<script>window.__MATRIX_SSO_TARGET__ = ${JSON.stringify(targetOrigin)};</script>\n`;
+	        if (content.includes('<head>')) {
+	          content = content.replace('<head>', '<head>\n    ' + injectTag);
+	        } else {
+	          content = injectTag + content;
+	        }
+	        return new Response(content, {
 	          headers: { 'Content-Type': 'text/html; charset=utf-8' }
 	        });
 	      }
@@ -23404,6 +23462,9 @@ async function handleRequest(req, server) {
           // Page-specific galaxy layers must come after the legacy relaunch layer.
           if (!isEmbeddedGameRuntime && (path === '/encrypt' || path === '/encrypt/' || path === '/encrypt/index.html') && !raw.includes(Buffer.from('/encrypt-galaxy.css'))) {
             injectStr += '<link rel="stylesheet" href="/encrypt-galaxy.css">\n';
+          }
+          if (!isEmbeddedGameRuntime && (path === '/matrix' || path.startsWith('/matrix/')) && !raw.includes(Buffer.from('__MATRIX_SSO_TARGET__'))) {
+            injectStr += `<script>window.__MATRIX_SSO_TARGET__ = ${JSON.stringify(matrixSsoTargetOrigin())};</script>\n`;
           }
           if (!isEmbeddedGameRuntime) {
             if (!raw.includes(Buffer.from('fonts.googleapis.com'))) injectStr += '<link rel="preconnect" href="https://fonts.googleapis.com">\n<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n';
