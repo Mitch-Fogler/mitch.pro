@@ -8199,10 +8199,17 @@ async function handleRequest(req, server) {
     const host = requestHost(req) || 'mitch.pro';
     const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
     const serverEntry = (host.split(':')[0] === 'localhost' || host.split(':')[0] === '127.0.0.1') ? `${proto}${host}` : host;
+    const serverList = Array.from(new Set([serverEntry, 'mitch.pro'])).filter(Boolean);
     return jsonResp(200, {
       defaultHomeserver: 0,
-      homeserverList: [serverEntry, 'mitch.pro'],
+      homeserverList: serverList,
       allowCustomHomeservers: true,
+      featuredCommunities: {
+        openAsDefault: true,
+        servers: ['mitch.pro'],
+        rooms: ['#general:mitch.pro'],
+        spaces: []
+      },
       hashRouter: {
         enabled: false,
         basename: '/matrix'
