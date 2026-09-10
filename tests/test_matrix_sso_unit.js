@@ -26,6 +26,7 @@ const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const MODERATORS_FILE = join(DATA_DIR, 'moderators.json');
 const CHAT_REPORTS_FILE = join(DATA_DIR, 'chat_reports.json');
 const PUSH_SUBS_FILE = join(DATA_DIR, 'push_subs.json');
+const GENERATIONS_FILE = join(DATA_DIR, 'generations.json');
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -55,25 +56,30 @@ function getMatrixPasswordForUid(uid) {
   return createHmac('sha256', secret).update('matrix-account:' + uid).digest('hex');
 }
 
+function getGenFor(email) {
+  const rec = (readDocument(GENERATIONS_FILE, {}) || {})[email];
+  return (rec && typeof rec === 'object') ? (rec.gen || 0) : (rec || 0);
+}
+
 // 1. Regular test user
 const testEmail = 'matrix_test_user@student.rjuhsd.us';
 const testNormEmail = normalizeEmail(testEmail);
-const testSid = makeEmailId(testNormEmail, 0);
+const testSid = makeEmailId(testNormEmail, getGenFor(testNormEmail));
 
 // 2. Admin test user (in test mode, admin@mitch.pro is automatically recognized as admin)
 const adminEmail = 'admin@mitch.pro';
 const adminNormEmail = normalizeEmail(adminEmail);
-const adminSid = makeEmailId(adminNormEmail, 0);
+const adminSid = makeEmailId(adminNormEmail, getGenFor(adminNormEmail));
 
 // 3. Moderator test user
 const modEmail = 'matrix_mod_user@student.rjuhsd.us';
 const modNormEmail = normalizeEmail(modEmail);
-const modSid = makeEmailId(modNormEmail, 0);
+const modSid = makeEmailId(modNormEmail, getGenFor(modNormEmail));
 
 // 4. Dotted enrollment user for canonical email testing
 const dottedEmail = 'mitchell.fogler@student.rjuhsd.us';
 const dottedNormEmail = normalizeEmail(dottedEmail);
-const dottedSid = makeEmailId(dottedNormEmail, 0);
+const dottedSid = makeEmailId(dottedNormEmail, getGenFor(dottedNormEmail));
 
 // Ensure test users exist in names.json and profiles.json
 const names = { ...readDocument(NAMES_FILE, {}) };
@@ -284,7 +290,11 @@ try {
   assert.equal(dataAuthStatus.displayName, 'Matrix Test User');
   console.log('Authenticated SSO status passed:', dataAuthStatus);
 
-  console.log('--- 3b. Testing school-to-mitch.pro SSO handoff for canonical chat storage ---');
+  console.log('--- 3b. Testing Matrix SSO handoff always uses alternate domain from site.json ---');
+  const siteConfig = JSON.parse(readFileSync(join(DATA_DIR, 'site.json'), 'utf8'));
+  const targetOrigin = new URL(siteConfig.alternate || 'https://mitchdog.com').origin;
+  const targetHost = new URL(targetOrigin).host;
+
   const bridgeRes = await fetch(`${BASE_URL}/api/sso/bridge?back=${encodeURIComponent('https://mitch.pro/matrix/')}`, {
     headers: {
       'Host': 'rjuhsd.school',
@@ -294,24 +304,27 @@ try {
   });
   assert.equal(bridgeRes.status, 302);
   const bridgeLocation = new URL(bridgeRes.headers.get('Location'));
-  assert.equal(bridgeLocation.origin, 'https://mitch.pro');
+  assert.equal(bridgeLocation.origin, targetOrigin, `SSO bridge for /matrix/ must target alternate origin ${targetOrigin}`);
   assert.equal(bridgeLocation.pathname, '/api/sso/exchange');
   assert.equal(bridgeRes.headers.get('Referrer-Policy'), 'no-referrer');
   const bridgeToken = bridgeLocation.searchParams.get('token');
   assert(bridgeToken, 'Bridge handoff must contain a single-use token');
+  const bridgeBack = bridgeLocation.searchParams.get('back');
+  assert.equal(new URL(bridgeBack).origin, targetOrigin, `SSO bridge back URL must target alternate origin ${targetOrigin}`);
+
   const exchangeRes = await fetch(`${BASE_URL}/api/sso/exchange?${new URLSearchParams({
     token: bridgeToken,
-    back: 'https://mitch.pro/matrix/'
+    back: bridgeBack
   })}`, {
     headers: {
-      'Host': 'mitch.pro'
+      'Host': targetHost
     },
     redirect: 'manual'
   });
   assert.equal(exchangeRes.status, 302);
-  assert.equal(exchangeRes.headers.get('Location'), 'https://mitch.pro/matrix/');
-  assert(exchangeRes.headers.get('Set-Cookie')?.includes('mitch_session='), 'Destination exchange must create a mitch.pro session');
-  console.log('Cross-origin Matrix handoff passed');
+  assert.equal(exchangeRes.headers.get('Location'), `${targetOrigin}/matrix/`);
+  assert(exchangeRes.headers.get('Set-Cookie')?.includes('mitch_session='), 'Destination exchange must create a session on alternate domain');
+  console.log('Matrix SSO alternate domain handoff passed');
 
   // 4. Matrix config check
   console.log('--- 4. Testing /matrix/config.json ---');
@@ -320,6 +333,7 @@ try {
   const configData = await resConfig.json();
   assert.equal(configData.defaultHomeserver, 0);
   assert(Array.isArray(configData.homeserverList));
+  assert(configData.homeserverList.includes(targetHost), 'homeserverList must include alternate host');
   assert(configData.featuredCommunities);
   assert.equal(configData.featuredCommunities.openAsDefault, true);
   assert(configData.featuredCommunities.servers.includes('mitch.pro'));
@@ -327,8 +341,15 @@ try {
   const matrixPage = readFileSync(join(REPO_ROOT, 'webserver', 'matrix', 'index.html'), 'utf8');
   assert(matrixPage.includes("storedSessionIsValid(stored.token, stored.userId)"), 'Matrix must reuse a valid browser device session');
   assert(matrixPage.includes("navigator.locks.request('mitch-matrix-session'"), 'Concurrent tabs must serialize Matrix SSO');
-  assert(matrixPage.includes("hostname !== 'mitch.pro'"), 'Matrix chat must stay on its canonical origin so browser keys are not split across sites');
-  console.log('/matrix/config.json passed');
+  assert(matrixPage.includes("hostname !== targetHost"), 'Matrix chat must redirect when not on alternate host');
+  assert(matrixPage.includes("__MATRIX_SSO_TARGET__"), 'Matrix page must support __MATRIX_SSO_TARGET__');
+
+  const resMatrixHtml = await fetch(`${BASE_URL}/matrix/`);
+  assert.equal(resMatrixHtml.status, 200);
+  const htmlContent = await resMatrixHtml.text();
+  assert(htmlContent.includes('__MATRIX_SSO_TARGET__'), 'Served /matrix/ HTML must include injected __MATRIX_SSO_TARGET__');
+  assert(htmlContent.includes(targetOrigin), 'Served /matrix/ HTML must inject target alternate origin');
+  console.log('/matrix/config.json and HTML injection passed');
 
   // 4b. Matrix asset immutable caching and gzip serving check
   console.log('--- 4b. Testing asset caching and gzip for /matrix/assets ---');
