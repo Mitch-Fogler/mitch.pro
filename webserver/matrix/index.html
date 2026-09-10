@@ -140,21 +140,20 @@
       // ── Rebranding & Document Title Guardian ────────────────────
       (function() {
         const host = window.location.hostname || '';
-        const isRjuhsd = /(^|\.)rjuhsd\.school$/.test(host);
         const isPickle = /(^|\.)sexypickleclub\.com$/.test(host);
-        const brandName = isRjuhsd ? 'rjuhsd.school' : (isPickle ? 'Sexy Pickle Club' : 'mitch.pro');
-        const matrixLabel = isRjuhsd ? 'RJUHSD Matrix' : (isPickle ? 'Pickle Matrix' : 'Mitch.pro Matrix');
+        const brandName = isPickle ? 'Sexy Pickle Club' : 'mitch.pro';
+        const matrixLabel = isPickle ? 'Pickle Matrix' : 'Mitch.pro Matrix';
         const defaultTitle = `Matrix Chat — ${brandName}`;
 
         const ssoMsg = document.getElementById('mitch-sso-msg');
         const ssoBtn = document.getElementById('mitch-sso-btn');
         if (ssoMsg) {
-          ssoMsg.textContent = isRjuhsd
-            ? '✨ Connect your student account for instant single sign-on'
-            : (isPickle ? '✨ Connect your Sexy Pickle Club account for instant single sign-on' : '✨ Connect your Mitch.pro account for instant single sign-on');
+          ssoMsg.textContent = isPickle
+            ? '✨ Connect your Sexy Pickle Club account for instant single sign-on'
+            : '✨ Connect your Mitch.pro account for instant single sign-on';
         }
         if (ssoBtn) {
-          ssoBtn.textContent = isRjuhsd ? 'Log In with School' : (isPickle ? 'Log In' : 'Log In with Mitch.pro');
+          ssoBtn.textContent = isPickle ? 'Log In' : 'Log In with Mitch.pro';
         }
 
         const origTitleSetter = Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.set;
@@ -204,7 +203,7 @@
           if (rootNode.querySelectorAll) {
             const logos = rootNode.querySelectorAll('img[alt*="Cinny" i]');
             logos.forEach(img => {
-              img.src = isRjuhsd ? '/rjuhsd-assets/icon-192.png' : '/icon-192.png';
+              img.src = '/icon-192.png';
               img.alt = `${brandName} Logo`;
               img.style.borderRadius = '14px';
               img.style.boxShadow = '0 8px 24px rgba(184, 108, 255, 0.35)';
