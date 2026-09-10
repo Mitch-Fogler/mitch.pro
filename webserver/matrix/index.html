@@ -71,6 +71,21 @@
       <a id="mitch-sso-btn" href="/enroll/?next=/matrix/">Log In with Mitch.pro</a>
     </div>
 
+    <!-- Mitch.pro Push Notification Opt-in Prompt -->
+    <div id="mitch-push-banner" role="dialog" aria-label="Enable notifications">
+      <div class="mitch-push-header">
+        <span class="mitch-push-icon" aria-hidden="true">🔔</span>
+        <span>Enable Push Notifications</span>
+      </div>
+      <div class="mitch-push-desc">
+        Stay updated on direct messages, room mentions, and invites when you're away.
+      </div>
+      <div class="mitch-push-actions">
+        <button id="mitch-push-later" class="mitch-push-btn-later" type="button">Not now</button>
+        <button id="mitch-push-enable" class="mitch-push-btn-enable" type="button">Turn On</button>
+      </div>
+    </div>
+
     <script>
       window.global ||= window;
 
@@ -250,6 +265,120 @@
           initMitchSSO();
         } else {
           initMitchSSO();
+        }
+      })();
+
+      // ── Mitch.pro Push Notification Integration ───────────────────
+      (function() {
+        function b64ToUint8(b64) {
+          const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+          const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+          return Uint8Array.from(Array.prototype.map.call(raw, c => c.charCodeAt(0)));
+        }
+
+        async function syncMitchPushSubscription(askPermission = false) {
+          if (!window.isSecureContext || !('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+            return false;
+          }
+          let permission = Notification.permission;
+          if (permission === 'default' && askPermission) {
+            permission = await Notification.requestPermission();
+          }
+          if (permission !== 'granted') return false;
+
+          try {
+            const keyRes = await fetch('/api/push/vapid-key', { credentials: 'same-origin', cache: 'no-store' });
+            if (!keyRes.ok) return false;
+            const keyData = await keyRes.json();
+            if (!keyData.publicKey) return false;
+
+            let reg = await navigator.serviceWorker.getRegistration('/');
+            if (!reg) {
+              reg = await navigator.serviceWorker.register('/sw.js?v=36', { scope: '/', updateViaCache: 'none' });
+            }
+            await navigator.serviceWorker.ready;
+
+            let sub = await reg.pushManager.getSubscription();
+            if (!sub) {
+              sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: b64ToUint8(keyData.publicKey)
+              });
+            }
+            const saveRes = await fetch('/api/push/subscribe', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+              body: JSON.stringify(sub)
+            });
+            return saveRes.ok;
+          } catch (err) {
+            console.warn('[Mitch Matrix Push] Failed to sync push subscription:', err);
+            return false;
+          }
+        }
+
+        // Hook Notification.requestPermission so Cinny settings/prompts also register with mitch.pro
+        if ('Notification' in window) {
+          const origRequestPermission = Notification.requestPermission.bind(Notification);
+          Notification.requestPermission = async function(callback) {
+            const res = await origRequestPermission(callback);
+            if (res === 'granted') {
+              syncMitchPushSubscription(false).catch(() => {});
+              const banner = document.getElementById('mitch-push-banner');
+              if (banner) banner.classList.remove('show');
+            }
+            return res;
+          };
+        }
+
+        // Register Service Worker on / scope
+        if ('serviceWorker' in navigator && window.isSecureContext) {
+          navigator.serviceWorker.register('/sw.js?v=36', { scope: '/', updateViaCache: 'none' }).catch(() => {});
+        }
+
+        // Auto-sync if notification permission is already granted
+        if (window.Notification && Notification.permission === 'granted') {
+          syncMitchPushSubscription(false).catch(() => {});
+        }
+
+        // Banner prompt handlers
+        function setupBanner() {
+          const banner = document.getElementById('mitch-push-banner');
+          const btnLater = document.getElementById('mitch-push-later');
+          const btnEnable = document.getElementById('mitch-push-enable');
+          if (!banner || !btnLater || !btnEnable) return;
+
+          btnLater.addEventListener('click', () => {
+            localStorage.setItem('mitch_matrix_push_dismissed', String(Date.now()));
+            banner.classList.remove('show');
+          });
+
+          btnEnable.addEventListener('click', async () => {
+            const ok = await syncMitchPushSubscription(true);
+            if (ok || Notification.permission !== 'default') {
+              banner.classList.remove('show');
+            }
+          });
+
+          // Check if banner should be displayed
+          if (window.Notification && Notification.permission === 'default') {
+            const dismissed = localStorage.getItem('mitch_matrix_push_dismissed');
+            if (!dismissed || (Date.now() - parseInt(dismissed, 10) > 7 * 86400 * 1000)) {
+              setTimeout(() => {
+                const token = localStorage.getItem('cinny_access_token');
+                if (token && Notification.permission === 'default') {
+                  banner.classList.add('show');
+                }
+              }, 3000);
+            }
+          }
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', setupBanner);
+        } else {
+          setupBanner();
         }
       })();
     </script>
