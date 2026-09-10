@@ -2434,6 +2434,8 @@
       }
     }
 
+    const failedVmDeletions = new Set();
+
     async function loadVmRequests() {
       setStatus('vm-requests-global-status', 'Loading VM requests...', '');
       try {
@@ -2490,6 +2492,7 @@
           
           let actionsHtml = '';
           const safeEmail = app.email;
+          const hasFailed = failedVmDeletions.has(safeEmail);
           if (app.status === 'pending') {
             const randomVmid = Math.floor(Math.random() * 100) + 200;
             const inputId = 'vmid-' + normEmail.replace(/[^a-z0-9]/g, '');
@@ -2502,21 +2505,20 @@
             `;
           } else if (app.status === 'approved') {
             actionsHtml = `
-              <div style="text-align:right;">
+              <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:6px;">
                 <button onclick="terminateVmRequest('${safeEmail}')" class="mini" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border-color:rgba(239,68,68,0.2);">Delete VM</button>
+                ${hasFailed ? `<button onclick="terminateVmRequest('${safeEmail}', true)" class="mini" style="background:#ef4444; color:#fff; border-color:#ef4444; font-weight:700;">⚠️ Force Delete</button>` : ''}
               </div>
             `;
           } else if (app.status === 'deleted') {
             const isRestorable = (Date.now() - app.deletedAt) < (7 * 24 * 3600 * 1000);
-            if (isRestorable) {
-              actionsHtml = `
-                <div style="text-align:right;">
-                  <button onclick="restoreVmRequest('${safeEmail}')" class="mini" style="background:rgba(139,92,246, 0.15); color:#8b5cf6; border-color:rgba(139,92,246,0.3);">Undo Delete</button>
-                </div>
-              `;
-            } else {
-              actionsHtml = `<span style="font-size:0.75rem; color:var(--t-fg2);">Expired</span>`;
-            }
+            actionsHtml = `
+              <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:6px;">
+                ${isRestorable ? `<button onclick="restoreVmRequest('${safeEmail}')" class="mini" style="background:rgba(139,92,246, 0.15); color:#8b5cf6; border-color:rgba(139,92,246,0.3);">Undo Delete</button>` : ''}
+                <button onclick="purgeVmRequest('${safeEmail}')" class="mini" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border-color:rgba(239,68,68,0.2);">Purge</button>
+                ${hasFailed ? `<button onclick="purgeVmRequest('${safeEmail}', true)" class="mini" style="background:#ef4444; color:#fff; border-color:#ef4444; font-weight:700;">⚠️ Force Delete</button>` : ''}
+              </div>
+            `;
           } else {
             actionsHtml = `&mdash;`;
           }
@@ -2571,15 +2573,61 @@
       }
     }
 
-    async function terminateVmRequest(email) {
-      if (!(await customConfirm('Stop VM', 'Are you sure you want to stop and soft-delete this student\'s VM? It can be restored within 7 days.'))) return;
-      setStatus('vm-requests-global-status', 'Stopping VM & marking as deleted...', '');
+    async function terminateVmRequest(email, force = false) {
+      if (!force) {
+        if (!(await customConfirm('Delete VM', 'Are you sure you want to stop and soft-delete this student\'s VM? It can be restored within 7 days.'))) return;
+      } else {
+        if (!(await customConfirm('Force Delete VM', 'Force delete will ignore any errors from Proxmox and delete the VM from the system anyway. Proceed?'))) return;
+      }
+      setStatus('vm-requests-global-status', force ? 'Force deleting VM (ignoring Proxmox errors)...' : 'Stopping VM & marking as deleted...', '');
       try {
-        const d = await postAdmin('/api/admin/terminate-vm', { email });
-        setStatus('vm-requests-global-status', d.message || 'VM soft-deleted.', 'ok');
+        const d = await postAdmin('/api/admin/terminate-vm', { email, force });
+        setStatus('vm-requests-global-status', d.message || (force ? 'VM force deleted.' : 'VM soft-deleted.'), 'ok');
+        failedVmDeletions.delete(email);
         loadVmRequests();
       } catch (err) {
-        setStatus('vm-requests-global-status', err.message, 'err');
+        failedVmDeletions.add(email);
+        const errorMsg = err.message || 'Failed to stop VM on Proxmox.';
+        const statusEl = document.getElementById('vm-requests-global-status');
+        if (statusEl) {
+          statusEl.className = 'form-status err';
+          statusEl.innerHTML = `
+            <span>${esc(errorMsg)}</span>
+            <button type="button" class="mini" style="margin-left: 12px; background: #ef4444; color: #fff; border: 1px solid #ef4444; border-radius: 4px; padding: 3px 8px; font-weight: 700; cursor: pointer;" onclick="terminateVmRequest('${email}', true)">
+              ⚠️ Force Delete
+            </button>
+          `;
+        }
+        loadVmRequests();
+      }
+    }
+
+    async function purgeVmRequest(email, force = false) {
+      if (!force) {
+        if (!(await customConfirm('Purge VM', 'Permanently destroy this VM and remove it completely? This cannot be undone.'))) return;
+      } else {
+        if (!(await customConfirm('Force Purge VM', 'Force delete will ignore any errors from Proxmox and permanently delete the record anyway. Proceed?'))) return;
+      }
+      setStatus('vm-requests-global-status', force ? 'Force purging VM (ignoring Proxmox errors)...' : 'Purging VM from Proxmox...', '');
+      try {
+        const d = await postAdmin('/api/admin/purge-vm', { email, force });
+        setStatus('vm-requests-global-status', d.message || 'VM permanently purged.', 'ok');
+        failedVmDeletions.delete(email);
+        loadVmRequests();
+      } catch (err) {
+        failedVmDeletions.add(email);
+        const errorMsg = err.message || 'Failed to purge VM on Proxmox.';
+        const statusEl = document.getElementById('vm-requests-global-status');
+        if (statusEl) {
+          statusEl.className = 'form-status err';
+          statusEl.innerHTML = `
+            <span>${esc(errorMsg)}</span>
+            <button type="button" class="mini" style="margin-left: 12px; background: #ef4444; color: #fff; border: 1px solid #ef4444; border-radius: 4px; padding: 3px 8px; font-weight: 700; cursor: pointer;" onclick="purgeVmRequest('${email}', true)">
+              ⚠️ Force Delete
+            </button>
+          `;
+        }
+        loadVmRequests();
       }
     }
 

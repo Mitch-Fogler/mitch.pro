@@ -23,6 +23,7 @@ import {
   reserveVirtualMachine,
   upsertVirtualMachine,
   unassignVirtualMachine,
+  deleteVirtualMachine,
   updateVirtualMachineRuntime,
   appendVmAuditLog,
   listVmAuditLogs,
@@ -11348,18 +11349,117 @@ async function handleRequest(req, server) {
       }
 
       const app = data[norm];
-      // Soft delete: power off VM and mark status as 'deleted'. Background worker will purge after 7 days.
-      const result = await stopUserVm(app.vmid);
+      const isForce = Boolean(body.force);
+      let stopError = null;
 
-      if (!result.success) {
-        return jsonResp(500, { error: result.error || 'Failed to stop VM on Proxmox.' });
+      try {
+        const result = await stopUserVm(app.vmid);
+        if (!result.success) {
+          stopError = result.error || 'Failed to stop VM on Proxmox.';
+        }
+      } catch (err) {
+        stopError = err?.message || String(err);
+      }
+
+      // If stop failed and admin did not specify force, return 500 with canForce flag
+      if (stopError && !isForce) {
+        return jsonResp(500, {
+          error: stopError,
+          canForce: true,
+          email: targetEmail,
+          message: `${stopError} You can click Force Delete to remove it anyway and ignore Proxmox errors.`
+        });
+      }
+
+      // If force or purge requested, also attempt destroyUserVm (best effort)
+      if (isForce || body.purge) {
+        try {
+          await destroyUserVm(app.vmid);
+        } catch (_) {}
+      }
+
+      if (body.purge) {
+        delete data[norm];
+        saveJson(VM_APPS_FILE, data);
+        const vmRec = getVirtualMachineByVmid(app.vmid);
+        if (vmRec) {
+          deleteVirtualMachine(vmRec.id);
+          revokeVmDesktopConnections(vmRec.id);
+        }
+        return jsonResp(200, {
+          success: true,
+          message: `VM ${app.vmid} permanently purged${stopError ? ' (ignored Proxmox error).' : '.'}`
+        });
       }
 
       app.status = 'deleted';
       app.deletedAt = Date.now();
+      if (isForce) {
+        app.forceDeleted = true;
+        if (stopError) app.proxmoxError = stopError;
+      }
       saveJson(VM_APPS_FILE, data);
 
-      return jsonResp(200, { success: true, message: 'VM stopped and marked as deleted. It will be purged after 7 days, during which you can restore it.' });
+      return jsonResp(200, {
+        success: true,
+        message: isForce
+          ? `VM ${app.vmid} force deleted (ignored Proxmox error: ${stopError || 'none'}).`
+          : 'VM stopped and marked as deleted. It will be purged after 7 days, during which you can restore it.'
+      });
+    }
+
+    if (path === '/api/admin/purge-vm' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
+
+      const targetEmail = String(body.email || '').toLowerCase().trim();
+      if (!targetEmail) return jsonResp(400, { error: 'Valid email required.' });
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(targetEmail);
+      if (!data[norm]) return jsonResp(400, { error: 'No VM request found for this user.' });
+
+      const app = data[norm];
+      const isForce = Boolean(body.force);
+      let destroyError = null;
+
+      if (app.vmid) {
+        try {
+          const result = await destroyUserVm(app.vmid);
+          if (!result.success) {
+            destroyError = result.error || 'Failed to destroy VM on Proxmox.';
+          }
+        } catch (err) {
+          destroyError = err?.message || String(err);
+        }
+      }
+
+      if (destroyError && !isForce) {
+        return jsonResp(500, {
+          error: destroyError,
+          canForce: true,
+          email: targetEmail,
+          message: `${destroyError} You can click Force Delete to remove it anyway and ignore Proxmox errors.`
+        });
+      }
+
+      delete data[norm];
+      saveJson(VM_APPS_FILE, data);
+      if (app.vmid) {
+        const vmRec = getVirtualMachineByVmid(app.vmid);
+        if (vmRec) {
+          deleteVirtualMachine(vmRec.id);
+          revokeVmDesktopConnections(vmRec.id);
+        }
+      }
+
+      return jsonResp(200, {
+        success: true,
+        message: `VM ${app.vmid || ''} permanently purged${destroyError ? ' (ignored Proxmox error).' : '.'}`
+      });
     }
 
     if (path === '/api/admin/restore-vm' && method === 'POST') {
@@ -17176,6 +17276,60 @@ async function handleRequest(req, server) {
       body.desktopPassword = '';
       vmPowerRequests.delete('admin-create');
     }
+  }
+
+  if (path === '/api/admin/vms/delete' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const id = String(body.id || body.vmid || '');
+    const record = getVirtualMachineById(id) || getVirtualMachineByVmid(Number(id));
+    if (!record) return jsonResp(404, { error: 'Computer not found.' });
+
+    const isForce = Boolean(body.force);
+    let proxmoxError = null;
+
+    try {
+      await proxmoxDesktop.deleteGuest(record, { force: isForce });
+    } catch (err) {
+      proxmoxError = friendlyVmError(err).error;
+    }
+
+    if (proxmoxError && !isForce) {
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_DELETED', success: false, details: { error: proxmoxError } });
+      return jsonResp(500, {
+        error: proxmoxError,
+        canForce: true,
+        message: `${proxmoxError} You can click Force Delete to remove it anyway and ignore Proxmox errors.`
+      });
+    }
+
+    deleteVirtualMachine(record.id);
+    revokeVmDesktopConnections(record.id);
+
+    // Also clean up from VM_APPS_FILE if referenced there
+    try {
+      const vmApps = loadJson(VM_APPS_FILE, {});
+      let appsChanged = false;
+      for (const [norm, app] of Object.entries(vmApps)) {
+        if (app.vmid === record.vmid) {
+          delete vmApps[norm];
+          appsChanged = true;
+          break;
+        }
+      }
+      if (appsChanged) saveJson(VM_APPS_FILE, vmApps);
+    } catch (_) {}
+
+    vmAudit({ actorEmail: actor.email, record, action: 'VM_DELETED', success: true, details: { force: isForce, proxmoxError } });
+    return jsonResp(200, {
+      success: true,
+      message: isForce && proxmoxError
+        ? `Computer deleted from system (ignored Proxmox error: ${proxmoxError})`
+        : 'Computer deleted successfully.'
+    });
   }
 
   // ── GET routes ──────────────────────────────────────────────────────────────
