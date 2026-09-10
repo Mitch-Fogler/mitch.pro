@@ -21890,6 +21890,13 @@ async function handleRequest(req, server) {
     if (!email) return jsonResp(401, { error: 'email not found' });
     const norm = normalizeEmail(email);
 
+    const casinoReadOnly = ['/api/casino/history', '/api/casino/global-feed', '/api/casino/blackjack/state'].includes(path);
+    if (method !== (casinoReadOnly ? 'GET' : 'POST')) return jsonResp(405, { error: 'Method not allowed' });
+    if (path === '/api/casino/blackjack/state') {
+      const active = bjGames.get(norm);
+      return jsonResp(200, active ? { active: true, bet: active.bet, playerHand: active.playerHand, dealerUpCard: active.dealerHand[0] } : { active: false });
+    }
+
     if (method === 'POST' && path !== '/api/casino/blackjack/hit' && path !== '/api/casino/blackjack/stand') {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
@@ -21920,7 +21927,7 @@ async function handleRequest(req, server) {
       return false;
     }
 
-    function settleCasinoRound(gameName, bet, payout, outcome, freeSpin = false) {
+    function settleCasinoRound(gameName, bet, payout, outcome, freeSpin = false, prepaid = false) {
       const stats = loadUserStats();
       const isDouble = stats[norm] && (stats[norm].double_down_until || 0) > Date.now();
       const isInsured = stats[norm] && (stats[norm].bad_beat_insurance_until || 0) > Date.now();
@@ -21940,10 +21947,10 @@ async function handleRequest(req, server) {
       const effectiveBet = freeSpin ? 0 : bet;
       const net = Number((safePayout - effectiveBet).toFixed(4));
 
-      casinoIntake += effectiveBet;
+      casinoIntake += prepaid ? 0 : effectiveBet;
       casinoPayout += safePayout;
       saveCasinoStats();
-      addCoins(email, net);
+      addCoins(email, prepaid ? safePayout : net);
       addHistory(email, gameName, net, finalOutcome);
       logBet(email, gameName, effectiveBet, finalOutcome);
 
@@ -21984,6 +21991,75 @@ async function handleRequest(req, server) {
         user: b.user ? b.user.split('@')[0] : 'anonymous'
       }));
       return jsonResp(200, { feed: sanitized });
+    }
+
+    if (path === '/api/casino/rock-paper-scissors') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const choice = String(body.choice || '').toLowerCase();
+      const options = ['rock', 'paper', 'scissors'];
+      if (!options.includes(choice)) return jsonResp(400, { error: 'Choose rock, paper, or scissors.' });
+      const computer = options[Math.floor(Math.random() * options.length)];
+      const tie = choice === computer;
+      const won = !tie && ((choice === 'rock' && computer === 'scissors') || (choice === 'paper' && computer === 'rock') || (choice === 'scissors' && computer === 'paper'));
+      const payout = tie ? betCheck.bet : won ? betCheck.bet * 1.9 : 0;
+      const settled = settleCasinoRound('Rock Paper Scissors', betCheck.bet, payout, tie ? 'PUSH' : won ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, choice, computer, tie, won, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/lucky-seven') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      const total = dice[0] + dice[1];
+      const won = total === 7;
+      const settled = settleCasinoRound('Lucky Seven', betCheck.bet, won ? betCheck.bet * 4.8 : 0, won ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, dice, total, won, mult: won ? 4.8 : 0, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/color-card') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const choice = String(body.choice || '').toLowerCase();
+      if (choice !== 'red' && choice !== 'black') return jsonResp(400, { error: 'Choose red or black.' });
+      const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
+      const suit = suits[Math.floor(Math.random() * suits.length)];
+      const color = suit === 'hearts' || suit === 'diamonds' ? 'red' : 'black';
+      const value = 1 + Math.floor(Math.random() * 13);
+      const card = value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' : value === 11 ? 'J' : String(value);
+      const won = choice === color;
+      const settled = settleCasinoRound('Color Card', betCheck.bet, won ? betCheck.bet * 1.92 : 0, won ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, choice, color, suit, card, won, mult: won ? 1.92 : 0, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/triple-dice') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const pick = Number(body.pick);
+      if (!Number.isInteger(pick) || pick < 1 || pick > 6) return jsonResp(400, { error: 'Pick a number from 1 to 6.' });
+      const dice = Array.from({ length: 3 }, () => 1 + Math.floor(Math.random() * 6));
+      const matches = dice.filter(value => value === pick).length;
+      const mult = [0, 2, 5, 25][matches];
+      const settled = settleCasinoRound('Triple Dice', betCheck.bet, betCheck.bet * mult, matches ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, pick, dice, matches, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/plinko') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const slot = weightedPick([
+        { label: '0x', mult: 0, weight: 25 }, { label: '0.5x', mult: 0.5, weight: 25 },
+        { label: '0.8x', mult: 0.8, weight: 18 }, { label: '1.2x', mult: 1.2, weight: 15 },
+        { label: '1.5x', mult: 1.5, weight: 10 }, { label: '3x', mult: 3, weight: 5 },
+        { label: '8x', mult: 8, weight: 2 },
+      ]);
+      const settled = settleCasinoRound('Plinko', betCheck.bet, betCheck.bet * slot.mult, slot.mult >= 1 ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, slot: slot.label, mult: slot.mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
 
     if (path === '/api/casino/roulette') {
@@ -22054,6 +22130,7 @@ async function handleRequest(req, server) {
     if (path === '/api/casino/blackjack/start') {
       if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (bjGames.has(norm)) return jsonResp(409, { error: 'Finish your current blackjack hand first.' });
       const bet = Number(body.amount);
       const bal = getCoins(email);
       if (!Number.isFinite(bet) || bet < 1 || bet > bal) return jsonResp(400, { error: 'invalid bet' });
@@ -22137,7 +22214,7 @@ async function handleRequest(req, server) {
       const pval = getVal(game.playerHand);
       if (pval > 21) {
         bjGames.delete(norm);
-        const settled = settleCasinoRound('Blackjack', game.bet, 0, 'BUST');
+        const settled = settleCasinoRound('Blackjack', game.bet, 0, 'BUST', false, true);
         return jsonResp(200, { ok: true, gameOver: true, playerHand: game.playerHand, status: 'bust', dealerHand: game.dealerHand, winAmt: 0 });
       }
       return jsonResp(200, { ok: true, gameOver: false, playerHand: game.playerHand, status: 'active' });
@@ -22178,15 +22255,8 @@ async function handleRequest(req, server) {
         res = 'lose'; 
       }
       
-      // Note: we don't call settleCasinoRound rigging here because we handled it above via card drawing
-      const safePayout = Number(Math.max(0, winAmt || 0).toFixed(4));
-      const net = Number((safePayout - game.bet).toFixed(4));
-      casinoIntake += game.bet;
-      casinoPayout += safePayout;
-      saveCasinoStats();
-      addCoins(game.email, net);
-      addHistory(game.email, 'Blackjack', net, res.toUpperCase());
-      logBet(game.email, 'Blackjack', game.bet, res.toUpperCase());
+      const settled = settleCasinoRound('Blackjack', game.bet, winAmt, res.toUpperCase(), false, true);
+      const safePayout = settled.payout;
 
       const playerHand = game.playerHand;
       const dealerHand = game.dealerHand;
