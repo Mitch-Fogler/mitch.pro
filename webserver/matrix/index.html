@@ -39,6 +39,27 @@
     <!-- Mitch.pro Global Theme Engine -->
     <script src="/theme.js?v=11"></script>
 
+    <!-- Preemptive UI hygiene: hide theme toggle button & prevent rogue root scrollbars -->
+    <style>
+      #theme-btn {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        opacity: 0 !important;
+      }
+      html, body, #root {
+        overflow: hidden !important;
+        scrollbar-width: none !important;
+      }
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar,
+      #root::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+    </style>
+
     <!-- Cinny Stylesheet & Cosmic Mitch.pro Overrides -->
     <link rel="stylesheet" crossorigin href="/matrix/assets/index-DmaX6Xe5.css" />
     <link rel="stylesheet" href="/matrix/matrix-galaxy.css" />
@@ -52,6 +73,54 @@
 
     <script>
       window.global ||= window;
+
+      // ── Synchronize Cinny Dark/Light Mode with theme.js ────────
+      (function() {
+        function syncWithCinny() {
+          const cls = document.body ? (document.body.className || '') : '';
+          const isLight = cls.includes('light-theme') || cls.includes('silver-theme') || cls.includes('prism-light');
+          const currentMode = window.__theme?.get?.() || 'dark';
+          if (isLight && currentMode !== 'light') {
+            window.__theme?.apply?.('light');
+          } else if (!isLight && currentMode !== 'dark') {
+            window.__theme?.apply?.('dark');
+          }
+        }
+
+        // Align Cinny's stored settings if mitch.pro cookie is light mode
+        try {
+          const m = document.cookie.match(/(?:^|; )theme=([^;]+)/);
+          const savedTheme = m ? decodeURIComponent(m[1]) : '';
+          if (savedTheme === 'light') {
+            const rawSettings = localStorage.getItem('settings');
+            const settings = rawSettings ? JSON.parse(rawSettings) : {};
+            if (settings.themeId !== 'light-theme') {
+              settings.useSystemTheme = false;
+              settings.themeId = 'light-theme';
+              localStorage.setItem('settings', JSON.stringify(settings));
+            }
+          }
+        } catch (_) {}
+
+        const themeObserver = new MutationObserver(() => {
+          syncWithCinny();
+        });
+
+        function initThemeSync() {
+          if (document.body) {
+            themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+            syncWithCinny();
+          } else {
+            document.addEventListener('DOMContentLoaded', () => {
+              if (document.body) {
+                themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+                syncWithCinny();
+              }
+            });
+          }
+        }
+        initThemeSync();
+      })();
 
       // ── Rebranding & Document Title Guardian ────────────────────
       (function() {

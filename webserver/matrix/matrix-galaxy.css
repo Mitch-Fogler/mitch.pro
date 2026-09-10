@@ -30,47 +30,52 @@
 :root,
 html,
 body,
-._15q3ngn1,
+body.dark-theme,
+body.light-theme,
+body.silver-theme,
+body.butter-theme,
+.oq6d071w,
 ._15q3ngn0,
+._15q3ngn1,
 ._15q3ngn2 {
-  --oq6d070: var(--t-bg, #070510);        /* Main base surface */
-  --oq6d071: var(--t-bg2, rgba(22, 13, 44, 0.7)); /* Hover base surface */
-  --oq6d072: var(--t-bg3, rgba(42, 23, 76, 0.74)); /* Active base surface */
-  --oq6d073: var(--t-bd, rgba(224, 198, 255, 0.16)); /* Divider border */
-  --oq6d074: var(--t-fg, #faf7ff);        /* Primary text */
-  --oq6d075: var(--t-bg2, rgba(22, 13, 44, 0.7)); /* Panel / sidebar bg */
-  --oq6d076: var(--t-bg3, rgba(42, 23, 76, 0.74)); /* Hover panel */
-  --oq6d077: var(--t-bg3, rgba(42, 23, 76, 0.74)); /* Active panel */
-  --oq6d078: var(--t-bd, rgba(224, 198, 255, 0.16)); /* Panel border */
-  --oq6d079: var(--t-fg, #faf7ff);        /* Panel text */
-  --oq6d07a: var(--t-bg3, rgba(42, 23, 76, 0.74)); /* Message bubble / input */
-  --oq6d07b: var(--t-bg2, rgba(22, 13, 44, 0.7));  /* Hover bubble */
-  --oq6d07c: var(--t-bg3, rgba(42, 23, 76, 0.74)); /* Active bubble */
-  --oq6d07d: var(--t-bda, rgba(194, 126, 255, 0.48));/* Bubble border */
-  --oq6d07e: var(--t-fg, #faf7ff);        /* Bubble text */
-  --oq6d07f: var(--t-ac, #b86cff);        /* Primary brand accent */
-  --oq6d07g: var(--t-ac2, #e47cff);
-  --oq6d07h: var(--t-ac3, #8257ff);
-  --oq6d07i: var(--t-ac3, #8257ff);
-  --oq6d07j: #ffffff;                    /* Contrast text on accent */
-  --oq6d07k: var(--t-gls, rgba(180, 94, 255, 0.14)); /* Tinted accent bg */
-  --oq6d07l: var(--t-gl, rgba(180, 94, 255, 0.35));
-  --oq6d07m: var(--t-gl, rgba(180, 94, 255, 0.35));
-  --oq6d07n: var(--t-bda, rgba(194, 126, 255, 0.48));
-  --oq6d07o: var(--t-ac, #b86cff);
-  --oq6d07p: var(--t-bg, #070510);
-  --oq6d07q: var(--t-bg2, rgba(22, 13, 44, 0.7));
-  --oq6d07r: var(--t-bg3, rgba(42, 23, 76, 0.74));
-  --oq6d07s: var(--t-bg3, rgba(42, 23, 76, 0.74));
-  --oq6d07t: var(--t-fg, #faf7ff);
-  --oq6d07u: var(--t-bg2, rgba(22, 13, 44, 0.7));
-  --oq6d07v: var(--t-bg3, rgba(42, 23, 76, 0.74));
-  --oq6d07w: var(--t-bg3, rgba(42, 23, 76, 0.74));
-  --oq6d07x: var(--t-bd, rgba(224, 198, 255, 0.16));
-  --oq6d07y: var(--t-fg, #faf7ff);
-  --oq6d071t: rgba(0, 0, 0, 0.65);
-  --oq6d071u: rgba(0, 0, 0, 0.35);
-  --oq6d071v: rgba(4, 2, 10, 0.78);
+  --oq6d070: var(--t-bg, #070510) !important;        /* Main base surface */
+  --oq6d071: var(--t-bg2, rgba(22, 13, 44, 0.7)) !important; /* Hover base surface */
+  --oq6d072: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important; /* Active base surface */
+  --oq6d073: var(--t-bd, rgba(224, 198, 255, 0.16)) !important; /* Divider border */
+  --oq6d074: var(--t-fg, #faf7ff) !important;        /* Primary text */
+  --oq6d075: var(--t-bg2, rgba(22, 13, 44, 0.7)) !important; /* Panel / sidebar bg */
+  --oq6d076: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important; /* Hover panel */
+  --oq6d077: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important; /* Active panel */
+  --oq6d078: var(--t-bd, rgba(224, 198, 255, 0.16)) !important; /* Panel border */
+  --oq6d079: var(--t-fg, #faf7ff) !important;        /* Panel text */
+  --oq6d07a: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important; /* Message bubble / input */
+  --oq6d07b: var(--t-bg2, rgba(22, 13, 44, 0.7)) !important;  /* Hover bubble */
+  --oq6d07c: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important; /* Active bubble */
+  --oq6d07d: var(--t-bda, rgba(194, 126, 255, 0.48)) !important;/* Bubble border */
+  --oq6d07e: var(--t-fg, #faf7ff) !important;        /* Bubble text */
+  --oq6d07f: var(--t-ac, #b86cff) !important;        /* Primary brand accent */
+  --oq6d07g: var(--t-ac2, #e47cff) !important;
+  --oq6d07h: var(--t-ac3, #8257ff) !important;
+  --oq6d07i: var(--t-ac3, #8257ff) !important;
+  --oq6d07j: #ffffff !important;                    /* Contrast text on accent */
+  --oq6d07k: var(--t-gls, rgba(180, 94, 255, 0.14)) !important; /* Tinted accent bg */
+  --oq6d07l: var(--t-gl, rgba(180, 94, 255, 0.35)) !important;
+  --oq6d07m: var(--t-gl, rgba(180, 94, 255, 0.35)) !important;
+  --oq6d07n: var(--t-bda, rgba(194, 126, 255, 0.48)) !important;
+  --oq6d07o: var(--t-ac, #b86cff) !important;
+  --oq6d07p: var(--t-bg, #070510) !important;
+  --oq6d07q: var(--t-bg2, rgba(22, 13, 44, 0.7)) !important;
+  --oq6d07r: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
+  --oq6d07s: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
+  --oq6d07t: var(--t-fg, #faf7ff) !important;
+  --oq6d07u: var(--t-bg2, rgba(22, 13, 44, 0.7)) !important;
+  --oq6d07v: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
+  --oq6d07w: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
+  --oq6d07x: var(--t-bd, rgba(224, 198, 255, 0.16)) !important;
+  --oq6d07y: var(--t-fg2, #b4a9c9) !important;
+  --oq6d071t: rgba(0, 0, 0, 0.65) !important;
+  --oq6d071u: rgba(0, 0, 0, 0.35) !important;
+  --oq6d071v: rgba(4, 2, 10, 0.78) !important;
 }
 
 /* ── Global Document Layout (Full Screen) ────────────────────────── */
@@ -357,22 +362,87 @@ dialog {
   backdrop-filter: blur(24px) saturate(145%) !important;
 }
 
+/* ── Theme Button Removal (Cinny UI Integration) ─────────────────── */
+#theme-btn {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}
+
 /* ── Custom Scrollbars ───────────────────────────────────────────── */
-* {
+/* Completely disable scrollbars on page shell & hidden scroll containers */
+html,
+body,
+#root,
+._4yxtfde,
+._4yxtfd2,
+.no-scrollbar {
+  scrollbar-width: none !important;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar,
+._4yxtfde::-webkit-scrollbar,
+._4yxtfd2::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Only style scrollbars on explicit scrollable content */
+._4yxtfdf,
+._4yxtfdg,
+._4yxtfdi,
+._4yxtfdj,
+.scrollable,
+textarea,
+pre,
+[role="listbox"] {
+  scrollbar-width: thin !important;
   scrollbar-color: var(--t-bda) transparent !important;
 }
-::-webkit-scrollbar {
-  width: 6px !important;
-  height: 6px !important;
+._4yxtfdf::-webkit-scrollbar,
+._4yxtfdg::-webkit-scrollbar,
+._4yxtfdi::-webkit-scrollbar,
+._4yxtfdj::-webkit-scrollbar,
+.scrollable::-webkit-scrollbar,
+textarea::-webkit-scrollbar,
+pre::-webkit-scrollbar,
+[role="listbox"]::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
-::-webkit-scrollbar-track {
-  background: transparent !important;
+._4yxtfdf::-webkit-scrollbar-track,
+._4yxtfdg::-webkit-scrollbar-track,
+._4yxtfdi::-webkit-scrollbar-track,
+._4yxtfdj::-webkit-scrollbar-track,
+.scrollable::-webkit-scrollbar-track,
+textarea::-webkit-scrollbar-track,
+pre::-webkit-scrollbar-track,
+[role="listbox"]::-webkit-scrollbar-track {
+  background: transparent;
 }
-::-webkit-scrollbar-thumb {
+._4yxtfdf::-webkit-scrollbar-thumb,
+._4yxtfdg::-webkit-scrollbar-thumb,
+._4yxtfdi::-webkit-scrollbar-thumb,
+._4yxtfdj::-webkit-scrollbar-thumb,
+.scrollable::-webkit-scrollbar-thumb,
+textarea::-webkit-scrollbar-thumb,
+pre::-webkit-scrollbar-thumb,
+[role="listbox"]::-webkit-scrollbar-thumb {
   background: var(--t-bda) !important;
   border-radius: 999px !important;
 }
-::-webkit-scrollbar-thumb:hover {
+._4yxtfdf::-webkit-scrollbar-thumb:hover,
+._4yxtfdg::-webkit-scrollbar-thumb:hover,
+._4yxtfdi::-webkit-scrollbar-thumb:hover,
+._4yxtfdj::-webkit-scrollbar-thumb:hover,
+.scrollable::-webkit-scrollbar-thumb:hover,
+textarea::-webkit-scrollbar-thumb:hover,
+pre::-webkit-scrollbar-thumb:hover,
+[role="listbox"]::-webkit-scrollbar-thumb:hover {
   background: var(--t-ac) !important;
 }
 

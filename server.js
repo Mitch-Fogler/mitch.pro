@@ -7505,58 +7505,70 @@ async function serveStatic(urlPath, req = null) {
     }
   } catch {}
 
-  const cached = staticCacheGet(filePath);
+  const isHashedAsset = urlPath.startsWith('/matrix/assets/') || /-[a-zA-Z0-9_-]{8,}\.(?:js|css|wasm|woff2?|ttf|png|svg)$/i.test(urlPath);
+  const ext = filePath.split('.').pop().toLowerCase();
+  const acceptsGzip = Boolean(req && req.headers && req.headers.get && req.headers.get('accept-encoding')?.includes('gzip'));
+  const canServeGzip = acceptsGzip && ext !== 'html' && ext !== 'htm' && existsSync(filePath + '.gz');
+  const targetFilePath = canServeGzip ? filePath + '.gz' : filePath;
+
+  const mimeTypes = {
+    'js': 'application/javascript; charset=utf-8',
+    'css': 'text/css; charset=utf-8',
+    'html': 'text/html; charset=utf-8',
+    'htm': 'text/html; charset=utf-8',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'svg': 'image/svg+xml',
+    'webp': 'image/webp',
+    'avif': 'image/avif',
+    'ico': 'image/x-icon',
+    'json': 'application/json; charset=utf-8',
+    'txt': 'text/plain; charset=utf-8',
+    'xml': 'application/xml; charset=utf-8',
+    'pdf': 'application/pdf',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'woff': 'font/woff',
+    'woff2': 'font/woff2',
+    'ttf': 'font/ttf',
+    'otf': 'font/otf',
+    'wasm': 'application/wasm'
+  };
+  const contentType = mimeTypes[ext] || Bun.file(filePath).type || 'application/octet-stream';
+  const headers = { 'Content-Type': contentType };
+
+  if (canServeGzip) {
+    headers['Content-Encoding'] = 'gzip';
+    headers['Vary'] = 'Accept-Encoding';
+  }
+
+  const isCode = ['html', 'htm', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
+  if (isHashedAsset) {
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  } else if (isCode) {
+    headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    headers['Pragma'] = 'no-cache';
+    headers['Expires'] = '0';
+  } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf', 'wasm'].includes(ext)) {
+    // Immutable media: browsers can keep these forever (bump the filename
+    // when the content actually changes).
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  } else {
+    headers['Cache-Control'] = 'public, max-age=2592000';
+  }
+
+  if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
+    headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+    headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
+    headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
+  }
+
+  const cached = staticCacheGet(targetFilePath);
   if (cached) {
-    const ext = filePath.split('.').pop().toLowerCase();
-    const mimeTypes = {
-      'js': 'application/javascript; charset=utf-8',
-      'css': 'text/css; charset=utf-8',
-      'html': 'text/html; charset=utf-8',
-      'htm': 'text/html; charset=utf-8',
-      'png': 'image/png',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml',
-      'webp': 'image/webp',
-      'avif': 'image/avif',
-      'ico': 'image/x-icon',
-      'json': 'application/json; charset=utf-8',
-      'txt': 'text/plain; charset=utf-8',
-      'xml': 'application/xml; charset=utf-8',
-      'pdf': 'application/pdf',
-      'mp4': 'video/mp4',
-      'webm': 'video/webm',
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'woff': 'font/woff',
-      'woff2': 'font/woff2',
-      'ttf': 'font/ttf',
-      'otf': 'font/otf',
-      'wasm': 'application/wasm'
-    };
-    const contentType = mimeTypes[ext] || Bun.file(filePath).type || 'application/octet-stream';
-    const headers = { 'Content-Type': contentType };
-
-    const isCode = ['html', 'htm', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
-    if (isCode) {
-      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-      headers['Pragma'] = 'no-cache';
-      headers['Expires'] = '0';
-    } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf'].includes(ext)) {
-      // Immutable media: browsers can keep these forever (bump the filename
-      // when the content actually changes).
-      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-    } else {
-      headers['Cache-Control'] = 'public, max-age=2592000';
-    }
-
-    if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
-      headers['Cross-Origin-Opener-Policy'] = 'same-origin';
-      headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
-      headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
-    }
-
     if (contentType.includes('text/html')) {
       let html = injectReadability(cached.data.toString('utf8'), urlPath);
       if (req) {
@@ -7574,45 +7586,8 @@ async function serveStatic(urlPath, req = null) {
     return new Response(cached.data, { headers });
   }
 
-  const file = Bun.file(filePath);
+  const file = Bun.file(targetFilePath);
   if (await file.exists()) {
-    const ext = filePath.split('.').pop().toLowerCase();
-    const mimeTypes = {
-      'js': 'application/javascript; charset=utf-8',
-      'css': 'text/css; charset=utf-8',
-      'html': 'text/html; charset=utf-8',
-      'png': 'image/png',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'webp': 'image/webp',
-      'avif': 'image/avif',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml',
-      'ico': 'image/x-icon',
-      'json': 'application/json; charset=utf-8'
-    };
-    const contentType = mimeTypes[ext] || file.type;
-    const headers = { 'Content-Type': contentType };
-
-    const isCode = ['html', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
-    if (isCode) {
-      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-      headers['Pragma'] = 'no-cache';
-      headers['Expires'] = '0';
-    } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf'].includes(ext)) {
-      // Immutable media: browsers can keep these forever (bump the filename
-      // when the content actually changes).
-      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-    } else {
-      headers['Cache-Control'] = 'public, max-age=2592000';
-    }
-
-    if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
-      headers['Cross-Origin-Opener-Policy'] = 'same-origin';
-      headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
-      headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
-    }
-
     if (contentType.includes('text/html')) {
       const text = await file.text();
       let html = injectReadability(text, urlPath);

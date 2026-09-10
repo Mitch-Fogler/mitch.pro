@@ -240,6 +240,22 @@ try {
   assert(configData.featuredCommunities.rooms.includes('#general:mitch.pro'));
   console.log('/matrix/config.json passed');
 
+  // 4b. Matrix asset immutable caching and gzip serving check
+  console.log('--- 4b. Testing asset caching and gzip for /matrix/assets ---');
+  const resAssetNoGzip = await fetch(`${BASE_URL}/matrix/assets/index-BVlPv2dR.js`);
+  assert.equal(resAssetNoGzip.status, 200);
+  assert.equal(resAssetNoGzip.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.equal(resAssetNoGzip.headers.get('Content-Type'), 'application/javascript; charset=utf-8');
+
+  const resAssetGzip = await fetch(`${BASE_URL}/matrix/assets/index-BVlPv2dR.js`, {
+    headers: { 'Accept-Encoding': 'gzip' }
+  });
+  assert.equal(resAssetGzip.status, 200);
+  assert.equal(resAssetGzip.headers.get('Content-Encoding'), 'gzip');
+  assert.equal(resAssetGzip.headers.get('Cache-Control'), 'public, max-age=31536000, immutable');
+  assert.equal(resAssetGzip.headers.get('Content-Type'), 'application/javascript; charset=utf-8');
+  console.log('Matrix asset caching & gzip passed');
+
   // 5. Authenticated regular user login & auto-join (Power Level 0)
   console.log('--- 5. Testing authenticated user /api/matrix/sso-login (member PL 0) ---');
   const resUserLogin = await fetch(`${BASE_URL}/api/matrix/sso-login`, {
