@@ -7,6 +7,122 @@ const headers = { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': 
 const MAX_RETRIES = 3;
 let rfb = null, generation = 0, controller = null, reconnectTimer = null, connectTimer = null;
 let reconnectAttempts = 0, connected = false, connecting = false, disposed = false, powerBusy = false;
+let leaseState = { remainingSeconds: 3600, maxUptimeSeconds: 3600, canExtend: true, extended: false };
+let hasWarned10m = false, hasWarned3m = false;
+let uptimeInterval = null, leaseSyncInterval = null;
+const uptimePillText = $('uptime-pill-text'), uptimeBtn = $('uptime-button');
+const uptimeDialog = $('uptime-dialog');
+
+function formatUptime(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const remM = m % 60;
+    return `${h}h ${remM}m`;
+  }
+  return `${m}:${s < 10 ? '0' : ''}${s}`;
+}
+
+function updateUptimeDisplay() {
+  if (!uptimePillText || !uptimeBtn) return;
+  const rem = leaseState.remainingSeconds;
+  uptimePillText.textContent = formatUptime(rem);
+  const dialogTime = $('uptime-dialog-time');
+  if (dialogTime) dialogTime.textContent = formatUptime(rem);
+
+  uptimeBtn.classList.remove('normal', 'warning', 'urgent');
+  if (rem <= 300) {
+    uptimeBtn.classList.add('urgent');
+  } else if (rem <= 900) {
+    uptimeBtn.classList.add('warning');
+  } else {
+    uptimeBtn.classList.add('normal');
+  }
+
+  const canExtend = leaseState.canExtend && !leaseState.extended;
+  const extendBox = $('uptime-extend-box'), extendedBox = $('uptime-extended-box');
+  if (extendBox) extendBox.hidden = !canExtend;
+  if (extendedBox) extendedBox.hidden = canExtend;
+
+  const dialogTitle = $('uptime-dialog-title'), dialogDesc = $('uptime-dialog-desc');
+  if (dialogTitle && dialogDesc) {
+    if (canExtend) {
+      dialogTitle.textContent = rem <= 600 ? 'Session Expiring Soon' : 'Desktop Session Time';
+      dialogDesc.innerHTML = `Your desktop will automatically shut down in <strong id="uptime-dialog-time">${formatUptime(rem)}</strong> to conserve server resources (maximum uptime is 1 hour).`;
+    } else {
+      dialogTitle.textContent = rem <= 600 ? 'Final Warning: Session Ending' : 'Desktop Session Time (Extended)';
+      dialogDesc.innerHTML = `Your desktop will automatically shut down in <strong id="uptime-dialog-time">${formatUptime(rem)}</strong>.`;
+    }
+  }
+}
+
+function checkUptimeAlerts() {
+  if (disposed || !connected) return;
+  const rem = leaseState.remainingSeconds;
+  if (rem <= 0) {
+    closeConnection();
+    connectionState('Session Expired', 'disconnected');
+    showCover('Desktop session expired', 'Your computer was shut down because it reached the maximum uptime limit. You can start it again from My Computer.', false, false);
+    return;
+  }
+  if (rem <= 600 && !hasWarned10m) {
+    hasWarned10m = true;
+    openUptimeModal();
+  } else if (rem <= 180 && !hasWarned3m) {
+    hasWarned3m = true;
+    openUptimeModal();
+  }
+}
+
+function openUptimeModal() {
+  if (uptimeDialog && !uptimeDialog.open) {
+    uptimeDialog.showModal();
+  }
+}
+
+async function extendSession() {
+  const extendBtn = $('uptime-extend-btn');
+  if (extendBtn) extendBtn.disabled = true;
+  try {
+    const data = await request(`/api/vm/computers/${encodeURIComponent(id)}/extend`, { method: 'POST', headers, body: '{}' });
+    if (data.lease) {
+      leaseState = {
+        remainingSeconds: data.lease.remainingSeconds,
+        maxUptimeSeconds: data.lease.maxUptimeSeconds,
+        canExtend: Boolean(data.lease.canExtend),
+        extended: Boolean(data.lease.extended),
+      };
+      hasWarned10m = leaseState.remainingSeconds <= 600;
+      hasWarned3m = false;
+      updateUptimeDisplay();
+      uptimeDialog.close();
+      showNotice('Session extended by 30 minutes.');
+    }
+  } catch (error) {
+    alert(error.message || 'Could not extend session.');
+  } finally {
+    if (extendBtn) extendBtn.disabled = false;
+  }
+}
+
+async function syncLease() {
+  if (disposed || !id) return;
+  try {
+    const data = await request(`/api/vm/computers/${encodeURIComponent(id)}`);
+    if (data?.computer?.lease) {
+      leaseState = {
+        remainingSeconds: data.computer.lease.remainingSeconds,
+        maxUptimeSeconds: data.computer.lease.maxUptimeSeconds,
+        canExtend: Boolean(data.computer.lease.canExtend),
+        extended: Boolean(data.computer.lease.extended),
+      };
+      updateUptimeDisplay();
+      checkUptimeAlerts();
+    }
+  } catch {}
+}
 
 function connectionState(label, type = '') {
   $('machine-state').className = type;
@@ -21,6 +137,8 @@ function showCover(heading, message, canRetry = false, busy = false) {
 function closeConnection() {
   generation++; controller?.abort(); controller = null;
   clearTimeout(reconnectTimer); clearTimeout(connectTimer);
+  clearInterval(uptimeInterval); uptimeInterval = null;
+  clearInterval(leaseSyncInterval); leaseSyncInterval = null;
   const old = rfb; rfb = null; connected = false; connecting = false;
   if (old) { try { old.disconnect(); } catch {} }
 }
@@ -61,6 +179,15 @@ async function connect() {
     const computer = data.computer;
     $('machine-name').textContent = computer?.name || 'My Computer';
     document.title = `${computer?.name || 'My Computer'} - ${location.hostname}`;
+    if (computer?.lease) {
+      leaseState = {
+        remainingSeconds: computer.lease.remainingSeconds,
+        maxUptimeSeconds: computer.lease.maxUptimeSeconds,
+        canExtend: Boolean(computer.lease.canExtend),
+        extended: Boolean(computer.lease.extended),
+      };
+      updateUptimeDisplay();
+    }
     if (computer?.status !== 'running') throw new Error('Your computer is offline. Start it from My Computer, then reconnect.');
     const session = await request(`/api/vm/computers/${encodeURIComponent(id)}/desktop-session`, { method: 'POST', headers, body: '{}', signal });
     if (token !== generation) return;
@@ -75,6 +202,20 @@ async function connect() {
       if (token !== generation) return;
       clearTimeout(connectTimer); connected = true; connecting = false;
       connectionState('Connected', 'connected'); cover.classList.add('is-hidden'); client.focus();
+      if (!uptimeInterval) {
+        uptimeInterval = setInterval(() => {
+          if (connected && leaseState.remainingSeconds > 0) {
+            leaseState.remainingSeconds--;
+            updateUptimeDisplay();
+            checkUptimeAlerts();
+          }
+        }, 1000);
+      }
+      if (!leaseSyncInterval) {
+        leaseSyncInterval = setInterval(() => {
+          if (connected) syncLease();
+        }, 20000);
+      }
     });
     client.addEventListener('disconnect', event => interrupted(token, event.detail.clean));
     client.addEventListener('securityfailure', () => {
@@ -142,4 +283,10 @@ $('retry-button').addEventListener('click', () => { reconnectAttempts = 0; conne
 window.addEventListener('pagehide', () => { disposed = true; closeConnection(); });
 window.addEventListener('pageshow', event => { if (event.persisted) { disposed = false; reconnectAttempts = 0; connect(); } });
 window.addEventListener('offline', () => { closeConnection(); connectionState('Offline', 'disconnected'); showCover('You are offline', 'Check your internet connection, then reconnect.', true); });
+uptimeBtn?.addEventListener('click', openUptimeModal);
+$('uptime-dismiss-btn')?.addEventListener('click', () => uptimeDialog?.close());
+$('uptime-close-btn')?.addEventListener('click', () => uptimeDialog?.close());
+$('uptime-extend-btn')?.addEventListener('click', extendSession);
+$('mobile-extend')?.addEventListener('click', () => { hideMenu(); openUptimeModal(); });
+
 connect();

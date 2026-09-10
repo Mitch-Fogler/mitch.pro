@@ -24,3 +24,27 @@ button,a{font:inherit}
 @media(max-width:390px){.mobile-dock{gap:5px}.mobile-dock button{font-size:.72rem}.machine-heading small{font-size:.68rem}}
 @media(max-height:500px) and (max-width:950px){.desktop-page{grid-template-rows:48px minmax(0,1fr) auto}.desktop-toolbar{padding-block:4px}.back-button,.toolbar-actions #more-button{min-height:35px}.mobile-dock{min-height:44px;padding-block:4px}.mobile-dock button{min-height:34px;padding-block:5px}.power-menu{top:43px}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+.uptime-button{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums;font-weight:700}
+.uptime-button svg{width:16px;height:16px;stroke:#61d195;fill:none;stroke-width:2}
+.uptime-button.warning{border-color:rgba(234,179,8,.4);background:rgba(234,179,8,.1);color:#fde047}
+.uptime-button.warning svg{stroke:#fde047}
+.uptime-button.urgent{border-color:rgba(239,68,68,.5);background:rgba(239,68,68,.16);color:#fca5a5;animation:pulseUrgent 1.5s infinite}
+.uptime-button.urgent svg{stroke:#fca5a5}
+@keyframes pulseUrgent{0%,100%{opacity:1}50%{opacity:.65}}
+
+.uptime-dialog{width:min(470px,calc(100% - 24px));padding:0;border:1px solid var(--line-strong);border-radius:19px;background:#171b23;color:var(--text);box-shadow:0 30px 90px rgba(0,0,0,.72)}
+.uptime-dialog::backdrop{background:rgba(0,0,0,.76);backdrop-filter:blur(5px)}
+.uptime-dialog-content{padding:26px 22px;text-align:center}
+.uptime-icon-wrap{display:grid;width:52px;height:52px;margin:0 auto 14px;place-items:center;border-radius:50%;background:rgba(234,179,8,.14);border:1px solid rgba(234,179,8,.3)}
+.uptime-icon-wrap svg{width:26px;height:26px;stroke:#fde047;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.uptime-dialog h2{margin:0 0 8px;font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
+.uptime-dialog p{margin:0 0 14px;color:var(--muted);font-size:.95rem;line-height:1.45}
+.uptime-dialog strong{color:var(--text);font-weight:700}
+.uptime-subtext{font-size:.86rem!important;color:var(--muted);margin-bottom:20px!important}
+.uptime-dialog-actions{display:flex;justify-content:center;gap:10px}
+.uptime-dialog-actions button{display:inline-flex;min-height:40px;align-items:center;justify-content:center;padding:8px 18px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.05);color:var(--text);font-weight:700;cursor:pointer;transition:all .15s}
+.uptime-dialog-actions button:hover{border-color:var(--line-strong);background:rgba(255,255,255,.09);transform:translateY(-1px)}
+.uptime-dialog-actions .primary{border-color:#eff1f4;background:#eff1f4;color:#111}
+.uptime-dialog-actions .primary:hover{background:#fff}
+
