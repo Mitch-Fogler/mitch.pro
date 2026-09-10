@@ -5600,6 +5600,10 @@ function csrfFailureIfUnsafe(req, path, method) {
   if (!path.startsWith('/api/')) return null;
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
   if (CSRF_EXEMPT_PATHS.has(path)) return null;
+  if (path === '/api/admin/passphrase-status') {
+    if (!sameOriginRequest(req)) return jsonResp(403, { error: 'csrf_blocked' });
+    return null;
+  }
   // Fail closed: require same-origin Origin/Referer plus a custom header simple forms cannot set.
   const requestedWith = (req.headers.get('X-Mitch-Requested-With') || '').trim();
   if (requestedWith !== '1') return jsonResp(403, { error: 'csrf_blocked' });

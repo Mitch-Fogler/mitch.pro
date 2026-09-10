@@ -1236,7 +1236,7 @@
     let currentUser = null;
     let moderatorRequests = [];
     function getAdminHeaders(extra = {}) {
-      const headers = { ...extra };
+      const headers = { 'X-Mitch-Requested-With': '1', ...extra };
       const pass = sessionStorage.getItem('admin_passphrase');
       if (pass) {
         headers['X-Admin-Passphrase'] = pass;
@@ -2741,10 +2741,7 @@
         const verifyRes = await fetch('/api/admin/passphrase-status', {
           method: 'POST',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Admin-Passphrase': savedPass
-          }
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Admin-Passphrase': savedPass })
         });
         if (!verifyRes.ok) {
           sessionStorage.removeItem('admin_passphrase');
@@ -2823,10 +2820,7 @@
           const verifyRes = await fetch('/api/admin/passphrase-status', {
             method: 'POST',
             credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Admin-Passphrase': savedPass
-            }
+            headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Admin-Passphrase': savedPass })
           });
           if (verifyRes.ok) {
             document.getElementById('lock-box-icon').textContent = '🔓';
@@ -2870,10 +2864,7 @@
         const res = await fetch('/api/admin/passphrase-status', {
           method: 'POST',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Admin-Passphrase': pass
-          }
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Admin-Passphrase': pass })
         });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
