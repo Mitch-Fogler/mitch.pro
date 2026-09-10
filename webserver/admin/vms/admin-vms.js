@@ -5,13 +5,13 @@
   const esc = value => String(value ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const bytes = value => Number(value) ? `${(Number(value) / 1073741824).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB` : '\u2014';
   const pct = (used, total) => total ? Math.max(0, Math.min(100, Math.round(used / total * 100))) : 0;
-  const pending = new Set();
+  const pending = new Set(), failedDeletes = new Set();
   let overview = null, loading = false, creating = false, assigning = false;
   async function api(url, body) {
     const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...(body ? { method: 'POST', headers, body: JSON.stringify(body) } : {}) });
     const data = await response.json().catch(() => ({}));
     if (response.status === 401) { location.href = '/enroll/?next=' + encodeURIComponent(location.pathname); throw new Error('Sign in to continue.'); }
-    if (!response.ok) throw new Error(response.status === 403 ? 'Administrator access is required.' : data.error || 'The computer service could not be reached.');
+    if (!response.ok) throw new Error(response.status === 403 ? 'Administrator access is required.' : data.message || data.error || 'The computer service could not be reached.');
     return data;
   }
   function options(id, rows, value, label, empty) {
@@ -41,7 +41,8 @@
     const rows = (overview.computers || []).filter(vm => vm.assignmentStatus !== 'unassigned');
     $('fleet-list').innerHTML = rows.length ? rows.map(vm => {
       const running = vm.status === 'running', busy = pending.has(vm.id), stopped = vm.status === 'stopped';
-      return `<article class="fleet-item" data-id="${esc(vm.id)}"><div class="fleet-identity"><strong>${esc(vm.name)}</strong><small>${esc(vm.operatingSystem || 'Linux desktop')}</small></div><div class="fleet-owner"><strong title="${esc(vm.ownerEmail)}">${esc(vm.ownerEmail)}</strong><small>${esc(vm.hostname || 'No hostname')}</small></div><span class="fleet-state ${running ? 'running' : ''}">${busy ? 'Updating...' : running ? 'Running' : stopped ? 'Offline' : esc(vm.status)}</span><span class="fleet-resources">${esc(vm.cpuCores)} CPU &middot; ${bytes(vm.memoryTotal)}<small>${bytes(vm.diskTotal)} disk</small></span><span class="fleet-address">${esc(vm.ipAddress || 'No IP yet')}</span><div class="fleet-actions">${running && vm.desktopAvailable !== false ? `<a href="/vms/desktop/?id=${encodeURIComponent(vm.id)}">Open Desktop</a>` : `<button data-power="start" ${busy || !stopped ? 'disabled' : ''}>Start</button>`}<button data-power="restart" ${busy || !running ? 'disabled' : ''}>Restart</button><button data-power="shutdown" ${busy || !running ? 'disabled' : ''}>Shut Down</button><button data-power="force-stop" class="danger" ${busy || !running ? 'disabled' : ''}>Force Stop</button><button data-unassign class="unassign" ${busy ? 'disabled' : ''}>Unassign</button></div></article>`;
+      const hasFailedDelete = failedDeletes.has(vm.id);
+      return `<article class="fleet-item" data-id="${esc(vm.id)}"><div class="fleet-identity"><strong>${esc(vm.name)}</strong><small>${esc(vm.operatingSystem || 'Linux desktop')}</small></div><div class="fleet-owner"><strong title="${esc(vm.ownerEmail)}">${esc(vm.ownerEmail)}</strong><small>${esc(vm.hostname || 'No hostname')}</small></div><span class="fleet-state ${running ? 'running' : ''}">${busy ? 'Updating...' : running ? 'Running' : stopped ? 'Offline' : esc(vm.status)}</span><span class="fleet-resources">${esc(vm.cpuCores)} CPU &middot; ${bytes(vm.memoryTotal)}<small>${bytes(vm.diskTotal)} disk</small></span><span class="fleet-address">${esc(vm.ipAddress || 'No IP yet')}</span><div class="fleet-actions">${running && vm.desktopAvailable !== false ? `<a href="/vms/desktop/?id=${encodeURIComponent(vm.id)}">Open Desktop</a>` : `<button data-power="start" ${busy || !stopped ? 'disabled' : ''}>Start</button>`}<button data-power="restart" ${busy || !running ? 'disabled' : ''}>Restart</button><button data-power="shutdown" ${busy || !running ? 'disabled' : ''}>Shut Down</button><button data-power="force-stop" class="danger" ${busy || !running ? 'disabled' : ''}>Force Stop</button><button data-unassign class="unassign" ${busy ? 'disabled' : ''}>Unassign</button><button data-delete class="danger" ${busy ? 'disabled' : ''}>Delete</button>${hasFailedDelete ? `<button data-force-delete class="danger" style="background:#ef4444; color:#fff; border-color:#ef4444; font-weight:700;" ${busy ? 'disabled' : ''}>⚠️ Force Delete</button>` : ''}</div></article>`;
     }).join('') : '<p class="empty">No customer computers are assigned.</p>';
   }
   function renderAudit() {
@@ -85,7 +86,13 @@
     if (!item || button.disabled || pending.has(item.dataset.id)) return;
     const vm = overview?.computers.find(row => row.id === item.dataset.id); if (!vm) return;
     let url, body;
-    if (button.hasAttribute('data-unassign')) {
+    if (button.hasAttribute('data-delete')) {
+      if (!confirm(`Permanently delete computer "${vm.name}" (${vm.vmid})? This will destroy the VM on Proxmox and remove it from the system.`)) return;
+      url = '/api/admin/vms/delete'; body = { id: vm.id, force: false };
+    } else if (button.hasAttribute('data-force-delete')) {
+      if (!confirm(`Force delete computer "${vm.name}" (${vm.vmid})? This will ignore any Proxmox errors and remove it from the system anyway.`)) return;
+      url = '/api/admin/vms/delete'; body = { id: vm.id, force: true };
+    } else if (button.hasAttribute('data-unassign')) {
       if (!confirm(`Unassign ${vm.name} from ${vm.ownerEmail}? Their open desktop will disconnect. The computer and its files will remain on the server.`)) return;
       url = '/api/admin/vms/unassign'; body = { id: vm.id };
     } else {
@@ -94,9 +101,22 @@
       if (action !== 'start' && !confirm(`${labels[action]} ${vm.name}? ${action === 'force-stop' ? 'This immediately cuts power and may damage unsaved files.' : 'Save any open work first.'}`)) return;
       url = `/api/vm/computers/${encodeURIComponent(vm.id)}/power`; body = { action };
     }
-    pending.add(vm.id); renderFleet(); status('fleet-status', 'Updating computer...');
-    try { await api(url, body); status('fleet-status', 'Request accepted.', 'success'); setTimeout(() => { pending.delete(vm.id); load(); }, 6000); }
-    catch (error) { pending.delete(vm.id); renderFleet(); status('fleet-status', error.message, 'error'); }
+    const isDeleteAction = button.hasAttribute('data-delete') || button.hasAttribute('data-force-delete');
+    pending.add(vm.id); renderFleet(); status('fleet-status', isDeleteAction ? 'Deleting computer...' : 'Updating computer...');
+    try {
+      const res = await api(url, body);
+      if (isDeleteAction) {
+        failedDeletes.delete(vm.id);
+      }
+      status('fleet-status', res.message || 'Request accepted.', 'success');
+      setTimeout(() => { pending.delete(vm.id); load(); }, isDeleteAction ? 1000 : 6000);
+    }
+    catch (error) {
+      if (button.hasAttribute('data-delete')) {
+        failedDeletes.add(vm.id);
+      }
+      pending.delete(vm.id); renderFleet(); status('fleet-status', error.message, 'error');
+    }
   });
   $('refresh-button').addEventListener('click', load);
   load();
