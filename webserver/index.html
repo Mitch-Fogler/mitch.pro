@@ -1258,6 +1258,21 @@ function setupAdminNotificationMode() {
   sync();
 }
 
+document.addEventListener('error', function(event) {
+  var image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  if (image.classList.contains('collapsed-pfp-img')) {
+    image.remove();
+    return;
+  }
+  if (!image.classList.contains('member-presence-avatar')) return;
+  var fallback = document.createElement('span');
+  fallback.className = 'member-presence-avatar member-presence-initials';
+  fallback.setAttribute('aria-hidden', 'true');
+  fallback.textContent = image.dataset.initials || 'M';
+  image.replaceWith(fallback);
+}, true);
+
 function renderOnlineMembers(members) {
   var wrap = document.getElementById('online-members-wrap');
   var list = document.getElementById('online-members-list');
@@ -1287,7 +1302,7 @@ function renderOnlineMembers(members) {
   if (pfpsEl) {
     var withPfp = online.filter(function(m) { return !!m.pfp; }).slice(0, 3);
     pfpsEl.innerHTML = withPfp.map(function(m) {
-      return '<img src="' + escText(m.pfp) + '" class="collapsed-pfp-img" alt="' + escText(m.displayName || m.email) + '" title="' + escText(m.displayName || m.email) + '">';
+      return '<img src="' + escText(m.pfp) + '" class="collapsed-pfp-img" alt="' + escText(m.displayName || m.email) + '" title="' + escText(m.displayName || m.email) + '" referrerpolicy="no-referrer">';
     }).join('');
   }
 
@@ -1316,7 +1331,7 @@ function renderOnlineMembers(members) {
     }
     var initials = String(name).trim().split(/\s+/).slice(0, 2).map(function(part) { return part.charAt(0); }).join('').toUpperCase() || 'M';
     var avatar = m.pfp
-      ? '<img class="member-presence-avatar" src="' + escText(m.pfp) + '" alt="">'
+      ? '<img class="member-presence-avatar" src="' + escText(m.pfp) + '" alt="" data-initials="' + escText(initials) + '" referrerpolicy="no-referrer">'
       : '<span class="member-presence-avatar member-presence-initials" aria-hidden="true">' + escText(initials) + '</span>';
     var statusText = m.online ? 'Online now' : 'Offline';
     var tooltip = email.includes('@') ? email : '';
