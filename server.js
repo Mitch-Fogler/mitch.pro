@@ -8898,10 +8898,12 @@ async function handleRequest(req, server) {
     const profiles = loadJson(PROFILES_FILE, {});
     const prof = norm ? (profiles[norm] || {}) : {};
     const username = normalizeUsername(prof.username || (email ? defaultUsernameForEmail(norm) : 'user_' + uid.slice(0, 6)));
+    const assignedUsername = loadJson(MATRIX_USERS_FILE, {})[uid] || username;
     const displayName = prof.displayName || prof.nickname || username;
     return jsonResp(200, {
       authenticated: true,
       username,
+      user_id: `@${assignedUsername}:mitch.pro`,
       displayName
     }, {
       'Access-Control-Allow-Origin': '*'
@@ -12703,9 +12705,8 @@ async function handleRequest(req, server) {
           const email = sid ? emailFromSid(sid) : '';
           if (email && !bannedInfoForEmail(email)) {
             const token = createSsoBridgeToken(email);
-            const backIsRjuhsd = back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN);
-            const backIsPickle = back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN);
-            if (backIsRjuhsd || backIsPickle) {
+            const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+            if (back.hostname.toLowerCase() !== selfHost) {
               // Cookies are host-scoped: the token must be exchanged on the
               // destination domain for a session there.
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
@@ -12743,7 +12744,7 @@ async function handleRequest(req, server) {
                 '<\/script>\n';
               return new Response(hopHtml, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
             }
-            // Bound for mitch.pro — the session already works there.
+            // Bound for the current origin — the session already works here.
             return new Response(null, { status: 302, headers: { Location: back.toString() } });
           }
         }
@@ -12773,8 +12774,12 @@ async function handleRequest(req, server) {
 
     if (path === '/api/sso/exchange' && (method === 'GET' || method === 'POST')) {
       try {
-        // The token only lands a session on a non-mitch.pro site host.
-        if (!isRjuhsdHost(req) && !isPickleHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
+        // The token may land on any approved site origin. This is required
+        // when a signed-in school page sends Matrix back to its canonical
+        // mitch.pro origin so the browser keeps one encryption store.
+        if (!isRjuhsdHost(req) && !isPickleHost(req) && !isMitchSsoHost(requestHost(req))) {
+          return jsonResp(400, { error: 'Exchange is not available on this host.' });
+        }
         // The bridge hop page arrives as a form POST carrying the device's
         // cached Secure Chat private JWK alongside the token.
         let params = url.searchParams;
@@ -12793,9 +12798,11 @@ async function handleRequest(req, server) {
         const session = createAuthSession(rec.email, rec.email, req);
         const back = ssoBackAllowed(params.get('back') || '/', req);
         const selfOrigin = 'https://' + (requestHost(req) || RJUHSD_DOMAIN);
-        const backOk = back && (
+        const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+        const backOk = back && back.hostname.toLowerCase() === selfHost && (
           back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN) ||
-          back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN));
+          back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN) ||
+          isMitchSsoHost(back.hostname));
         const dest = backOk ? back : new URL(selfOrigin + '/');
         const headers = new Headers();
         headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
@@ -14269,6 +14276,13 @@ async function handleRequest(req, server) {
         const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
         const norm = normalizeEmail(email);
         const previous = e2eKeysData[norm];
+        if (body.createOnly === true && previous?.encryptedPrivateJwk) {
+          return jsonResp(409, {
+            success: false,
+            code: 'KEY_ALREADY_EXISTS',
+            message: 'Secure Chat is already set up for this account.'
+          });
+        }
         const history = Array.isArray(previous?.history) ? previous.history.slice(0, 4) : [];
         if (previous?.pubKeyHex && previous.pubKeyHex !== pubKeyHex && previous.encryptedPrivateJwk && previous.ivHex) {
           history.unshift({
@@ -24238,7 +24252,7 @@ function friendlyVmError(error) {
     if (error.code === 'NO_GRAPHICAL_DESKTOP') return { status: 409, error: 'This machine does not have a graphical desktop.', code: 'desktop_unavailable' };
     if (error.code === 'GUEST_SETUP_FAILED') return { status: 504, error: error.message || 'The graphical desktop did not finish starting.', code: 'guest_setup_failed' };
     if (error.code === 'TASK_FAILED') return { status: 502, error: error.message || 'The computer task failed.', code: 'task_failed' };
-    if (error.code === 'UPSTREAM_REJECTED') return { status: error.status || 502, error: error.message || 'The computer service rejected the request.', code: 'upstream_rejected' };
+    if (error.code === 'UPSTREAM_REJECTED') return { status: error.status || 502, error: 'Your computer could not be reached.', code: 'computer_unreachable' };
     return { status: error.status || 502, error: error.message || 'Your computer could not be reached.', code: (error.code || 'computer_error').toLowerCase() };
   }
   return { status: 502, error: error?.message || 'Your computer could not be reached.', code: error?.code || 'computer_unreachable' };

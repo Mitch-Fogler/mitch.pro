@@ -227,8 +227,18 @@
 
       // ── Single Sign-On (SSO) & Bootstrapping ──────────────────────
       (function() {
-        const currentToken = localStorage.getItem("cinny_access_token");
-        const currentUserId = localStorage.getItem("cinny_user_id");
+        const hostname = window.location.hostname.toLowerCase();
+        const isLocalPreview = hostname === 'localhost' || hostname === '127.0.0.1';
+        if (!isLocalPreview && hostname !== 'mitch.pro') {
+          const destination = new URL(window.location.href);
+          destination.protocol = 'https:';
+          destination.host = 'mitch.pro';
+          const bridge = new URL('/api/sso/bridge', window.location.origin);
+          bridge.searchParams.set('back', destination.toString());
+          window.location.replace(bridge.toString());
+          return;
+        }
+
         const banner = document.getElementById("mitch-sso-banner");
 
         function bootCinny() {
@@ -241,8 +251,61 @@
           document.head.appendChild(script);
         }
 
+        function readStoredSession() {
+          return {
+            token: localStorage.getItem("cinny_access_token") || '',
+            userId: localStorage.getItem("cinny_user_id") || ''
+          };
+        }
+
+        async function storedSessionIsValid(token, expectedUserId) {
+          if (!token || !expectedUserId) return false;
+          try {
+            const response = await fetch('/_matrix/client/v3/account/whoami', {
+              headers: { Authorization: `Bearer ${token}` },
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
+            if (!response.ok) return false;
+            const data = await response.json();
+            return data.user_id === expectedUserId;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        function saveSession(data) {
+          localStorage.setItem("cinny_access_token", data.access_token);
+          localStorage.setItem("cinny_device_id", data.device_id);
+          localStorage.setItem("cinny_user_id", data.user_id);
+          localStorage.setItem("cinny_hs_base_url", data.base_url);
+        }
+
         async function initMitchSSO() {
           try {
+            const statusRes = await fetch('/api/matrix/sso-status', {
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
+            const status = statusRes.ok ? await statusRes.json() : { authenticated: false };
+            const stored = readStoredSession();
+
+            // Reuse this browser's existing Matrix device. Logging in again on
+            // every page load creates abandoned devices and destabilizes E2EE.
+            if (stored.token && stored.userId &&
+                (!status.authenticated || stored.userId === status.user_id) &&
+                await storedSessionIsValid(stored.token, stored.userId)) {
+              if (banner) banner.style.display = 'none';
+              bootCinny();
+              return;
+            }
+
+            if (!status.authenticated) {
+              if (banner) banner.style.display = 'flex';
+              bootCinny();
+              return;
+            }
+
             const res = await fetch("/api/matrix/sso-login", {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-Mitch-Requested-With": "1" },
@@ -251,35 +314,22 @@
             if (res.ok) {
               const data = await res.json();
               if (data && data.access_token && data.user_id) {
-                if (!currentToken || currentUserId !== data.user_id) {
-                  localStorage.setItem("cinny_access_token", data.access_token);
-                  localStorage.setItem("cinny_device_id", data.device_id);
-                  localStorage.setItem("cinny_user_id", data.user_id);
-                  localStorage.setItem("cinny_hs_base_url", data.base_url);
-                  if (currentToken) {
-                    window.location.reload();
-                    return;
-                  }
-                }
+                saveSession(data);
                 if (banner) banner.style.display = "none";
               }
-            } else {
-              // Not logged into Mitch.pro — show connect banner on login page
-              if (!currentToken && banner) {
-                banner.style.display = "flex";
-              }
+            } else if (banner) {
+              banner.style.display = "flex";
             }
           } catch (e) {
             console.warn("[Mitch Matrix SSO]", e);
-            if (!currentToken && banner) banner.style.display = "flex";
+            if (!readStoredSession().token && banner) banner.style.display = "flex";
           } finally {
             bootCinny();
           }
         }
 
-        if (currentToken && currentUserId) {
-          bootCinny();
-          initMitchSSO();
+        if (navigator.locks && typeof navigator.locks.request === 'function') {
+          navigator.locks.request('mitch-matrix-session', initMitchSSO);
         } else {
           initMitchSSO();
         }

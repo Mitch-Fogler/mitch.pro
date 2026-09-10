@@ -22,6 +22,7 @@ try {
 const NAMES_FILE = join(DATA_DIR, 'names.json');
 const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
 const DMS_FILE = join(DATA_DIR, 'dms.json');
+const E2E_KEYS_FILE = join(DATA_DIR, 'e2e_keys.json');
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -60,6 +61,7 @@ const bobUsername = 'bobteste2e';
 const origNames = readDocument(NAMES_FILE, {});
 const origProfiles = readDocument(PROFILES_FILE, {});
 const origDms = readDocument(DMS_FILE, []);
+const origE2eKeys = readDocument(E2E_KEYS_FILE, {});
 
 const names = { ...origNames };
 names[aliceSid] = aliceEmail;
@@ -243,7 +245,58 @@ try {
   assert.equal(bobInboxAfterAliceClearData.messages.length, 2, 'Bob did not clear messages, should still see 2');
   console.log('/api/dm/clear with username passed: Alice sees 0, Bob still sees 2');
 
-  console.log('\n--- 8. Testing notification body security for fallback & E2E ---');
+  console.log('\n--- 8. Testing cross-device key setup race protection ---');
+  const firstPub = '04' + '11'.repeat(64);
+  const secondPub = '04' + '22'.repeat(64);
+  const firstRegisterRes = await fetch(`${BASE_URL}/api/e2e/register-key`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${aliceSid}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      pubKeyHex: firstPub,
+      encryptedPrivateJwk: 'aabbccdd',
+      ivHex: '01'.repeat(12),
+      kdfSaltHex: 'ab'.repeat(32),
+      kdfIterations: 600000,
+      createOnly: true
+    })
+  });
+  assert.equal(firstRegisterRes.status, 200);
+
+  const racedRegisterRes = await fetch(`${BASE_URL}/api/e2e/register-key`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${aliceSid}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      pubKeyHex: secondPub,
+      encryptedPrivateJwk: 'eeff0011',
+      ivHex: '02'.repeat(12),
+      kdfSaltHex: 'cd'.repeat(32),
+      kdfIterations: 600000,
+      createOnly: true
+    })
+  });
+  assert.equal(racedRegisterRes.status, 409, 'A second first-time setup must not replace the account key');
+  const racedRegisterData = await racedRegisterRes.json();
+  assert.equal(racedRegisterData.code, 'KEY_ALREADY_EXISTS');
+
+  const storedKeyRes = await fetch(`${BASE_URL}/api/e2e/get-key`, {
+    headers: { 'Cookie': `studentId=${aliceSid}` }
+  });
+  assert.equal(storedKeyRes.status, 200);
+  const storedKey = await storedKeyRes.json();
+  assert.equal(storedKey.pubKeyHex, firstPub, 'The original account key must win a concurrent setup race');
+
+  const encryptPage = readFileSync(join(REPO_ROOT, 'webserver', 'encrypt', 'index.html'), 'utf8');
+  assert(encryptPage.includes('restorePrivateKeyBackup(oldEntry, password)'), 'Historical keys must use their own KDF metadata');
+  assert(encryptPage.includes('restoredPublicKey !== String(entry.pubKeyHex).toLowerCase()'), 'Restored private keys must be matched to their public keys');
+  console.log('Cross-device key setup and historical-key recovery checks passed');
+
+  console.log('\n--- 9. Testing notification body security for fallback & E2E ---');
   // Check that server code never emits raw message text in push notifications
   const serverCode = readFileSync(join(REPO_ROOT, 'server.js'), 'utf8');
   assert(
@@ -261,6 +314,7 @@ try {
     writeDocument(NAMES_FILE, origNames);
     writeDocument(PROFILES_FILE, origProfiles);
     writeDocument(DMS_FILE, origDms);
+    writeDocument(E2E_KEYS_FILE, origE2eKeys);
   } catch (err) {
     console.error('Failed restoring test data files:', err);
   }
