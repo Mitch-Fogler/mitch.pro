@@ -36,35 +36,15 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
+    <!-- Mitch.pro Global Theme Engine -->
+    <script src="/theme.js?v=11"></script>
+
+    <!-- Cinny Stylesheet & Cosmic Mitch.pro Overrides -->
     <link rel="stylesheet" crossorigin href="/matrix/assets/index-DmaX6Xe5.css" />
     <link rel="stylesheet" href="/matrix/matrix-galaxy.css" />
   </head>
   <body id="appBody">
-    <!-- Mitch.pro Floating Navigation Topbar Shell -->
-    <header id="app-topbar" class="app-topbar" role="banner">
-      <div class="mitch-topbar-left">
-        <a class="app-brand" href="/" aria-label="mitch.pro home">
-          <b>mitch<span>.pro</span></b>
-        </a>
-        <span class="mitch-matrix-pill" title="Connected to mitch.pro Matrix Homeserver">Matrix</span>
-      </div>
-      <nav class="app-nav" aria-label="Primary navigation">
-        <a class="back-btn" href="/" title="Return to Mitch.pro Home">&larr; Back to Mitch.pro</a>
-        <a class="chat-btn" href="/encrypt/" title="Open Classic Encrypted Chat">Classic Chat</a>
-        <a href="/games/">Games</a>
-        <a href="/members/">Members</a>
-        <a href="/shop/">Shop</a>
-        <a href="/preferences/">Settings</a>
-      </nav>
-      <div class="mitch-topbar-right">
-        <a id="mitch-user-badge" class="mitch-user-pill" href="/profile/" aria-label="Open your profile">
-          <span id="mitch-avatar-dot" class="mitch-avatar-dot">M</span>
-          <span id="mitch-username-label">My Account</span>
-        </a>
-      </div>
-    </header>
-
-    <!-- Mitch.pro SSO Connect Banner -->
+    <!-- Mitch.pro SSO Connect Banner (only shown if guest/logged out) -->
     <div id="mitch-sso-banner">
       <span>✨ Connect your Mitch.pro account for instant single sign-on</span>
       <a id="mitch-sso-btn" href="/enroll/?next=/matrix/">Log In with Mitch.pro</a>
@@ -149,9 +129,6 @@
         const currentToken = localStorage.getItem("cinny_access_token");
         const currentUserId = localStorage.getItem("cinny_user_id");
         const banner = document.getElementById("mitch-sso-banner");
-        const userLabel = document.getElementById("mitch-username-label");
-        const avatarDot = document.getElementById("mitch-avatar-dot");
-        const userBadge = document.getElementById("mitch-user-badge");
 
         function bootCinny() {
           if (window.__cinnyLoaded) return;
@@ -163,28 +140,7 @@
           document.head.appendChild(script);
         }
 
-        async function syncUserIdentity() {
-          try {
-            const res = await fetch("/api/matrix/sso-status", { credentials: "same-origin" });
-            if (res.ok) {
-              const data = await res.json();
-              if (data && data.authenticated) {
-                const name = data.displayName || data.username || "Member";
-                if (userLabel) userLabel.textContent = name;
-                if (avatarDot) avatarDot.textContent = name.charAt(0).toUpperCase();
-                if (userBadge) userBadge.href = "/profile/";
-                return data;
-              }
-            }
-          } catch (_) {}
-          // Guest or not logged in
-          if (userLabel) userLabel.textContent = "Sign In";
-          if (userBadge) userBadge.href = "/enroll/?next=/matrix/";
-          return null;
-        }
-
         async function initMitchSSO() {
-          const authData = await syncUserIdentity();
           try {
             const res = await fetch("/api/matrix/sso-login", {
               method: "POST",
@@ -207,7 +163,7 @@
                 if (banner) banner.style.display = "none";
               }
             } else {
-              // Not logged into Mitch.pro
+              // Not logged into Mitch.pro — show connect banner on login page
               if (!currentToken && banner) {
                 banner.style.display = "flex";
               }
