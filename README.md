@@ -108,6 +108,14 @@ Please report vulnerabilities privately. See [SECURITY.md](SECURITY.md) for repo
 
 ---
 
+## Third-Party & Open Source Credits
+
+This project integrates open-source software to power its federated Matrix chat infrastructure:
+- **[Conduit](https://gitlab.com/famedly/conduit)**: High-performance Matrix homeserver written in Rust (licensed under Apache-2.0).
+- **[Cinny](https://github.com/cinnyapp/cinny)**: Matrix web client frontend located at `webserver/matrix/` (licensed under AGPL-3.0; see [`webserver/matrix/LICENSE`](webserver/matrix/LICENSE) for the full license text and copyright notices).
+
+---
+
 ## License
 
 This project is licensed under the Apache License 2.0 with Commons Clause restriction — see [LICENSE](LICENSE) for details.

@@ -7741,6 +7741,69 @@ async function handleRequest(req, server) {
     });
   }
 
+  // Matrix client-server API & discovery reverse proxy to Conduit homeserver
+  if (path.startsWith('/_matrix/') || path.startsWith('/.well-known/matrix/')) {
+    if (path === '/.well-known/matrix/client' && method === 'GET') {
+      const host = requestHost(req) || 'mitch.pro';
+      const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
+      return jsonResp(200, {
+        'm.homeserver': {
+          base_url: `${proto}${host}`
+        }
+      }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+
+    const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'mitch-matrix-conduit' : '127.0.0.1');
+    const upstreamUrl = new URL(url.pathname + url.search, `http://${conduitHost}:6167`);
+    const upstreamHeaders = new Headers(req.headers);
+    upstreamHeaders.delete('host');
+    upstreamHeaders.set('host', 'mitch.pro');
+    if (ip) {
+      upstreamHeaders.set('x-forwarded-for', ip);
+      upstreamHeaders.set('x-real-ip', ip);
+    }
+    try {
+      const upstreamRes = await fetch(upstreamUrl, {
+        method: req.method,
+        headers: upstreamHeaders,
+        body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+        redirect: 'manual'
+      });
+      const resHeaders = new Headers(upstreamRes.headers);
+      resHeaders.set('Access-Control-Allow-Origin', '*');
+      resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+      resHeaders.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+      return new Response(upstreamRes.body, {
+        status: upstreamRes.status,
+        statusText: upstreamRes.statusText,
+        headers: resHeaders
+      });
+    } catch (err) {
+      console.error('[matrix-proxy] Failed to reach Conduit on 127.0.0.1:6167:', err?.message || err);
+      return jsonResp(502, { error: 'Matrix chat backend unavailable' });
+    }
+  }
+
+  // Dynamic Cinny client configuration for Mitch.pro
+  if (path === '/matrix/config.json' && method === 'GET') {
+    const host = requestHost(req) || 'mitch.pro';
+    const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
+    const serverEntry = (host.split(':')[0] === 'localhost' || host.split(':')[0] === '127.0.0.1') ? `${proto}${host}` : host;
+    return jsonResp(200, {
+      defaultHomeserver: 0,
+      homeserverList: [serverEntry, 'mitch.pro'],
+      allowCustomHomeservers: true,
+      hashRouter: {
+        enabled: false,
+        basename: '/matrix'
+      }
+    }, {
+      'Access-Control-Allow-Origin': '*'
+    });
+  }
+
   // Handle direct unsubscribe links by token
   if (method === 'GET' && path.startsWith('/unsubscribe/')) {
     const token = path.slice('/unsubscribe/'.length).trim();
@@ -8377,6 +8440,8 @@ async function handleRequest(req, server) {
                    path.startsWith('/unsubscribe/') ||
                    PUBLIC_API_PATHS.has(cleanPath) ||
                    cleanPath.startsWith('/games') ||
+                   cleanPath === '/matrix' ||
+                   cleanPath.startsWith('/matrix/') ||
                    cleanPath.startsWith('/game-portal') ||
                    cleanPath.startsWith('/msn-games') ||
                    cleanPath === '/rjuhsd' ||
@@ -21478,6 +21543,7 @@ async function handleRequest(req, server) {
                                 '/preferences', '/preferences/index',
                                 '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index',
                                 '/games', '/games/index', '/game-portal', '/game-portal/index', '/msn-games', '/msn-games/index',
+                                '/matrix', '/matrix/index',
                                 '/rjuhsd', '/rjuhsd/index', '/sexypickleclub', '/sexypickleclub/index']);
     const pickleHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'sexypickleclub', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isPickleHost(req)) {
@@ -21680,7 +21746,17 @@ async function handleRequest(req, server) {
 	        return Response.redirect('/' + dirName + '/' + url.search, 302);
 	      }
 	    }
-	
+
+	    // SPA route fallback for Matrix Chat (/matrix/*)
+	    if (path.startsWith('/matrix/') && !path.includes('.')) {
+	      const indexPath = join(WEBROOT, 'matrix', 'index.html');
+	      if (existsSync(indexPath)) {
+	        return new Response(readFileSync(indexPath), {
+	          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+	        });
+	      }
+	    }
+
 	    // Inject tracking into HTML pages
 	    if ((path.endsWith('.html') || path === '/' || (path.endsWith('/') && path.length > 1)) && path !== '/admin.html' && path !== '/roblox.html') {
 	      let filePath;
@@ -21854,7 +21930,7 @@ async function handleRequest(req, server) {
       '/verify-open.json'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !path.startsWith('/games') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/matrix/') && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !path.startsWith('/games') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);

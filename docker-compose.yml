@@ -210,3 +210,16 @@ services:
       - "127.0.0.1:8191:8191"
     environment:
       - LOG_LEVEL=info
+
+  # Matrix Conduit Homeserver (Ultra-lightweight Rust backend)
+  conduit:
+    image: matrixconduit/matrix-conduit:latest
+    container_name: mitch-matrix-conduit
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./conduit.toml:/etc/conduit.toml:ro
+      - ./data/conduit:/var/lib/matrix-conduit
+    environment:
+      - CONDUIT_CONFIG=/etc/conduit.toml
+
