@@ -1118,6 +1118,43 @@ async function wrapPrivateJwk(privateJwk, password) {
   };
 }
 
+async function restorePrivateKeyBackup(entry, password) {
+  if (!entry || !entry.encryptedPrivateJwk || !entry.ivHex || !entry.pubKeyHex) {
+    throw new Error('This device could not find a complete secure-chat backup.');
+  }
+  const aesKey = await deriveEncryptionKeyFromPassword(
+    password,
+    myEmail,
+    entry.kdfSaltHex || '',
+    entry.kdfIterations || 0
+  );
+  const decBytes = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: h2b(entry.ivHex) },
+    aesKey,
+    h2b(entry.encryptedPrivateJwk)
+  );
+  const jwk = JSON.parse(new TextDecoder().decode(decBytes));
+  const keypair = await importKeypairJwk(jwk);
+  const restoredPublicKey = await exportPub(keypair);
+  if (restoredPublicKey !== String(entry.pubKeyHex).toLowerCase()) {
+    throw new Error('The restored chat key did not match this account.');
+  }
+  return { jwk, keypair, pubKeyHex: restoredPublicKey };
+}
+
+async function fetchLatestKeyBackup() {
+  const response = await fetch('/api/e2e/get-key', {
+    credentials: 'include',
+    cache: 'no-store'
+  });
+  if (response.status === 404) return null;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    throw new Error('Secure Chat could not sync your account key. Try again.');
+  }
+  return data;
+}
+
 async function genKP() {
   return crypto.subtle.generateKey({ name:'ECDH', namedCurve:'P-256' }, true, ['deriveKey', 'deriveBits']);
 }
@@ -1335,9 +1372,8 @@ function safeProfileImage(value) {
   if (/^https?:\/\//i.test(raw)) {
     try {
       const u = new URL(raw);
-      if (/\.(png|jpe?g|gif|webp|svg|avif|ico)$/i.test(u.pathname)) {
-        return raw;
-      }
+      if (!u.hostname || u.username || u.password) return '';
+      return raw;
     } catch {}
   }
   return '';
@@ -1346,10 +1382,22 @@ function safeProfileImage(value) {
 function memberAvatar(member, name, className) {
   const src = safeProfileImage(member && member.pfp);
   const cls = className || 'member-avatar';
+  const initials = initialsFor(name);
   return src
-    ? `<span class="${cls}"><img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></span>`
-    : `<span class="${cls}" data-initials="${esc(initialsFor(name))}">${esc(initialsFor(name))}</span>`;
+    ? `<span class="${cls}" data-avatar-initials="${esc(initials)}"><img src="${esc(src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer"></span>`
+    : `<span class="${cls}" data-initials="${esc(initials)}">${esc(initials)}</span>`;
 }
+
+document.addEventListener('error', event => {
+  const image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  const avatar = image.closest('[data-avatar-initials]');
+  if (!avatar) return;
+  const initials = avatar.dataset.avatarInitials || '?';
+  avatar.removeAttribute('data-avatar-initials');
+  avatar.dataset.initials = initials;
+  avatar.textContent = initials;
+}, true);
 
 function renderConversationProfile(member) {
   const panel = document.getElementById('member-profile-panel');
@@ -1937,71 +1985,69 @@ async function init() {
           
           try {
             if (isSetup) {
-              const kp = await genKP();
-              const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
-              const wrapped = await wrapPrivateJwk(privateJwk, password);
-              const pubKeyHex = await exportPub(kp);
-              const registerRes = await fetch('/api/e2e/register-key', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pubKeyHex, ...wrapped })
-              });
-              const registerData = await registerRes.json();
-              if (!registerRes.ok || !registerData.success) {
-                throw new Error(registerData.message || 'Could not initialize encrypted chat.');
+              // Another browser may have completed setup after this page loaded.
+              // Prefer that account key so two devices never create competing
+              // identities for the same conversation history.
+              const latestBackup = await fetchLatestKeyBackup();
+              if (latestBackup) {
+                const restored = await restorePrivateKeyBackup(latestBackup, password);
+                localStorage.setItem(privateKeyStorageKey, JSON.stringify(restored.jwk));
+                myKP = restored.keypair;
+                fetchedData = { ...fetchedData, ...latestBackup };
+              } else {
+                const kp = await genKP();
+                const privateJwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+                const wrapped = await wrapPrivateJwk(privateJwk, password);
+                const pubKeyHex = await exportPub(kp);
+                const registerRes = await fetch('/api/e2e/register-key', {
+                  method: 'POST',
+                  credentials: 'include',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ pubKeyHex, ...wrapped, createOnly: true })
+                });
+                const registerData = await registerRes.json().catch(() => ({}));
+                if (registerRes.status === 409 && registerData.code === 'KEY_ALREADY_EXISTS') {
+                  const racedBackup = await fetchLatestKeyBackup();
+                  const restored = await restorePrivateKeyBackup(racedBackup, password);
+                  localStorage.setItem(privateKeyStorageKey, JSON.stringify(restored.jwk));
+                  myKP = restored.keypair;
+                  fetchedData = { ...fetchedData, ...racedBackup };
+                } else {
+                  if (!registerRes.ok || !registerData.success) {
+                    throw new Error(registerData.message || 'Could not initialize encrypted chat.');
+                  }
+                  localStorage.setItem(privateKeyStorageKey, JSON.stringify(privateJwk));
+                  myKP = kp;
+                }
               }
-              localStorage.setItem(privateKeyStorageKey, JSON.stringify(privateJwk));
-              myKP = kp;
             } else {
-              const aesKey = await deriveEncryptionKeyFromPassword(
-                password, myEmail, fetchedData.kdfSaltHex, fetchedData.kdfIterations || 0);
-              const encryptedPrivateJwk = fetchedData.encryptedPrivateJwk;
-              const ivHex = fetchedData.ivHex;
-
-              let decryptedJwk = null;
+              let latestBackup = null;
               try {
-                const decBytes = await crypto.subtle.decrypt(
-                  { name: 'AES-GCM', iv: h2b(ivHex) },
-                  aesKey,
-                  h2b(encryptedPrivateJwk)
-                );
-                decryptedJwk = JSON.parse(new TextDecoder().decode(decBytes));
-              } catch (decErr) {
-                throw new Error("Incorrect password or key decryption failed.");
+                latestBackup = await fetchLatestKeyBackup();
+              } catch (syncErr) {
+                console.warn('Using the key backup loaded with the page:', syncErr);
               }
-              
-              const pubKey = await crypto.subtle.importKey(
-                'jwk',
-                { kty: 'EC', crv: 'P-256', x: decryptedJwk.x, y: decryptedJwk.y },
-                { name: 'ECDH', namedCurve: 'P-256' },
-                true,
-                []
-              );
-              decryptedJwk.key_ops = ['deriveKey', 'deriveBits'];
-              const privateKey = await crypto.subtle.importKey(
-                'jwk',
-                decryptedJwk,
-                { name: 'ECDH', namedCurve: 'P-256' },
-                true,
-                ['deriveKey', 'deriveBits']
-              );
-              
-              localStorage.setItem(privateKeyStorageKey, JSON.stringify(decryptedJwk));
-              myKP = { publicKey: pubKey, privateKey };
+              const currentBackup = latestBackup || fetchedData;
+              let restoredCurrent;
+              try {
+                restoredCurrent = await restorePrivateKeyBackup(currentBackup, password);
+              } catch (decErr) {
+                throw new Error('Your password is correct, but this chat backup could not be unlocked. If you recently changed your password, open Secure Chat once on a device where it still works and reset the chat key.');
+              }
+
+              fetchedData = { ...fetchedData, ...currentBackup };
+              localStorage.setItem(privateKeyStorageKey, JSON.stringify(restoredCurrent.jwk));
+              myKP = restoredCurrent.keypair;
 
               // Recover prior rotated keys that were encrypted with the same login password.
               const recovered = [];
               for (const oldEntry of Array.isArray(fetchedData.keyHistory) ? fetchedData.keyHistory : []) {
                 try {
-                  const oldBytes = await crypto.subtle.decrypt(
-                    { name:'AES-GCM', iv:h2b(oldEntry.ivHex) },
-                    aesKey,
-                    h2b(oldEntry.encryptedPrivateJwk)
-                  );
-                  const oldJwk = JSON.parse(new TextDecoder().decode(oldBytes));
-                  await importKeypairJwk(oldJwk);
-                  recovered.push({ pub:oldEntry.pubKeyHex, jwk:oldJwk, archivedAt:oldEntry.updatedAt || 0 });
+                  // Every rotation uses a fresh KDF salt. Deriving once from
+                  // the current backup makes all historical keys fail on a
+                  // new device, which is the cross-device decryption bug.
+                  const oldRestored = await restorePrivateKeyBackup(oldEntry, password);
+                  recovered.push({ pub:oldRestored.pubKeyHex, jwk:oldRestored.jwk, archivedAt:oldEntry.updatedAt || 0 });
                 } catch {}
               }
               if (recovered.length) {
@@ -2019,7 +2065,7 @@ async function init() {
               // so this touches nothing but the stored ciphertext.
               if (!fetchedData.kdfSaltHex || (fetchedData.kdfIterations || 0) < E2E_KDF_ITERATIONS) {
                 try {
-                  const upgraded = await wrapPrivateJwk(decryptedJwk, password);
+                  const upgraded = await wrapPrivateJwk(restoredCurrent.jwk, password);
                   await fetch('/api/e2e/register-key', {
                     method: 'POST',
                     credentials: 'include',

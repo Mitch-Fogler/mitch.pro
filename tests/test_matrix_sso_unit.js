@@ -280,8 +280,39 @@ try {
   const dataAuthStatus = await resAuthStatus.json();
   assert.equal(dataAuthStatus.authenticated, true);
   assert.equal(dataAuthStatus.username, 'matrixtestuser');
+  assert.equal(dataAuthStatus.user_id, '@matrixtestuser:mitch.pro');
   assert.equal(dataAuthStatus.displayName, 'Matrix Test User');
   console.log('Authenticated SSO status passed:', dataAuthStatus);
+
+  console.log('--- 3b. Testing school-to-mitch.pro SSO handoff for canonical chat storage ---');
+  const bridgeRes = await fetch(`${BASE_URL}/api/sso/bridge?back=${encodeURIComponent('https://mitch.pro/matrix/')}`, {
+    headers: {
+      'Host': 'rjuhsd.school',
+      'Cookie': `studentId=${testSid}`
+    },
+    redirect: 'manual'
+  });
+  assert.equal(bridgeRes.status, 200);
+  const bridgeHtml = await bridgeRes.text();
+  assert(bridgeHtml.includes('https://mitch.pro/api/sso/exchange'), 'School-origin bridge must exchange the session on mitch.pro');
+  const tokenMatch = bridgeHtml.match(/add\("token",\s*"([A-Za-z0-9_-]+)"\)/);
+  assert(tokenMatch, 'Bridge handoff must contain a single-use token');
+  const exchangeRes = await fetch(`${BASE_URL}/api/sso/exchange`, {
+    method: 'POST',
+    headers: {
+      'Host': 'mitch.pro',
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: new URLSearchParams({
+      token: tokenMatch[1],
+      back: 'https://mitch.pro/matrix/'
+    }),
+    redirect: 'manual'
+  });
+  assert.equal(exchangeRes.status, 302);
+  assert.equal(exchangeRes.headers.get('Location'), 'https://mitch.pro/matrix/');
+  assert(exchangeRes.headers.get('Set-Cookie')?.includes('mitch_session='), 'Destination exchange must create a mitch.pro session');
+  console.log('Cross-origin Matrix handoff passed');
 
   // 4. Matrix config check
   console.log('--- 4. Testing /matrix/config.json ---');
@@ -294,6 +325,10 @@ try {
   assert.equal(configData.featuredCommunities.openAsDefault, true);
   assert(configData.featuredCommunities.servers.includes('mitch.pro'));
   assert(configData.featuredCommunities.rooms.includes('#general:mitch.pro'));
+  const matrixPage = readFileSync(join(REPO_ROOT, 'webserver', 'matrix', 'index.html'), 'utf8');
+  assert(matrixPage.includes("storedSessionIsValid(stored.token, stored.userId)"), 'Matrix must reuse a valid browser device session');
+  assert(matrixPage.includes("navigator.locks.request('mitch-matrix-session'"), 'Concurrent tabs must serialize Matrix SSO');
+  assert(matrixPage.includes("hostname !== 'mitch.pro'"), 'Matrix chat must stay on its canonical origin so browser keys are not split across sites');
   console.log('/matrix/config.json passed');
 
   // 4b. Matrix asset immutable caching and gzip serving check
