@@ -14453,7 +14453,7 @@ async function handleRequest(req, server) {
             if (pageLower.includes('/games/chess/')) playingGame = 'Chess';
             else if (pageLower.includes('/games/casino/') || pageLower.includes('/casino/')) playingGame = 'Casino';
             else if (pageLower.includes('/canvas/')) playingGame = 'Canvas';
-            else if (pageLower.includes('/encrypt.html') || pageLower.includes('/encrypt/')) playingGame = 'Chat';
+            else if (pageLower.includes('/encrypt.html') || pageLower.includes('/encrypt/') || pageLower.includes('/matrix/')) playingGame = 'Chat';
             else if (pageLower.includes('/games/')) {
               const matches = page.match(/\/games\/([^/]+)/);
               playingGame = matches ? matches[1] : 'Games';
@@ -22851,7 +22851,7 @@ async function handleRequest(req, server) {
             { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
           ],
           shortcuts: [
-            { name: "The Cellar", short_name: "Cellar", description: "Open encrypted cellar chat", url: "/cellar/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+            { name: "Matrix Chat", short_name: "Matrix", description: "Open encrypted Matrix chat", url: "/matrix/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
             { name: "The Barrel", short_name: "Barrel", description: "Live pickle lounge", url: "/barrel/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
             { name: "Bulletin", short_name: "Bulletin", description: "Official announcements", url: "/bulletin/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] }
           ]
@@ -22881,7 +22881,7 @@ async function handleRequest(req, server) {
           ],
           shortcuts: [
             { name: "Bell Schedule", short_name: "Bells", description: "Live RJUHSD bell schedules", url: "/?utm_source=pwa-shortcut#schedule-panel", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] },
-            { name: "Encrypted Chat", short_name: "Chat", description: "Open end-to-end encrypted messages", url: "/encrypt/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] }
+            { name: "Matrix Chat", short_name: "Matrix", description: "Open end-to-end encrypted Matrix chat", url: "/matrix/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] }
           ]
         };
         return new Response(JSON.stringify(rjuhsdManifest, null, 2), {
@@ -22900,6 +22900,7 @@ async function handleRequest(req, server) {
         `  <url><loc>${sitemapDomain}/?school=antelope</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
         `  <url><loc>${sitemapDomain}/?school=westpark</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
         `  <url><loc>${sitemapDomain}/?school=oakmont</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/matrix/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>\n` +
         `  <url><loc>${sitemapDomain}/encrypt/</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n` +
         `  <url><loc>${sitemapDomain}/public-chat/</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n` +
         (isRjuhsdHost(req) ? '' : '  <url><loc>https://mitch.pro/rjuhsd/</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n') +

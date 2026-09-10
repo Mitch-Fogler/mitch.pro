@@ -33,10 +33,10 @@
   ],
   "shortcuts": [
     {
-      "name": "Encrypted Chat",
+      "name": "Matrix Chat",
       "short_name": "Chat",
-      "description": "Open end-to-end encrypted messages",
-      "url": "/encrypt/?utm_source=pwa-shortcut",
+      "description": "Open end-to-end encrypted Matrix chat",
+      "url": "/matrix/?utm_source=pwa-shortcut",
       "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     },
     {

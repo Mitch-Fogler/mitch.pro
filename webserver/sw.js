@@ -150,7 +150,7 @@ async function isUserInActiveChat(targetUrl) {
 const notifyIcon = () => (self.location.hostname.endsWith('rjuhsd.school') ? '/rjuhsd-assets/icon-192.png' : '/icon-192.png');
 
 self.addEventListener('push', e => {
-  let data = { title: 'New message', body: '', url: '/encrypt/' };
+  let data = { title: 'New message', body: '', url: '/matrix/' };
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
   e.waitUntil(isUserInActiveChat(data.url).then(inChat => {
     // Already inside active chat on this device — stay quiet.
@@ -173,15 +173,15 @@ self.addEventListener('push', e => {
 // its path so we never navigate the rjuhsd.school PWA to a foreign origin
 // that would demand a fresh login.
 function notificationTargetUrl(raw) {
-  let u = String(raw || '/encrypt/');
+  let u = String(raw || '/matrix/');
   try {
     const resolved = new URL(u, self.registration.scope);
     if (resolved.origin !== self.location.origin) {
-      return resolved.pathname + resolved.search + resolved.hash || '/encrypt/';
+      return resolved.pathname + resolved.search + resolved.hash || '/matrix/';
     }
     return resolved.href;
   } catch {
-    return '/encrypt/';
+    return '/matrix/';
   }
 }
 
