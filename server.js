@@ -7755,8 +7755,7 @@ async function handleRequest(req, server) {
       });
     }
 
-    const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'mitch-matrix-conduit' : '127.0.0.1');
-    const upstreamUrl = new URL(url.pathname + url.search, `http://${conduitHost}:6167`);
+    const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'conduit' : '127.0.0.1');
     const upstreamHeaders = new Headers(req.headers);
     upstreamHeaders.delete('host');
     upstreamHeaders.set('host', 'mitch.pro');
@@ -7764,26 +7763,36 @@ async function handleRequest(req, server) {
       upstreamHeaders.set('x-forwarded-for', ip);
       upstreamHeaders.set('x-real-ip', ip);
     }
-    try {
-      const upstreamRes = await fetch(upstreamUrl, {
-        method: req.method,
-        headers: upstreamHeaders,
-        body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
-        redirect: 'manual'
-      });
-      const resHeaders = new Headers(upstreamRes.headers);
-      resHeaders.set('Access-Control-Allow-Origin', '*');
-      resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-      resHeaders.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-      return new Response(upstreamRes.body, {
-        status: upstreamRes.status,
-        statusText: upstreamRes.statusText,
-        headers: resHeaders
-      });
-    } catch (err) {
-      console.error('[matrix-proxy] Failed to reach Conduit on 127.0.0.1:6167:', err?.message || err);
+    const candidateHosts = Array.from(new Set([conduitHost, conduitHost === '127.0.0.1' ? 'conduit' : '127.0.0.1', 'mitch-matrix-conduit']));
+    let upstreamRes = null;
+    let lastErr = null;
+    for (const hostCandidate of candidateHosts) {
+      try {
+        const candidateUrl = new URL(url.pathname + url.search, `http://${hostCandidate}:6167`);
+        upstreamRes = await fetch(candidateUrl, {
+          method: req.method,
+          headers: upstreamHeaders,
+          body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+          redirect: 'manual'
+        });
+        if (upstreamRes) break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (!upstreamRes) {
+      console.error('[matrix-proxy] Failed to reach Conduit on candidates:', candidateHosts.join(', '), lastErr?.message || lastErr);
       return jsonResp(502, { error: 'Matrix chat backend unavailable' });
     }
+    const resHeaders = new Headers(upstreamRes.headers);
+    resHeaders.set('Access-Control-Allow-Origin', '*');
+    resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    resHeaders.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    return new Response(upstreamRes.body, {
+      status: upstreamRes.status,
+      statusText: upstreamRes.statusText,
+      headers: resHeaders
+    });
   }
 
   // Dynamic Cinny client configuration for Mitch.pro

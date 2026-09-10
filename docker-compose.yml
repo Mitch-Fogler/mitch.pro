@@ -17,6 +17,8 @@ services:
     build: .
     container_name: mitch-webserver-blue
     restart: unless-stopped
+    depends_on:
+      - conduit
     ports:
       - "127.0.0.1:6811:6800"
     volumes:
@@ -59,6 +61,7 @@ services:
       - RECAPTCHA_SITE_KEY
       - BLOOKET_BOT_HOST=blooket-bot
       - SSH_GATEWAY_URL=ws://ssh-gateway:6820
+      - CONDUIT_HOST=conduit
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       # Proxmox bridge — explicit pass-through so the loader doesn't
@@ -88,6 +91,8 @@ services:
     build: .
     container_name: mitch-webserver-green
     restart: unless-stopped
+    depends_on:
+      - conduit
     ports:
       - "127.0.0.1:6812:6800"
     volumes:
@@ -126,6 +131,7 @@ services:
       - RECAPTCHA_SITE_KEY
       - BLOOKET_BOT_HOST=blooket-bot
       - SSH_GATEWAY_URL=ws://ssh-gateway:6820
+      - CONDUIT_HOST=conduit
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       - PVE_SSH_HOST
@@ -216,7 +222,8 @@ services:
     image: matrixconduit/matrix-conduit:latest
     container_name: mitch-matrix-conduit
     restart: unless-stopped
-    network_mode: host
+    ports:
+      - "127.0.0.1:6167:6167"
     volumes:
       - ./conduit.toml:/etc/conduit.toml:ro
       - ./data/conduit:/var/lib/matrix-conduit
