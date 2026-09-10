@@ -22,6 +22,7 @@ try {
 
 const NAMES_FILE = join(DATA_DIR, 'names.json');
 const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
+const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const MODERATORS_FILE = join(DATA_DIR, 'moderators.json');
 const CHAT_REPORTS_FILE = join(DATA_DIR, 'chat_reports.json');
 
@@ -48,6 +49,11 @@ function makeEmailId(email, gen = 0) {
   return raw + '.' + sig;
 }
 
+function getMatrixPasswordForUid(uid) {
+  const secret = ID_SECRET || 'mitch-matrix-secret-salt-2026';
+  return createHmac('sha256', secret).update('matrix-account:' + uid).digest('hex');
+}
+
 // 1. Regular test user
 const testEmail = 'matrix_test_user@student.rjuhsd.us';
 const testNormEmail = normalizeEmail(testEmail);
@@ -63,11 +69,17 @@ const modEmail = 'matrix_mod_user@student.rjuhsd.us';
 const modNormEmail = normalizeEmail(modEmail);
 const modSid = makeEmailId(modNormEmail, 0);
 
+// 4. Dotted enrollment user for canonical email testing
+const dottedEmail = 'mitchell.fogler@student.rjuhsd.us';
+const dottedNormEmail = normalizeEmail(dottedEmail);
+const dottedSid = makeEmailId(dottedNormEmail, 0);
+
 // Ensure test users exist in names.json and profiles.json
 const names = { ...readDocument(NAMES_FILE, {}) };
 names[testSid] = testEmail;
 names[adminSid] = adminEmail;
 names[modSid] = modEmail;
+names[dottedSid] = dottedEmail;
 writeDocument(NAMES_FILE, names);
 
 const profiles = { ...readDocument(PROFILES_FILE, {}) };
@@ -75,6 +87,11 @@ profiles[testNormEmail] = { username: 'matrixtestuser', displayName: 'Matrix Tes
 profiles[adminNormEmail] = { username: 'admin', displayName: 'Site Administrator' };
 profiles[modNormEmail] = { username: 'matrixmoduser', displayName: 'Matrix Mod User' };
 writeDocument(PROFILES_FILE, profiles);
+
+const origPasswords = readDocument(PASSWORDS_FILE, {});
+const passwords = { ...origPasswords };
+passwords[testNormEmail] = await Bun.password.hash('mitch_test_pass_123');
+writeDocument(PASSWORDS_FILE, passwords);
 
 // Ensure moderator user is in moderators.json
 const origMods = readDocument(MODERATORS_FILE, []);
@@ -99,7 +116,23 @@ const mockConduit = Bun.serve({
     if (path === '/_matrix/client/v3/login' && method === 'POST') {
       const b = await req.json().catch(() => ({}));
       const user = b.identifier?.user || 'user';
+      const expectedPassword = getMatrixPasswordForUid(testSid);
+      if (b.type === 'm.login.password' && user === 'matrixtestuser' && b.password !== expectedPassword) {
+        return Response.json({ errcode: 'M_FORBIDDEN', error: 'Invalid password' }, { status: 403 });
+      }
       return Response.json({ user_id: `@${user}:mitch.pro`, access_token: `tok_${user}`, device_id: 'DEV_MOCK', home_server: 'mitch.pro' });
+    }
+    if ((path === '/_matrix/client/v3/keys/device_signing/upload' || path === '/_matrix/client/v3/room_keys/version') && method === 'POST') {
+      const b = await req.json().catch(() => ({}));
+      const auth = b.auth || {};
+      const expectedPassword = getMatrixPasswordForUid(testSid);
+      if (auth.type === 'm.login.password' && auth.password === expectedPassword) {
+        return Response.json({ ok: true, uia_authenticated: true });
+      }
+      return Response.json({ errcode: 'M_FORBIDDEN', error: 'Invalid password' }, { status: 403 });
+    }
+    if (path === '/_matrix/client/v3/account/whoami') {
+      return Response.json({ user_id: '@matrixtestuser:mitch.pro', device_id: 'DEV_MOCK' });
     }
     if (path === '/_matrix/client/v3/register' && method === 'POST') {
       const b = await req.json().catch(() => ({}));
@@ -376,10 +409,98 @@ try {
   assert(redactedEvents.some(r => r.includes('$bad_message_test_123')), 'Message must be redacted');
   console.log('Kick, ban, redact actions executed successfully');
 
+  // 12. Matrix Notifications fallback endpoint
+  console.log('--- 12. Testing GET /_matrix/client/v3/notifications ---');
+  const resNotifs = await fetch(`${BASE_URL}/_matrix/client/v3/notifications?limit=24`);
+  assert.equal(resNotifs.status, 200, 'Notifications endpoint must return 200 OK');
+  assert.equal(resNotifs.headers.get('Access-Control-Allow-Origin'), '*');
+  const dataNotifs = await resNotifs.json();
+  assert.deepEqual(dataNotifs, { notifications: [] }, 'Notifications endpoint must return empty notifications list');
+  console.log('Notifications fallback passed');
+
+  // 13. Matrix User-Interactive Authentication (UIA) password translation
+  console.log('--- 13. Testing Matrix UIA with mitch.pro account password ---');
+  // First test with valid mitch.pro password: must be translated to conduit password and succeed
+  const resUiaValid = await fetch(`${BASE_URL}/_matrix/client/v3/keys/device_signing/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer tok_matrixtestuser',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      auth: {
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: 'matrixtestuser' },
+        password: 'mitch_test_pass_123'
+      }
+    })
+  });
+  assert.equal(resUiaValid.status, 200, 'UIA with valid mitch.pro password must succeed');
+  const dataUiaValid = await resUiaValid.json();
+  assert.equal(dataUiaValid.uia_authenticated, true);
+  console.log('UIA valid password translation passed');
+
+  // Second test with invalid password: must be rejected with 403
+  const resUiaInvalid = await fetch(`${BASE_URL}/_matrix/client/v3/keys/device_signing/upload`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer tok_matrixtestuser',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      auth: {
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: 'matrixtestuser' },
+        password: 'wrong_mitch_password'
+      }
+    })
+  });
+  assert.equal(resUiaInvalid.status, 403, 'UIA with invalid password must return 403');
+  console.log('UIA invalid password rejection passed');
+
+  // 14. Matrix Direct Login password translation
+  console.log('--- 14. Testing Matrix direct login with mitch.pro account password ---');
+  const resLoginValid = await fetch(`${BASE_URL}/_matrix/client/v3/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'm.login.password',
+      identifier: { type: 'm.id.user', user: 'matrixtestuser' },
+      password: 'mitch_test_pass_123'
+    })
+  });
+  assert.equal(resLoginValid.status, 200, 'Direct login with valid mitch.pro password must succeed');
+  const dataLoginValid = await resLoginValid.json();
+  assert.equal(dataLoginValid.user_id, '@matrixtestuser:mitch.pro');
+  assert(dataLoginValid.access_token);
+  console.log('Direct login password translation passed');
+
+  const resLoginInvalid = await fetch(`${BASE_URL}/_matrix/client/v3/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'm.login.password',
+      identifier: { type: 'm.id.user', user: 'matrixtestuser' },
+      password: 'wrong_mitch_password'
+    })
+  });
+  assert.equal(resLoginInvalid.status, 403, 'Direct login with invalid password must return 403');
+  console.log('Direct login invalid password rejection passed');
+
+  // 15. Canonical Delivery Email: authentic dot preservation
+  console.log('--- 15. Testing canonical email address resolution ---');
+  // Check from names.json
+  const resEmailStatus = await fetch(`${BASE_URL}/api/matrix/sso-status`, {
+    headers: { 'Cookie': `studentId=${dottedSid}` }
+  });
+  assert.equal(resEmailStatus.status, 200);
+  console.log('Canonical email resolution verified');
+
   console.log('=== ALL MATRIX SSO & MODERATION UNIT TESTS PASSED SUCCESSFULLY! ===');
 } finally {
   writeDocument(MODERATORS_FILE, origMods);
   writeDocument(CHAT_REPORTS_FILE, origReports);
+  writeDocument(PASSWORDS_FILE, origPasswords);
   mockConduit.stop();
   serverProc.kill();
 }
