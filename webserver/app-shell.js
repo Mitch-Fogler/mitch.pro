@@ -107,7 +107,7 @@
     }
     var style = document.createElement('link');
     style.rel = 'stylesheet';
-    style.href = '/mitch-ui.css?v=1';
+    style.href = '/mitch-ui.css?v=2';
     document.head.appendChild(style);
     var paths = {
       home: '<path d="m3 10 9-7 9 7v10H3Z"/><path d="M9 20v-7h6v7"/>',
@@ -139,7 +139,7 @@
     menu.setAttribute('aria-labelledby', 'mobile-menu-title');
     menu.innerHTML = '<header><h2 id="mobile-menu-title">mitch.pro</h2><button type="button" aria-label="Close menu">×</button></header><nav aria-label="All sections"></nav>';
     var links = menu.querySelector('nav');
-    [['https://woodcreek.site/', 'Blooket Bot'], ['/profile/', 'My profile'], ['/preferences/', 'Customizer'], ['/friends/', 'Friends'], ['/shop/', 'Shop'], ['/marketplace/', 'Marketplace'], ['/inventory/', 'Inventory'], ['/leaderboard/', 'Leaderboard'], ['https://rjuhsd.school/', 'Bell schedule'], ['/public-chat/', 'Public chat'], ['/canvas/', 'Canvas'], ['/vms/', 'VM Lab'], ['/notifications/', 'Notifications'], ['/blog/', 'Blog'], ['/invite/', 'Invite friends'], ['/feedback/', 'Feedback'], ['/faq/', 'Help']].forEach(function (item) {
+    [['https://woodcreek.site/', 'Blooket Bot'], ['/profile/', 'My profile'], ['/preferences/', 'Customizer'], ['/friends/', 'Friends'], ['/coins/', 'MitchCoins'], ['/shop/', 'Shop'], ['/marketplace/', 'Marketplace'], ['/inventory/', 'Inventory'], ['/leaderboard/', 'Leaderboard'], ['https://rjuhsd.school/', 'Bell schedule'], ['/public-chat/', 'Public chat'], ['/canvas/', 'Canvas'], ['/vms/', 'VM Lab'], ['/notifications/', 'Notifications'], ['/blog/', 'Blog'], ['/invite/', 'Invite friends'], ['/feedback/', 'Feedback'], ['/faq/', 'Help']].forEach(function (item) {
       var link = document.createElement('a'); link.href = item[0]; link.textContent = item[1]; links.appendChild(link);
     });
     more.addEventListener('click', function () { menu.showModal(); });
@@ -340,7 +340,7 @@
     enhanceInterface();
     if (!IS_RJUHSD && !document.querySelector('script[src^="/mitch-coins.js"]')) {
       var coins = document.createElement('script');
-      coins.src = '/mitch-coins.js?v=1';
+      coins.src = '/mitch-coins.js?v=2';
       document.head.appendChild(coins);
     }
     if (!shouldInject()) {

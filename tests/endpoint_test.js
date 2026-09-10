@@ -202,6 +202,70 @@ const tests = [
     expectedStatus: 200
   },
   {
+    name: 'Fund casino integration account',
+    path: '/api/admin/gift-coins', method: 'POST', token: ADMIN_TOKEN, expectedStatus: 200,
+    body: { targetEmail: 'test_normal_user@student.rjuhsd.us', amount: 1000, reason: 'Casino integration tests' }
+  },
+  {
+    name: 'POST /api/casino/rock-paper-scissors',
+    path: '/api/casino/rock-paper-scissors', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10, choice: 'rock' }, verify: data => ['rock', 'paper', 'scissors'].includes(data.computer) && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/lucky-seven',
+    path: '/api/casino/lucky-seven', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10 }, verify: data => Array.isArray(data.dice) && data.dice.length === 2 && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/color-card',
+    path: '/api/casino/color-card', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10, choice: 'red' }, verify: data => ['red', 'black'].includes(data.color) && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/triple-dice',
+    path: '/api/casino/triple-dice', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10, pick: 3 }, verify: data => Array.isArray(data.dice) && data.dice.length === 3 && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/plinko',
+    path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10 }, verify: data => typeof data.slot === 'string' && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'Casino rejects GET power-like game actions',
+    path: '/api/casino/blackjack/hit', method: 'GET', token: USER_TOKEN, expectedStatus: 405
+  },
+  {
+    name: 'Casino rejects invalid negative wagers',
+    path: '/api/casino/lucky-seven', method: 'POST', token: USER_TOKEN, expectedStatus: 400,
+    body: { amount: -1 }
+  },
+  {
+    name: 'Blackjack deals a hand',
+    path: '/api/casino/blackjack/start', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10 }
+  },
+  {
+    name: 'Blackjack rejects duplicate deal without consuming another wager',
+    path: '/api/casino/blackjack/start', method: 'POST', token: USER_TOKEN, expectedStatus: 409,
+    body: { amount: 10 }
+  },
+  {
+    name: 'Blackjack hand restores without revealing hidden dealer card',
+    path: '/api/casino/blackjack/state', method: 'GET', token: USER_TOKEN, expectedStatus: 200,
+    verify: data => data.active && data.bet === 10 && data.playerHand.length === 2 && !data.dealerHand && !data.deck
+  },
+  {
+    name: 'Blackjack settles the hand',
+    path: '/api/casino/blackjack/stand', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: {}, verify: data => data.gameOver && Number.isFinite(data.winAmt)
+  },
+  {
+    name: 'Blackjack clears settled hand',
+    path: '/api/casino/blackjack/state', method: 'GET', token: USER_TOKEN, expectedStatus: 200,
+    verify: data => data.active === false
+  },
+  {
     name: 'POST /api/admin/gift-coins (Non-Admin)',
     path: '/api/admin/gift-coins',
     method: 'POST',

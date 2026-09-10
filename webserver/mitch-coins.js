@@ -16,8 +16,8 @@
       const exact = balance === null ? null : fullFormat.format(balance);
       amount.textContent = exact === null ? (status === 'guest' ? 'Sign in' : '—') : (balance >= 10000 ? compactFormat.format(balance) : exact);
       widget.dataset.state = status;
-      widget.href = status === 'guest' ? '/enroll/' : '/shop/';
-      widget.title = exact === null ? (status === 'guest' ? 'Sign in to view your MitchCoins' : 'MitchCoins balance unavailable') : exact + ' MitchCoins · Open shop';
+      widget.href = status === 'guest' ? '/enroll/' : '/coins/';
+      widget.title = exact === null ? (status === 'guest' ? 'Sign in to view your MitchCoins' : 'MitchCoins balance unavailable') : exact + ' MitchCoins · Open wallet';
       widget.setAttribute('aria-label', widget.title);
       widget.setAttribute('aria-busy', String(status === 'loading'));
     }
@@ -119,7 +119,7 @@
   function init() {
     if (!document.querySelector('link[href^="/mitch-coins.css"]')) {
       const style = document.createElement('link');
-      style.rel = 'stylesheet'; style.href = '/mitch-coins.css?v=1';
+      style.rel = 'stylesheet'; style.href = '/mitch-coins.css?v=2';
       document.head.appendChild(style);
     }
     if (document.body.classList.contains('encrypt-page')) {

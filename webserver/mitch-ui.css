@@ -30,6 +30,18 @@ body.mitch-design.mitch-next #app-topbar .app-nav a[aria-current] {
 }
 body.mitch-design.mitch-next #app-topbar .app-nav a:hover { background: var(--t-bg3) !important; }
 body.mitch-next .site-logo { border-radius: 10px; }
+
+/* Chromebook-density pass: keep the first screen useful at 1366x768 and
+   similar school-laptop sizes without shrinking normal body text. */
+@media (min-width: 761px) and (max-width: 1500px) and (max-height: 820px) {
+  body.mitch-design.mitch-next :is(#app-topbar, #site-topbar) { min-height: 54px !important; padding-block: 4px !important; }
+  body.mitch-design.mitch-next #app-topbar .app-nav a { min-height: 38px !important; padding: 7px 9px !important; font-size: 13px !important; }
+  body.mitch-design.mitch-next #app-topbar .app-account-link { min-height: 38px !important; padding: 7px 10px !important; }
+  body.mitch-design.mitch-next :is(.app-main, main.shell, .prefs-shell, .legal-shell, .portal-shell, .games-shell) { padding-top: 14px !important; padding-bottom: 34px !important; }
+  body.mitch-design.mitch-next :is(.page-head, .page-header) { margin-bottom: 14px !important; padding-bottom: 12px !important; }
+  body.mitch-design.mitch-next :is(.page-head, .page-header) h1 { font-size: clamp(26px,3vw,36px) !important; }
+  html body.mitch-design.mitch-next :is(.panel, .card, .glass-card, .cpanel, .pref-section, .stat-card, .mod-card, .action-card, .listing-item, .item-card, .member-card, .friend-card, .notif-card, .plan-card, .profile-card, .balance-card) { border-radius: max(12px,var(--t-radius)) !important; }
+}
 body.home.mitch-design.mitch-next #site-topbar.home-masthead {
   position: sticky !important; top: 0 !important; left: 0 !important; right: auto !important;
   width: 100% !important; max-width: none !important; margin: 0 !important;
@@ -238,5 +250,11 @@ body.mitch-design.mitch-next.encrypt-page .modal-card { background: var(--t-bg) 
 @media (max-width: 380px) {
   body.mitch-design.mitch-next.encrypt-page #chat-header .tool-btn { padding-inline: 8px; }
   body.mitch-design.mitch-next.encrypt-page #expiry-btn { max-width: 100px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+}
+@media (min-width: 761px) and (max-width: 1500px) and (max-height: 820px) {
+  html body.mitch-design.mitch-next :is(.page-head, .page-header) { margin-bottom: 14px !important; padding-bottom: 12px !important; }
+  body.mitch-design.mitch-next :is(.page-head, .page-header) h1 { font-size: clamp(26px,3vw,36px) !important; }
+  body.mitch-design.mitch-next :is(.games-hero, .portal-hero) h1 { font-size: clamp(32px,4vw,48px) !important; }
+  body.home.mitch-design.mitch-next .staff-access-button > .staff-access-copy { width: auto; height: auto; background: none; box-shadow: none; }
 }
 @media (prefers-reduced-motion: reduce) { body.mitch-next * { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
