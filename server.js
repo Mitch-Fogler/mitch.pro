@@ -17073,7 +17073,7 @@ async function handleRequest(req, server) {
     return jsonResp(200, { computers, serviceAvailable: proxmoxDesktop.configured });
   }
 
-  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session))?$/);
+  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend))?$/);
   if (vmComputerMatch) {
     const actor = authenticatedVmActor(req);
     if (!actor) return jsonResp(401, { error: 'Sign in to access your computer.' });
@@ -17096,6 +17096,41 @@ async function handleRequest(req, server) {
       }
     }
 
+    if (operation === 'extend' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/extend'); if (rl) return rl;
+      try {
+        const runtime = await proxmoxDesktop.getStatus(record);
+        if (runtime.state !== 'running') {
+          return jsonResp(400, { error: 'Computer must be running to extend session.' });
+        }
+        const leaseInfo = getVmLease(record.id, runtime.uptime);
+        if (leaseInfo.extended || !leaseInfo.canExtend) {
+          return jsonResp(400, { error: 'Maximum extension already applied (30 minutes maximum).', code: 'extension_limit_reached' });
+        }
+        const lease = vmLeases.get(record.id) || { startedAt: Date.now() - (runtime.uptime * 1000) };
+        lease.extended = true;
+        lease.extendedAt = Date.now();
+        lease.lastSeenUptime = runtime.uptime;
+        vmLeases.set(record.id, lease);
+        const updatedLease = getVmLease(record.id, runtime.uptime);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: 'VM_LEASE_EXTENDED',
+          success: true,
+          details: { remainingSeconds: updatedLease.remainingSeconds, maxUptimeSeconds: updatedLease.maxUptimeSeconds }
+        });
+        return jsonResp(200, {
+          success: true,
+          message: 'Session extended by 30 minutes.',
+          lease: updatedLease
+        });
+      } catch (error) {
+        const friendly = friendlyVmError(error);
+        return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+      }
+    }
+
     if (operation === 'power' && method === 'POST') {
       const rl = checkRateLimit(req, '/api/vm/power'); if (rl) return rl;
       if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
@@ -17104,6 +17139,10 @@ async function handleRequest(req, server) {
       if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
       try {
         const task = await proxmoxDesktop.power(record, action);
+        clearVmLease(record.id);
+        if (action === 'shutdown' || action === 'force-stop') {
+          revokeVmDesktopConnections(record.id);
+        }
         void proxmoxDesktop.waitForTask(record.node, task, 180_000).then(() => {
           vmAudit({ actorEmail: actor.email, record, action: action === 'restart' ? 'VM_RESTARTED' : action === 'start' ? 'VM_STARTED' : 'VM_STOPPED', success: true });
         }).catch(error => {
@@ -17268,6 +17307,7 @@ async function handleRequest(req, server) {
       vmAudit({ actorEmail: actor.email, record, action: 'VM_ASSIGNED', success: true });
       return jsonResp(201, { success: true, computer: { ...publicVmRecord(record, { state: 'starting' }), ownerEmail: record.ownerEmail, vmid: record.vmid } });
     } catch (error) {
+      console.error('[admin/vms/create] Error creating computer:', error);
       if (pendingRecord?.id) updateVirtualMachineRuntime(pendingRecord.id, { status: 'provisioning-failed' });
       vmAudit({ actorEmail: actor.email, record: pendingRecord, action: 'VM_CREATED', success: false, details: { code: error?.code || 'UNKNOWN' } });
       const friendly = friendlyVmError(error);
@@ -23807,9 +23847,11 @@ setTimeout(() => {
 
   initPortalSshKey();
   cleanupAllEphemeralVms();
+  shutdownAllRunningVmsOnStartup();
   migrateLegacyVmOwnership();
   cleanupVmDesktopSessions();
   setInterval(cleanupVmDesktopSessions, 5000);
+  setInterval(enforceVmMaxUptimeWorker, 15000);
 
   setInterval(happyHourWorker, 60000);
   computedHappyHour = getLeastUsedSchoolHour();
@@ -24092,6 +24134,43 @@ const vmDesktopSockets = new Set();
 const vmPowerRequests = new Map();
 const vmPowerGate = new VmOperationGate(5000);
 const VM_DESKTOP_SESSION_TTL_MS = 75_000;
+const VM_BASE_MAX_UPTIME_SECONDS = 3600; // 1 hour maximum base uptime
+const VM_MAX_EXTENSION_SECONDS = 1800;   // 30 minutes maximum extension
+const VM_TOTAL_MAX_UPTIME_SECONDS = VM_BASE_MAX_UPTIME_SECONDS + VM_MAX_EXTENSION_SECONDS; // 5400 seconds (90 min)
+const vmLeases = new Map();
+
+function getVmLease(recordId, currentUptime = 0) {
+  const normalizedUptime = Math.max(0, Math.floor(Number(currentUptime) || 0));
+  let lease = vmLeases.get(recordId);
+  if (!lease) {
+    lease = {
+      extended: false,
+      startedAt: Date.now() - (normalizedUptime * 1000),
+      lastSeenUptime: normalizedUptime,
+    };
+    vmLeases.set(recordId, lease);
+  } else if (normalizedUptime > 0 && lease.lastSeenUptime > 60 && normalizedUptime < (lease.lastSeenUptime - 60)) {
+    lease.extended = false;
+    lease.startedAt = Date.now() - (normalizedUptime * 1000);
+  }
+  lease.lastSeenUptime = normalizedUptime;
+
+  const maxUptimeSeconds = lease.extended ? VM_TOTAL_MAX_UPTIME_SECONDS : VM_BASE_MAX_UPTIME_SECONDS;
+  const remainingSeconds = Math.max(0, maxUptimeSeconds - normalizedUptime);
+  const canExtend = !lease.extended && remainingSeconds > 0;
+
+  return {
+    extended: Boolean(lease.extended),
+    maxUptimeSeconds,
+    remainingSeconds,
+    canExtend,
+    currentUptime: normalizedUptime,
+  };
+}
+
+function clearVmLease(recordId) {
+  vmLeases.delete(recordId);
+}
 
 function migrateLegacyVmOwnership() {
   const legacy = loadJson(VM_APPS_FILE, {});
@@ -24150,18 +24229,30 @@ function vmRecordAllowedForActor(record, actor) {
 }
 
 function friendlyVmError(error) {
-  if (error instanceof ProxmoxServiceError) {
+  if (error instanceof ProxmoxServiceError || error?.name === 'ProxmoxServiceError') {
     if (error.code === 'STOPPED') return { status: 409, error: 'Your computer is currently offline. Start it and try again.', code: 'computer_offline' };
     if (error.code === 'TIMEOUT' || error.code === 'TASK_TIMEOUT') return { status: 504, error: 'Your computer is still starting. Try again in a moment.', code: 'computer_starting' };
-    if (error.code === 'INVALID_ACTION' || error.code === 'INVALID_VM' || error.code === 'INVALID_TEMPLATE') return { status: 400, error: 'That computer request is not valid.', code: 'invalid_request' };
-    if (error.code === 'INVALID_DESKTOP_LOGIN') return { status: 400, error: 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' };
+    if (error.code === 'INVALID_ACTION' || error.code === 'INVALID_VM' || error.code === 'INVALID_TEMPLATE') return { status: 400, error: error.message || 'That computer request is not valid.', code: 'invalid_request' };
+    if (error.code === 'INVALID_DESKTOP_LOGIN') return { status: 400, error: error.message || 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' };
     if (error.code === 'NO_CAPACITY') return { status: 409, error: 'No computer slots are available right now.', code: 'no_capacity' };
     if (error.code === 'NO_GRAPHICAL_DESKTOP') return { status: 409, error: 'This machine does not have a graphical desktop.', code: 'desktop_unavailable' };
+    if (error.code === 'GUEST_SETUP_FAILED') return { status: 504, error: error.message || 'The graphical desktop did not finish starting.', code: 'guest_setup_failed' };
+    if (error.code === 'TASK_FAILED') return { status: 502, error: error.message || 'The computer task failed.', code: 'task_failed' };
+    if (error.code === 'UPSTREAM_REJECTED') return { status: error.status || 502, error: error.message || 'The computer service rejected the request.', code: 'upstream_rejected' };
+    return { status: error.status || 502, error: error.message || 'Your computer could not be reached.', code: (error.code || 'computer_error').toLowerCase() };
   }
-  return { status: 502, error: 'Your computer could not be reached.', code: 'computer_unreachable' };
+  return { status: 502, error: error?.message || 'Your computer could not be reached.', code: error?.code || 'computer_unreachable' };
 }
 
 function publicVmRecord(record, runtime = null) {
+  const isRunning = runtime?.state === 'running';
+  const lease = isRunning ? getVmLease(record.id, runtime.uptime) : {
+    extended: false,
+    maxUptimeSeconds: VM_BASE_MAX_UPTIME_SECONDS,
+    remainingSeconds: VM_BASE_MAX_UPTIME_SECONDS,
+    canExtend: true,
+    currentUptime: 0,
+  };
   return {
     id: record.id,
     name: record.friendlyName || 'My Computer',
@@ -24180,6 +24271,7 @@ function publicVmRecord(record, runtime = null) {
     uptime: runtime?.uptime || 0,
     desktopAvailable: record.guestType === 'qemu',
     createdAt: record.createdAt,
+    lease,
   };
 }
 
@@ -24210,6 +24302,89 @@ function vmDesktopSocketAuthorized(ws) {
 function revokeVmDesktopConnections(recordId) {
   for (const [id, session] of vmDesktopSessions) if (session.recordId === recordId) vmDesktopSessions.delete(id);
   for (const ws of vmDesktopSockets) if (ws.data.recordId === recordId) ws.close(1008, 'Desktop access changed');
+}
+
+async function shutdownAllRunningVmsOnStartup() {
+  console.log('[startup] Checking for running VMs to shut down on server start...');
+  try {
+    if (!proxmoxDesktop.configured) {
+      console.log('[startup] Proxmox service not configured; skipping startup VM shutdown.');
+      return;
+    }
+    const guests = await proxmoxDesktop.listGuests();
+    const running = (guests || []).filter(g => !g.template && (g.status === 'running' || g.status === 'paused'));
+    if (running.length === 0) {
+      console.log('[startup] No running VMs found on Proxmox.');
+      return;
+    }
+    console.log(`[startup] Found ${running.length} running VM(s) to shut down on startup:`, running.map(g => `${g.vmid} (${g.name})`).join(', '));
+    await Promise.allSettled(running.map(async guest => {
+      try {
+        console.log(`[startup] Initiating graceful shutdown for VM ${guest.vmid} (${guest.name})...`);
+        await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
+      } catch (err) {
+        console.warn(`[startup] Graceful shutdown failed for VM ${guest.vmid}, attempting force-stop:`, err?.message || err);
+        try {
+          await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop');
+        } catch (stopErr) {
+          console.error(`[startup] Failed to stop VM ${guest.vmid}:`, stopErr?.message || stopErr);
+        }
+      }
+    }));
+    vmDesktopSessions.clear();
+    vmDesktopSockets.clear();
+    vmLeases.clear();
+    console.log('[startup] Finished shutting down all running VMs on startup.');
+  } catch (err) {
+    console.error('[startup] Error shutting down running VMs on startup:', err);
+  }
+}
+
+async function enforceVmMaxUptimeWorker() {
+  if (!proxmoxDesktop.configured) return;
+  try {
+    const guests = await proxmoxDesktop.listGuests();
+    for (const guest of (guests || [])) {
+      if (guest.template || guest.status !== 'running') continue;
+      const record = getVirtualMachineByVmid(guest.vmid);
+      const recordKey = record ? record.id : `vmid-${guest.vmid}`;
+      const lease = getVmLease(recordKey, guest.uptime);
+      if (lease.remainingSeconds <= 0) {
+        console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) reached max uptime (${guest.uptime}s / ${lease.maxUptimeSeconds}s). Automatically shutting down...`);
+        if (record) {
+          vmAudit({
+            actorEmail: 'system',
+            record,
+            action: 'VM_SHUTDOWN_TIMEOUT',
+            success: true,
+            details: { uptime: guest.uptime, maxUptimeSeconds: lease.maxUptimeSeconds, extended: lease.extended },
+          });
+          revokeVmDesktopConnections(record.id);
+          try {
+            await proxmoxDesktop.power(record, 'shutdown');
+          } catch (err) {
+            console.warn(`[vm-watchdog] Graceful shutdown failed for ${record.id}, attempting force-stop:`, err?.message || err);
+            try {
+              await proxmoxDesktop.power(record, 'force-stop');
+            } catch (stopErr) {
+              console.error(`[vm-watchdog] Force stop failed for ${record.id}:`, stopErr?.message || stopErr);
+            }
+          }
+        } else {
+          try {
+            await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
+          } catch (err) {
+            try {
+              await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop');
+            } catch {}
+          }
+        }
+        vmLeases.delete(recordKey);
+      }
+    }
+  } catch (err) {
+    console.error('[vm-watchdog] Error in enforceVmMaxUptimeWorker:', err);
+  }
 }
 
 // Allowlist range for student/premium sandbox VMIDs. The free-VM allocator

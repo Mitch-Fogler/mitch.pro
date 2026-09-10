@@ -23,6 +23,9 @@
     const cpuLoad = Math.max(0, Math.min(100, Math.round(Number(vm.cpuUsage || 0) * 100)));
     const memoryLoad = percent(vm.memoryUsed, vm.memoryTotal);
     const diskLoad = percent(vm.diskUsed, vm.diskTotal);
+    const remSeconds = vm.lease?.remainingSeconds != null ? vm.lease.remainingSeconds : null;
+    const remDisplay = remSeconds != null ? uptime(remSeconds) : null;
+    const canExtend = running && !busy && vm.lease?.canExtend && !vm.lease?.extended;
     const previewTag = open ? 'a' : 'div';
     const previewLink = open ? ` href="/vms/desktop/?id=${encodeURIComponent(vm.id)}" aria-label="Open ${esc(vm.name || 'My Computer')}"` : '';
     return `<article class="computer-card" data-id="${esc(vm.id)}">
@@ -36,13 +39,13 @@
       </${previewTag}>
       <div class="computer-details">
         <div class="computer-title-row"><div><p class="machine-label">Personal desktop</p><h2>${esc(vm.name || 'My Computer')}</h2><p>${esc(distro)}</p></div>${open ? `<a class="primary-button" href="/vms/desktop/?id=${encodeURIComponent(vm.id)}"><span>Open Desktop</span><b aria-hidden="true">↗</b></a>` : '<button class="primary-button" disabled>Open Desktop</button>'}</div>
-        <div class="machine-facts"><span><small>Address</small><strong title="${esc(vm.ipAddress)}">${esc(vm.ipAddress || (running ? 'Connecting…' : 'Not available'))}</strong></span><span><small>Uptime</small><strong>${uptime(vm.uptime)}</strong></span></div>
+        <div class="machine-facts"><span><small>Address</small><strong title="${esc(vm.ipAddress)}">${esc(vm.ipAddress || (running ? 'Connecting…' : 'Not available'))}</strong></span><span><small>Uptime</small><strong>${uptime(vm.uptime)}</strong></span>${running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : ''}</div>
         <div class="resource-grid">
           <div class="resource"><span><small>CPU</small><b>${esc(vm.cpuCores || '—')} cores</b></span><em>${cpuLoad}%</em><i><b style="width:${cpuLoad}%"></b></i></div>
           <div class="resource"><span><small>Memory</small><b>${bytes(vm.memoryTotal)}</b></span><em>${memoryLoad}%</em><i><b style="width:${memoryLoad}%"></b></i></div>
           <div class="resource"><span><small>Storage</small><b>${bytes(vm.diskTotal)}</b></span><em>${diskLoad}%</em><i><b style="width:${diskLoad}%"></b></i></div>
         </div>
-        <div class="computer-actions">${!running ? `<button class="primary-button" data-action="start" ${busy || vm.status !== 'stopped' ? 'disabled' : ''}>${operation || 'Start Computer'}</button>` : ''}<button class="control-button" data-action="restart" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">↻</span> Restart</button><button class="control-button danger-control" data-action="shutdown" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">⏻</span> Shut Down</button></div>
+        <div class="computer-actions">${!running ? `<button class="primary-button" data-action="start" ${busy || vm.status !== 'stopped' ? 'disabled' : ''}>${operation || 'Start Computer'}</button>` : ''}${canExtend ? `<button class="control-button" data-action="extend" ${busy ? 'disabled' : ''}><span aria-hidden="true">+</span> Extend 30m</button>` : ''}<button class="control-button" data-action="restart" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">↻</span> Restart</button><button class="control-button danger-control" data-action="shutdown" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">⏻</span> Shut Down</button></div>
       </div></article>`;
   }
   function render() { grid.innerHTML = computers.map(card).join(''); setState(computers.length ? 'computer-grid' : 'empty-state'); }
@@ -63,7 +66,7 @@
     } finally { loading = false; $('refresh-button').disabled = false; }
   }
   function confirmPower(action, name) {
-    if (action === 'start') return Promise.resolve(true);
+    if (action === 'start' || action === 'extend') return Promise.resolve(true);
     if (dialog.open) return Promise.resolve(false);
     $('confirm-title').textContent = action === 'restart' ? 'Restart computer?' : 'Shut down computer?';
     $('confirm-copy').textContent = `${action === 'restart' ? 'Restart' : 'Shut down'} ${name}? Save your work inside the desktop first.`;
@@ -74,6 +77,17 @@
   async function power(id, action) {
     const vm = computers.find(item => item.id === id);
     if (!vm || pending.has(id) || !await confirmPower(action, vm.name || 'your computer') || pending.has(id)) return;
+    if (action === 'extend') {
+      pending.set(id, 'Extending...'); render();
+      try {
+        const response = await fetch(`/api/vm/computers/${encodeURIComponent(id)}/extend`, { method: 'POST', credentials: 'same-origin', headers, body: '{}' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || 'Session could not be extended.');
+        $('refresh-status').textContent = 'Session extended by 30 minutes.';
+        setTimeout(() => { pending.delete(id); load(); }, 1200);
+      } catch (error) { pending.delete(id); render(); $('refresh-status').textContent = error.message; }
+      return;
+    }
     pending.set(id, { start: 'Starting...', restart: 'Restarting...', shutdown: 'Shutting down...' }[action]); render();
     try {
       const response = await fetch(`/api/vm/computers/${encodeURIComponent(id)}/power`, { method: 'POST', credentials: 'same-origin', headers, body: JSON.stringify({ action }) });
