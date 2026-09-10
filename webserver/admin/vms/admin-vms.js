@@ -7,10 +7,62 @@
   const pct = (used, total) => total ? Math.max(0, Math.min(100, Math.round(used / total * 100))) : 0;
   const pending = new Set(), failedDeletes = new Set();
   let overview = null, loading = false, creating = false, assigning = false;
-  async function api(url, body) {
-    const response = await fetch(url, { credentials: 'same-origin', cache: 'no-store', ...(body ? { method: 'POST', headers, body: JSON.stringify(body) } : {}) });
+  function getAdminHeaders(extra = {}) {
+    const h = { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1', ...extra };
+    const pass = sessionStorage.getItem('admin_passphrase');
+    if (pass) h['X-Admin-Passphrase'] = pass;
+    return h;
+  }
+
+  let passphraseResolvers = [];
+  function showPassphraseLockBox(isNewSetup = false) {
+    const box = $('passphrase-lock-box');
+    if (!box) return;
+    box.style.display = 'block';
+    $('lock-box-headline').textContent = isNewSetup ? 'Set Admin Passphrase' : 'Passphrase Verification Required';
+    $('lock-box-desc').textContent = isNewSetup
+      ? 'Create a secure passphrase to protect all administrative actions.'
+      : 'Administrative endpoints are protected. Enter your admin passphrase to unlock computer management.';
+    $('admin-passphrase-input').placeholder = isNewSetup ? 'Choose secure passphrase...' : 'Admin passphrase...';
+    $('admin-passphrase-btn').textContent = isNewSetup ? 'Set Passphrase' : 'Unlock';
+    $('admin-passphrase-input').value = '';
+    $('admin-passphrase-input').focus();
+    $('passphrase-status').textContent = '';
+    $('passphrase-status').className = 'form-status';
+  }
+
+  function hidePassphraseLockBox() {
+    const box = $('passphrase-lock-box');
+    if (box) box.style.display = 'none';
+  }
+
+  function waitForPassphrase(isNewSetup = false) {
+    showPassphraseLockBox(isNewSetup);
+    return new Promise((resolve, reject) => {
+      passphraseResolvers.push({ resolve, reject });
+    });
+  }
+
+  async function api(url, body, allowPrompt = true) {
+    const response = await fetch(url, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: getAdminHeaders(),
+      ...(body ? { method: 'POST', body: JSON.stringify(body) } : {})
+    });
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) { location.href = '/enroll/?next=' + encodeURIComponent(location.pathname); throw new Error('Sign in to continue.'); }
+    if (response.status === 401) {
+      location.href = '/enroll/?next=' + encodeURIComponent(location.pathname);
+      throw new Error('Sign in to continue.');
+    }
+    if (response.status === 403 && (data.error === 'invalid_passphrase' || data.error === 'passphrase_not_configured')) {
+      if (allowPrompt) {
+        sessionStorage.removeItem('admin_passphrase');
+        await waitForPassphrase(data.error === 'passphrase_not_configured');
+        return api(url, body, false);
+      }
+      throw new Error('Admin passphrase verification required.');
+    }
     if (!response.ok) throw new Error(response.status === 403 ? 'Administrator access is required.' : data.message || data.error || 'The computer service could not be reached.');
     return data;
   }
@@ -63,6 +115,46 @@
   function status(id, message, type = '') { $(id).textContent = message; $(id).className = `form-status ${type}`; }
   function setHostname() { $('create-hostname').value = ('computer-' + $('create-user').value.split('@')[0]).toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 48).replace(/-+$/, ''); }
   $('create-user').addEventListener('change', setHostname);
+  const passForm = $('passphrase-form');
+  if (passForm) {
+    passForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const input = $('admin-passphrase-input');
+      const pass = input.value.trim();
+      if (!pass) return;
+      const btn = $('admin-passphrase-btn');
+      btn.disabled = true;
+      status('passphrase-status', 'Verifying passphrase...');
+      try {
+        const verifyRes = await fetch('/api/admin/passphrase-status', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'X-Admin-Passphrase': pass },
+          body: JSON.stringify({ passphrase: pass })
+        });
+        const d = await verifyRes.json().catch(() => ({}));
+        if (verifyRes.ok && d.ok) {
+          sessionStorage.setItem('admin_passphrase', pass);
+          status('passphrase-status', 'Passphrase verified.', 'success');
+          setTimeout(() => {
+            hidePassphraseLockBox();
+            const queue = passphraseResolvers;
+            passphraseResolvers = [];
+            queue.forEach(p => p.resolve(pass));
+            load();
+          }, 300);
+        } else {
+          sessionStorage.removeItem('admin_passphrase');
+          status('passphrase-status', d.error === 'passphrase_too_short' ? 'Passphrase must be at least 4 characters.' : 'Incorrect admin passphrase. Try again.', 'error');
+          input.select();
+        }
+      } catch (err) {
+        status('passphrase-status', err.message || 'Verification failed.', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
   $('create-form').addEventListener('submit', async event => {
     event.preventDefault(); if (creating) return;
     if (!confirm('Create and start this desktop? Make sure you have securely saved the desktop login details for the user.')) return;

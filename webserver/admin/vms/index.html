@@ -15,6 +15,25 @@
       <div class="service-state" id="service-state"><i></i><span>Checking service</span></div>
     </header>
 
+    <!-- Admin Passphrase Verification Required -->
+    <div id="passphrase-lock-box" class="panel" style="display: none; margin-bottom: 17px; border: 1px dashed rgba(255,255,255,.2); background: rgba(23, 27, 34, 0.96);">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 250px;">
+          <h2 style="margin: 0 0 6px 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+            <span>🔒</span> <span id="lock-box-headline">Passphrase Verification Required</span>
+          </h2>
+          <p id="lock-box-desc" style="color: var(--muted); font-size: 0.85rem; margin: 0;">
+            Administrative endpoints are protected. Enter your admin passphrase to unlock computer management.
+          </p>
+        </div>
+        <form id="passphrase-form" style="display: flex !important; flex-wrap: wrap !important; align-items: center !important; gap: 8px !important; margin: 0;">
+          <input type="password" id="admin-passphrase-input" placeholder="Admin passphrase..." style="width: auto !important; min-width: 220px !important; margin: 0 !important;" autocomplete="current-password" required>
+          <button type="submit" id="admin-passphrase-btn" class="primary" style="width: auto !important; margin: 0 !important;">Unlock</button>
+        </form>
+      </div>
+      <p class="form-status" id="passphrase-status" role="status" style="margin-top: 10px;"></p>
+    </div>
+
     <section class="capacity-grid" id="capacity-grid" aria-label="Node capacity">
       <article><span>Processor</span><strong id="cpu-capacity">—</strong><div><i id="cpu-bar"></i></div></article>
       <article><span>Memory</span><strong id="memory-capacity">—</strong><div><i id="memory-bar"></i></div></article>
