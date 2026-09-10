@@ -8220,6 +8220,269 @@ async function translateMatrixPasswordInRequestBody(req, path, bodyText) {
   return { modified: false, bodyText };
 }
 
+// ── Matrix Outbound Push Notification System ──────────────────────────────────
+const matrixRoomInfoCache = new Map();
+
+async function getMatrixRoomInfoForNotifications(roomId, token) {
+  const cached = matrixRoomInfoCache.get(roomId);
+  const now = Date.now();
+  if (cached && (now - cached.ts < 30000) && Array.isArray(cached.members) && cached.members.length > 0) {
+    return cached;
+  }
+
+  let members = [];
+  let name = '';
+
+  const headers = {};
+  if (token) headers['Authorization'] = token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
+
+  try {
+    const memRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`, { headers });
+    if (memRes.ok) {
+      const memData = await memRes.json();
+      members = Object.keys(memData.joined || {});
+    }
+  } catch (err) {
+    console.warn('[matrix-notif] Failed to fetch joined members:', err?.message || err);
+  }
+
+  try {
+    const nameRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.name`, { headers });
+    if (nameRes.ok) {
+      const nameData = await nameRes.json();
+      if (nameData.name) name = nameData.name;
+    }
+    if (!name) {
+      const aliasRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.canonical_alias`, { headers });
+      if (aliasRes.ok) {
+        const aliasData = await aliasRes.json();
+        if (aliasData.alias) name = aliasData.alias;
+      }
+    }
+  } catch (_) {}
+
+  const result = { members, name, ts: now };
+  if (members.length > 0) {
+    matrixRoomInfoCache.set(roomId, result);
+  }
+  return result;
+}
+
+async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, req) {
+  if (eventType !== 'm.room.message' && eventType !== 'm.room.encrypted') return;
+
+  let parsed = {};
+  try { parsed = JSON.parse(bodyText); } catch {}
+
+  let previewText = 'New message';
+  if (eventType === 'm.room.encrypted') {
+    previewText = '🔒 Encrypted message';
+  } else if (parsed.msgtype === 'm.image') {
+    previewText = '📷 Sent an image';
+  } else if (parsed.msgtype === 'm.file') {
+    previewText = '📎 Sent an attachment';
+  } else if (typeof parsed.body === 'string' && parsed.body.trim()) {
+    previewText = parsed.body.replace(/<[^>]*>/g, '').trim().slice(0, 120);
+  }
+
+  // Identify sender
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  let senderUserId = '';
+  let senderDisplayName = 'Someone';
+  let senderNormEmail = '';
+
+  const senderAcc = await resolveMatrixAccount(req, parsed);
+  if (senderAcc) {
+    senderNormEmail = senderAcc.normEmail || '';
+    if (senderAcc.userId) senderUserId = senderAcc.userId;
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = profiles[senderNormEmail] || {};
+    const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+    senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+  }
+
+  if (!senderUserId && token) {
+    const cachedAcc = matrixTokenToAccount.get(token);
+    if (cachedAcc && cachedAcc.userId) {
+      senderUserId = cachedAcc.userId;
+      if (!senderNormEmail && cachedAcc.normEmail) senderNormEmail = cachedAcc.normEmail;
+    }
+    if (!senderUserId) {
+      try {
+        const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+          headers: { 'Authorization': authHeader }
+        });
+        if (whoRes.ok) {
+          const whoData = await whoRes.json();
+          if (whoData.user_id) senderUserId = whoData.user_id;
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (!senderNormEmail && senderUserId) {
+    const localPart = senderUserId.replace(/^@/, '').split(':')[0];
+    const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === senderUserId.toLowerCase()) {
+        const email = emailFromSid(u);
+        if (email) senderNormEmail = normalizeEmail(email);
+        break;
+      }
+    }
+    if (!senderNormEmail) senderNormEmail = resolveLoginIdentifier(localPart) || '';
+  }
+
+  if (senderDisplayName === 'Someone') {
+    if (senderNormEmail) {
+      const profiles = loadJson(PROFILES_FILE, {});
+      const prof = profiles[senderNormEmail] || {};
+      const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+      senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+    } else if (senderUserId) {
+      senderDisplayName = senderUserId.replace(/^@/, '').split(':')[0];
+    }
+  }
+
+  // Retrieve room members using sender token or system admin token
+  let roomInfo = await getMatrixRoomInfoForNotifications(roomId, token);
+  if (!roomInfo.members || roomInfo.members.length === 0) {
+    try {
+      const adminToken = await getSystemAdminMatrixToken();
+      if (adminToken && adminToken !== token) {
+        roomInfo = await getMatrixRoomInfoForNotifications(roomId, adminToken);
+      }
+    } catch (_) {}
+  }
+
+  if (!roomInfo.members || roomInfo.members.length === 0) return;
+
+  const isDirect = roomInfo.members.length <= 2;
+  const roomTitle = roomInfo.name || (isDirect ? '' : 'General');
+  const notifTitle = isDirect
+    ? `Message from ${senderDisplayName}`
+    : (roomTitle ? `${senderDisplayName} in ${roomTitle}` : `Message from ${senderDisplayName}`);
+
+  const subs = loadPushSubscriptions();
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+
+  for (const memberId of roomInfo.members) {
+    if (senderUserId && memberId.toLowerCase() === senderUserId.toLowerCase()) continue;
+
+    let memberNorm = '';
+    const localPart = memberId.replace(/^@/, '').split(':')[0];
+
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === memberId.toLowerCase()) {
+        const email = emailFromSid(u);
+        if (email) memberNorm = normalizeEmail(email);
+        break;
+      }
+    }
+    if (!memberNorm) {
+      memberNorm = resolveLoginIdentifier(localPart) || '';
+    }
+    if (!memberNorm) {
+      for (const [key, p] of Object.entries(profiles)) {
+        if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+          memberNorm = key;
+          break;
+        }
+      }
+    }
+
+    if (!memberNorm || memberNorm === senderNormEmail) continue;
+
+    const notifKey = isDirect ? 'dm' : 'group';
+    if (!notifAllowed(memberNorm, notifKey)) continue;
+
+    const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+
+    if (VAPID_PUBLIC && subs[memberNorm]) {
+      await sendWebPushClean(subs, memberNorm, {
+        title: notifTitle,
+        body: previewText,
+        url: notificationUrl(notifUrl),
+        tag: `matrix-${roomId}`,
+      });
+    }
+
+    ntfyNotify(memberNorm, notifTitle, previewText, notificationUrl(notifUrl));
+  }
+}
+
+async function dispatchMatrixInviteNotifications(roomId, bodyText, req) {
+  let parsed = {};
+  try { parsed = JSON.parse(bodyText); } catch {}
+  const targetUserId = parsed.user_id || '';
+  if (!targetUserId) return;
+
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  let senderDisplayName = 'Someone';
+
+  const senderAcc = await resolveMatrixAccount(req, parsed);
+  if (senderAcc && senderAcc.normEmail) {
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = profiles[senderAcc.normEmail] || {};
+    const senderCanonical = canonicalDeliveryEmail(senderAcc.normEmail);
+    senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+  } else if (token) {
+    const cachedAcc = matrixTokenToAccount.get(token);
+    if (cachedAcc && cachedAcc.normEmail) {
+      const profiles = loadJson(PROFILES_FILE, {});
+      const prof = profiles[cachedAcc.normEmail] || {};
+      const senderCanonical = canonicalDeliveryEmail(cachedAcc.normEmail);
+      senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+    }
+  }
+
+  const roomInfo = await getMatrixRoomInfoForNotifications(roomId, token);
+  const roomTitle = roomInfo.name || 'a chat room';
+
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+  let memberNorm = '';
+  const localPart = targetUserId.replace(/^@/, '').split(':')[0];
+
+  for (const [u, name] of Object.entries(matrixUsers)) {
+    if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === targetUserId.toLowerCase()) {
+      const email = emailFromSid(u);
+      if (email) memberNorm = normalizeEmail(email);
+      break;
+    }
+  }
+  if (!memberNorm) memberNorm = resolveLoginIdentifier(localPart) || '';
+  if (!memberNorm) {
+    for (const [key, p] of Object.entries(profiles)) {
+      if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+        memberNorm = key;
+        break;
+      }
+    }
+  }
+  if (!memberNorm) return;
+
+  if (!notifAllowed(memberNorm, 'dm')) return;
+
+  const notifTitle = 'Chat Room Invite';
+  const notifBody = `${senderDisplayName} invited you to join ${roomTitle}`;
+  const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+  const subs = loadPushSubscriptions();
+
+  if (VAPID_PUBLIC && subs[memberNorm]) {
+    await sendWebPushClean(subs, memberNorm, {
+      title: notifTitle,
+      body: notifBody,
+      url: notificationUrl(notifUrl),
+      tag: `matrix-invite-${roomId}`,
+    });
+  }
+  ntfyNotify(memberNorm, notifTitle, notifBody, notificationUrl(notifUrl));
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 const banOpenPaths = new Set([
@@ -8345,6 +8608,9 @@ async function handleRequest(req, server) {
         capturedBodyText = await req.text();
       } catch (_) {}
     }
+
+    const sendMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/send\/([^/]+)(?:\/([^/]+))?$/);
+    const inviteMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/invite$/);
 
     // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
     const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
@@ -8498,6 +8764,22 @@ async function handleRequest(req, server) {
           matrixTokenToAccount.set(loginData.access_token, acc);
         }
       } catch (_) {}
+    }
+
+    // Trigger Mitch.pro notifications for Matrix messages & room invites
+    if (upstreamRes.ok) {
+      if (sendMatch && capturedBodyText) {
+        const roomId = decodeURIComponent(sendMatch[1]);
+        const eventType = decodeURIComponent(sendMatch[2]);
+        dispatchMatrixMessageNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
+          console.warn('[matrix-push] Dispatch error:', e?.message || e);
+        });
+      } else if (inviteMatch && capturedBodyText) {
+        const roomId = decodeURIComponent(inviteMatch[1]);
+        dispatchMatrixInviteNotifications(roomId, capturedBodyText, req).catch(e => {
+          console.warn('[matrix-invite-push] Dispatch error:', e?.message || e);
+        });
+      }
     }
 
     const resHeaders = new Headers(upstreamRes.headers);

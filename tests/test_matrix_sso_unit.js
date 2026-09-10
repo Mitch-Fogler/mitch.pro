@@ -25,6 +25,7 @@ const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
 const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const MODERATORS_FILE = join(DATA_DIR, 'moderators.json');
 const CHAT_REPORTS_FILE = join(DATA_DIR, 'chat_reports.json');
+const PUSH_SUBS_FILE = join(DATA_DIR, 'push_subs.json');
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -89,8 +90,10 @@ profiles[modNormEmail] = { username: 'matrixmoduser', displayName: 'Matrix Mod U
 writeDocument(PROFILES_FILE, profiles);
 
 const origPasswords = readDocument(PASSWORDS_FILE, {});
+const origPushSubs = readDocument(PUSH_SUBS_FILE, {});
 const passwords = { ...origPasswords };
 passwords[testNormEmail] = await Bun.password.hash('mitch_test_pass_123');
+passwords[adminNormEmail] = await Bun.password.hash('admin_test_pass_123');
 writeDocument(PASSWORDS_FILE, passwords);
 
 // Ensure moderator user is in moderators.json
@@ -184,6 +187,26 @@ const mockConduit = Bun.serve({
     if (path.includes('/redact/')) {
       redactedEvents.push(decodeURIComponent(path));
       return Response.json({ event_id: '$redacted_' + Date.now() });
+    }
+    if (path.includes('/joined_members')) {
+      return Response.json({
+        joined: {
+          '@matrixtestuser:mitch.pro': {},
+          '@admin:mitch.pro': {}
+        }
+      });
+    }
+    if (path.includes('/state/m.room.name')) {
+      return Response.json({ name: 'General Chat' });
+    }
+    if (path.includes('/state/m.room.canonical_alias')) {
+      return Response.json({ alias: '#general:mitch.pro' });
+    }
+    if (path.includes('/send/')) {
+      return Response.json({ event_id: '$ev_msg_' + Date.now() });
+    }
+    if (path.endsWith('/invite')) {
+      return Response.json({});
     }
     return Response.json({ error: 'not found' }, { status: 404 });
   }
@@ -496,11 +519,62 @@ try {
   assert.equal(resEmailStatus.status, 200);
   console.log('Canonical email resolution verified');
 
+  // 16. Matrix Outbound Push Notification & Invite Dispatch
+  console.log('--- 16. Testing Matrix outbound message and invite notifications ---');
+  const mockSub = {
+    endpoint: 'https://updates.push.services.mozilla.com/wpush/v2/test_sub_endpoint_1234567890',
+    keys: {
+      p256dh: 'BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QT9AcUbVYO-13e0U_M0tK1EtK2wtaz5Ry4YfYCA_0QT9AcUbVYO13e0U_M0t',
+      auth: 'A1B2C3D4E5F6G7H8'
+    }
+  };
+  const resSub = await fetch(`${BASE_URL}/api/push/subscribe`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${adminSid}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(mockSub)
+  });
+  assert.equal(resSub.status, 200, 'Push subscribe should succeed');
+
+  const subsOnDisk = readDocument(PUSH_SUBS_FILE, {});
+  assert(subsOnDisk[adminNormEmail], 'Admin push subscription should be recorded in push_subs.json');
+
+  const resSend = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/send/m.room.message/m_txn_1001`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': 'Bearer tok_matrixtestuser',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      msgtype: 'm.text',
+      body: 'Hello everyone in general chat!'
+    })
+  });
+  assert.equal(resSend.status, 200, 'Sending Matrix message should return 200');
+  const dataSend = await resSend.json();
+  assert(dataSend.event_id, 'Send message response must contain event_id');
+
+  const resInvite = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/invite`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer tok_matrixtestuser',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      user_id: '@admin:mitch.pro'
+    })
+  });
+  assert.equal(resInvite.status, 200, 'Room invite should return 200');
+  console.log('Matrix outbound message and invite notifications passed');
+
   console.log('=== ALL MATRIX SSO & MODERATION UNIT TESTS PASSED SUCCESSFULLY! ===');
 } finally {
   writeDocument(MODERATORS_FILE, origMods);
   writeDocument(CHAT_REPORTS_FILE, origReports);
   writeDocument(PASSWORDS_FILE, origPasswords);
+  writeDocument(PUSH_SUBS_FILE, origPushSubs);
   mockConduit.stop();
   serverProc.kill();
 }
