@@ -1362,6 +1362,74 @@ function maskEmail(email) {
 // Reverse lookup for internal identity keys: normalizeEmail() folds
 // "alice.fogler@mitch.pro" into "alicefogler@student.rjuhsd.us", which is
 // right for storage but wrong to show anyone — the dot is part of the actual
+function canonicalDeliveryEmail(to) {
+  let raw = String(to || '').trim();
+  if (!raw) return '';
+  if (!raw.includes('@')) {
+    const fromSid = emailFromSid(raw);
+    if (fromSid) {
+      raw = fromSid;
+    } else {
+      try {
+        const names = getCachedNames();
+        if (names[raw] && typeof names[raw] === 'string' && names[raw].includes('@')) {
+          raw = names[raw];
+        }
+      } catch (_) {}
+      if (!raw.includes('@')) return raw;
+    }
+  }
+  const norm = normalizeEmail(raw);
+
+  // 1. Check names.json (primary ground truth for student enrollment emails)
+  try {
+    const names = getCachedNames();
+    for (const email of Object.values(names)) {
+      if (typeof email === 'string' && email.includes('@') && normalizeEmail(email) === norm) {
+        if (email.split('@')[0].includes('.') || email !== norm) {
+          return email.toLowerCase().trim();
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 2. Check profiles.json (user customized profile email)
+  try {
+    const p = loadJson(PROFILES_FILE, {})[norm];
+    if (p && typeof p.email === 'string' && p.email.includes('@') && normalizeEmail(p.email) === norm) {
+      if (p.email.split('@')[0].includes('.') || p.email !== norm) {
+        return p.email.toLowerCase().trim();
+      }
+    }
+  } catch (_) {}
+
+  // 3. Check tokens.json (enrollment tokens)
+  try {
+    for (const data of Object.values(loadTokens())) {
+      const e = data && data.email;
+      if (typeof e === 'string' && e.includes('@') && normalizeEmail(e) === norm) {
+        if (e.split('@')[0].includes('.') || e !== norm) {
+          return e.toLowerCase().trim();
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 4. Any match in names.json
+  try {
+    const names = getCachedNames();
+    for (const email of Object.values(names)) {
+      if (typeof email === 'string' && normalizeEmail(email) === norm) {
+        return email.toLowerCase().trim();
+      }
+    }
+  } catch (_) {}
+
+  return raw;
+}
+
+// ── Profile display email ───────────────────────────────────────────────────
+// Most UI surfaces want the user's real email address rather than normalized account
 // address. Map a normalized key back to the real address from the profile
 // store, falling back to whatever was passed in.
 let _displayEmailProfiles = null;
@@ -1380,8 +1448,12 @@ function displayEmail(normOrEmail) {
       _displayEmailProfilesTs = now;
     }
     const p = _displayEmailProfiles[norm];
-    if (p && p.email) return p.email;
+    if (p && p.email && p.email.split('@')[0].includes('.')) return p.email;
   } catch {}
+  const canonical = canonicalDeliveryEmail(raw);
+  if (canonical && canonical.split('@')[0].includes('.')) {
+    return canonical.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro');
+  }
   // No profile entry: keep the display-domain convention (normalized storage
   // keys use @student.rjuhsd.us, but the pretty address is @student.mitch.pro).
   return raw.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro');
@@ -2343,7 +2415,7 @@ function ensureProfileDefaults(normEmail, originalEmail = normEmail, patch = {})
   const now = Date.now();
   profiles[normEmail] = {
     ...existing,
-    email: existing.email || originalEmail || normEmail,
+    email: canonicalDeliveryEmail(existing.email || originalEmail || normEmail),
     username,
     nickname: String(patch.nickname ?? existing.nickname ?? existing.displayName ?? '').trim().slice(0, 40),
     displayName: String(patch.displayName ?? existing.displayName ?? patch.nickname ?? existing.nickname ?? '').trim().slice(0, 40),
@@ -2407,7 +2479,8 @@ function sendSecurityActionCode(normEmail, action) {
     attempts: 0,
     expires: Date.now() + 10 * 60 * 1000,
   });
-  sendEmailBg(normEmail, `Confirm ${label} - mitch.pro`, makeVerificationCodeHtml(label, code, 10));
+  const targetEmail = canonicalDeliveryEmail(normEmail);
+  sendEmailBg(targetEmail, `Confirm ${label} - mitch.pro`, makeVerificationCodeHtml(label, code, 10));
   return { ok: true };
 }
 
@@ -3472,23 +3545,7 @@ function emailScript(to) {
 }
 
 function deliveryEmailFor(to) {
-  const raw = String(to || '');
-  if (!raw.includes('@')) return raw;
-  const norm = normalizeEmail(raw);
-  try {
-    const p = loadJson(PROFILES_FILE, {})[norm];
-    // Only rewrite when the stored address maps back to the same account, so
-    // external recipients (invites, moderators) always pass through untouched.
-    if (p && p.email && normalizeEmail(p.email) === norm) return p.email;
-  } catch {}
-  // Profiles only exist for users who hit a page that created one; enrollment
-  // tokens keep the address exactly as the account was claimed.
-  try {
-    for (const data of Object.values(loadTokens())) {
-      if (data && data.email && normalizeEmail(data.email) === norm) return data.email;
-    }
-  } catch {}
-  return raw;
+  return canonicalDeliveryEmail(to);
 }
 
 function sendEmailBg(to, subject, body) {
@@ -4084,12 +4141,13 @@ async function premiumMaintenanceWorker() {
         } else if (inactiveFor >= WARN_MS) {
           const lastWarn = stats[norm]?.last_premium_warn || 0;
           if (now - lastWarn > 86400 * 1000) { // Warn at most once per 24h
-             console.log(`[premium] warning ${email} about inactivity (5d)`);
+             const targetEmail = canonicalDeliveryEmail(app.email || email || norm);
+             console.log(`[premium] warning ${targetEmail} about inactivity (5d)`);
              const subject = "Urgent: Your mitch.pro Premium is about to expire";
-             const html = makePremiumAlertHtml(email, subject, "Our records show you haven't logged in to mitch.pro for 5 days. If you do not log on in the next 2 days, your Premium status will be automatically revoked. Simply visit mitch.pro and log in to keep your perks!", siteUrl(email), "Login to mitch.pro");
+             const html = makePremiumAlertHtml(targetEmail, subject, "Our records show you haven't logged in to mitch.pro for 5 days. If you do not log on in the next 2 days, your Premium status will be automatically revoked. Simply visit mitch.pro and log in to keep your perks!", siteUrl(targetEmail), "Login to mitch.pro");
              // sendEmailBg routes school addresses through the Gmail script —
              // support@mitch.pro via Hostinger SMTP bounces at rjuhsd.us.
-             sendEmailBg(email, subject, html);
+             sendEmailBg(targetEmail, subject, html);
              if (!stats[norm]) stats[norm] = {};
              stats[norm].last_premium_warn = now;
              statsChanged = true;
@@ -4134,12 +4192,7 @@ async function premiumMaintenanceWorker() {
 }
 
 function sendPremiumEmailOffer(targetEmail) {
-  let toEmail = String(targetEmail || '').toLowerCase().trim();
-  const endsWithStudent = toEmail.endsWith('@student.rjuhsd.us') || toEmail.endsWith('@student.mitch.pro');
-  if (endsWithStudent) {
-    toEmail = 'mitchell.fogler@student.rjuhsd.us';
-  }
-  
+  const toEmail = canonicalDeliveryEmail(targetEmail);
   const base = siteUrl(toEmail);
   const subject = "Eligible for a Free @mitch.pro Email Address!";
   const html = makePremiumAlertHtml(toEmail, subject, "Congratulations on getting Premium! As a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address! Claim yours now by submitting your application.", base + "/premium-email", "Claim Email Address");
@@ -4148,7 +4201,7 @@ function sendPremiumEmailOffer(targetEmail) {
     // Same deliverability rule as the expiry warning: school addresses must
     // ride the Gmail script (sendEmailBg), not support@mitch.pro SMTP.
     sendEmailBg(toEmail, subject, html);
-    console.log(`[premium] Sent premium email offer to ${toEmail} (original target: ${targetEmail})`);
+    console.log(`[premium] Sent premium email offer to ${toEmail}`);
   } catch (e) {
     console.error(`[premium] Failed to send email offer to ${toEmail}: ${e.message}`);
   }
@@ -4840,9 +4893,10 @@ async function weeklyDigestWorker() {
       if (cookies > 0) body += `🍪 Cookies: ${Math.floor(cookies).toLocaleString()}\n`;
       body += `\nSee you next week — ${siteUrl(email)}`;
 
-      sendEmailBg(email, 'Your mitch.pro week in review', makeWeeklyDigestHtml(email, totalVisits, topGame, eloData, cookies));
+      const targetEmail = canonicalDeliveryEmail(email);
+      sendEmailBg(targetEmail, 'Your mitch.pro week in review', makeWeeklyDigestHtml(targetEmail, totalVisits, topGame, eloData, cookies));
       log[email] = { ...ulog, weekly_digest: weekKey };
-      console.log(`[weekly] sent to ${email}`);
+      console.log(`[weekly] sent to ${targetEmail}`);
     }
     saveEmailLog(log);
   } catch (e) { console.log(`[weekly] error: ${e}`); }
@@ -4873,8 +4927,9 @@ async function dailyPuzzleWorker() {
         const p = pool[Math.floor(Math.random() * pool.length)];
         const turn   = p[0].split(' ')[1] === 'w' ? 'White' : 'Black';
         const themes = String(p[3] || '').split(/\s+/).filter(Boolean).slice(0, 3).join(', ');
-        sendEmailBg(email, "Today's chess puzzle — mitch.pro", makeChessPuzzleHtml(email, turn, p[2], p[0], themes));
-        console.log(`[puzzle] sent to ${email}`);
+        const targetEmail = canonicalDeliveryEmail(email);
+        sendEmailBg(targetEmail, "Today's chess puzzle — mitch.pro", makeChessPuzzleHtml(targetEmail, turn, p[2], p[0], themes));
+        console.log(`[puzzle] sent to ${targetEmail}`);
       }
     }
     if (changed) saveEmailLog(log);
@@ -4900,9 +4955,10 @@ async function clockWarnWorker() {
         if (remaining < h * 3600_000 && remaining > 0 && !warned.has(h)) {
           const opp = g.turn === 'w' ? g.black : g.white;
           const oppName = (opp || '').split('@')[0];
-          sendEmailBg(turnEmail, `⏰ ${h}h left to move — mitch.pro chess`, makeChessClockWarningHtml(turnEmail, h, oppName));
+          const targetEmail = canonicalDeliveryEmail(turnEmail);
+          sendEmailBg(targetEmail, `⏰ ${h}h left to move — mitch.pro chess`, makeChessClockWarningHtml(targetEmail, h, oppName));
           warned.add(h); newWarn = true;
-          console.log(`[clock-warn] ${h}h → ${turnEmail} game ${gameId}`);
+          console.log(`[clock-warn] ${h}h → ${targetEmail} game ${gameId}`);
         }
       }
       if (newWarn) {
@@ -4942,12 +4998,15 @@ async function dmDigestWorker() {
       // skip if no new messages since last digest
       if (ulog.dm_digest_ts && latestTs <= ulog.dm_digest_ts) continue;
       const total = Object.values(senders).reduce((a, b) => a + b, 0);
-      // Sender keys are normalized (dots stripped); show the real addresses.
-      const names = Object.keys(senders).map(e => displayEmail(e).split('@')[0]).join(', ');
-      sendEmailBg(recip, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, makeUnreadMessagesHtml(recip, total, names));
+      const targetEmail = canonicalDeliveryEmail(recip);
+      const names = Object.keys(senders).map(e => {
+        const prof = (loadJson(PROFILES_FILE, {})[normalizeEmail(e)] || {});
+        return prof.displayName || prof.nickname || prof.username || canonicalDeliveryEmail(e).split('@')[0];
+      }).join(', ');
+      sendEmailBg(targetEmail, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, makeUnreadMessagesHtml(targetEmail, total, names));
       log[recip] = { ...ulog, dm_digest_ts: latestTs };
       changed = true;
-      console.log(`[dm-digest] ${total} msgs from ${Object.keys(senders).length} senders → ${recip}`);
+      console.log(`[dm-digest] ${total} msgs from ${Object.keys(senders).length} senders → ${targetEmail}`);
     }
     if (changed) saveEmailLog(log);
   } catch (e) { console.log(`[dm-digest] error: ${e}`); }
@@ -5079,14 +5138,15 @@ function errResp(code, message, explain) {
     { status: code, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-function jsonResp(code, obj) {
+function jsonResp(code, obj, extraHeaders = {}) {
   return new Response(JSON.stringify(obj),
     { status: code, headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'private, no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Vary': 'Cookie',
-      'X-Content-Type-Options': 'nosniff'
+      'X-Content-Type-Options': 'nosniff',
+      ...extraHeaders
     } });
 }
 
@@ -5907,6 +5967,14 @@ function emailFromSid(sid) {
 function getUidForEmail(email) {
   if (!email) return null;
   const norm = normalizeEmail(email);
+  try {
+    const names = getCachedNames();
+    for (const [sid, e] of Object.entries(names)) {
+      if (typeof e === 'string' && normalizeEmail(e) === norm) {
+        return sid;
+      }
+    }
+  } catch (_) {}
   const gens = loadGenerations();
   const currentGenRec = gens[norm] || {};
   const currentGen = (currentGenRec && typeof currentGenRec === 'object') ? (currentGenRec.gen || 0) : (currentGenRec || 0);
@@ -7687,6 +7755,7 @@ function getMatrixPowerLevelForSid(sid) {
 
 let systemAdminMatrixToken = null;
 let officialGeneralRoomId = null;
+const matrixTokenToAccount = new Map();
 
 async function getSystemAdminMatrixToken() {
   if (systemAdminMatrixToken) return systemAdminMatrixToken;
@@ -7949,6 +8018,208 @@ async function loginOrRegisterMatrixUser(uid, desiredUsername, displayName) {
   return { ...loginData, username: assignedUser };
 }
 
+async function resolveMatrixAccount(req, parsedBody = null) {
+  const userCandidates = [];
+  if (parsedBody && typeof parsedBody === 'object') {
+    if (parsedBody.auth && typeof parsedBody.auth === 'object') {
+      if (parsedBody.auth.identifier && typeof parsedBody.auth.identifier === 'object') {
+        if (parsedBody.auth.identifier.user) userCandidates.push(parsedBody.auth.identifier.user);
+        if (parsedBody.auth.identifier.address) userCandidates.push(parsedBody.auth.identifier.address);
+      }
+      if (parsedBody.auth.user) userCandidates.push(parsedBody.auth.user);
+    }
+    if (parsedBody.identifier && typeof parsedBody.identifier === 'object') {
+      if (parsedBody.identifier.user) userCandidates.push(parsedBody.identifier.user);
+      if (parsedBody.identifier.address) userCandidates.push(parsedBody.identifier.address);
+    }
+    if (parsedBody.user) userCandidates.push(parsedBody.user);
+  }
+
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+
+  for (const cand of userCandidates) {
+    const raw = String(cand || '').trim();
+    if (!raw) continue;
+    const localPart = raw.startsWith('@') ? raw.slice(1).split(':')[0] : raw;
+
+    // 1. Try resolving identifier as mitch.pro username or email
+    const norm = resolveLoginIdentifier(localPart) || resolveLoginIdentifier(raw);
+    if (norm) {
+      const uid = getUidForEmail(norm);
+      if (uid) return { uid, normEmail: norm };
+    }
+
+    // 2. Try looking up assigned matrix username in MATRIX_USERS_FILE
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === raw.toLowerCase()) {
+        const email = emailFromSid(u);
+        const normEmail = email ? normalizeEmail(email) : '';
+        if (normEmail) return { uid: u, normEmail };
+      }
+    }
+
+    // 3. Try looking up in PROFILES_FILE
+    const profiles = loadJson(PROFILES_FILE, {});
+    for (const [normEmail, p] of Object.entries(profiles)) {
+      if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+        const uid = getUidForEmail(normEmail);
+        if (uid) return { uid, normEmail };
+      }
+    }
+  }
+
+  // 2. Check Authorization: Bearer <token>
+  const authHeader = req.headers.get('authorization') || '';
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (matrixTokenToAccount.has(token)) {
+      return matrixTokenToAccount.get(token);
+    }
+    try {
+      const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+        headers: { 'Authorization': authHeader }
+      });
+      if (whoRes.ok) {
+        const whoData = await whoRes.json();
+        const matrixUserId = whoData.user_id || '';
+        const uname = matrixUserId ? matrixUserId.replace(/^@/, '').split(':')[0] : '';
+        let matchedUid = null;
+        for (const [u, name] of Object.entries(matrixUsers)) {
+          if (name.toLowerCase() === uname.toLowerCase() || `@${name}:mitch.pro` === matrixUserId.toLowerCase()) {
+            matchedUid = u;
+            break;
+          }
+        }
+        let norm = '';
+        if (matchedUid) {
+          const email = emailFromSid(matchedUid);
+          if (email) norm = normalizeEmail(email);
+        }
+        if (!norm && uname) {
+          norm = resolveLoginIdentifier(uname) || '';
+          if (!matchedUid && norm) matchedUid = getUidForEmail(norm);
+        }
+        if (matchedUid && norm) {
+          const account = { uid: matchedUid, normEmail: norm, userId: matrixUserId };
+          matrixTokenToAccount.set(token, account);
+          if (matrixTokenToAccount.size > 5000) {
+            const firstKey = matrixTokenToAccount.keys().next().value;
+            matrixTokenToAccount.delete(firstKey);
+          }
+          return account;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Check session cookie
+  const cookies = getCookies(req);
+  const sid = cookies['studentId'] || cookies['id'] || '';
+  if (validId(sid)) {
+    const email = emailFromSid(sid);
+    if (email) {
+      const normEmail = normalizeEmail(email);
+      return { uid: sid, normEmail };
+    }
+  }
+
+  return null;
+}
+
+async function translateMatrixPasswordInRequestBody(req, path, bodyText) {
+  if (!bodyText || typeof bodyText !== 'string' || !bodyText.includes('password')) {
+    return { modified: false, bodyText };
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return { modified: false, bodyText };
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { modified: false, bodyText };
+  }
+
+  const hasAuthPassword = parsed.auth && (parsed.auth.type === 'm.login.password' || typeof parsed.auth.password === 'string') && parsed.auth.password;
+  const hasRootPassword = (parsed.type === 'm.login.password' || typeof parsed.password === 'string') && parsed.password;
+
+  if (!hasAuthPassword && !hasRootPassword) {
+    return { modified: false, bodyText };
+  }
+
+  const account = await resolveMatrixAccount(req, parsed);
+  if (!account || !account.uid || !account.normEmail) {
+    return { modified: false, bodyText };
+  }
+
+  const passwords = loadPasswords();
+  const storedHash = passwords[account.normEmail];
+  const conduitPass = getMatrixPasswordForUid(account.uid);
+  let changed = false;
+
+  if (hasAuthPassword) {
+    const entered = String(parsed.auth.password);
+    if (entered === conduitPass) {
+      // Already internal conduit password
+    } else if (storedHash) {
+      let valid = false;
+      try { valid = await Bun.password.verify(entered, storedHash); } catch {}
+      if (valid) {
+        parsed.auth.password = conduitPass;
+        changed = true;
+        if (path.match(/^\/_matrix\/client\/(?:v3|r0)\/account\/password/) && parsed.new_password) {
+          try {
+            const newHash = await Bun.password.hash(String(parsed.new_password));
+            passwords[account.normEmail] = newHash;
+            savePasswords(passwords);
+            parsed.new_password = conduitPass;
+            changed = true;
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  if (hasRootPassword) {
+    const entered = String(parsed.password);
+    if (entered === conduitPass) {
+      // Already internal conduit password
+    } else if (storedHash) {
+      let valid = false;
+      try { valid = await Bun.password.verify(entered, storedHash); } catch {}
+      if (valid) {
+        parsed.password = conduitPass;
+        const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+        let assigned = matrixUsers[account.uid];
+        if (!assigned) {
+          const profiles = loadJson(PROFILES_FILE, {});
+          const prof = profiles[account.normEmail] || {};
+          const desired = prof.username || account.normEmail.split('@')[0];
+          try {
+            const res = await loginOrRegisterMatrixUser(account.uid, desired, prof.displayName || desired);
+            assigned = res.username;
+          } catch (_) {}
+        }
+        if (assigned) {
+          if (parsed.identifier && parsed.identifier.type === 'm.id.user') {
+            parsed.identifier.user = assigned;
+          }
+          if (parsed.user) {
+            parsed.user = assigned;
+          }
+        }
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    return { modified: true, bodyText: JSON.stringify(parsed), account };
+  }
+  return { modified: false, bodyText };
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 const banOpenPaths = new Set([
@@ -8033,6 +8304,18 @@ async function handleRequest(req, server) {
 
   // Matrix client-server API & discovery reverse proxy to Conduit homeserver
   if (path.startsWith('/_matrix/') || path.startsWith('/.well-known/matrix/')) {
+    if (method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+
     if (path === '/.well-known/matrix/client' && method === 'GET') {
       const host = requestHost(req) || 'mitch.pro';
       const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
@@ -8045,12 +8328,28 @@ async function handleRequest(req, server) {
       });
     }
 
-    // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
-    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
+    // Conduit does not implement Matrix CS /notifications. Return empty list for compliant client rendering.
+    if (method === 'GET' && path.match(/^\/_matrix\/client\/(?:v3|r0)\/notifications/)) {
+      return jsonResp(200, { notifications: [] }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
+    // Read body text for POST/PUT requests (excluding binary media uploads)
     let capturedBodyText = null;
-    if (reportMatch) {
+    const isMediaUpload = path.startsWith('/_matrix/media/');
+    if ((method === 'POST' || method === 'PUT') && !isMediaUpload) {
       try {
         capturedBodyText = await req.text();
+      } catch (_) {}
+    }
+
+    // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
+    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
+    if (reportMatch && capturedBodyText !== null) {
+      try {
         const roomId = decodeURIComponent(reportMatch[1]);
         const eventId = decodeURIComponent(reportMatch[2]);
         let parsed = {};
@@ -8128,11 +8427,28 @@ async function handleRequest(req, server) {
       }
     }
 
+    // Intercept and translate Mitch.pro user password in Matrix requests (UIA and login)
+    let translatedAccount = null;
+    if (capturedBodyText && capturedBodyText.includes('password')) {
+      try {
+        const translation = await translateMatrixPasswordInRequestBody(req, path, capturedBodyText);
+        if (translation.modified) {
+          capturedBodyText = translation.bodyText;
+          translatedAccount = translation.account;
+        }
+      } catch (trErr) {
+        console.warn('[matrix-proxy] Password translation error:', trErr?.message || trErr);
+      }
+    }
+
     const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'conduit' : '127.0.0.1');
     const conduitPort = process.env.CONDUIT_PORT || '6167';
     const upstreamHeaders = new Headers(req.headers);
     upstreamHeaders.delete('host');
     upstreamHeaders.set('host', 'mitch.pro');
+    if (capturedBodyText !== null) {
+      upstreamHeaders.delete('content-length');
+    }
     if (ip) {
       upstreamHeaders.set('x-forwarded-for', ip);
       upstreamHeaders.set('x-real-ip', ip);
@@ -8158,6 +8474,32 @@ async function handleRequest(req, server) {
       console.error('[matrix-proxy] Failed to reach Conduit on candidates:', candidateHosts.join(', '), lastErr?.message || lastErr);
       return jsonResp(502, { error: 'Matrix chat backend unavailable' });
     }
+
+    // If upstream returns 404 for notifications endpoint, return 200 with empty list
+    if (upstreamRes.status === 404 && path.match(/^\/_matrix\/client\/(?:v3|r0)\/notifications/)) {
+      return jsonResp(200, { notifications: [] }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
+    // Cache access token from successful login responses
+    if (upstreamRes.ok && path.match(/^\/_matrix\/client\/(?:v3|r0)\/login/) && method === 'POST') {
+      try {
+        const clone = upstreamRes.clone();
+        const loginData = await clone.json();
+        if (loginData.access_token && (translatedAccount || loginData.user_id)) {
+          const acc = translatedAccount || {
+            userId: loginData.user_id,
+            uid: getUidForEmail(loginData.user_id.replace(/^@/, '').split(':')[0]),
+            normEmail: resolveLoginIdentifier(loginData.user_id.replace(/^@/, '').split(':')[0]) || ''
+          };
+          matrixTokenToAccount.set(loginData.access_token, acc);
+        }
+      } catch (_) {}
+    }
+
     const resHeaders = new Headers(upstreamRes.headers);
     resHeaders.set('Access-Control-Allow-Origin', '*');
     resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -8218,6 +8560,13 @@ async function handleRequest(req, server) {
 
     try {
       const authResult = await loginOrRegisterMatrixUser(uid, username, displayName);
+      if (authResult.access_token) {
+        matrixTokenToAccount.set(authResult.access_token, {
+          uid,
+          normEmail: norm,
+          userId: authResult.user_id
+        });
+      }
       const host = requestHost(req) || 'mitch.pro';
       const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
       const baseUrl = `${proto}${host}`;
@@ -12730,7 +13079,8 @@ async function handleRequest(req, server) {
           const rec = { normEmail, type: twofa.type, attempts: 0, expires: Date.now() + 5 * 60 * 1000 };
           if (twofa.type === 'email') {
             rec.code = Math.floor(100000 + Math.random() * 900000).toString();
-            sendEmailBg(normEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
+            const targetEmail = canonicalDeliveryEmail(normEmail);
+            sendEmailBg(targetEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
           }
           pendingTwoFactor.set(tempToken, rec);
           writeAppLog('info', 'login', 'Login requires 2FA', { email: normEmail, type: twofa.type, ip });
@@ -12880,7 +13230,8 @@ async function handleRequest(req, server) {
           const rec = { normEmail: credEmail, type: twofa.type, attempts: 0, expires: Date.now() + 5 * 60 * 1000 };
           if (twofa.type === 'email') {
             rec.code = Math.floor(100000 + Math.random() * 900000).toString();
-            sendEmailBg(credEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
+            const targetEmail = canonicalDeliveryEmail(credEmail);
+            sendEmailBg(targetEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
           }
           pendingTwoFactor.set(tempToken, rec);
           writeAppLog('info', 'webauthn', 'Passkey login requires 2FA', { email: credEmail, type: twofa.type, ip });
@@ -13154,7 +13505,8 @@ async function handleRequest(req, server) {
                 saveJson(INVITE_CLAIMS_FILE, invClaims);
                 addCoins(refNorm, 2000);
                 addCoins(normEmail, 2000);
-                sendEmailBg(refNorm, 'mitch.pro - Referral Bonus Claimed!', makeInviteAwardHtml(refNorm));
+                const targetRef = canonicalDeliveryEmail(refNorm);
+                sendEmailBg(targetRef, 'mitch.pro - Referral Bonus Claimed!', makeInviteAwardHtml(targetRef));
                 ntfy(`Referral paid: ${refNorm} and ${normEmail} each earned 2000 coins for invite`, { title: 'Invite Reward' });
                 console.log(`[invite] ${refNorm} and ${normEmail} each earned 2000 coins for referring`);
               }
@@ -17471,6 +17823,10 @@ async function handleRequest(req, server) {
         }
         dms.push(msg);
         saveJson(store.dms, pruneDms(dms, store.pickle));
+        const senderCanonical = canonicalDeliveryEmail(senderEmail);
+        const senderProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(senderEmail)] || {});
+        const senderDisplay = senderProf.displayName || senderProf.nickname || senderProf.username || senderCanonical.split('@')[0];
+
         if (VAPID_PUBLIC) {
           const notifyBody = getNotificationBody(text, safeImage);
           for (const member of group.members) {
@@ -17479,13 +17835,13 @@ async function handleRequest(req, server) {
             const recActive = (memberNorm in e2eUsers) && (Date.now() - e2eUsers[memberNorm].last_seen < 30000);
             if (!recActive && notifAllowed(memberNorm, 'group') && subs[memberNorm]) {
               await sendWebPushClean(subs, memberNorm, {
-                title: `${displayEmail(senderEmail)} in ${group.name}`,
+                title: `${senderDisplay} in ${group.name}`,
                 body: notifyBody,
                 url: notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))),
                 tag: `group-${groupId}-${msg.ts}`,
               });
             } else if (!recActive && notifAllowed(memberNorm, 'group')) {
-              ntfyNotify(memberNorm, `${displayEmail(senderEmail)} in ${group.name}`, notifyBody, notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))));
+              ntfyNotify(memberNorm, `${senderDisplay} in ${group.name}`, notifyBody, notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))));
             }
           }
         }
@@ -17503,17 +17859,21 @@ async function handleRequest(req, server) {
         }
         dms.push(msg);
         saveJson(store.dms, pruneDms(dms, store.pickle));
+        const senderCanonical = canonicalDeliveryEmail(senderEmail);
+        const senderProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(senderEmail)] || {});
+        const senderDisplay = senderProf.displayName || senderProf.nickname || senderProf.username || senderCanonical.split('@')[0];
+
         const recActive = (toCanonical in e2eUsers) && (Date.now() - e2eUsers[toCanonical].last_seen < 30000);
         if (!recActive && notifAllowed(toCanonical, 'dm') && VAPID_PUBLIC && subs[toCanonical]) {
           await sendWebPushClean(subs, toCanonical, {
-            title: `Message from ${displayEmail(senderEmail)}`,
+            title: `Message from ${senderDisplay}`,
             body:  getNotificationBody(text, safeImage),
             // Deep-link: /encrypt/?to=<sender> opens the conversation directly.
-            url:   notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))),
+            url:   notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderCanonical))),
             tag:   `dm-${msg.ts}`,
           });
         } else if (!recActive && notifAllowed(toCanonical, 'dm')) {
-          ntfyNotify(toCanonical, `Message from ${displayEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))));
+          ntfyNotify(toCanonical, `Message from ${senderDisplay}`, getNotificationBody(text, safeImage), notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderCanonical))));
         }
         }
         addCoins(senderEmail, 2.0);
@@ -18435,14 +18795,16 @@ async function handleRequest(req, server) {
         }
       }
       const id = randomBytes(8).toString('hex');
-      cvChallenges[id] = { id, from: myEmail, to, type, tc, bet, createdAt: Date.now() };
+      const myCanonical = canonicalDeliveryEmail(myEmail);
+      const myProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {});
+      const fromName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
+      const targetTo = canonicalDeliveryEmail(to);
       if (type === 'corr' && !alreadyChallenged) {
-        const fromName = myEmail.split('@')[0];
         const days = tc.perMove / 86400000;
         const _s = site();
-        sendEmailBg(to, `Chess challenge from ${fromName}`, makeChessCorrActionHtml(to, `Chess challenge from ${fromName}`, `${fromName} has challenged you to a correspondence chess game (${days} day${days !== 1 ? 's' : ''}/move) with a bet of ${bet} coins.`));
+        sendEmailBg(targetTo, `Chess challenge from ${fromName}`, makeChessCorrActionHtml(targetTo, `Chess challenge from ${fromName}`, `${fromName} has challenged you to a correspondence chess game (${days} day${days !== 1 ? 's' : ''}/move) with a bet of ${bet} coins.`));
       }
-      addAdminNotification(to, 'New Chess Challenge', `${myEmail.split('@')[0]} has challenged you to a Chess game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/chess-bot/');
+      addAdminNotification(targetTo, 'New Chess Challenge', `${fromName} has challenged you to a Chess game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/chess-bot/');
       triggerNotificationRefresh();
       return jsonResp(200, { ok: true, id });
     }
@@ -18468,12 +18830,16 @@ async function handleRequest(req, server) {
       }
 
       delete cvChallenges[challengeId];
+      const responderCanonical = canonicalDeliveryEmail(myEmail);
+      const responderProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {});
+      const responderName = responderProf.displayName || responderProf.nickname || responderProf.username || responderCanonical.split('@')[0];
+      const challengerTarget = canonicalDeliveryEmail(c.from);
       if (!accept) {
-        addAdminNotification(c.from, 'Chess Challenge Declined', `${myEmail.split('@')[0]} declined your Chess challenge.`, 'admin', '', '/games/chess-bot/');
+        addAdminNotification(challengerTarget, 'Chess Challenge Declined', `${responderName} declined your Chess challenge.`, 'admin', '', '/games/chess-bot/');
         triggerNotificationRefresh();
         return jsonResp(200, { ok: true, declined: true });
       }
-      addAdminNotification(c.from, 'Chess Challenge Accepted', `${myEmail.split('@')[0]} accepted your Chess challenge!`, 'admin', '', '/games/chess-bot/');
+      addAdminNotification(challengerTarget, 'Chess Challenge Accepted', `${responderName} accepted your Chess challenge!`, 'admin', '', '/games/chess-bot/');
       triggerNotificationRefresh();
       const white = Math.random() < 0.5 ? c.from : myEmail;
       const black = white === c.from ? myEmail : c.from;
@@ -18572,12 +18938,15 @@ async function handleRequest(req, server) {
       if (g.type === 'corr') {
         cvSave();
         const oppEmail = myColor === 'w' ? g.black : g.white;
-        const fromName = myEmail.split('@')[0];
+        const oppTarget = canonicalDeliveryEmail(oppEmail);
+        const myCanonical = canonicalDeliveryEmail(myEmail);
+        const myProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {});
+        const fromName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
         const subject = g.status === 'over'
           ? `Chess game over — ${fromName} played the final move`
           : `${fromName} played a move in your correspondence game`;
         const _s = site();
-        sendEmailBg(oppEmail, subject, makeChessCorrActionHtml(oppEmail, subject, g.status === 'over' ? `Result: ${g.result}.` : `It's your turn!`));
+        sendEmailBg(oppTarget, subject, makeChessCorrActionHtml(oppTarget, subject, g.status === 'over' ? `Result: ${g.result}.` : `It's your turn!`));
       }
       return jsonResp(200, { ok: true, game: g });
     }
@@ -18684,7 +19053,11 @@ async function handleRequest(req, server) {
       }
       const id = randomBytes(8).toString('hex');
       bsChallenges[id] = { id, from: myNorm, to, bet, createdAt: now };
-      addAdminNotification(to, 'New Battleship Challenge', `${myNorm.split('@')[0]} has challenged you to a Battleship game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/battleship/');
+      const myCanonical = canonicalDeliveryEmail(myNorm);
+      const myProf = (loadJson(PROFILES_FILE, {})[myNorm] || {});
+      const myDisplayName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
+      const toTarget = canonicalDeliveryEmail(to);
+      addAdminNotification(toTarget, 'New Battleship Challenge', `${myDisplayName} has challenged you to a Battleship game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/battleship/');
       triggerNotificationRefresh();
       return jsonResp(200, { ok: true, challengeId: id });
     }
@@ -18705,12 +19078,16 @@ async function handleRequest(req, server) {
         }
       }
       delete bsChallenges[challengeId];
+      const myCanonical = canonicalDeliveryEmail(myNorm);
+      const myProf = (loadJson(PROFILES_FILE, {})[myNorm] || {});
+      const myDisplayName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
+      const challengerTarget = canonicalDeliveryEmail(c.from);
       if (!accept) {
-        addAdminNotification(c.from, 'Battleship Challenge Declined', `${myNorm.split('@')[0]} declined your Battleship challenge.`, 'admin', '', '/games/battleship/');
+        addAdminNotification(challengerTarget, 'Battleship Challenge Declined', `${myDisplayName} declined your Battleship challenge.`, 'admin', '', '/games/battleship/');
         triggerNotificationRefresh();
         return jsonResp(200, { ok: true, declined: true });
       }
-      addAdminNotification(c.from, 'Battleship Challenge Accepted', `${myNorm.split('@')[0]} accepted your Battleship challenge!`, 'admin', '', '/games/battleship/');
+      addAdminNotification(challengerTarget, 'Battleship Challenge Accepted', `${myDisplayName} accepted your Battleship challenge!`, 'admin', '', '/games/battleship/');
       triggerNotificationRefresh();
       const gameId = randomBytes(8).toString('hex');
       const now = Date.now();
