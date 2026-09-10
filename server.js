@@ -3213,12 +3213,16 @@ function buildAdvancedAdminData() {
     .slice(-150)
     .reverse()
     .map(report => ({
+      id: report.id || '',
       type: 'chat',
       ts: report.ts || 0,
       reportedBy: report.reportedBy || report.reporter || '',
       reason: report.reason || 'Chat report',
       context: report.context || [],
       status: report.status || 'Needs review',
+      matrixRoomId: report.matrixRoomId || '',
+      matrixEventId: report.matrixEventId || '',
+      matrixSender: report.matrixSender || '',
     }));
   const profileReports = publicProfileReports(250);
 
@@ -5525,6 +5529,12 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/verify-open',
   '/verify-open.json',
   '/api/matrix/sso-login',
+  '/api/matrix/sso-status',
+  '/api/matrix/moderation/overview',
+  '/api/matrix/moderation/set-role',
+  '/api/matrix/moderation/kick',
+  '/api/matrix/moderation/ban',
+  '/api/matrix/moderation/redact',
 ]);
 
 function csrfFailureIfUnsafe(req, path, method) {
@@ -7666,13 +7676,14 @@ function loadAllGamesList() {
 // ── Matrix Conduit & Mitch.pro SSO Integration ────────────────────────────────
 async function callConduit(subpath, options = {}) {
   const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'conduit' : '127.0.0.1');
+  const conduitPort = process.env.CONDUIT_PORT || '6167';
   const candidateHosts = Array.from(new Set([conduitHost, conduitHost === '127.0.0.1' ? 'conduit' : '127.0.0.1', 'mitch-matrix-conduit']));
   const headers = new Headers(options.headers || {});
   headers.set('host', 'mitch.pro');
   let lastErr = null;
   for (const hostCandidate of candidateHosts) {
     try {
-      const url = `http://${hostCandidate}:6167${subpath}`;
+      const url = `http://${hostCandidate}:${conduitPort}${subpath}`;
       const res = await fetch(url, {
         ...options,
         headers
@@ -7688,6 +7699,196 @@ async function callConduit(subpath, options = {}) {
 function getMatrixPasswordForUid(uid) {
   const secret = ID_SECRET || 'mitch-matrix-secret-salt-2026';
   return createHmac('sha256', secret).update('matrix-account:' + uid).digest('hex');
+}
+
+function getMatrixPowerLevelForSid(sid) {
+  if (!sid) return 0;
+  const email = emailFromSid(sid);
+  if (email && isOwnerEmail(email)) return 100;
+  if (isAdminId(sid)) return 100;
+  if (isModeratorId(sid)) return 50;
+  return 0;
+}
+
+let systemAdminMatrixToken = null;
+let officialGeneralRoomId = null;
+
+async function getSystemAdminMatrixToken() {
+  if (systemAdminMatrixToken) return systemAdminMatrixToken;
+  const adminUsername = 'mitch_admin';
+  const secret = ID_SECRET || 'mitch-matrix-secret-salt-2026';
+  const adminPassword = createHmac('sha256', secret).update('matrix-sysadmin-2026').digest('hex');
+
+  // 1. Try login
+  let loginRes;
+  try {
+    loginRes = await callConduit('/_matrix/client/v3/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: adminUsername },
+        password: adminPassword,
+        initial_device_display_name: 'Mitch.pro System Core'
+      })
+    });
+  } catch (err) {
+    throw new Error('Conduit unreachable for system admin: ' + (err?.message || err));
+  }
+
+  let data = await loginRes.json();
+  if (!loginRes.ok || !data.access_token) {
+    // 2. Register system admin
+    const regRes = await callConduit('/_matrix/client/v3/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: adminUsername,
+        password: adminPassword,
+        auth: { type: 'm.login.dummy' }
+      })
+    });
+    const regData = await regRes.json();
+    if (regRes.ok && regData.access_token) {
+      data = regData;
+    } else {
+      throw new Error(regData?.error || 'Failed to initialize Matrix system admin');
+    }
+  }
+
+  systemAdminMatrixToken = data.access_token;
+
+  // Set display name
+  try {
+    await callConduit(`/_matrix/client/v3/profile/${encodeURIComponent(data.user_id)}/displayname`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${systemAdminMatrixToken}`
+      },
+      body: JSON.stringify({ displayname: 'Mitch.pro System' })
+    });
+  } catch (_) {}
+
+  return systemAdminMatrixToken;
+}
+
+async function ensureOfficialGeneralRoom() {
+  if (officialGeneralRoomId) return officialGeneralRoomId;
+
+  // 1. Check if directory alias exists
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialGeneralRoomId = dirData.room_id;
+        return officialGeneralRoomId;
+      }
+    }
+  } catch (_) {}
+
+  // 2. Create room with version 10 (allows power levels modification)
+  const adminToken = await getSystemAdminMatrixToken();
+  const createRes = await callConduit('/_matrix/client/v3/createRoom', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${adminToken}`
+    },
+    body: JSON.stringify({
+      room_version: '10',
+      name: 'General',
+      topic: 'Welcome to Mitch.pro Official Matrix Chat!',
+      room_alias_name: 'general',
+      visibility: 'public',
+      preset: 'public_chat',
+      initial_state: [
+        {
+          type: 'm.room.history_visibility',
+          state_key: '',
+          content: { history_visibility: 'world_readable' }
+        },
+        {
+          type: 'm.room.guest_access',
+          state_key: '',
+          content: { guest_access: 'can_join' }
+        }
+      ]
+    })
+  });
+  const createData = await createRes.json();
+  if (createRes.ok && createData.room_id) {
+    officialGeneralRoomId = createData.room_id;
+    return officialGeneralRoomId;
+  }
+
+  // If alias was already taken, re-query directory
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialGeneralRoomId = dirData.room_id;
+        return officialGeneralRoomId;
+      }
+    }
+  } catch (_) {}
+
+  throw new Error('Failed to ensure official general room: ' + (createData?.error || createRes.statusText));
+}
+
+async function syncMatrixUserToOfficialRooms(userId, userToken, targetPowerLevel) {
+  const roomId = await ensureOfficialGeneralRoom();
+
+  // 1. Join user to official room
+  if (userToken) {
+    try {
+      await callConduit(`/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userToken}`
+        },
+        body: '{}'
+      });
+    } catch (joinErr) {
+      console.warn(`[matrix-sync] User join ${roomId} warning:`, joinErr?.message || joinErr);
+    }
+  }
+
+  // 2. Fetch current power levels
+  const adminToken = await getSystemAdminMatrixToken();
+  const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${adminToken}` }
+  });
+  if (plRes.ok) {
+    const plData = await plRes.json();
+    plData.users = plData.users || {};
+    const currentPL = plData.users[userId] !== undefined ? plData.users[userId] : 0;
+    if (currentPL !== targetPowerLevel) {
+      if (targetPowerLevel > 0) {
+        plData.users[userId] = targetPowerLevel;
+      } else {
+        delete plData.users[userId];
+      }
+      const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(plData)
+      });
+      if (!putRes.ok) {
+        const putErr = await putRes.json().catch(() => ({}));
+        console.warn(`[matrix-sync] Power level update for ${userId} failed:`, putErr);
+      } else {
+        console.log(`[matrix-sync] Set power level for ${userId} to ${targetPowerLevel} in ${roomId}`);
+      }
+    }
+  }
 }
 
 async function loginOrRegisterMatrixUser(uid, desiredUsername, displayName) {
@@ -7869,7 +8070,91 @@ async function handleRequest(req, server) {
       });
     }
 
+    // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
+    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
+    let capturedBodyText = null;
+    if (reportMatch) {
+      try {
+        capturedBodyText = await req.text();
+        const roomId = decodeURIComponent(reportMatch[1]);
+        const eventId = decodeURIComponent(reportMatch[2]);
+        let parsed = {};
+        try { parsed = JSON.parse(capturedBodyText); } catch {}
+        const reason = parsed.reason || 'Reported message';
+
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        let reporter = sid ? (emailFromSid(sid) || sid) : '';
+
+        let eventSender = 'unknown';
+        let eventBody = `Reported message event ${eventId}`;
+        let eventTs = Date.now();
+        const authHeader = req.headers.get('authorization') || '';
+
+        try {
+          const eventRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`, {
+            headers: authHeader ? { 'Authorization': authHeader } : {}
+          });
+          if (eventRes.ok) {
+            const ev = await eventRes.json();
+            if (ev.sender) eventSender = ev.sender;
+            if (ev.origin_server_ts) eventTs = ev.origin_server_ts;
+            if (ev.content && typeof ev.content.body === 'string') {
+              eventBody = ev.content.body;
+            } else if (ev.content) {
+              eventBody = JSON.stringify(ev.content);
+            }
+          }
+        } catch (_) {}
+
+        if (!reporter && authHeader) {
+          try {
+            const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+              headers: { 'Authorization': authHeader }
+            });
+            if (whoRes.ok) {
+              const whoData = await whoRes.json();
+              if (whoData.user_id) reporter = whoData.user_id;
+            }
+          } catch (_) {}
+        }
+        if (!reporter) reporter = 'matrix-user';
+
+        const reports = loadJson(CHAT_REPORTS_FILE, []);
+        const cleanId = (eventId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+        const reportEntry = {
+          id: 'matrix-' + cleanId,
+          reason: `[Matrix Room ${roomId}] ${reason}`.slice(0, 500),
+          reportedBy: reporter,
+          ts: Date.now(),
+          status: 'Needs review',
+          matrixRoomId: roomId,
+          matrixEventId: eventId,
+          matrixSender: eventSender,
+          context: [
+            {
+              from: eventSender,
+              to: roomId,
+              text: String(eventBody).slice(0, 2000),
+              ts: eventTs,
+              reported: true
+            }
+          ]
+        };
+        reports.push(reportEntry);
+        if (reports.length > 5000) reports.splice(0, reports.length - 5000);
+        saveJson(CHAT_REPORTS_FILE, reports);
+
+        try {
+          ntfy(`[Matrix Report] ${reporter} reported message from ${eventSender} in ${roomId}: ${reason}`, { title: 'Chat Safety' });
+        } catch (_) {}
+      } catch (err) {
+        console.warn('[matrix-report] Error intercepting report:', err?.message || err);
+      }
+    }
+
     const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'conduit' : '127.0.0.1');
+    const conduitPort = process.env.CONDUIT_PORT || '6167';
     const upstreamHeaders = new Headers(req.headers);
     upstreamHeaders.delete('host');
     upstreamHeaders.set('host', 'mitch.pro');
@@ -7882,11 +8167,11 @@ async function handleRequest(req, server) {
     let lastErr = null;
     for (const hostCandidate of candidateHosts) {
       try {
-        const candidateUrl = new URL(url.pathname + url.search, `http://${hostCandidate}:6167`);
+        const candidateUrl = new URL(url.pathname + url.search, `http://${hostCandidate}:${conduitPort}`);
         upstreamRes = await fetch(candidateUrl, {
           method: req.method,
           headers: upstreamHeaders,
-          body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined,
+          body: capturedBodyText !== null ? capturedBodyText : (req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined),
           redirect: 'manual'
         });
         if (upstreamRes) break;
@@ -7954,6 +8239,15 @@ async function handleRequest(req, server) {
       const host = requestHost(req) || 'mitch.pro';
       const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
       const baseUrl = `${proto}${host}`;
+
+      const targetPowerLevel = getMatrixPowerLevelForSid(uid);
+      const role = targetPowerLevel === 100 ? 'admin' : (targetPowerLevel === 50 ? 'moderator' : 'member');
+      try {
+        await syncMatrixUserToOfficialRooms(authResult.user_id, authResult.access_token, targetPowerLevel);
+      } catch (syncErr) {
+        console.warn('[matrix-sso] Warning: Failed to sync official room roles:', syncErr?.message || syncErr);
+      }
+
       return jsonResp(200, {
         ok: true,
         user_id: authResult.user_id,
@@ -7962,7 +8256,10 @@ async function handleRequest(req, server) {
         home_server: authResult.home_server || 'mitch.pro',
         base_url: baseUrl,
         username: authResult.username,
-        displayName
+        displayName,
+        role,
+        powerLevel: targetPowerLevel,
+        officialRoom: '#general:mitch.pro'
       }, {
         'Access-Control-Allow-Origin': '*'
       });
@@ -11216,6 +11513,235 @@ async function handleRequest(req, server) {
       }
 
       return jsonResp(404, { error: 'report not found' });
+    }
+
+    // ── Matrix Chat Moderation APIs ──────────────────────────────────────────
+
+    // GET /api/matrix/moderation/overview
+    if (path === '/api/matrix/moderation/overview' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+
+      try {
+        const roomId = await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        const plData = plRes.ok ? await plRes.json() : { users: {} };
+        const staff = [];
+        for (const [mUserId, pl] of Object.entries(plData.users || {})) {
+          if (pl >= 50) {
+            staff.push({
+              userId: mUserId,
+              powerLevel: pl,
+              role: pl >= 100 ? 'Admin' : 'Moderator'
+            });
+          }
+        }
+        staff.sort((a, b) => b.powerLevel - a.powerLevel);
+
+        const allReports = loadJson(CHAT_REPORTS_FILE, []);
+        const matrixReports = allReports
+          .filter(r => r.matrixRoomId || (r.id && String(r.id).startsWith('matrix-')))
+          .slice(-50)
+          .reverse();
+
+        return jsonResp(200, {
+          ok: true,
+          officialRoom: '#general:mitch.pro',
+          roomId,
+          staff,
+          recentReports: matrixReports
+        });
+      } catch (err) {
+        console.error('[matrix-moderation] Overview error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: 'Failed to load Matrix moderation overview', details: err?.message });
+      }
+    }
+
+    // POST /api/matrix/moderation/set-role
+    if (path === '/api/matrix/moderation/set-role' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) {
+        targetUserId = `@${targetUserId}:mitch.pro`;
+      }
+      const targetPl = Number(body.powerLevel);
+      if (isNaN(targetPl) || targetPl < 0 || targetPl > 100) {
+        return jsonResp(400, { error: 'powerLevel must be between 0 and 100' });
+      }
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (!plRes.ok) throw new Error('Failed to fetch room power levels');
+        const plData = await plRes.json();
+        plData.users = plData.users || {};
+        if (targetPl > 0) {
+          plData.users[targetUserId] = targetPl;
+        } else {
+          delete plData.users[targetUserId];
+        }
+
+        const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify(plData)
+        });
+        if (!putRes.ok) {
+          const errData = await putRes.json().catch(() => ({}));
+          throw new Error(errData?.error || 'Failed to update power level state');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_set_role', {
+          userId: targetUserId,
+          powerLevel: targetPl,
+          roomId
+        });
+
+        return jsonResp(200, { ok: true, userId: targetUserId, powerLevel: targetPl });
+      } catch (err) {
+        console.error('[matrix-moderation] set-role error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to update user role' });
+      }
+    }
+
+    // POST /api/matrix/moderation/kick
+    if (path === '/api/matrix/moderation/kick' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'Staff access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+      const reason = String(body.reason || 'Kicked by Mitch.pro staff').slice(0, 300);
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const kickRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify({ user_id: targetUserId, reason })
+        });
+        if (!kickRes.ok) {
+          const kickErr = await kickRes.json().catch(() => ({}));
+          throw new Error(kickErr?.error || 'Failed to kick user from room');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_kick_user', {
+          userId: targetUserId,
+          roomId,
+          reason
+        });
+
+        return jsonResp(200, { ok: true, userId: targetUserId, kicked: true });
+      } catch (err) {
+        console.error('[matrix-moderation] kick error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to kick user' });
+      }
+    }
+
+    // POST /api/matrix/moderation/ban
+    if (path === '/api/matrix/moderation/ban' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'Staff access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+      const reason = String(body.reason || 'Banned by Mitch.pro staff').slice(0, 300);
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const banRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/ban`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify({ user_id: targetUserId, reason })
+        });
+        if (!banRes.ok) {
+          const banErr = await banRes.json().catch(() => ({}));
+          throw new Error(banErr?.error || 'Failed to ban user from room');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_ban_user', {
+          userId: targetUserId,
+          roomId,
+          reason
+        });
+
+        return jsonResp(200, { ok: true, userId: targetUserId, banned: true });
+      } catch (err) {
+        console.error('[matrix-moderation] ban error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to ban user' });
+      }
+    }
+
+    // POST /api/matrix/moderation/redact
+    if (path === '/api/matrix/moderation/redact' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'Staff access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const eventId = String(body.eventId || '').trim();
+      if (!eventId) return jsonResp(400, { error: 'eventId is required' });
+      const reason = String(body.reason || 'Redacted by staff').slice(0, 300);
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const txnId = 'mitch_redact_' + Date.now();
+        const redactRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/redact/${encodeURIComponent(eventId)}/${txnId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify({ reason })
+        });
+        if (!redactRes.ok) {
+          const redErr = await redactRes.json().catch(() => ({}));
+          throw new Error(redErr?.error || 'Failed to redact message event');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_redact_message', {
+          eventId,
+          roomId,
+          reason
+        });
+
+        return jsonResp(200, { ok: true, eventId, redacted: true });
+      } catch (err) {
+        console.error('[matrix-moderation] redact error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to redact message' });
+      }
     }
 
     // POST /api/admin/content/mirror
