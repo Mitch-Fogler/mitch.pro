@@ -45,4 +45,27 @@ for (const invalid of [null, '', 'abc', 99, -1]) {
   assert(error?.code === 'INVALID_VM', `invalid VM ID ${String(invalid)} must be rejected`);
 }
 
+const guestService = new ProxmoxDesktopService({ host: 'localhost', node: 'node-a', legacyToken: 'token' });
+const guestCalls = [];
+guestService.request = async (method, path, params) => {
+  guestCalls.push({ method, path, params });
+  if (path.endsWith('/agent/exec')) return { pid: 42 };
+  if (path.includes('/agent/exec-status')) return { exited: 1, exitcode: 0 };
+  throw new Error(`Unexpected guest-agent request: ${method} ${path}`);
+};
+await guestService.guestExec(301, ['/usr/bin/id', 'desktop']);
+assert(JSON.stringify(guestCalls[0].params.command) === '["/usr/bin/id","desktop"]', 'guest commands must use the Proxmox repeated-parameter array encoding');
+
+let setupCommand = null;
+guestService.waitForGuestAgent = async () => {};
+guestService.guestExec = async (_vmid, command, inputData) => { setupCommand = { command, inputData }; };
+await guestService.enableFriendlyDesktopLogin(301, 'desktop');
+assert(setupCommand.command.join(' ') === '/bin/sh -s', 'desktop setup must run through a fixed shell entrypoint');
+assert(setupCommand.inputData.includes('user=desktop') && setupCommand.inputData.includes('AutomaticLogin=$user'), 'desktop setup must enable automatic graphical login for the validated user');
+assert(setupCommand.inputData.includes('idle-delay 0'), 'desktop setup must keep browser desktops awake');
+assert(setupCommand.inputData.includes('lock-enabled false'), 'desktop setup must not strand users at an idle lock screen');
+let unsafeLoginError = null;
+try { await guestService.enableFriendlyDesktopLogin(301, 'desktop\nroot'); } catch (error) { unsafeLoginError = error; }
+assert(unsafeLoginError?.code === 'INVALID_DESKTOP_LOGIN', 'desktop login setup must reject unsafe usernames');
+
 console.log('VM portal security and failure tests passed.');
