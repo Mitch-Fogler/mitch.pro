@@ -3,100 +3,155 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-    <title>Cinny</title>
-    <meta name="name" content="Cinny" />
-    <meta name="author" content="Ajay Bura" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <title>Matrix Chat — mitch.pro</title>
+    <meta name="name" content="Mitch.pro Matrix" />
+    <meta name="author" content="Mitch.pro" />
     <meta
       name="description"
-      content="A Matrix client where you can enjoy the conversation using simple, elegant and secure interface protected by e2ee with the power of open source."
+      content="Official decentralized, end-to-end encrypted Matrix chat on mitch.pro."
     />
     <meta
       name="keywords"
-      content="cinny, cinnyapp, cinnychat, matrix, matrix client, matrix.org, element"
+      content="mitch.pro, matrix, chat, e2ee, conduit, secure chat"
     />
 
-    <meta property="og:title" content="Cinny" />
-    <meta property="og:url" content="https://cinny.in" />
-    <meta property="og:image" content="https://cinny.in/assets/favicon-48x48.png" />
+    <meta property="og:title" content="Matrix Chat — mitch.pro" />
+    <meta property="og:url" content="https://mitch.pro/matrix/" />
+    <meta property="og:image" content="/icon-192.png" />
     <meta
       property="og:description"
-      content="A Matrix client where you can enjoy the conversation using simple, elegant and secure interface protected by e2ee with the power of open source."
+      content="Official decentralized, end-to-end encrypted Matrix chat on mitch.pro."
     />
-    <meta name="theme-color" content="#000000" />
+    <meta name="theme-color" content="#070510" />
 
-    <link id="favicon" rel="shortcut icon" href="/matrix/assets/favicon-5KspoOBy.ico" />
+    <link id="favicon" rel="shortcut icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
 
     <link rel="manifest" href="/manifest.json" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="application-name" content="Cinny" />
-    <meta name="apple-mobile-web-app-title" content="Cinny" />
+    <meta name="application-name" content="Mitch.pro Matrix" />
+    <meta name="apple-mobile-web-app-title" content="Mitch.pro Matrix" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-    <link
-      rel="apple-touch-icon"
-      sizes="57x57"
-      href="/matrix/assets/apple-touch-icon-57x57-GehHPDTI.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="60x60"
-      href="/matrix/assets/apple-touch-icon-60x60-B4t-xyyL.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="72x72"
-      href="/matrix/assets/apple-touch-icon-72x72-BiCSJ3dR.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="76x76"
-      href="/matrix/assets/apple-touch-icon-76x76-GfaoCnSQ.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="114x114"
-      href="/matrix/assets/apple-touch-icon-114x114-Co2sJwFy.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="120x120"
-      href="/matrix/assets/apple-touch-icon-120x120-DfOfOhD3.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="144x144"
-      href="/matrix/assets/apple-touch-icon-144x144-CshWkKF0.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="152x152"
-      href="/matrix/assets/apple-touch-icon-152x152-BGXG6jQy.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="167x167"
-      href="/matrix/assets/apple-touch-icon-167x167-BnbXvJbr.png"
-    />
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href="/matrix/assets/apple-touch-icon-180x180-Dmlg5NyV.png"
-    />
-    <link rel="stylesheet" crossorigin href="/matrix/assets/index-DmaX6Xe5.css">
+    <link rel="stylesheet" crossorigin href="/matrix/assets/index-DmaX6Xe5.css" />
+    <link rel="stylesheet" href="/matrix/matrix-galaxy.css" />
   </head>
   <body id="appBody">
-    <div id="mitch-sso-banner" style="display:none; position: fixed; top: 16px; left: 50%; transform: translateX(-50%); z-index: 99999; background: rgba(18, 12, 38, 0.95); border: 1px solid rgba(184, 108, 255, 0.4); border-radius: 12px; padding: 10px 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); backdrop-filter: blur(10px); color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; align-items: center; gap: 14px;">
-      <span>Have a Mitch.pro account?</span>
-      <a id="mitch-sso-btn" href="/enroll/?next=/matrix/" style="background: linear-gradient(135deg, #a855f7, #6366f1); color: #fff; padding: 6px 14px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 13px; transition: opacity 0.2s;">Log In with Mitch.pro</a>
+    <!-- Mitch.pro Floating Navigation Topbar Shell -->
+    <header id="app-topbar" class="app-topbar" role="banner">
+      <div class="mitch-topbar-left">
+        <a class="app-brand" href="/" aria-label="mitch.pro home">
+          <b>mitch<span>.pro</span></b>
+        </a>
+        <span class="mitch-matrix-pill" title="Connected to mitch.pro Matrix Homeserver">Matrix</span>
+      </div>
+      <nav class="app-nav" aria-label="Primary navigation">
+        <a class="back-btn" href="/" title="Return to Mitch.pro Home">&larr; Back to Mitch.pro</a>
+        <a class="chat-btn" href="/encrypt/" title="Open Classic Encrypted Chat">Classic Chat</a>
+        <a href="/games/">Games</a>
+        <a href="/members/">Members</a>
+        <a href="/shop/">Shop</a>
+        <a href="/preferences/">Settings</a>
+      </nav>
+      <div class="mitch-topbar-right">
+        <a id="mitch-user-badge" class="mitch-user-pill" href="/profile/" aria-label="Open your profile">
+          <span id="mitch-avatar-dot" class="mitch-avatar-dot">M</span>
+          <span id="mitch-username-label">My Account</span>
+        </a>
+      </div>
+    </header>
+
+    <!-- Mitch.pro SSO Connect Banner -->
+    <div id="mitch-sso-banner">
+      <span>✨ Connect your Mitch.pro account for instant single sign-on</span>
+      <a id="mitch-sso-btn" href="/enroll/?next=/matrix/">Log In with Mitch.pro</a>
     </div>
+
     <script>
       window.global ||= window;
+
+      // ── Rebranding & Document Title Guardian ────────────────────
+      (function() {
+        const origTitleSetter = Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.set;
+        if (origTitleSetter) {
+          Object.defineProperty(document, 'title', {
+            configurable: true,
+            enumerable: true,
+            set: function(val) {
+              if (typeof val === 'string') {
+                let clean = val.replace(/\bCinny\b/gi, 'Mitch.pro Matrix');
+                if (!clean.toLowerCase().includes('mitch.pro')) {
+                  clean = clean ? `${clean} — mitch.pro` : 'Matrix Chat — mitch.pro';
+                }
+                origTitleSetter.call(document, clean);
+              } else {
+                origTitleSetter.call(document, val);
+              }
+            },
+            get: function() {
+              return Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.get?.call(document) || 'Matrix Chat — mitch.pro';
+            }
+          });
+        }
+        document.title = 'Matrix Chat — mitch.pro';
+
+        function sanitizeCinnyBranding(rootNode) {
+          if (!rootNode) return;
+          if (rootNode.nodeType === Node.TEXT_NODE) {
+            if (rootNode.nodeValue && rootNode.nodeValue.includes('Cinny')) {
+              rootNode.nodeValue = rootNode.nodeValue
+                .replace(/Welcome to Cinny/g, 'Welcome to Mitch.pro Matrix')
+                .replace(/Cinny Web/g, 'Mitch.pro Matrix')
+                .replace(/Cinny/g, 'Mitch.pro Matrix');
+            }
+            return;
+          }
+          const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, null, false);
+          let node;
+          while ((node = walker.nextNode())) {
+            if (node.nodeValue && node.nodeValue.includes('Cinny')) {
+              node.nodeValue = node.nodeValue
+                .replace(/Welcome to Cinny/g, 'Welcome to Mitch.pro Matrix')
+                .replace(/Cinny Web/g, 'Mitch.pro Matrix')
+                .replace(/Cinny/g, 'Mitch.pro Matrix');
+            }
+          }
+          if (rootNode.querySelectorAll) {
+            const logos = rootNode.querySelectorAll('img[alt*="Cinny" i]');
+            logos.forEach(img => {
+              img.src = '/icon-192.png';
+              img.alt = 'Mitch.pro Logo';
+              img.style.borderRadius = '14px';
+              img.style.boxShadow = '0 8px 24px rgba(184, 108, 255, 0.35)';
+            });
+          }
+        }
+
+        const observer = new MutationObserver(mutations => {
+          for (const mutation of mutations) {
+            if (mutation.type === 'childList') {
+              mutation.addedNodes.forEach(n => {
+                if (n.nodeType === Node.ELEMENT_NODE || n.nodeType === Node.TEXT_NODE) {
+                  sanitizeCinnyBranding(n);
+                }
+              });
+            }
+          }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+      })();
+
+      // ── Single Sign-On (SSO) & Bootstrapping ──────────────────────
       (function() {
         const currentToken = localStorage.getItem("cinny_access_token");
         const currentUserId = localStorage.getItem("cinny_user_id");
         const banner = document.getElementById("mitch-sso-banner");
+        const userLabel = document.getElementById("mitch-username-label");
+        const avatarDot = document.getElementById("mitch-avatar-dot");
+        const userBadge = document.getElementById("mitch-user-badge");
 
         function bootCinny() {
           if (window.__cinnyLoaded) return;
@@ -108,7 +163,28 @@
           document.head.appendChild(script);
         }
 
+        async function syncUserIdentity() {
+          try {
+            const res = await fetch("/api/matrix/sso-status", { credentials: "same-origin" });
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.authenticated) {
+                const name = data.displayName || data.username || "Member";
+                if (userLabel) userLabel.textContent = name;
+                if (avatarDot) avatarDot.textContent = name.charAt(0).toUpperCase();
+                if (userBadge) userBadge.href = "/profile/";
+                return data;
+              }
+            }
+          } catch (_) {}
+          // Guest or not logged in
+          if (userLabel) userLabel.textContent = "Sign In";
+          if (userBadge) userBadge.href = "/enroll/?next=/matrix/";
+          return null;
+        }
+
         async function initMitchSSO() {
+          const authData = await syncUserIdentity();
           try {
             const res = await fetch("/api/matrix/sso-login", {
               method: "POST",
@@ -131,7 +207,7 @@
                 if (banner) banner.style.display = "none";
               }
             } else {
-              // Not logged in to Mitch.pro — show banner on login screen
+              // Not logged into Mitch.pro
               if (!currentToken && banner) {
                 banner.style.display = "flex";
               }

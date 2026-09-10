@@ -234,6 +234,10 @@ try {
   const configData = await resConfig.json();
   assert.equal(configData.defaultHomeserver, 0);
   assert(Array.isArray(configData.homeserverList));
+  assert(configData.featuredCommunities);
+  assert.equal(configData.featuredCommunities.openAsDefault, true);
+  assert(configData.featuredCommunities.servers.includes('mitch.pro'));
+  assert(configData.featuredCommunities.rooms.includes('#general:mitch.pro'));
   console.log('/matrix/config.json passed');
 
   // 5. Authenticated regular user login & auto-join (Power Level 0)
