@@ -129,7 +129,7 @@
         const verifyRes = await fetch('/api/admin/passphrase-status', {
           method: 'POST',
           credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'X-Admin-Passphrase': pass },
+          headers: getAdminHeaders({ 'X-Admin-Passphrase': pass }),
           body: JSON.stringify({ passphrase: pass })
         });
         const d = await verifyRes.json().catch(() => ({}));
