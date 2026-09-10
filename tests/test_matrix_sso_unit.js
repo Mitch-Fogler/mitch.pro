@@ -292,21 +292,20 @@ try {
     },
     redirect: 'manual'
   });
-  assert.equal(bridgeRes.status, 200);
-  const bridgeHtml = await bridgeRes.text();
-  assert(bridgeHtml.includes('https://mitch.pro/api/sso/exchange'), 'School-origin bridge must exchange the session on mitch.pro');
-  const tokenMatch = bridgeHtml.match(/add\("token",\s*"([A-Za-z0-9_-]+)"\)/);
-  assert(tokenMatch, 'Bridge handoff must contain a single-use token');
-  const exchangeRes = await fetch(`${BASE_URL}/api/sso/exchange`, {
-    method: 'POST',
+  assert.equal(bridgeRes.status, 302);
+  const bridgeLocation = new URL(bridgeRes.headers.get('Location'));
+  assert.equal(bridgeLocation.origin, 'https://mitch.pro');
+  assert.equal(bridgeLocation.pathname, '/api/sso/exchange');
+  assert.equal(bridgeRes.headers.get('Referrer-Policy'), 'no-referrer');
+  const bridgeToken = bridgeLocation.searchParams.get('token');
+  assert(bridgeToken, 'Bridge handoff must contain a single-use token');
+  const exchangeRes = await fetch(`${BASE_URL}/api/sso/exchange?${new URLSearchParams({
+    token: bridgeToken,
+    back: 'https://mitch.pro/matrix/'
+  })}`, {
     headers: {
-      'Host': 'mitch.pro',
-      'Content-Type': 'application/x-www-form-urlencoded'
+      'Host': 'mitch.pro'
     },
-    body: new URLSearchParams({
-      token: tokenMatch[1],
-      back: 'https://mitch.pro/matrix/'
-    }),
     redirect: 'manual'
   });
   assert.equal(exchangeRes.status, 302);

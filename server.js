@@ -12712,6 +12712,20 @@ async function handleRequest(req, server) {
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
               dest.searchParams.set('token', token);
               dest.searchParams.set('back', back.toString());
+              // Matrix keeps its encryption database only on mitch.pro and
+              // does not need to copy the legacy Secure Chat JWK. A normal
+              // top-level redirect also works with the site's form-action
+              // CSP, unlike a cross-origin hidden form.
+              if (back.pathname === '/matrix' || back.pathname.startsWith('/matrix/')) {
+                return new Response(null, {
+                  status: 302,
+                  headers: {
+                    Location: dest.toString(),
+                    'Cache-Control': 'no-store',
+                    'Referrer-Policy': 'no-referrer'
+                  }
+                });
+              }
               // localStorage is per-origin, so the school site can't see the
               // Secure Chat identity cached on mitch.pro. This hop page runs
               // on mitch.pro first, picks up the device's cached private key,
@@ -12809,6 +12823,8 @@ async function handleRequest(req, server) {
         headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
         headers.append('Set-Cookie', clearCookieHeader('password', req, false));
         headers.append('Set-Cookie', clearCookieHeader('id', req, false));
+        headers.set('Cache-Control', 'no-store');
+        headers.set('Referrer-Policy', 'no-referrer');
         writeAppLog('info', 'sso', 'Cross-domain sign-in', { email: rec.email, host: requestHost(req), ip });
 
         // A private JWK came along: validate it, then cache it in this
