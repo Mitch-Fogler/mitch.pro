@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>Matrix Chat — mitch.pro</title>
     <meta name="name" content="Mitch.pro Matrix" />
     <meta name="author" content="Mitch.pro" />
@@ -39,14 +39,8 @@
     <!-- Mitch.pro Global Theme Engine -->
     <script src="/theme.js?v=11"></script>
 
-    <!-- Preemptive UI hygiene: hide theme toggle button & prevent rogue root scrollbars -->
+    <!-- UI hygiene: prevent rogue root scrollbars -->
     <style>
-      #theme-btn {
-        display: none !important;
-        visibility: hidden !important;
-        pointer-events: none !important;
-        opacity: 0 !important;
-      }
       html, body, #root {
         overflow: hidden !important;
         scrollbar-width: none !important;
@@ -89,47 +83,106 @@
     <script>
       window.global ||= window;
 
-      // ── Synchronize Cinny Dark/Light Mode with theme.js ────────
+      // ── Synchronize Cinny Dark/Light Mode & Colors with theme.js ────────
       (function() {
-        function syncWithCinny() {
-          const cls = document.body ? (document.body.className || '') : '';
-          const isLight = cls.includes('light-theme') || cls.includes('silver-theme') || cls.includes('prism-light');
-          const currentMode = window.__theme?.get?.() || 'dark';
-          if (isLight && currentMode !== 'light') {
-            window.__theme?.apply?.('light');
-          } else if (!isLight && currentMode !== 'dark') {
-            window.__theme?.apply?.('dark');
+        function getSiteThemeMode() {
+          try {
+            const m = document.cookie.match(/(?:^|; )theme=([^;]+)/);
+            if (m) {
+              const v = decodeURIComponent(m[1]).toLowerCase();
+              if (v === 'light' || v === 'daylight' || v === 'paper' || v === 'arctic' || v === 'blossom') return 'light';
+              return 'dark';
+            }
+          } catch (_) {}
+          if (window.__theme && typeof window.__theme.get === 'function') {
+            return window.__theme.get() === 'light' ? 'light' : 'dark';
           }
+          return document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
         }
 
-        // Align Cinny's stored settings if mitch.pro cookie is light mode
-        try {
-          const m = document.cookie.match(/(?:^|; )theme=([^;]+)/);
-          const savedTheme = m ? decodeURIComponent(m[1]) : '';
-          if (savedTheme === 'light') {
-            const rawSettings = localStorage.getItem('settings');
-            const settings = rawSettings ? JSON.parse(rawSettings) : {};
-            if (settings.themeId !== 'light-theme') {
+        function primeCinnySettings(mode) {
+          try {
+            const raw = localStorage.getItem('settings');
+            const settings = raw ? JSON.parse(raw) : {};
+            const targetThemeId = mode === 'light' ? 'light-theme' : 'dark-theme';
+            if (settings.themeId !== targetThemeId || settings.useSystemTheme !== false) {
+              settings.themeId = targetThemeId;
               settings.useSystemTheme = false;
-              settings.themeId = 'light-theme';
+              if (mode === 'light') settings.lightThemeId = 'light-theme';
+              else settings.darkThemeId = 'dark-theme';
               localStorage.setItem('settings', JSON.stringify(settings));
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
 
-        const themeObserver = new MutationObserver(() => {
-          syncWithCinny();
+        function applyModeToDom(mode) {
+          const isLight = mode === 'light';
+          document.documentElement.classList.toggle('theme-light', isLight);
+          document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
+          if (document.body) {
+            if (isLight) {
+              document.body.classList.remove('dark-theme', '_15q3ngn1', '_18gnz541', 'prism-dark');
+              document.body.classList.add('light-theme', 'oq6d071w', '_18gnz540', 'prism-light');
+            } else {
+              document.body.classList.remove('light-theme', 'oq6d071w', '_18gnz540', 'prism-light');
+              document.body.classList.add('dark-theme', '_15q3ngn1', '_18gnz541', 'prism-dark');
+            }
+          }
+          const metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) metaTheme.setAttribute('content', isLight ? '#eef1f9' : '#070510');
+        }
+
+        // Prime Cinny settings IMMEDIATELY before React boots
+        const initialMode = getSiteThemeMode();
+        primeCinnySettings(initialMode);
+        applyModeToDom(initialMode);
+
+        // React to theme.js changes (e.g. user taps #theme-btn or calls __theme.apply)
+        window.addEventListener('themechange', function(e) {
+          const detail = e && e.detail ? String(e.detail).toLowerCase() : '';
+          const nextMode = (detail === 'light') ? 'light' : (detail === 'dark' ? 'dark' : getSiteThemeMode());
+          primeCinnySettings(nextMode);
+          applyModeToDom(nextMode);
+        });
+
+        // Listen for storage changes across tabs
+        window.addEventListener('storage', function(e) {
+          if (e.key === 'theme' || e.key === 'theme_mode') {
+            const nextMode = getSiteThemeMode();
+            primeCinnySettings(nextMode);
+            applyModeToDom(nextMode);
+          }
+        });
+
+        // Two-way sync: if the user explicitly switches themes in Cinny's Settings UI
+        let isSyncing = false;
+        const themeObserver = new MutationObserver(function() {
+          if (isSyncing || !document.body) return;
+          const cls = document.body.className || '';
+          const isLightCinny = cls.includes('light-theme') || cls.includes('silver-theme') || cls.includes('oq6d071w') || cls.includes('prism-light');
+          const siteMode = getSiteThemeMode();
+          const siteIsLight = siteMode === 'light';
+          if (isLightCinny !== siteIsLight) {
+            isSyncing = true;
+            const next = isLightCinny ? 'light' : 'dark';
+            primeCinnySettings(next);
+            if (window.__theme && typeof window.__theme.apply === 'function') {
+              window.__theme.apply(next);
+            }
+            applyModeToDom(next);
+            isSyncing = false;
+          }
         });
 
         function initThemeSync() {
           if (document.body) {
             themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-            syncWithCinny();
+            applyModeToDom(getSiteThemeMode());
           } else {
-            document.addEventListener('DOMContentLoaded', () => {
+            document.addEventListener('DOMContentLoaded', function() {
               if (document.body) {
                 themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-                syncWithCinny();
+                applyModeToDom(getSiteThemeMode());
               }
             });
           }
