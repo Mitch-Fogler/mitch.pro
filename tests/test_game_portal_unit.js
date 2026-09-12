@@ -36,12 +36,14 @@ assert.equal(result.earned, 0, 'The daily cap must be enforced server-side');
 
 const html = readFileSync('webserver/game-portal/index.html', 'utf8');
 const client = readFileSync('webserver/game-portal/portal.js', 'utf8');
+const styles = readFileSync('webserver/game-portal/game-portal.css', 'utf8');
 const server = readFileSync('server.js', 'utf8');
 const catalog = JSON.parse(readFileSync('webserver/game-portal/games.json', 'utf8'));
 const catalogEntries = catalog.links.flatMap((section) => section.games || []);
 
 assert(catalogEntries.length >= 300, 'The redesigned portal must include the full open-source game catalog');
 assert(html.includes('id="game-grid"') && html.includes('id="game-player"'), 'Portal needs one catalog and one integrated player');
+assert(html.includes('id="featured-games"') && html.includes('id="surprise-game"'), 'Portal needs an immediate featured shelf and shuffle action');
 assert(!html.includes('/msn-games/'), 'The obsolete two-option chooser must be removed');
 assert(client.includes("'/api/game-portal/heartbeat'"), 'Portal must report active gameplay to the authenticated backend');
 assert(client.includes("'X-Mitch-Requested-With': '1'"), 'Reward heartbeat must include the application CSRF header');
@@ -49,6 +51,8 @@ assert(client.includes("'/proxy/luma'") && client.includes("'/proxy/calculated2'
 assert(server.includes("touchUserPresence(email, active ? `Playing ${game}` : 'Browsing games')"), 'Game activity must feed live presence');
 assert(server.includes("'/proxy/luma/': 'https://lumassets.pages.dev'") && server.includes("'/proxy/calculated2/': 'https://calculated2.github.io'"), 'The game proxy must only use fixed upstream origins');
 assert(server.includes("!path.startsWith('/game-portal/')"), 'Portal assets must load before sign-in so SSO can complete cleanly');
+assert(client.includes('function genreFor(') && client.includes('renderFeatured();'), 'Catalog must provide useful genres and a featured shelf');
+assert(styles.includes('.featured-grid') && styles.includes('@media (min-width: 761px) and (max-height: 780px)'), 'Portal redesign must include its arcade shelf and Chromebook density layout');
 
 for (const entry of catalogEntries) {
   if (String(entry[1] || '').startsWith('/img/games/')) {
