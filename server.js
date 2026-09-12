@@ -10059,8 +10059,6 @@ async function handleRequest(req, server) {
           headers.set(key, value);
         }
       }
-      headers.set('Referer', targetOrigin + '/');
-      headers.set('Origin', targetOrigin);
       const upstreamRes = await fetchWithTimeout(targetUrl, { method, headers, redirect: 'follow' });
       const resHeaders = new Headers(upstreamRes.headers);
       resHeaders.delete('set-cookie');
