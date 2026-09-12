@@ -82,13 +82,13 @@
     <div id="mitch-push-banner" role="dialog" aria-label="Enable notifications">
       <div class="mitch-push-header">
         <span class="mitch-push-icon" aria-hidden="true">🔔</span>
-        <span>Enable Push Notifications</span>
+        <span>Enable Call & Chat Notifications</span>
       </div>
       <div class="mitch-push-desc">
-        Stay updated on direct messages, room mentions, and invites when you're away.
+        Never miss an incoming voice/video call or message when you're away or your device is locked.
       </div>
       <div class="mitch-push-actions">
-        <button id="mitch-push-later" class="mitch-push-btn-later" type="button">Not now</button>
+        <button id="mitch-push-later" class="mitch-push-btn-later" type="button">Remind later</button>
         <button id="mitch-push-enable" class="mitch-push-btn-enable" type="button">Turn On</button>
       </div>
     </div>
@@ -509,19 +509,36 @@
             }
           });
 
-          // Check if banner should be displayed
+          // Check if banner should be displayed (snooze 5 minutes)
           if (window.Notification && Notification.permission === 'default') {
             const dismissed = localStorage.getItem('mitch_matrix_push_dismissed');
-            if (!dismissed || (Date.now() - parseInt(dismissed, 10) > 7 * 86400 * 1000)) {
+            if (!dismissed || (Date.now() - parseInt(dismissed, 10) > 5 * 60 * 1000)) {
               setTimeout(() => {
-                const token = localStorage.getItem('cinny_access_token');
-                if (token && Notification.permission === 'default') {
+                if (Notification.permission === 'default') {
                   banner.classList.add('show');
                 }
-              }, 3000);
+              }, 800);
             }
           }
         }
+
+        // Synchronize Matrix room reads to Mitch.pro notification bell
+        function markCurrentRoomRead() {
+          const m = location.hash.match(/#\/room\/([^/?]+)/);
+          if (m && m[1]) {
+            const roomId = decodeURIComponent(m[1]);
+            fetch('/api/matrix/notifications/read', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+              body: JSON.stringify({ roomId })
+            }).catch(() => {});
+          }
+        }
+        window.addEventListener('hashchange', markCurrentRoomRead);
+        document.addEventListener('click', () => setTimeout(markCurrentRoomRead, 300));
+        setTimeout(markCurrentRoomRead, 1500);
+        setInterval(markCurrentRoomRead, 12000);
 
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', setupBanner);
