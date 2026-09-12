@@ -10055,7 +10055,7 @@ async function handleRequest(req, server) {
     try {
       const headers = new Headers();
       for (const [key, value] of req.headers.entries()) {
-        if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip'].includes(key.toLowerCase())) {
+        if (['accept', 'accept-language', 'range', 'user-agent'].includes(key.toLowerCase())) {
           headers.set(key, value);
         }
       }
