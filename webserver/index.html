@@ -1284,7 +1284,7 @@ function renderOnlineMembers(members) {
   });
   var online = allMembers.filter(function(m) { return m.online; });
   var signature = JSON.stringify(allMembers.map(function(m) {
-    return [m.email || '', m.displayName || '', m.pfp || '', m.badge || '', m.color || '', !!m.online];
+    return [m.email || '', m.displayName || '', m.pfp || '', m.badge || '', m.color || '', !!m.online, m.playing || ''];
   }));
   if (signature === window._onlineMembersSignature) return;
   window._onlineMembersSignature = signature;
@@ -1336,7 +1336,7 @@ function renderOnlineMembers(members) {
     var avatar = m.pfp
       ? '<img class="member-presence-avatar" src="' + escText(m.pfp) + '" alt="" data-initials="' + escText(initials) + '" referrerpolicy="no-referrer">'
       : '<span class="member-presence-avatar member-presence-initials" aria-hidden="true">' + escText(initials) + '</span>';
-    var statusText = m.online ? 'Online now' : 'Offline';
+    var statusText = m.online ? (m.playing || 'Online now') : 'Offline';
     var tooltip = email.includes('@') ? email : '';
     return '<a class="member-presence-card name ' + escText(colorClass) + (m.online ? ' is-online' : ' is-offline') + '" href="/profile/?u=' + encodeURIComponent(email) + '" title="' + escText(tooltip) + '">' +
       avatar + '<span class="member-presence-copy"><span class="member-presence-name">' + nameContent + badgeHtml + '</span><span class="member-presence-status"><span class="online-dot"></span>' + statusText + '</span></span></a>';

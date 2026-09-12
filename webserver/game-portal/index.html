@@ -3,34 +3,67 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#090614">
-  <title>Choose your arcade | Mitch.pro</title>
+  <meta name="theme-color" content="#090a10">
+  <meta name="description" content="Play hundreds of browser games and earn MitchCoins while you play.">
+  <title>Game Portal | mitch.pro</title>
   <script src="/theme.js?v=11"></script>
-  <link rel="stylesheet" href="/site-galaxy.css?v=9">
-  <link rel="stylesheet" href="/games-portal.css?v=9">
+  <link rel="stylesheet" href="/game-portal/game-portal.css?v=1">
 </head>
-<body class="games-portal">
-  <main class="portal-shell">
-    <header class="portal-topbar">
-      <a class="portal-brand" href="/"><span class="mitch-mark" aria-hidden="true"></span><b>MITCH<span>.PRO</span></b></a>
-      <span class="top-spacer"></span>
-      <a class="portal-back" href="/">&larr; Homepage</a>
-    </header>
-    <section class="portal-hero">
-      <h1>Games</h1>
-      <p>Choose a game library.</p>
+<body class="game-portal-page" data-shell="off">
+  <header class="portal-bar">
+    <a class="portal-brand" href="https://mitch.pro/" aria-label="mitch.pro home">
+      <img src="/icon-192.png" alt="" width="38" height="38">
+      <span>mitch<span>.pro</span></span>
+    </a>
+    <label class="portal-search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
+      <input id="game-search" type="search" autocomplete="off" placeholder="Search games" aria-label="Search games">
+      <kbd>/</kbd>
+    </label>
+    <a class="portal-wallet" id="portal-wallet" href="https://mitch.pro/coins/">
+      <img src="/mitchcoin.png" alt="" width="30" height="30">
+      <span><small>MitchCoins</small><strong id="wallet-balance">—</strong></span>
+    </a>
+  </header>
+
+  <main class="portal-main">
+    <section class="portal-heading" aria-labelledby="portal-title">
+      <div><h1 id="portal-title">Games</h1><p><span id="game-count">Loading</span> games</p></div>
+      <div class="reward-card" id="reward-card">
+        <div class="reward-copy">
+          <img src="/mitchcoin.png" alt="" width="34" height="34">
+          <span><strong id="reward-title">Earn 2 per minute</strong><small id="reward-detail">Play any game to start earning</small></span>
+        </div>
+        <div class="reward-meter" aria-hidden="true"><i id="reward-progress"></i></div>
+      </div>
     </section>
-    <section class="library-grid" aria-label="Game libraries">
-      <a class="library-card mitch" href="/games/">
-        <span class="library-logo mitch-logo" aria-hidden="true">M</span>
-        <span class="library-copy"><small>Original library</small><h2>Mitch.pro Games</h2><p>The games already on Mitch.pro, exactly where you left them. Arcade, strategy, multiplayer and more.</p><span class="card-enter">Enter Mitch.pro arcade <i>&rarr;</i></span></span>
-      </a>
-      <a class="library-card msn" href="/msn-games/">
-        <span class="library-logo" aria-hidden="true"><span class="ms-grid"><i></i><i></i><i></i><i></i></span></span>
-        <span class="library-copy"><small>MSN Play</small><h2>MSN Games</h2><p>Daily puzzles, cards, word games and casual favorites from Microsoft&rsquo;s complete MSN Play experience.</p><span class="card-enter">Launch in this browser <i>&rarr;</i></span></span>
-      </a>
+    <nav class="category-strip" id="category-strip" aria-label="Game categories"></nav>
+    <section class="recent-section" id="recent-section" hidden aria-labelledby="recent-title">
+      <div class="section-heading"><h2 id="recent-title">Play again</h2></div>
+      <div class="game-grid game-grid-recent" id="recent-games"></div>
     </section>
-    <p class="portal-note">MSN Games opens Microsoft’s MSN Play.</p>
+    <section aria-labelledby="all-games-title">
+      <div class="section-heading"><h2 id="all-games-title">All games</h2><span id="results-label"></span></div>
+      <div class="game-grid" id="game-grid" aria-live="polite"><div class="game-loading"><i></i><span>Loading games</span></div></div>
+      <div class="portal-empty" id="portal-empty" hidden>No games match that search.</div>
+      <button class="load-more" id="load-more" type="button" hidden>Show more games</button>
+    </section>
   </main>
+
+  <section class="game-player" id="game-player" hidden role="dialog" aria-modal="true" aria-labelledby="player-title">
+    <header class="player-bar">
+      <button class="player-close" id="player-close" type="button" aria-label="Close game">←</button>
+      <div class="player-name"><small>Now playing</small><strong id="player-title">Game</strong></div>
+      <div class="player-earning" id="player-earning"><i></i><span id="player-reward">Earning 2/min</span></div>
+      <a class="player-tool" id="player-new-tab" href="#" target="_blank" rel="noopener">New tab</a>
+      <button class="player-tool" id="player-fullscreen" type="button">Fullscreen</button>
+    </header>
+    <div class="player-stage" id="player-stage">
+      <div class="player-loading" id="player-loading"><i></i><span>Starting game</span></div>
+      <iframe id="game-frame" title="Game" allow="autoplay; fullscreen; gamepad; clipboard-read; clipboard-write" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-modals allow-downloads"></iframe>
+    </div>
+  </section>
+  <div class="coin-toast" id="coin-toast" role="status" aria-live="polite">+2 MitchCoins</div>
+  <script src="/game-portal/portal.js?v=1" defer></script>
 </body>
 </html>

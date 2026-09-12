@@ -34,6 +34,13 @@ import { ProxmoxDesktopService, ProxmoxServiceError } from './lib/proxmox_deskto
 import { canAccessVmRecord, validateDesktopSession, VmOperationGate } from './lib/vm_security.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
 import {
+  GAME_PORTAL_REWARD_PER_MINUTE,
+  GAME_PORTAL_DAILY_CAP,
+  gamePortalDayKey,
+  normalizeGamePortalTitle,
+  settleGamePortalHeartbeat,
+} from './lib/game_portal_rewards.js';
+import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
   verifyAuthenticationResponse,
@@ -470,6 +477,7 @@ function dmContentOf(msg) {
 const sessionLastSeen  = {};
 const lastLoggedPing   = new Map(); // id -> { page, ts }
 const userPlaytime     = new Map(); // id -> accumulated_ms
+const gamePortalSessions = new Map(); // normalized email -> active reward heartbeat
 const ADRIAN_TECH = {
   desk_1: { name: "Reinforced Desk", cost: 100, icon: "🪑", target: "desk", mult: 2, unlock: { id: "desk", n: 1 } },
   desk_2: { name: "Ergonomic Chair", cost: 500, icon: "💺", target: "desk", mult: 2, unlock: { id: "desk", n: 10 } },
@@ -1531,6 +1539,8 @@ const RATE_LIMITS = {
   '/api/admin/vms':                [30,  60],
   '/api/admin/profile-reports/resolve': [20, 60],
   '/api/presence/heartbeat':       [60,  60],
+  '/api/game-portal/status':       [30,  60],
+  '/api/game-portal/heartbeat':    [10,  60],
   '/api/premium-chat/history': [60,  60],
   '/api/premium-chat/send':    [3,   10],
   '/api/public-chat/history':  [60,  60],
@@ -9015,6 +9025,18 @@ async function handleRequest(req, server) {
   const botRedirect = blooketBotRedirect(url, method);
   if (botRedirect) return Response.redirect(botRedirect, 302);
 
+  if (method === 'GET' && /^\/game-portal(?:\/|\/index\.html)?$/.test(path)) {
+    const currentHost = requestHost(req).split(':')[0].toLowerCase();
+    const configuredSite = site();
+    let primaryHost = '';
+    try { primaryHost = new URL(configuredSite.primary).hostname.toLowerCase(); } catch {}
+    if (currentHost && currentHost === primaryHost && configuredSite.alternate) {
+      const destination = configuredSite.alternate.replace(/\/+$/, '') + '/game-portal/' + url.search;
+      const bridge = configuredSite.primary.replace(/\/+$/, '') + '/api/sso/bridge?back=' + encodeURIComponent(destination);
+      return Response.redirect(bridge, 302);
+    }
+  }
+
   const csrfFailure = csrfFailureIfUnsafe(req, path, method);
   if (csrfFailure) return csrfFailure;
 
@@ -15936,6 +15958,72 @@ async function handleRequest(req, server) {
       return jsonResp(200, { ok: true });
     }
 
+    if (path === '/api/game-portal/status' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || isRevoked(sid)) return jsonResp(401, { authenticated: false });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { authenticated: false });
+      const stats = loadUserStats()[normalizeEmail(email)] || {};
+      const today = gamePortalDayKey();
+      const dailyEarned = stats.game_portal_reward_day === today ? Number(stats.game_portal_reward_today || 0) : 0;
+      return jsonResp(200, {
+        authenticated: true,
+        coins: getCoins(email),
+        dailyEarned,
+        dailyCap: GAME_PORTAL_DAILY_CAP,
+        rewardPerMinute: GAME_PORTAL_REWARD_PER_MINUTE,
+      });
+    }
+
+    if (path === '/api/game-portal/heartbeat' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || isRevoked(sid)) return jsonResp(401, { authenticated: false });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { authenticated: false });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const norm = normalizeEmail(email);
+      const game = normalizeGamePortalTitle(body.game);
+      const active = body.active === true && !!game;
+      const now = Date.now();
+      const today = gamePortalDayKey(now);
+      const stats = loadUserStats();
+      if (!stats[norm]) stats[norm] = {};
+      if (stats[norm].game_portal_reward_day !== today) {
+        stats[norm].game_portal_reward_day = today;
+        stats[norm].game_portal_reward_today = 0;
+        saveUserStats(stats);
+      }
+
+      const settled = settleGamePortalHeartbeat(gamePortalSessions.get(norm), now, {
+        active,
+        game,
+        dailyEarned: stats[norm].game_portal_reward_today,
+      });
+      gamePortalSessions.set(norm, settled.next);
+
+      if (settled.earned > 0) {
+        addCoins(email, settled.earned);
+        stats[norm].game_portal_reward_today = Number(stats[norm].game_portal_reward_today || 0) + settled.earned;
+        stats[norm].game_portal_minutes = Number(stats[norm].game_portal_minutes || 0) + settled.minutes;
+        stats[norm].game_portal_coins = Number(stats[norm].game_portal_coins || 0) + settled.earned;
+        saveUserStats(stats);
+      }
+
+      touchUserPresence(email, active ? `Playing ${game}` : 'Browsing games');
+      return jsonResp(200, {
+        ok: true,
+        authenticated: true,
+        earned: settled.earned,
+        coins: getCoins(email),
+        dailyEarned: Number(stats[norm].game_portal_reward_today || 0),
+        dailyCap: GAME_PORTAL_DAILY_CAP,
+        rewardPerMinute: GAME_PORTAL_REWARD_PER_MINUTE,
+      });
+    }
+
     if (path === '/api/delete-account' && method === 'POST') {
       try {
         const cookies = getCookies(req);
@@ -18751,12 +18839,15 @@ async function handleRequest(req, server) {
         const outgoingRequest = friendRequests.some(req => normalizeEmail(req.from) === viewerNorm && normalizeEmail(req.to) === norm);
         const friendStatus = isSelf ? 'self' : (isFriend ? 'friends' : (incomingRequest ? 'incoming' : (outgoingRequest ? 'outgoing' : 'none')));
 
+        const memberOnline = isUserPresent(email, now);
+        const memberPresence = userPresence[norm];
         members.push({ 
           email: processed.email, 
           handle: username,
           profileUrl: `/profile/?u=${encodeURIComponent(username)}`,
           pfp: sanitizeProfileImageUrl(profile.pfp || '', { allowData: true, maxDataBytes: 120000 }),
-          online: isUserPresent(email, now),
+          online: memberOnline,
+          playing: memberOnline && memberPresence ? String(memberPresence.playing || '') : '',
           role,
           displayName: processed.displayName,
           bio: String(profile.bio || '').slice(0, 160),
@@ -24228,7 +24319,8 @@ async function handleRequest(req, server) {
           const ua = req.headers.get('user-agent') || '';
           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
           const isEnrollPage = path === '/enroll' || path === '/enroll/' || path === '/enroll/index.html';
-          const isEmbeddedGameRuntime = path.startsWith('/games/') && path !== '/games/' && path !== '/games/index.html';
+          const isStandaloneGamePortal = path === '/game-portal' || path === '/game-portal/' || path === '/game-portal/index.html';
+          const isEmbeddedGameRuntime = isStandaloneGamePortal || (path.startsWith('/games/') && path !== '/games/' && path !== '/games/index.html');
           const pageCookies = getCookies(req);
           const pageSid = pageCookies['studentId'] || pageCookies['id'] || '';
           const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
@@ -24370,7 +24462,7 @@ async function handleRequest(req, server) {
       '/verify-open.json'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/matrix/') && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !path.startsWith('/games') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/matrix/') && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !path.startsWith('/games') && !path.startsWith('/game-portal/') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);
