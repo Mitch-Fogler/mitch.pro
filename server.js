@@ -210,6 +210,7 @@ const UNLOCKED_AI_FILE       = join(DATA_DIR, 'unlocked_ai.json');
 const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
 const MATRIX_USERS_FILE      = join(DATA_DIR, 'matrix_users.json');
+const MATRIX_NOTIFICATIONS_FILE = join(DATA_DIR, 'matrix_notifications.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
 const MODERATOR_PANEL_FILE   = join(DATA_DIR, 'moderator_panel.json');
@@ -5013,6 +5014,44 @@ async function dmDigestWorker() {
       changed = true;
       console.log(`[dm-digest] ${total} msgs from ${Object.keys(senders).length} senders → ${targetEmail}`);
     }
+
+    // Matrix Chat Unread Messages Digest
+    try {
+      const allMatrix = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+      for (const [recip, notifs] of Object.entries(allMatrix)) {
+        if (!Array.isArray(notifs)) continue;
+        const unreadList = notifs.filter(n => !n.read && n.ts <= msgAge);
+        if (unreadList.length === 0) continue;
+        const isOnline = (Date.now() - (matrixUserLastSeen.get(recip) || 0) < offlineCutoff);
+        if (isOnline) continue;
+        if (!notifAllowed(recip, 'digest')) continue;
+        const ulog = log[recip] || {};
+        const latestMatrixTs = Math.max(...unreadList.map(n => n.ts || 0));
+        if (ulog.matrix_digest_ts && latestMatrixTs <= ulog.matrix_digest_ts) continue;
+        const total = unreadList.reduce((acc, n) => acc + (n.count || 1), 0);
+        const senders = Array.from(new Set(unreadList.map(n => n.sender).filter(Boolean)));
+        const senderNames = senders.length > 0 ? senders.join(', ') : 'Matrix users';
+        const targetEmail = canonicalDeliveryEmail(recip);
+        if (targetEmail && targetEmail.includes('@')) {
+          const html = makeMatrixNotificationEmailHtml(targetEmail, {
+            title: `💬 You have ${total} unread Matrix message${total !== 1 ? 's' : ''}`,
+            senderName: senderNames,
+            roomTitle: unreadList[0]?.roomTitle || '',
+            previewText: unreadList[0]?.detail || 'You have unread chat messages waiting on Mitch.pro.',
+            isCall: false,
+            isInvite: false,
+            roomUrl: `/matrix/`
+          });
+          sendEmailBg(targetEmail, `💬 ${total} unread Matrix message${total !== 1 ? 's' : ''} on mitch.pro`, html);
+          log[recip] = { ...ulog, matrix_digest_ts: latestMatrixTs };
+          changed = true;
+          console.log(`[matrix-digest] ${total} msgs → ${targetEmail}`);
+        }
+      }
+    } catch (mErr) {
+      console.warn('[matrix-digest] error:', mErr);
+    }
+
     if (changed) saveEmailLog(log);
   } catch (e) { console.log(`[dm-digest] error: ${e}`); }
 }
@@ -8354,6 +8393,199 @@ async function getMatrixRoomInfoForNotifications(roomId, token) {
   return result;
 }
 
+const matrixUserLastSeen = new Map();
+const matrixPendingEmailAlerts = new Map();
+const matrixLastEmailSent = new Map();
+
+function addMatrixNotification(targetNorm, notif) {
+  if (!targetNorm) return null;
+  const all = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+  if (!Array.isArray(all[targetNorm])) all[targetNorm] = [];
+  const list = all[targetNorm];
+
+  const existingIdx = list.findIndex(n => !n.read && n.roomId === notif.roomId && n.type === notif.type);
+  if (existingIdx !== -1) {
+    const existing = list[existingIdx];
+    existing.count = (existing.count || 1) + 1;
+    existing.ts = notif.ts || Date.now();
+    existing.detail = notif.detail || existing.detail;
+    if (notif.type === 'matrix_call') {
+      existing.title = `📞 Active call from ${notif.sender || 'Someone'}`;
+    } else if (notif.type === 'matrix_invite') {
+      existing.title = notif.title;
+    } else {
+      existing.title = notif.isDirect
+        ? `${existing.count} messages from ${notif.sender || 'Someone'}`
+        : `${existing.count} new messages in ${notif.roomTitle || 'Chat'}`;
+    }
+    list.splice(existingIdx, 1);
+    list.unshift(existing);
+  } else {
+    const item = {
+      id: notif.id || `matrix:${notif.roomId}:${Date.now()}`,
+      type: notif.type || 'matrix',
+      roomId: notif.roomId,
+      title: notif.title,
+      body: notif.body || 'Matrix Chat',
+      detail: notif.detail || '',
+      sender: notif.sender || '',
+      roomTitle: notif.roomTitle || '',
+      isDirect: !!notif.isDirect,
+      count: 1,
+      ts: notif.ts || Date.now(),
+      url: notif.url || `/matrix/#/room/${encodeURIComponent(notif.roomId)}`,
+      read: false,
+    };
+    list.unshift(item);
+  }
+
+  if (list.length > 50) list.splice(50);
+  all[targetNorm] = list;
+  saveJson(MATRIX_NOTIFICATIONS_FILE, all);
+  triggerNotificationRefresh();
+  return list[0];
+}
+
+function cancelPendingMatrixEmailAlert(memberNorm, roomId) {
+  if (!memberNorm) return;
+  const norm = normalizeEmail(memberNorm);
+  if (roomId) {
+    const key = `${norm}:${roomId}`;
+    const pending = matrixPendingEmailAlerts.get(key);
+    if (pending) {
+      if (pending.timer) clearTimeout(pending.timer);
+      matrixPendingEmailAlerts.delete(key);
+    }
+  } else {
+    for (const [k, pending] of matrixPendingEmailAlerts.entries()) {
+      if (k.startsWith(`${norm}:`)) {
+        if (pending.timer) clearTimeout(pending.timer);
+        matrixPendingEmailAlerts.delete(k);
+      }
+    }
+  }
+}
+
+function makeMatrixNotificationEmailHtml(email, { title, senderName, roomTitle, previewText, isCall, isInvite, roomUrl }) {
+  const s = site();
+  const destUrl = roomUrl.startsWith('http') ? roomUrl : `${siteUrl(email)}${roomUrl}`;
+  const accentColor = isCall ? '#10b981' : (isInvite ? '#3b82f6' : '#a855f7');
+  const iconEmoji = isCall ? '📞' : (isInvite ? '📨' : '💬');
+  const actionText = isCall ? 'Join Voice/Video Call' : (isInvite ? 'Accept Invite & Join' : 'Open Matrix Chat');
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 20px;">
+      <div style="display: inline-block; width: 56px; height: 56px; line-height: 56px; border-radius: 16px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); font-size: 28px;">
+        ${iconEmoji}
+      </div>
+      <h2 style="margin: 14px 0 6px; font-size: 22px; font-weight: 800; color: #f4f4f5;">${title}</h2>
+      <p style="margin: 0; color: #94a3b8; font-size: 14px;">Mitch.pro Decentralized Matrix Chat</p>
+    </div>
+
+    <div style="background-color: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 18px 20px; margin-bottom: 24px;">
+      <div style="display: flex; align-items: center; margin-bottom: 10px;">
+        <strong style="color: #f4f4f5; font-size: 15px;">${senderName}</strong>
+        ${roomTitle ? `<span style="color: #64748b; margin-left: 8px; font-size: 13px;">in ${roomTitle}</span>` : ''}
+      </div>
+      <div style="color: #e2e8f0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; background: rgba(0, 0, 0, 0.25); padding: 12px 14px; border-radius: 8px; border-left: 3px solid ${accentColor};">
+        ${previewText ? String(previewText).replace(/</g, '&lt;').replace(/>/g, '&gt;') : (isCall ? 'Voice/video call in progress' : 'New chat activity')}
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 12px;">
+      <a href="${destUrl}" style="display: inline-block; background: linear-gradient(135deg, ${accentColor}, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: 700; font-size: 15px; box-shadow: 0 10px 24px rgba(99, 102, 241, 0.35);">
+        ${actionText}
+      </a>
+    </div>
+    <p style="text-align: center; margin: 0; font-size: 12px; color: #64748b;">
+      Tip: Turn on web push notifications on your device to receive instant incoming rings and chat alerts!
+    </p>
+  `;
+
+  return htmlBaseTemplate(email, title, content);
+}
+
+function sendMatrixEmailAlert(memberNorm, { title, senderName, roomTitle, previewText, isCall, isInvite, roomId }) {
+  if (!notifAllowed(memberNorm, 'digest')) return;
+  const targetEmail = canonicalDeliveryEmail(memberNorm);
+  if (!targetEmail || !targetEmail.includes('@')) return;
+
+  const roomUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+  const html = makeMatrixNotificationEmailHtml(targetEmail, {
+    title,
+    senderName,
+    roomTitle,
+    previewText,
+    isCall,
+    isInvite,
+    roomUrl
+  });
+
+  sendEmailBg(targetEmail, title, html);
+  matrixLastEmailSent.set(`${memberNorm}:${roomId}`, Date.now());
+  console.log(`[matrix-email-alert] Sent "${title}" to ${targetEmail}`);
+}
+
+function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, previewText, roomId, isCall, isInvite, notifTitle }) {
+  if (!notifAllowed(memberNorm, 'digest')) return;
+  const key = `${memberNorm}:${roomId}`;
+  const now = Date.now();
+  const lastSent = matrixLastEmailSent.get(key) || 0;
+
+  if (isCall || isInvite) {
+    if (now - lastSent < 300_000) return;
+    sendMatrixEmailAlert(memberNorm, {
+      title: notifTitle,
+      senderName: senderDisplayName,
+      roomTitle,
+      previewText,
+      isCall,
+      isInvite,
+      roomId
+    });
+    return;
+  }
+
+  if (now - lastSent < 15 * 60 * 1000) return;
+
+  if (matrixPendingEmailAlerts.has(key)) {
+    const item = matrixPendingEmailAlerts.get(key);
+    item.previewText = previewText;
+    item.senderName = senderDisplayName;
+    item.count = (item.count || 1) + 1;
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    matrixPendingEmailAlerts.delete(key);
+    const all = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+    const list = Array.isArray(all[memberNorm]) ? all[memberNorm] : [];
+    const hasUnread = list.some(n => !n.read && n.roomId === roomId);
+    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    if (hasUnread && (Date.now() - lastSeen > 60_000)) {
+      sendMatrixEmailAlert(memberNorm, {
+        title: notifTitle,
+        senderName: senderDisplayName,
+        roomTitle,
+        previewText,
+        isCall: false,
+        isInvite: false,
+        roomId
+      });
+    }
+  }, 120_000);
+
+  matrixPendingEmailAlerts.set(key, {
+    timer,
+    senderName: senderDisplayName,
+    roomTitle,
+    previewText,
+    roomId,
+    firstTs: now,
+    count: 1
+  });
+}
+
 async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, req) {
   if (eventType !== 'm.room.message' && eventType !== 'm.room.encrypted') return;
 
@@ -8486,6 +8718,20 @@ async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, r
 
     const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
 
+    // 1. Add to Mitch.pro Notification Bell
+    addMatrixNotification(memberNorm, {
+      roomId,
+      type: 'matrix',
+      title: notifTitle,
+      body: isDirect ? 'Matrix Direct Message' : (roomTitle ? `Matrix • ${roomTitle}` : 'Matrix Group Message'),
+      detail: previewText,
+      sender: senderDisplayName,
+      roomTitle,
+      isDirect,
+      url: notifUrl
+    });
+
+    // 2. Web Push & ntfy
     if (VAPID_PUBLIC && subs[memberNorm]) {
       await sendWebPushClean(subs, memberNorm, {
         title: notifTitle,
@@ -8496,6 +8742,159 @@ async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, r
     }
 
     ntfyNotify(memberNorm, notifTitle, previewText, notificationUrl(notifUrl));
+
+    // 3. Queue unread email alert for offline users
+    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    if (Date.now() - lastSeen > 60_000) {
+      queueMatrixUnreadEmail(memberNorm, {
+        senderDisplayName,
+        roomTitle,
+        previewText,
+        roomId,
+        isCall: false,
+        isInvite: false,
+        notifTitle: isDirect ? `💬 Message from ${senderDisplayName}` : `💬 ${senderDisplayName} in ${roomTitle || 'chat'}`
+      });
+    }
+  }
+}
+
+async function dispatchMatrixCallNotifications(roomId, eventType, bodyText, req) {
+  let parsed = {};
+  try { parsed = JSON.parse(bodyText); } catch {}
+
+  // For MSC3401/MatrixRTC, if memberships is an empty array or user left, don't alert
+  if (Array.isArray(parsed.memberships) && parsed.memberships.length === 0) return;
+
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  let senderUserId = '';
+  let senderDisplayName = 'Someone';
+  let senderNormEmail = '';
+
+  const senderAcc = await resolveMatrixAccount(req, parsed);
+  if (senderAcc) {
+    senderNormEmail = senderAcc.normEmail || '';
+    if (senderAcc.userId) senderUserId = senderAcc.userId;
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = profiles[senderNormEmail] || {};
+    const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+    senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+  }
+
+  if (!senderUserId && token) {
+    const cachedAcc = matrixTokenToAccount.get(token);
+    if (cachedAcc && cachedAcc.userId) {
+      senderUserId = cachedAcc.userId;
+      if (!senderNormEmail && cachedAcc.normEmail) senderNormEmail = cachedAcc.normEmail;
+    }
+  }
+
+  if (senderDisplayName === 'Someone') {
+    if (senderNormEmail) {
+      const profiles = loadJson(PROFILES_FILE, {});
+      const prof = profiles[senderNormEmail] || {};
+      const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+      senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+    } else if (senderUserId) {
+      senderDisplayName = senderUserId.replace(/^@/, '').split(':')[0];
+    }
+  }
+
+  let roomInfo = await getMatrixRoomInfoForNotifications(roomId, token);
+  if (!roomInfo.members || roomInfo.members.length === 0) {
+    try {
+      const adminToken = await getSystemAdminMatrixToken();
+      if (adminToken && adminToken !== token) {
+        roomInfo = await getMatrixRoomInfoForNotifications(roomId, adminToken);
+      }
+    } catch (_) {}
+  }
+
+  if (!roomInfo.members || roomInfo.members.length === 0) return;
+
+  const isDirect = roomInfo.members.length <= 2;
+  const roomTitle = roomInfo.name || (isDirect ? '' : 'General');
+  const notifTitle = isDirect
+    ? `📞 Incoming Call from ${senderDisplayName}`
+    : (roomTitle ? `📞 Call in ${roomTitle}` : `📞 Group call from ${senderDisplayName}`);
+  const notifBody = roomTitle
+    ? `Incoming voice/video call in ${roomTitle}. Tap to join!`
+    : `${senderDisplayName} is calling you. Tap to answer!`;
+
+  const subs = loadPushSubscriptions();
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+
+  for (const memberId of roomInfo.members) {
+    if (senderUserId && memberId.toLowerCase() === senderUserId.toLowerCase()) continue;
+
+    let memberNorm = '';
+    const localPart = memberId.replace(/^@/, '').split(':')[0];
+
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === memberId.toLowerCase()) {
+        const email = emailFromSid(u);
+        if (email) memberNorm = normalizeEmail(email);
+        break;
+      }
+    }
+    if (!memberNorm) memberNorm = resolveLoginIdentifier(localPart) || '';
+    if (!memberNorm) {
+      for (const [key, p] of Object.entries(profiles)) {
+        if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+          memberNorm = key;
+          break;
+        }
+      }
+    }
+
+    if (!memberNorm || memberNorm === senderNormEmail) continue;
+    if (!notifAllowed(memberNorm, isDirect ? 'dm' : 'group')) continue;
+
+    const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+
+    // 1. Add to Mitch.pro Notification Bell
+    addMatrixNotification(memberNorm, {
+      roomId,
+      type: 'matrix_call',
+      title: notifTitle,
+      body: isDirect ? 'Matrix Voice/Video Call' : `Group Call in ${roomTitle || 'Chat'}`,
+      detail: `${senderDisplayName} started a call. Click to join.`,
+      sender: senderDisplayName,
+      roomTitle,
+      isDirect,
+      url: notifUrl
+    });
+
+    // 2. Send High-Priority Call Web Push
+    if (VAPID_PUBLIC && subs[memberNorm]) {
+      await sendWebPushClean(subs, memberNorm, {
+        title: notifTitle,
+        body: notifBody,
+        url: notificationUrl(notifUrl),
+        tag: `matrix-call-${roomId}`,
+        requireInteraction: true,
+        vibrate: [300, 100, 300, 100, 300, 100, 600],
+        type: 'call'
+      });
+    }
+
+    ntfyNotify(memberNorm, notifTitle, notifBody, notificationUrl(notifUrl));
+
+    // 3. Send Call Email Alert if User Is Inactive/Offline
+    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    if (Date.now() - lastSeen > 60_000) {
+      queueMatrixUnreadEmail(memberNorm, {
+        senderDisplayName,
+        roomTitle,
+        previewText: `${senderDisplayName} started a voice/video call.`,
+        roomId,
+        isCall: true,
+        isInvite: false,
+        notifTitle
+      });
+    }
   }
 }
 
@@ -8558,6 +8957,19 @@ async function dispatchMatrixInviteNotifications(roomId, bodyText, req) {
   const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
   const subs = loadPushSubscriptions();
 
+  // 1. Add to Mitch.pro Notification Bell
+  addMatrixNotification(memberNorm, {
+    roomId,
+    type: 'matrix_invite',
+    title: notifTitle,
+    body: `${senderDisplayName} invited you`,
+    detail: `Invited you to join room "${roomTitle}"`,
+    sender: senderDisplayName,
+    roomTitle,
+    url: notifUrl
+  });
+
+  // 2. Web Push & ntfy
   if (VAPID_PUBLIC && subs[memberNorm]) {
     await sendWebPushClean(subs, memberNorm, {
       title: notifTitle,
@@ -8567,6 +8979,20 @@ async function dispatchMatrixInviteNotifications(roomId, bodyText, req) {
     });
   }
   ntfyNotify(memberNorm, notifTitle, notifBody, notificationUrl(notifUrl));
+
+  // 3. Send Invite Email if offline
+  const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+  if (Date.now() - lastSeen > 60_000) {
+    queueMatrixUnreadEmail(memberNorm, {
+      senderDisplayName,
+      roomTitle,
+      previewText: `${senderDisplayName} invited you to join "${roomTitle}" on Mitch.pro Matrix.`,
+      roomId,
+      isCall: false,
+      isInvite: true,
+      notifTitle: `📨 ${senderDisplayName} invited you to join "${roomTitle}"`
+    });
+  }
 }
 
 // ── Main fetch handler ────────────────────────────────────────────────────────
@@ -8720,6 +9146,7 @@ async function handleRequest(req, server) {
     }
 
     const sendMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/send\/([^/]+)(?:\/([^/]+))?$/);
+    const stateMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/state\/([^/]+)(?:\/([^/]+))?$/);
     const inviteMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/invite$/);
 
     // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
@@ -8894,14 +9321,44 @@ async function handleRequest(req, server) {
       } catch (_) {}
     }
 
-    // Trigger Mitch.pro notifications for Matrix messages & room invites
+    // Track active user in Matrix for presence / email alert gating
+    try {
+      const authHeader = req.headers.get('authorization') || '';
+      if (authHeader) {
+        const tok = authHeader.replace(/^Bearer\s+/i, '');
+        const acc = matrixTokenToAccount.get(tok);
+        if (acc && acc.normEmail) matrixUserLastSeen.set(acc.normEmail, Date.now());
+      }
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (sid) {
+        const email = emailFromSid(sid);
+        if (email) matrixUserLastSeen.set(normalizeEmail(email), Date.now());
+      }
+    } catch (_) {}
+
+    // Trigger Mitch.pro notifications for Matrix messages, calls & room invites
     if (upstreamRes.ok) {
       if (sendMatch && capturedBodyText) {
         const roomId = decodeURIComponent(sendMatch[1]);
         const eventType = decodeURIComponent(sendMatch[2]);
-        dispatchMatrixMessageNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
-          console.warn('[matrix-push] Dispatch error:', e?.message || e);
-        });
+        if (eventType === 'm.call.invite') {
+          dispatchMatrixCallNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
+            console.warn('[matrix-call-push] Dispatch error:', e?.message || e);
+          });
+        } else {
+          dispatchMatrixMessageNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
+            console.warn('[matrix-push] Dispatch error:', e?.message || e);
+          });
+        }
+      } else if (stateMatch && capturedBodyText) {
+        const roomId = decodeURIComponent(stateMatch[1]);
+        const eventType = decodeURIComponent(stateMatch[2]);
+        if (eventType === 'm.call.member' || eventType === 'org.matrix.msc3401.call.member') {
+          dispatchMatrixCallNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
+            console.warn('[matrix-call-push] Dispatch error:', e?.message || e);
+          });
+        }
       } else if (inviteMatch && capturedBodyText) {
         const roomId = decodeURIComponent(inviteMatch[1]);
         dispatchMatrixInviteNotifications(roomId, capturedBodyText, req).catch(e => {
@@ -9035,6 +9492,55 @@ async function handleRequest(req, server) {
     }, {
       'Access-Control-Allow-Origin': '*'
     });
+  }
+
+  // Mitch.pro Matrix Notifications Read Sync
+  if (path === '/api/matrix/notifications/read' && method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  }
+  if (path === '/api/matrix/notifications/read' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    let norm = '';
+    if (validId(sid)) {
+      const email = emailFromSid(sid);
+      if (email) norm = normalizeEmail(email);
+    }
+    if (!norm) {
+      const authHeader = req.headers.get('authorization') || '';
+      const tok = authHeader.replace(/^Bearer\s+/i, '');
+      const acc = matrixTokenToAccount.get(tok);
+      if (acc && acc.normEmail) norm = acc.normEmail;
+    }
+    if (!norm) return jsonResp(401, { error: 'unauthorized' }, { 'Access-Control-Allow-Origin': '*' });
+
+    let bodyObj = {};
+    try { bodyObj = await req.json(); } catch {}
+    const roomId = bodyObj.roomId ? String(bodyObj.roomId) : '';
+    const allNotifs = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+    const list = Array.isArray(allNotifs[norm]) ? allNotifs[norm] : [];
+    let changed = false;
+    for (const n of list) {
+      if (!roomId || n.roomId === roomId) {
+        if (!n.read) changed = true;
+        n.read = true;
+      }
+    }
+    if (changed) {
+      allNotifs[norm] = list;
+      saveJson(MATRIX_NOTIFICATIONS_FILE, allNotifs);
+      triggerNotificationRefresh();
+      cancelPendingMatrixEmailAlert(norm, roomId);
+    }
+    return jsonResp(200, { ok: true }, { 'Access-Control-Allow-Origin': '*' });
   }
 
   // ── Matrix VoIP & LiveKit SFU Service for Voice/Video Calls ──────────────────
@@ -13381,6 +13887,27 @@ async function handleRequest(req, server) {
         }
       }
       if (dmsChanged) saveJson(DMS_FILE, dms);
+
+      const matrixIds = new Set(Array.isArray(body.matrixIds) ? body.matrixIds.map(String) : []);
+      const matrixRoomIds = new Set(Array.isArray(body.matrixRoomIds) ? body.matrixRoomIds.map(String) : []);
+      for (const id of coinGiftIds) {
+        if (id.startsWith('matrix:') || id.startsWith('matrix-')) matrixIds.add(id);
+      }
+      const allMatrix = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+      const mineMatrix = Array.isArray(allMatrix[norm]) ? allMatrix[norm] : [];
+      let matrixChanged = false;
+      for (const n of mineMatrix) {
+        if (markAll || matrixIds.has(String(n.id)) || matrixRoomIds.has(String(n.roomId))) {
+          if (!n.read) matrixChanged = true;
+          n.read = true;
+          cancelPendingMatrixEmailAlert(norm, n.roomId);
+        }
+      }
+      if (matrixChanged) {
+        allMatrix[norm] = mineMatrix;
+        saveJson(MATRIX_NOTIFICATIONS_FILE, allMatrix);
+        triggerNotificationRefresh();
+      }
 
       return jsonResp(200, { ok: true });
     }
@@ -18046,6 +18573,24 @@ async function handleRequest(req, server) {
           url: notificationUrl('/encrypt/'),
         });
       }
+
+      // Matrix Chat Notifications (messages, calls, invites)
+      const matrixNotifs = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+      const myMatrixNotifs = Array.isArray(matrixNotifs[norm]) ? matrixNotifs[norm] : [];
+      for (const mn of myMatrixNotifs) {
+        if (mn.read) continue;
+        notices.push({
+          type: mn.type || 'matrix',
+          id: mn.id,
+          matrixRoomId: mn.roomId,
+          title: mn.title,
+          body: mn.body || 'Matrix Chat',
+          detail: mn.detail || '',
+          ts: mn.ts || Date.now(),
+          url: mn.url ? notificationUrl(mn.url) : notificationUrl(`/matrix/#/room/${encodeURIComponent(mn.roomId)}`),
+        });
+      }
+
       notices.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       return jsonResp(200, { notifications: notices.slice(0, 25), unread: notices.length });
     }

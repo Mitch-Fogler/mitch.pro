@@ -103,6 +103,8 @@ passwords[adminNormEmail] = await Bun.password.hash('admin_test_pass_123');
 writeDocument(PASSWORDS_FILE, passwords);
 
 // Ensure moderator user is in moderators.json
+const MATRIX_NOTIFS_FILE = join(DATA_DIR, 'matrix_notifications.json');
+const origNotifs = readDocument(MATRIX_NOTIFS_FILE, {});
 const origMods = readDocument(MODERATORS_FILE, []);
 const origReports = readDocument(CHAT_REPORTS_FILE, []);
 const mods = Array.from(new Set([...origMods, modNormEmail]));
@@ -696,6 +698,36 @@ try {
     })
   });
   assert.equal(resInvite.status, 200, 'Room invite should return 200');
+
+  // Verify Matrix notifications appear in the Mitch.pro notification bell API
+  const resBell = await fetch(`${BASE_URL}/api/me/notifications`, {
+    headers: { 'Cookie': `studentId=${adminSid}` }
+  });
+  assert.equal(resBell.status, 200, 'GET /api/me/notifications should return 200');
+  const bellData = await resBell.json();
+  assert(Array.isArray(bellData.notifications), 'Notifications response must contain notifications array');
+  const matrixNotif = bellData.notifications.find(n => n.type === 'matrix' && n.matrixRoomId === '!official_general:mitch.pro');
+  assert(matrixNotif, 'Matrix notification must appear in the bell list for recipient');
+  assert(matrixNotif.url.includes('/matrix/#/room/'), 'Matrix notification must link to Matrix room');
+
+  // Verify clearing Matrix notification via /api/matrix/notifications/read
+  const resRead = await fetch(`${BASE_URL}/api/matrix/notifications/read`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${adminSid}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ roomId: '!official_general:mitch.pro' })
+  });
+  assert.equal(resRead.status, 200, 'POST /api/matrix/notifications/read should return 200');
+
+  const resBellAfter = await fetch(`${BASE_URL}/api/me/notifications`, {
+    headers: { 'Cookie': `studentId=${adminSid}` }
+  });
+  const bellDataAfter = await resBellAfter.json();
+  const matrixNotifAfter = bellDataAfter.notifications.find(n => n.type === 'matrix' && n.matrixRoomId === '!official_general:mitch.pro');
+  assert(!matrixNotifAfter, 'Cleared Matrix notification must no longer appear as unread');
+
   console.log('Matrix outbound message and invite notifications passed');
 
   // --- 17. Testing Matrix VoIP STUN/TURN Discovery ---
@@ -754,6 +786,7 @@ try {
 
   console.log('=== ALL MATRIX SSO & MODERATION UNIT TESTS PASSED SUCCESSFULLY! ===');
 } finally {
+  writeDocument(MATRIX_NOTIFS_FILE, origNotifs);
   writeDocument(MODERATORS_FILE, origMods);
   writeDocument(CHAT_REPORTS_FILE, origReports);
   writeDocument(PASSWORDS_FILE, origPasswords);

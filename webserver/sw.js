@@ -152,17 +152,27 @@ const notifyIcon = () => (self.location.hostname.endsWith('rjuhsd.school') ? '/r
 self.addEventListener('push', e => {
   let data = { title: 'New message', body: '', url: '/matrix/' };
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
+  const isCall = (data.tag && data.tag.startsWith('matrix-call')) || data.type === 'call';
+
   e.waitUntil(isUserInActiveChat(data.url).then(inChat => {
-    // Already inside active chat on this device — stay quiet.
-    if (inChat) return;
+    // Already inside active chat on this device — stay quiet, UNLESS it's an incoming call
+    if (inChat && !isCall) return;
+
     return self.registration.showNotification(data.title, {
       body: data.body,
       icon: notifyIcon(),
       badge: notifyIcon(),
       tag: data.tag || undefined,
       renotify: Boolean(data.tag),
-      vibrate: [90, 45, 90],
-      data: { url: data.url }
+      vibrate: isCall ? [300, 100, 300, 100, 300, 100, 600] : [90, 45, 90],
+      requireInteraction: isCall || Boolean(data.requireInteraction),
+      actions: isCall ? [
+        { action: 'answer', title: '📞 Join Call' },
+        { action: 'decline', title: 'Dismiss' }
+      ] : [
+        { action: 'open', title: 'Open Chat' }
+      ],
+      data: { url: data.url, type: data.type || (isCall ? 'call' : 'message') }
     });
   }));
 });
@@ -187,6 +197,8 @@ function notificationTargetUrl(raw) {
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  if (e.action === 'decline') return;
+
   const url = notificationTargetUrl(e.notification.data?.url);
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async cs => {
     // Hand the URL to an existing app window and let it present the target

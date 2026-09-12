@@ -220,18 +220,19 @@
 
   function showPushPrompt() {
     if (document.getElementById('sw-push-prompt')) return;
+    if (window.Notification && Notification.permission !== 'default') return;
     var prompt = document.createElement('div');
     prompt.id = 'sw-push-prompt';
     prompt.setAttribute('role', 'dialog');
     prompt.setAttribute('aria-label', 'Enable Mitch.pro notifications');
     prompt.innerHTML =
       '<span class="sw-push-mark" aria-hidden="true">&#128276;</span>' +
-      '<span class="sw-push-copy"><b>Stay in the loop</b><span>Enable alerts for encrypted messages, friends, rewards, and site updates.</span></span>' +
-      '<span class="sw-push-actions"><button id="sw-push-later" type="button">Not now</button><button id="sw-push-enable" type="button">Enable alerts</button></span>';
+      '<span class="sw-push-copy"><b>Never miss a call or message</b><span>Enable push alerts for incoming voice/video calls, Matrix chat, and important updates.</span></span>' +
+      '<span class="sw-push-actions"><button id="sw-push-later" type="button">Remind later</button><button id="sw-push-enable" type="button">Enable alerts</button></span>';
     document.body.appendChild(prompt);
     requestAnimationFrame(function() { prompt.classList.add('show'); });
     document.getElementById('sw-push-later').onclick = function() {
-      try { sessionStorage.setItem('_mitchPushPromptLater', '1'); } catch(e) {}
+      try { sessionStorage.setItem('_mitchPushPromptSnooze', String(Date.now() + 180000)); } catch(e) {}
       removePushPrompt();
     };
     document.getElementById('sw-push-enable').onclick = async function() {
@@ -240,8 +241,11 @@
       button.textContent = 'Enabling...';
       try {
         var enabled = await ensurePushSubscription(true);
-        if (enabled) removePushPrompt();
-        else {
+        if (enabled) {
+          removePushPrompt();
+          refreshAlertsButton();
+          if (typeof refreshPushUpsell === 'function') refreshPushUpsell();
+        } else {
           button.textContent = Notification.permission === 'denied' ? 'Blocked in browser' : 'Try again';
           button.disabled = Notification.permission === 'denied';
         }
@@ -264,8 +268,14 @@
       return;
     }
     if (Notification.permission !== 'default') return;
-    try { if (sessionStorage.getItem('_mitchPushPromptLater') === '1') return; } catch(e) {}
-    setTimeout(showPushPrompt, 900);
+    try {
+      var snooze = parseInt(sessionStorage.getItem('_mitchPushPromptSnooze') || '0', 10);
+      if (Date.now() < snooze) {
+        setTimeout(setupPushEnrollment, Math.max(1000, snooze - Date.now()));
+        return;
+      }
+    } catch(e) {}
+    setTimeout(showPushPrompt, 800);
   }
 
   function showMessageToast(message) {
@@ -428,6 +438,13 @@
       '.sw-notif-open { background:var(--t-ac) !important;color:var(--t-bg) !important;border-color:var(--t-ac) !important; }' +
       '.sw-message-toast { border-color:var(--t-bd) !important;background:color-mix(in srgb,var(--t-bg) 95%,transparent) !important;color:var(--t-fg) !important; }' +
       '.sw-message-toast-icon { background:color-mix(in srgb,var(--t-ac) 20%,var(--t-bg3)) !important; }' +
+      '.sw-push-upsell { margin:8px 8px 4px 8px; }' +
+      '.sw-upsell-box { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:linear-gradient(135deg,rgba(168,85,247,.22),rgba(99,102,241,.18)); border:1px solid rgba(192,132,252,.35); font-size:.78rem; color:var(--t-fg,#fff); }' +
+      '.sw-upsell-box.is-denied { background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.3); }' +
+      '.sw-upsell-text { flex:1; min-width:0; }' +
+      '.sw-upsell-text strong { display:block; font-size:.82rem; margin-bottom:2px; }' +
+      '.sw-upsell-text span { display:block; font-size:.72rem; opacity:.85; line-height:1.3; }' +
+      '#sw-upsell-btn { background:linear-gradient(135deg,#a855f7,#6366f1) !important; color:#fff !important; border:none !important; border-radius:8px !important; padding:6px 12px !important; font-weight:700 !important; font-size:.75rem !important; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(168,85,247,.35); }' +
       '@keyframes swToastIn { from { opacity:0; transform:translateY(10px); } }' +
       '@media(max-width:620px){#sw-notif-panel{position:fixed!important;top:64px!important;left:10px!important;right:10px!important;width:auto!important;max-height:calc(100dvh - 84px)!important}.sw-notif-head{flex-wrap:wrap}.sw-notif-head>span{flex-basis:100%}#sw-push-prompt{grid-template-columns:38px minmax(0,1fr);padding:12px;gap:9px}.sw-push-mark{width:38px;height:38px}.sw-push-actions{grid-column:1/-1}.sw-push-actions button{flex:1}#sw-message-toasts{left:10px;right:10px;bottom:10px;width:auto}.sw-message-toast{grid-template-columns:36px minmax(0,1fr) auto}}' +
       '@media(prefers-reduced-motion:reduce){#sw-push-prompt,.sw-message-toast{transition:none;animation:none}}';
@@ -461,9 +478,43 @@
       '    <button id="sw-notif-read-all" type="button">Read all</button>' +
       '    <button id="sw-notif-close" type="button">Close</button>' +
       '  </div>' +
+      '  <div id="sw-push-upsell"></div>' +
       '  <div id="sw-notif-list"><div class="sw-notif-empty">No unread notifications</div></div>' +
       '</div>';
     topbar.appendChild(wrap);
+  }
+
+  function refreshPushUpsell() {
+    var upsell = document.getElementById('sw-push-upsell');
+    if (!upsell) return;
+    if (!('Notification' in window) || !window.isSecureContext) {
+      upsell.innerHTML = '';
+      return;
+    }
+    if (Notification.permission === 'default') {
+      upsell.innerHTML =
+        '<div class="sw-upsell-box">' +
+        '  <span class="sw-upsell-text"><strong>🔔 Turn on push alerts</strong><span>Never miss incoming calls or messages when away.</span></span>' +
+        '  <button id="sw-upsell-btn" type="button">Turn on</button>' +
+        '</div>';
+      var btn = document.getElementById('sw-upsell-btn');
+      if (btn) {
+        btn.onclick = async function() {
+          btn.disabled = true;
+          btn.textContent = 'Enabling...';
+          await window.__enableSiteNotifications();
+          refreshPushUpsell();
+          refreshAlertsButton();
+        };
+      }
+    } else if (Notification.permission === 'denied') {
+      upsell.innerHTML =
+        '<div class="sw-upsell-box is-denied">' +
+        '  <span class="sw-upsell-text"><strong style="color:#f87171;">⚠️ Alerts Blocked</strong><span>Allow notifications in site settings to receive call rings.</span></span>' +
+        '</div>';
+    } else {
+      upsell.innerHTML = '';
+    }
   }
 
   async function loadNotifications() {
@@ -485,6 +536,7 @@
     badge.classList.toggle('is-visible', count > 0);
     var readAll = document.getElementById('sw-notif-read-all');
     if (readAll) readAll.disabled = count === 0;
+    refreshPushUpsell();
     if (!count) {
       list.innerHTML = '<div class="sw-notif-empty">No unread notifications</div>';
       return;
@@ -496,7 +548,15 @@
       if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
       return Math.floor(seconds / 86400) + 'd';
     }
-    var icons = { dm: '&#9993;', group_dm: '&#9783;', coin_gift: '&#9733;', admin_notice: '&#9888;' };
+    var icons = {
+      dm: '&#9993;',
+      group_dm: '&#9783;',
+      coin_gift: '&#9733;',
+      admin_notice: '&#9888;',
+      matrix: '&#128172;',
+      matrix_call: '&#128222;',
+      matrix_invite: '&#128233;'
+    };
     list.innerHTML = _notifications.map(function(n, i) {
       var url = '';
       try {
@@ -531,6 +591,8 @@
         ? { groupIds: [n.groupId] }
       : n.type === 'dm'
         ? { dmFroms: [n.from] }
+      : (n.type === 'matrix' || n.type === 'matrix_call' || n.type === 'matrix_invite')
+        ? { matrixIds: [n.id], matrixRoomIds: [n.matrixRoomId] }
         : {};
     _notifications = _notifications.filter(function(item) { return item !== n; });
     renderNotifications();
