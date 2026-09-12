@@ -245,7 +245,13 @@ services:
     image: livekit/livekit-server:latest
     container_name: mitch-livekit
     restart: unless-stopped
-    command: --keys "mitchlivekit: mitch-secret-livekit-matrix-key-2026" --bind 0.0.0.0 --udp-port 7882
+    command:
+      - --keys
+      - "mitchlivekit: mitch-secret-livekit-matrix-key-2026"
+      - --bind
+      - 0.0.0.0
+      - --udp-port
+      - "7882"
     ports:
       - "127.0.0.1:7880:7880"
       - "7882:7882/udp"
