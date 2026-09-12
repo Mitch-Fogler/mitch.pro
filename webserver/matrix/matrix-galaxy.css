@@ -999,3 +999,85 @@ pre::-webkit-scrollbar-thumb:hover,
     font-size: 12.5px !important;
   }
 }
+
+/* ── Voice & Video Call Support (MatrixRTC / Element Call Embed) ── */
+iframe[title="Call Embed"] {
+  border-radius: 16px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4), 0 0 20px var(--t-gls, rgba(184, 108, 255, 0.15)) !important;
+  background: var(--t-bg, #070510) !important;
+  border: 1px solid var(--t-bda, rgba(255, 255, 255, 0.12)) !important;
+  overflow: hidden !important;
+}
+
+html.theme-light iframe[title="Call Embed"] {
+  box-shadow: 0 12px 32px rgba(16, 20, 42, 0.12), 0 0 16px var(--t-gls, rgba(79, 70, 229, 0.1)) !important;
+  background: #f8fafc !important;
+  border-color: rgba(16, 20, 42, 0.14) !important;
+}
+
+/* Call header and action buttons in room view */
+button[aria-label*="Call" i],
+button[aria-label*="Join" i],
+button[data-tooltip*="Call" i] {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+button[aria-label*="Call" i]:hover,
+button[aria-label*="Join" i]:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 16px var(--t-gls, rgba(184, 108, 255, 0.3)) !important;
+}
+
+/* Incoming Call Dialog Pulsing Ring */
+@keyframes mitchCallPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgba(74, 222, 128, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0);
+  }
+}
+
+._9rmubx4,
+[class*="_9rmubx4"] {
+  animation: mitchCallPulse 2s infinite ease-out !important;
+  border-radius: 50% !important;
+}
+
+/* Answer button (Success gradient) */
+button[data-variant="success"],
+button._e[variant="Success"] {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35) !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+button[data-variant="success"]:hover,
+button._e[variant="Success"]:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5) !important;
+}
+
+/* Decline button (Critical gradient) */
+button[data-variant="critical"],
+button._e[variant="Critical"] {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+  color: #ffffff !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35) !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+button[data-variant="critical"]:hover,
+button._e[variant="Critical"]:hover {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px rgba(239, 68, 68, 0.5) !important;
+}
+

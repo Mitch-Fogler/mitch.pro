@@ -19,6 +19,7 @@ services:
     restart: unless-stopped
     depends_on:
       - conduit
+      - livekit
     ports:
       - "127.0.0.1:6811:6800"
     volumes:
@@ -62,6 +63,10 @@ services:
       - BLOOKET_BOT_HOST=blooket-bot
       - SSH_GATEWAY_URL=ws://ssh-gateway:6820
       - CONDUIT_HOST=conduit
+      - LIVEKIT_HOST=livekit
+      - LIVEKIT_PORT=7880
+      - LIVEKIT_API_KEY=mitchlivekit
+      - LIVEKIT_API_SECRET=mitch-secret-livekit-matrix-key-2026
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       # Proxmox bridge — explicit pass-through so the loader doesn't
@@ -93,6 +98,7 @@ services:
     restart: unless-stopped
     depends_on:
       - conduit
+      - livekit
     ports:
       - "127.0.0.1:6812:6800"
     volumes:
@@ -132,6 +138,10 @@ services:
       - BLOOKET_BOT_HOST=blooket-bot
       - SSH_GATEWAY_URL=ws://ssh-gateway:6820
       - CONDUIT_HOST=conduit
+      - LIVEKIT_HOST=livekit
+      - LIVEKIT_PORT=7880
+      - LIVEKIT_API_KEY=mitchlivekit
+      - LIVEKIT_API_SECRET=mitch-secret-livekit-matrix-key-2026
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       - PVE_SSH_HOST
@@ -229,4 +239,15 @@ services:
       - ./data/conduit:/var/lib/matrix-conduit
     environment:
       - CONDUIT_CONFIG=/etc/conduit.toml
+
+  # LiveKit SFU for Matrix Voice & Video Calling (MSC3401 / MSC4143 MatrixRTC)
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: mitch-livekit
+    restart: unless-stopped
+    command: --keys "mitchlivekit: mitch-secret-livekit-matrix-key-2026" --bind 0.0.0.0 --udp-port 7882
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7882:7882/udp"
+
 

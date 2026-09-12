@@ -7605,7 +7605,7 @@ async function serveStatic(urlPath, req = null) {
     }
   } catch {}
 
-  const isHashedAsset = urlPath.startsWith('/matrix/assets/') || /-[a-zA-Z0-9_-]{8,}\.(?:js|css|wasm|woff2?|ttf|png|svg)$/i.test(urlPath);
+  const isHashedAsset = urlPath.startsWith('/matrix/assets/') || urlPath.startsWith('/matrix/public/element-call/assets/') || /-[a-zA-Z0-9_-]{8,}\.(?:js|css|wasm|woff2?|ttf|png|svg)$/i.test(urlPath);
   const ext = filePath.split('.').pop().toLowerCase();
   const acceptsGzip = Boolean(req && req.headers && req.headers.get && req.headers.get('accept-encoding')?.includes('gzip'));
   const canServeGzip = acceptsGzip && ext !== 'html' && ext !== 'htm' && existsSync(filePath + '.gz');
@@ -7775,6 +7775,33 @@ function getMatrixPasswordForUid(uid) {
   const secret = ID_SECRET || 'mitch-matrix-secret-salt-2026';
   return createHmac('sha256', secret).update('matrix-account:' + uid).digest('hex');
 }
+
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'mitchlivekit';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || (ID_SECRET ? createHmac('sha256', ID_SECRET).update('livekit-secret').digest('hex') : 'mitch-secret-livekit-matrix-key-2026');
+
+function generateLiveKitToken({ identity, name, roomName }) {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(JSON.stringify({
+    iss: LIVEKIT_API_KEY,
+    sub: identity || 'anonymous',
+    name: name || identity || 'Anonymous',
+    iat: now,
+    exp: now + 86400,
+    nbf: now - 10,
+    video: {
+      room: roomName || 'default',
+      roomJoin: true,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true
+    }
+  })).toString('base64url');
+
+  const sig = createHmac('sha256', LIVEKIT_API_SECRET).update(`${header}.${payload}`).digest('base64url');
+  return `${header}.${payload}.${sig}`;
+}
+
 
 function matrixSsoTargetOrigin() {
   const s = site();
@@ -8644,9 +8671,33 @@ async function handleRequest(req, server) {
       return jsonResp(200, {
         'm.homeserver': {
           base_url: `${proto}${host}`
-        }
+        },
+        'org.matrix.msc4143.rtc_foci': [
+          {
+            type: 'livekit',
+            livekit_service_url: `${proto}${host}/livekit`
+          }
+        ]
       }, {
         'Access-Control-Allow-Origin': '*'
+      });
+    }
+
+    // Matrix Client-Server VoIP STUN/TURN Discovery for WebRTC peer connections
+    if (method === 'GET' && path.match(/^\/_matrix\/client\/(?:v3|r0)\/voip\/turnServer/)) {
+      return jsonResp(200, {
+        uris: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+          'stun:stun.matrix.org:3478'
+        ],
+        ttl: 86400
+      }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
       });
     }
 
@@ -8809,6 +8860,24 @@ async function handleRequest(req, server) {
       });
     }
 
+    // If upstream returns 404 or 501 for turnServer endpoint, return 200 with STUN servers
+    if ((upstreamRes.status === 404 || upstreamRes.status === 501) && path.match(/^\/_matrix\/client\/(?:v3|r0)\/voip\/turnServer/)) {
+      return jsonResp(200, {
+        uris: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+          'stun:stun.matrix.org:3478'
+        ],
+        ttl: 86400
+      }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
     // Cache access token from successful login responses
     if (upstreamRes.ok && path.match(/^\/_matrix\/client\/(?:v3|r0)\/login/) && method === 'POST') {
       try {
@@ -8965,6 +9034,65 @@ async function handleRequest(req, server) {
       displayName
     }, {
       'Access-Control-Allow-Origin': '*'
+    });
+  }
+
+  // ── Matrix VoIP & LiveKit SFU Service for Voice/Video Calls ──────────────────
+  if (path.startsWith('/livekit') && method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  }
+
+  // LiveKit SFU Token Generation (MSC3401 / MSC4143 MatrixRTC / Element Call)
+  if ((path === '/livekit/sfu/get' || path === '/livekit/get_token') && (method === 'POST' || method === 'GET')) {
+    let body = {};
+    if (method === 'POST') {
+      try {
+        const text = await req.text();
+        body = JSON.parse(text);
+      } catch (_) {}
+    } else {
+      for (const [k, v] of url.searchParams.entries()) body[k] = v;
+    }
+
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const cookieEmail = sid ? (emailFromSid(sid) || '') : '';
+    const normEmail = cookieEmail ? normalizeEmail(cookieEmail) : '';
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = normEmail ? (profiles[normEmail] || {}) : {};
+
+    const room = body.room || body.room_id || 'default';
+    let rawUserId = body.member?.claimed_user_id || body.user_id || '';
+    if (!rawUserId && normEmail) {
+      const username = prof.username || defaultUsernameForEmail(normEmail);
+      rawUserId = `@${username}:mitch.pro`;
+    }
+    if (!rawUserId) rawUserId = `@user_${Math.random().toString(36).slice(2, 8)}:mitch.pro`;
+
+    const identity = rawUserId.startsWith('@') ? rawUserId : `@${rawUserId.replace(/[^a-zA-Z0-9._=-]/g, '')}:mitch.pro`;
+    const displayName = body.name || prof.displayName || identity.split(':')[0].replace(/^@/, '');
+
+    const jwt = generateLiveKitToken({ identity, name: displayName, roomName: room });
+    const host = requestHost(req) || 'mitch.pro';
+    const isWss = !host.startsWith('localhost') && !host.startsWith('127.0.0.1');
+    const wsProto = isWss ? 'wss://' : 'ws://';
+    const wsUrl = `${wsProto}${host}/livekit/rtc`;
+
+    return jsonResp(200, {
+      url: wsUrl,
+      jwt: jwt
+    }, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
     });
   }
 
@@ -10704,6 +10832,18 @@ async function handleRequest(req, server) {
     const myEmail = normalizeEmail(emailFromSid(sid) || '');
     if (!myEmail) return jsonResp(401, { error: 'authentication required' });
     const success = server.upgrade(req, { data: { isBroadcast: true, email: myEmail, sid } });
+    if (success) return;
+    return jsonResp(400, { error: 'websocket upgrade failed' });
+  }
+
+  // LiveKit SFU Signaling WebSocket proxy
+  if (path.startsWith('/livekit/rtc') && req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+    const success = server.upgrade(req, {
+      data: {
+        isLiveKit: true,
+        search: url.search || ''
+      }
+    });
     if (success) return;
     return jsonResp(400, { error: 'websocket upgrade failed' });
   }
@@ -23478,7 +23618,7 @@ async function handleRequest(req, server) {
     if (htmlBase.endsWith('.html')) htmlBase = htmlBase.slice(0, -5);
     if (htmlBase.endsWith('/') && htmlBase.length > 1) htmlBase = htmlBase.slice(0, -1);
     const isHtmlRequest = path.endsWith('.html') || path.endsWith('/');
-    const isOpenHtmlPage = isHtmlRequest && (HTML_OPEN.has(htmlBase) || htmlBase.startsWith('/games'));
+    const isOpenHtmlPage = isHtmlRequest && (HTML_OPEN.has(htmlBase) || htmlBase.startsWith('/games') || htmlBase.startsWith('/matrix'));
 	    if (isHtmlRequest && (htmlBase === '/admin/vms' || htmlBase.startsWith('/admin/vms/'))) {
 	      const actor = authenticatedVmActor(req);
 	      if (!actor) return Response.redirect('/enroll/', 302);
@@ -23525,8 +23665,8 @@ async function handleRequest(req, server) {
 	      if (filePath && existsSync(filePath) && !statSync(filePath).isDirectory()) {
 	        try {
 	          let raw    = readFileSync(filePath);
-          if (/^\/vms\/desktop\/(?:index\.html)?$/.test(path)) {
-            return new Response(raw, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'same-origin' } });
+          if (/^\/vms\/desktop\/(?:index\.html)?$/.test(path) || path.startsWith('/matrix/public/element-call/')) {
+            return new Response(raw, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
           }
 
           let injectStr = '';
@@ -23776,6 +23916,35 @@ Bun.serve({
           ws.close();
         };
       }
+      if (ws.data && ws.data.isLiveKit) {
+        const livekitHost = process.env.LIVEKIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'livekit' : '127.0.0.1');
+        const livekitPort = process.env.LIVEKIT_PORT || '7880';
+        const upstreamUrl = `ws://${livekitHost}:${livekitPort}/rtc${ws.data.search || ''}`;
+        try {
+          const upstream = new WebSocket(upstreamUrl);
+          ws.data.upstream = upstream;
+          upstream.binaryType = "arraybuffer";
+          upstream.onopen = () => {
+            if (ws.data.pending && ws.data.pending.length) {
+              for (const m of ws.data.pending) upstream.send(m);
+              ws.data.pending = null;
+            }
+          };
+          upstream.onmessage = (e) => {
+            if (ws.readyState === 1) ws.send(e.data);
+          };
+          upstream.onclose = (ev) => {
+            if (ws.readyState === 1) ws.close(ev?.code || 1000, ev?.reason);
+          };
+          upstream.onerror = (err) => {
+            console.warn(`[livekit-proxy] Upstream error:`, err?.message || err);
+            if (ws.readyState === 1) ws.close(1011, 'LiveKit upstream connection failed');
+          };
+        } catch (e) {
+          console.warn(`[livekit-proxy] Failed to connect upstream:`, e?.message || e);
+          ws.close(1011, 'LiveKit service unavailable');
+        }
+      }
       if (ws.data && ws.data.isProxmoxVnc) {
         try {
           if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
@@ -23854,6 +24023,15 @@ Bun.serve({
         } catch (e) {
           console.error('[blooket-bot-ws] failed to route client message:', e);
         }
+      }
+      if (ws.data && ws.data.isLiveKit) {
+        if (ws.data.upstream && ws.data.upstream.readyState === 1) {
+          ws.data.upstream.send(msg);
+        } else if (ws.data.upstream && ws.data.upstream.readyState === 0) {
+          ws.data.pending = ws.data.pending || [];
+          if (ws.data.pending.length < 50) ws.data.pending.push(msg);
+        }
+        return;
       }
       if (ws.data && ws.data.proxyTo) {
         if (ws.data.upstream && ws.data.upstream.readyState === 1) {

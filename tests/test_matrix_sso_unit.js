@@ -698,6 +698,60 @@ try {
   assert.equal(resInvite.status, 200, 'Room invite should return 200');
   console.log('Matrix outbound message and invite notifications passed');
 
+  // --- 17. Testing Matrix VoIP STUN/TURN Discovery ---
+  console.log('--- 17. Testing Matrix VoIP STUN/TURN discovery ---');
+  const resTurn = await fetch(`${BASE_URL}/_matrix/client/v3/voip/turnServer`, {
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser' }
+  });
+  assert.equal(resTurn.status, 200, 'GET /_matrix/client/v3/voip/turnServer should return 200');
+  const turnData = await resTurn.json();
+  assert(Array.isArray(turnData.uris) && turnData.uris.length > 0, 'turnServer must return ICE server URIs');
+  assert(turnData.uris.some(u => u.startsWith('stun:')), 'turnServer must contain stun URIs');
+  assert.equal(turnData.ttl, 86400, 'turnServer ttl must be 86400');
+  console.log('Matrix VoIP STUN/TURN discovery passed');
+
+  // --- 18. Testing Matrix client discovery with LiveKit RTC foci ---
+  console.log('--- 18. Testing Matrix client discovery with LiveKit RTC foci ---');
+  const resDiscovery = await fetch(`${BASE_URL}/.well-known/matrix/client`);
+  assert.equal(resDiscovery.status, 200, 'GET /.well-known/matrix/client should return 200');
+  const discoveryData = await resDiscovery.json();
+  assert(discoveryData['m.homeserver'], 'client discovery must contain m.homeserver');
+  const foci = discoveryData['org.matrix.msc4143.rtc_foci'];
+  assert(Array.isArray(foci) && foci.length > 0, 'client discovery must contain org.matrix.msc4143.rtc_foci array');
+  assert(foci.some(f => f.type === 'livekit' && typeof f.livekit_service_url === 'string'), 'rtc_foci must have livekit type and service url');
+  console.log('Matrix client discovery with LiveKit RTC foci passed');
+
+  // --- 19. Testing LiveKit SFU token generation ---
+  console.log('--- 19. Testing LiveKit SFU token generation ---');
+  const resSfuToken = await fetch(`${BASE_URL}/livekit/sfu/get`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      room: '!official_general:mitch.pro',
+      user_id: '@matrixtestuser:mitch.pro'
+    })
+  });
+  assert.equal(resSfuToken.status, 200, 'POST /livekit/sfu/get should return 200');
+  const sfuData = await resSfuToken.json();
+  assert(sfuData.url && sfuData.url.includes('/livekit/rtc'), 'LiveKit SFU response must contain rtc WebSocket URL');
+  assert(sfuData.jwt, 'LiveKit SFU response must contain jwt token');
+  const parts = sfuData.jwt.split('.');
+  assert.equal(parts.length, 3, 'JWT must have 3 segments');
+  const jwtPayload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  assert.equal(jwtPayload.sub, '@matrixtestuser:mitch.pro', 'JWT sub must match user_id');
+  assert.equal(jwtPayload.video.room, '!official_general:mitch.pro', 'JWT room must match requested room');
+  console.log('LiveKit SFU token generation passed');
+
+  // --- 20. Testing Element Call runtime assets ---
+  console.log('--- 20. Testing Element Call runtime assets ---');
+  const resCallIndex = await fetch(`${BASE_URL}/matrix/public/element-call/index.html`);
+  assert.equal(resCallIndex.status, 200, 'Element Call index.html must return 200');
+  const callHtml = await resCallIndex.text();
+  assert(callHtml.includes('Element Call') || callHtml.includes('Call'), 'Element Call HTML must load');
+  const resCallConfig = await fetch(`${BASE_URL}/matrix/public/element-call/config.json`);
+  assert.equal(resCallConfig.status, 200, 'Element Call config.json must return 200');
+  console.log('Element Call runtime assets passed');
+
   console.log('=== ALL MATRIX SSO & MODERATION UNIT TESTS PASSED SUCCESSFULLY! ===');
 } finally {
   writeDocument(MODERATORS_FILE, origMods);
