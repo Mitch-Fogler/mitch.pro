@@ -45,7 +45,9 @@ assert(html.includes('id="game-grid"') && html.includes('id="game-player"'), 'Po
 assert(!html.includes('/msn-games/'), 'The obsolete two-option chooser must be removed');
 assert(client.includes("'/api/game-portal/heartbeat'"), 'Portal must report active gameplay to the authenticated backend');
 assert(client.includes("'X-Mitch-Requested-With': '1'"), 'Reward heartbeat must include the application CSRF header');
+assert(client.includes("'/proxy/luma'") && client.includes("'/proxy/calculated2'"), 'Integrated games must use the fixed same-origin game proxy');
 assert(server.includes("touchUserPresence(email, active ? `Playing ${game}` : 'Browsing games')"), 'Game activity must feed live presence');
+assert(server.includes("'/proxy/luma/': 'https://lumassets.pages.dev'") && server.includes("'/proxy/calculated2/': 'https://calculated2.github.io'"), 'The game proxy must only use fixed upstream origins');
 assert(server.includes("!path.startsWith('/game-portal/')"), 'Portal assets must load before sign-in so SSO can complete cleanly');
 
 for (const entry of catalogEntries) {

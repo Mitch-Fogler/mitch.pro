@@ -10031,6 +10031,72 @@ async function handleRequest(req, server) {
     }
   }
 
+  // Fixed-origin game proxy. This keeps the integrated player same-origin,
+  // strips user credentials, and never accepts a browser-supplied destination.
+  const gameProxyOrigins = {
+    '/proxy/luma/': 'https://lumassets.pages.dev',
+    '/proxy/calculated2/': 'https://calculated2.github.io',
+  };
+  let gameProxyPrefix = Object.keys(gameProxyOrigins).find(prefix => path.startsWith(prefix));
+  let gameProxyPath = '';
+  if (gameProxyPrefix) {
+    gameProxyPath = '/' + path.slice(gameProxyPrefix.length);
+  } else {
+    try {
+      const refPath = new URL(req.headers.get('referer') || '').pathname;
+      gameProxyPrefix = Object.keys(gameProxyOrigins).find(prefix => refPath.startsWith(prefix));
+      if (gameProxyPrefix) gameProxyPath = path;
+    } catch {}
+  }
+  if (gameProxyPrefix) {
+    if (method !== 'GET' && method !== 'HEAD') return errResp(405, 'method not allowed');
+    const targetOrigin = gameProxyOrigins[gameProxyPrefix];
+    const targetUrl = targetOrigin + gameProxyPath + url.search;
+    try {
+      const headers = new Headers();
+      for (const [key, value] of req.headers.entries()) {
+        if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip'].includes(key.toLowerCase())) {
+          headers.set(key, value);
+        }
+      }
+      headers.set('Referer', targetOrigin + '/');
+      headers.set('Origin', targetOrigin);
+      const upstreamRes = await fetchWithTimeout(targetUrl, { method, headers, redirect: 'follow' });
+      const resHeaders = new Headers(upstreamRes.headers);
+      resHeaders.delete('set-cookie');
+      resHeaders.delete('content-security-policy');
+      resHeaders.delete('content-security-policy-report-only');
+      resHeaders.delete('x-frame-options');
+      resHeaders.delete('cross-origin-opener-policy');
+      resHeaders.delete('cross-origin-embedder-policy');
+      resHeaders.delete('content-encoding');
+      resHeaders.delete('content-length');
+      resHeaders.set('Cache-Control', 'public, max-age=3600');
+
+      const contentType = String(resHeaders.get('content-type') || '').toLowerCase();
+      const isText = contentType.includes('text/html') || contentType.includes('text/css') || contentType.includes('javascript');
+      if (!isText || method === 'HEAD') {
+        return new Response(method === 'HEAD' ? null : upstreamRes.body, { status: upstreamRes.status, headers: resHeaders });
+      }
+
+      let content = await upstreamRes.text();
+      content = content.split(targetOrigin + '/').join(gameProxyPrefix);
+      content = content.replace(/(\b(?:src|href|action|poster)\s*=\s*["'])\/(?!\/)/gi, `$1${gameProxyPrefix}`);
+      content = content.replace(/url\(\s*(["']?)\/(?!\/)/gi, `url($1${gameProxyPrefix}`);
+      if (contentType.includes('text/html') && !/<base\b/i.test(content)) {
+        let finalPath = gameProxyPath;
+        try { finalPath = new URL(upstreamRes.url).pathname; } catch {}
+        const directory = finalPath.endsWith('/') ? finalPath : finalPath.replace(/[^/]*$/, '');
+        const base = `<base href="${gameProxyPrefix}${directory.replace(/^\/+/, '')}">`;
+        content = /<head\b[^>]*>/i.test(content) ? content.replace(/<head\b[^>]*>/i, match => match + base) : base + content;
+      }
+      return new Response(content, { status: upstreamRes.status, headers: resHeaders });
+    } catch (error) {
+      console.error('[game-portal-proxy] Upstream request failed:', error?.message || error);
+      return new Response('This game could not be reached.', { status: 502, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+    }
+  }
+
   if (path.startsWith('/_app/')) {
     const ref = req.headers.get('referer') || '';
     if (ref.includes('pirate-voyage') || ref.includes('cinejoy')) {

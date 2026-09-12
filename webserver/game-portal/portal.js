@@ -42,15 +42,24 @@
 
   function gameUrl(value) {
     var raw = String(value || '');
-    if (raw.indexOf('/') === 0) return 'https://calculated2.github.io' + raw;
-    return safeUrl(raw);
+    if (raw.indexOf('/') === 0) return location.origin + '/proxy/calculated2' + raw;
+    var safe = safeUrl(raw);
+    if (!safe) return '';
+    var parsed = new URL(safe);
+    if (parsed.hostname === 'lumassets.pages.dev') {
+      return location.origin + '/proxy/luma' + parsed.pathname + parsed.search + parsed.hash;
+    }
+    if (parsed.hostname === 'calculated2.github.io') {
+      return location.origin + '/proxy/calculated2' + parsed.pathname + parsed.search + parsed.hash;
+    }
+    return safe;
   }
 
   function canEmbed(game) {
     if (game.external) return false;
     try {
-      var host = new URL(game.url).hostname.toLowerCase();
-      return host === 'lumassets.pages.dev' || host === 'calculated2.github.io';
+      var url = new URL(game.url);
+      return url.origin === location.origin && (url.pathname.indexOf('/proxy/luma/') === 0 || url.pathname.indexOf('/proxy/calculated2/') === 0);
     } catch (_) { return false; }
   }
 
