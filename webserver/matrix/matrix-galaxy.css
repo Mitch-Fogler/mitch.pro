@@ -26,16 +26,31 @@
   --_164xfge1: var(--t-font, 'DM Sans', sans-serif) !important;
 }
 
-/* ── Cinny Theme Engine Variables Overrides Riding theme.js ─────── */
-:root,
-html,
-body,
+/* Light Mode System Token Fallbacks */
+:root.theme-light,
+html.theme-light {
+  --t-bg: #eef1f9;
+  --t-bg2: #ffffff;
+  --t-bg3: #e7ebf7;
+  --t-fg: #101426;
+  --t-fg2: #3f4560;
+  --t-fg3: #6b7280;
+  --t-ac: #4f46e5;
+  --t-ac2: #0891b2;
+  --t-ac3: #db2777;
+  --t-bd: rgba(16, 20, 42, 0.14);
+  --t-bda: rgba(79, 70, 229, 0.45);
+  --t-gl: rgba(79, 70, 229, 0.28);
+  --t-gls: rgba(79, 70, 229, 0.12);
+  --t-gr: linear-gradient(135deg, #4f46e5, #7c3aed);
+}
+
+/* ── Cinny Theme Engine: Dark Mode Palette (rides theme.js) ─────────── */
+:root:not(.theme-light),
+html:not(.theme-light),
+body:not(.light-theme):not(.silver-theme):not(.oq6d071w),
 body.dark-theme,
-body.light-theme,
-body.silver-theme,
 body.butter-theme,
-.oq6d071w,
-._15q3ngn0,
 ._15q3ngn1,
 ._15q3ngn2 {
   --oq6d070: var(--t-bg, #070510) !important;        /* Main base surface */
@@ -63,31 +78,82 @@ body.butter-theme,
   --oq6d07m: var(--t-gl, rgba(180, 94, 255, 0.35)) !important;
   --oq6d07n: var(--t-bda, rgba(194, 126, 255, 0.48)) !important;
   --oq6d07o: var(--t-ac, #b86cff) !important;
-  --oq6d07p: var(--t-bg, #070510) !important;
-  --oq6d07q: var(--t-bg2, rgba(22, 13, 44, 0.7)) !important;
-  --oq6d07r: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
-  --oq6d07s: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
-  --oq6d07t: var(--t-fg, #faf7ff) !important;
-  --oq6d07u: var(--t-bg2, rgba(22, 13, 44, 0.7)) !important;
-  --oq6d07v: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
-  --oq6d07w: var(--t-bg3, rgba(42, 23, 76, 0.74)) !important;
+  --oq6d07p: #ffffff !important;                    /* Neutral element high-contrast */
+  --oq6d07q: #e5e5e5 !important;
+  --oq6d07r: #d9d9d9 !important;
+  --oq6d07s: #cccccc !important;
+  --oq6d07t: #1a1a1a !important;                    /* Text on neutral */
+  --oq6d07u: rgba(255, 255, 255, 0.08) !important;  /* Neutral-variant surface */
+  --oq6d07v: rgba(255, 255, 255, 0.12) !important;
+  --oq6d07w: rgba(255, 255, 255, 0.16) !important;
   --oq6d07x: var(--t-bd, rgba(224, 198, 255, 0.16)) !important;
-  --oq6d07y: var(--t-fg2, #b4a9c9) !important;
+  --oq6d07y: var(--t-fg2, #b4a9c9) !important;      /* Secondary text */
   --oq6d071t: rgba(0, 0, 0, 0.65) !important;
   --oq6d071u: rgba(0, 0, 0, 0.35) !important;
   --oq6d071v: rgba(4, 2, 10, 0.78) !important;
 }
 
-/* ── Global Document Layout (Full Screen) ────────────────────────── */
+/* ── Cinny Theme Engine: Light Mode Palette (rides theme.js) ────────── */
+:root.theme-light,
+html.theme-light,
+body.light-theme,
+body.silver-theme,
+.oq6d071w,
+._15q3ngn0 {
+  --oq6d070: var(--t-bg, #eef1f9) !important;        /* Main base surface */
+  --oq6d071: var(--t-bg3, #e7ebf7) !important;       /* Hover base surface */
+  --oq6d072: rgba(16, 20, 42, 0.08) !important;     /* Active base surface */
+  --oq6d073: var(--t-bd, rgba(16, 20, 42, 0.12)) !important; /* Divider border */
+  --oq6d074: var(--t-fg, #101426) !important;        /* Primary text */
+  --oq6d075: var(--t-bg2, #ffffff) !important;       /* Panel / sidebar bg */
+  --oq6d076: var(--t-bg3, #e7ebf7) !important;       /* Hover panel */
+  --oq6d077: rgba(16, 20, 42, 0.06) !important;     /* Active panel */
+  --oq6d078: var(--t-bd, rgba(16, 20, 42, 0.12)) !important; /* Panel border */
+  --oq6d079: var(--t-fg, #101426) !important;        /* Panel text */
+  --oq6d07a: var(--t-bg3, #e7ebf7) !important;       /* Message bubble / input */
+  --oq6d07b: rgba(16, 20, 42, 0.04) !important;      /* Hover bubble */
+  --oq6d07c: rgba(16, 20, 42, 0.08) !important;      /* Active bubble */
+  --oq6d07d: var(--t-bd, rgba(16, 20, 42, 0.14)) !important; /* Bubble border */
+  --oq6d07e: var(--t-fg, #101426) !important;        /* Bubble text */
+  --oq6d07f: var(--t-ac, #4f46e5) !important;        /* Primary brand accent */
+  --oq6d07g: var(--t-ac2, #0891b2) !important;
+  --oq6d07h: var(--t-ac3, #db2777) !important;
+  --oq6d07i: var(--t-ac, #4f46e5) !important;
+  --oq6d07j: #ffffff !important;                     /* Contrast text on accent */
+  --oq6d07k: var(--t-gls, rgba(79, 70, 229, 0.12)) !important; /* Tinted accent bg */
+  --oq6d07l: var(--t-gl, rgba(79, 70, 229, 0.22)) !important;
+  --oq6d07m: var(--t-gl, rgba(79, 70, 229, 0.3)) !important;
+  --oq6d07n: var(--t-bda, rgba(79, 70, 229, 0.45)) !important;
+  --oq6d07o: var(--t-ac, #4f46e5) !important;
+  --oq6d07p: #101426 !important;                     /* Neutral element high-contrast */
+  --oq6d07q: #1f293d !important;
+  --oq6d07r: #2d3748 !important;
+  --oq6d07s: rgba(16, 20, 42, 0.2) !important;
+  --oq6d07t: #ffffff !important;                     /* Text on neutral */
+  --oq6d07u: rgba(16, 20, 42, 0.06) !important;      /* Neutral-variant surface */
+  --oq6d07v: rgba(16, 20, 42, 0.10) !important;
+  --oq6d07w: rgba(16, 20, 42, 0.14) !important;
+  --oq6d07x: var(--t-bd, rgba(16, 20, 42, 0.12)) !important;
+  --oq6d07y: var(--t-fg2, #3f4560) !important;       /* Secondary text */
+  --oq6d071t: rgba(16, 20, 42, 0.15) !important;
+  --oq6d071u: rgba(16, 20, 42, 0.08) !important;
+  --oq6d071v: rgba(16, 20, 42, 0.45) !important;
+}
+
+/* ── Global Document Layout (Full Screen & Dynamic Viewport) ─────── */
 html {
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
   background-color: var(--t-bg) !important;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   height: 100vh !important;
-  max-height: 100vh !important;
+  height: 100dvh !important;
+  min-height: -webkit-fill-available !important;
+  max-height: 100dvh !important;
   margin: 0 !important;
   padding: 0 !important;
   display: flex !important;
@@ -97,9 +163,10 @@ body {
   font-family: var(--t-font) !important;
   position: relative;
   isolation: isolate;
+  background-color: var(--t-bg) !important;
 }
 
-/* Subtle Cosmic Galaxy Nebula when no custom wallpaper is active */
+/* Cosmic Nebula Backdrop for Dark Theme */
 html:not([data-bglayer]):not(.theme-light) body::before {
   content: '';
   position: fixed;
@@ -115,11 +182,26 @@ html:not([data-bglayer]):not(.theme-light) body::before {
   opacity: 0.8;
 }
 
+/* Clean Soft Gradient Backdrop for Light Theme */
+html.theme-light:not([data-bglayer]) body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 12% 15%, rgba(99, 102, 241, 0.07) 0%, transparent 50%),
+    radial-gradient(circle at 88% 85%, rgba(168, 85, 247, 0.05) 0%, transparent 45%),
+    linear-gradient(160deg, #f3f5fa, #e9edf6);
+  opacity: 0.9;
+}
+
 /* Cinny Full-Height Root Container */
 #root {
   flex: 1 1 0 !important;
   width: 100vw !important;
   height: 100vh !important;
+  height: 100dvh !important;
   display: flex !important;
   flex-direction: column !important;
   overflow: hidden !important;
@@ -181,13 +263,13 @@ html:not([data-bglayer]):not(.theme-light) body::before {
   transform: translateX(2px);
 }
 
-.t4fedt8[aria-selected="true"] {
+.t4fedt8[aria-selected=true] {
   background: var(--t-gls) !important;
   border-color: var(--t-bda) !important;
   box-shadow: 0 4px 18px var(--t-gls), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
 }
 
-.t4fedt8[aria-selected="true"] .t4fedto {
+.t4fedt8[aria-selected=true] .t4fedto {
   color: var(--t-fg) !important;
   font-weight: 600 !important;
 }
@@ -208,7 +290,7 @@ html:not([data-bglayer]):not(.theme-light) body::before {
 /* Room Title Styling */
 .hru6be0 h1,
 .hru6be0 h2,
-.hru6be0 [role="heading"],
+.hru6be0 [role=heading],
 .hru6be0 ._1xny9xl5,
 .hru6be0 ._1xny9xl6 {
   font-family: var(--t-display, 'Syne', sans-serif) !important;
@@ -294,9 +376,9 @@ textarea::placeholder {
 
 /* ── Buttons & Interactive Elements ──────────────────────────────── */
 .epr39zm,
-button[data-priority="300"],
-button[data-variant="primary"],
-.epr39zd[data-variant="primary"] {
+button[data-priority=300],
+button[data-variant=primary],
+.epr39zd[data-variant=primary] {
   background: var(--t-gr, linear-gradient(135deg, #a855f7, #7c3aed)) !important;
   border: 1px solid var(--t-bda) !important;
   color: #ffffff !important;
@@ -307,8 +389,8 @@ button[data-variant="primary"],
 }
 
 .epr39zm:hover,
-button[data-priority="300"]:hover,
-button[data-variant="primary"]:hover {
+button[data-priority=300]:hover,
+button[data-variant=primary]:hover {
   transform: translateY(-1px) !important;
   box-shadow: 0 6px 22px var(--t-gl) !important;
   filter: brightness(1.08) !important;
@@ -316,8 +398,8 @@ button[data-variant="primary"]:hover {
 
 /* Secondary Buttons */
 .epr39zn,
-button[data-priority="200"],
-button[data-variant="secondary"] {
+button[data-priority=200],
+button[data-variant=secondary] {
   background: var(--t-bg3) !important;
   border: 1px solid var(--t-bd) !important;
   color: var(--t-fg) !important;
@@ -326,8 +408,8 @@ button[data-variant="secondary"] {
 }
 
 .epr39zn:hover,
-button[data-priority="200"]:hover,
-button[data-variant="secondary"]:hover {
+button[data-priority=200]:hover,
+button[data-variant=secondary]:hover {
   background: var(--t-bg2) !important;
   border-color: var(--t-bda) !important;
 }
@@ -362,12 +444,193 @@ dialog {
   backdrop-filter: blur(24px) saturate(145%) !important;
 }
 
-/* ── Theme Button Removal (Cinny UI Integration) ─────────────────── */
+/* ── Theme Switcher Button ────────────────────────────────────────── */
 #theme-btn {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  opacity: 0 !important;
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 0.92 !important;
+  pointer-events: auto !important;
+  position: fixed !important;
+  top: 13px !important;
+  right: 18px !important;
+  z-index: 99999 !important;
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  line-height: 1 !important;
+  background: var(--t-bg2, rgba(22, 13, 44, 0.8)) !important;
+  border: 1px solid var(--t-bd, rgba(224, 198, 255, 0.18)) !important;
+  color: var(--t-fg, #faf7ff) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22), 0 0 10px var(--t-gls) !important;
+  backdrop-filter: blur(18px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
+  transition: transform var(--t-motion, 0.15s), opacity var(--t-motion, 0.15s), box-shadow var(--t-motion, 0.15s), border-color var(--t-motion, 0.15s) !important;
+}
+
+#theme-btn:hover {
+  transform: scale(1.08) !important;
+  opacity: 1 !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28), 0 0 16px var(--t-gl) !important;
+  border-color: var(--t-bda) !important;
+}
+
+#theme-btn:active {
+  transform: scale(0.95) !important;
+}
+
+#theme-btn svg {
+  width: 17px !important;
+  height: 17px !important;
+  stroke: currentColor !important;
+}
+
+/* ── Light Mode Specific Component Styling ────────────────────────── */
+html.theme-light body {
+  color: var(--t-fg, #101426) !important;
+  background-color: var(--t-bg, #eef1f9) !important;
+}
+
+html.theme-light #theme-btn {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(16, 20, 42, 0.14) !important;
+  color: #1e1b4b !important;
+  box-shadow: 0 4px 14px rgba(16, 20, 42, 0.08), 0 0 8px var(--t-gls) !important;
+}
+
+html.theme-light ._1ho1fyw0,
+html.theme-light ._1xki9of1,
+html.theme-light ._1xki9of0,
+html.theme-light ._18fjf6z0 {
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-right: 1px solid rgba(16, 20, 42, 0.1) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+}
+
+html.theme-light .hru6be0,
+html.theme-light .hru6bec,
+html.theme-light .hru6bed,
+html.theme-light ._1t5i6nr1,
+html.theme-light .ty6xms1,
+html.theme-light ._1v145rl1 {
+  background: rgba(255, 255, 255, 0.9) !important;
+  border-bottom: 1px solid rgba(16, 20, 42, 0.08) !important;
+  color: #101426 !important;
+}
+
+html.theme-light ._161nxver {
+  background: #ffffff !important;
+  border: 1px solid rgba(16, 20, 42, 0.08) !important;
+  box-shadow: 0 2px 10px rgba(16, 20, 42, 0.05) !important;
+  color: #101426 !important;
+}
+
+html.theme-light .ay20pp9,
+html.theme-light .coabsl0 {
+  background: #ffffff !important;
+  border: 1px solid rgba(16, 20, 42, 0.15) !important;
+  color: #101426 !important;
+  box-shadow: 0 4px 16px rgba(16, 20, 42, 0.06) !important;
+}
+
+html.theme-light textarea {
+  color: #101426 !important;
+}
+
+html.theme-light textarea::placeholder {
+  color: #6b7280 !important;
+}
+
+html.theme-light ._1fc5sz51,
+html.theme-light ._5z5e2h1,
+html.theme-light ._1cmtvyv0,
+html.theme-light ._1f6snux0,
+html.theme-light ._1vnya282,
+html.theme-light dialog {
+  background: rgba(255, 255, 255, 0.97) !important;
+  border: 1px solid rgba(16, 20, 42, 0.12) !important;
+  box-shadow: 0 20px 60px rgba(16, 20, 42, 0.15), 0 0 25px var(--t-gls) !important;
+  color: #101426 !important;
+}
+
+html.theme-light ._1oc5jl82 {
+  background: rgba(16, 20, 42, 0.45) !important;
+}
+
+html.theme-light ._15upz2y1 {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(16, 20, 42, 0.12) !important;
+  box-shadow: 0 20px 50px rgba(16, 20, 42, 0.1), 0 0 30px var(--t-gls) !important;
+}
+
+html.theme-light #mitch-sso-banner {
+  background: rgba(255, 255, 255, 0.95) !important;
+  border: 1px solid rgba(16, 20, 42, 0.14) !important;
+  color: #101426 !important;
+  box-shadow: 0 12px 36px rgba(16, 20, 42, 0.1), 0 0 20px var(--t-gls) !important;
+}
+
+html.theme-light #mitch-push-banner {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(16, 20, 42, 0.14) !important;
+  color: #101426 !important;
+  box-shadow: 0 16px 40px rgba(16, 20, 42, 0.12), 0 0 24px var(--t-gls) !important;
+}
+
+html.theme-light .mitch-push-header {
+  color: #101426 !important;
+}
+
+html.theme-light .mitch-push-desc {
+  color: #4b5563 !important;
+}
+
+html.theme-light .mitch-push-btn-later {
+  border: 1px solid rgba(16, 20, 42, 0.15) !important;
+  color: #4b5563 !important;
+}
+
+html.theme-light .mitch-push-btn-later:hover {
+  background: rgba(16, 20, 42, 0.05) !important;
+  color: #101426 !important;
+}
+
+html.theme-light .epr39zn,
+html.theme-light button[data-priority=200],
+html.theme-light button[data-variant=secondary] {
+  background: rgba(16, 20, 42, 0.05) !important;
+  border: 1px solid rgba(16, 20, 42, 0.12) !important;
+  color: #101426 !important;
+}
+
+html.theme-light .epr39zn:hover,
+html.theme-light button[data-priority=200]:hover,
+html.theme-light button[data-variant=secondary]:hover {
+  background: rgba(16, 20, 42, 0.08) !important;
+}
+
+html.theme-light ._1m2qi7r4,
+html.theme-light code,
+html.theme-light pre {
+  background: #f1f4fa !important;
+  border: 1px solid rgba(16, 20, 42, 0.1) !important;
+  color: #101426 !important;
+}
+
+html.theme-light .t4fedt8[aria-selected=true] {
+  background: var(--t-gls, rgba(79, 70, 229, 0.12)) !important;
+  border-color: var(--t-bda, rgba(79, 70, 229, 0.4)) !important;
+  box-shadow: 0 2px 12px var(--t-gls) !important;
+}
+
+html.theme-light .t4fedt8[aria-selected=true] .t4fedto {
+  color: var(--t-ac, #4f46e5) !important;
+  font-weight: 700 !important;
 }
 
 /* ── Custom Scrollbars ───────────────────────────────────────────── */
@@ -399,7 +662,7 @@ body::-webkit-scrollbar,
 .scrollable,
 textarea,
 pre,
-[role="listbox"] {
+[role=listbox] {
   scrollbar-width: thin !important;
   scrollbar-color: var(--t-bda) transparent !important;
 }
@@ -410,7 +673,7 @@ pre,
 .scrollable::-webkit-scrollbar,
 textarea::-webkit-scrollbar,
 pre::-webkit-scrollbar,
-[role="listbox"]::-webkit-scrollbar {
+[role=listbox]::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
@@ -421,7 +684,7 @@ pre::-webkit-scrollbar,
 .scrollable::-webkit-scrollbar-track,
 textarea::-webkit-scrollbar-track,
 pre::-webkit-scrollbar-track,
-[role="listbox"]::-webkit-scrollbar-track {
+[role=listbox]::-webkit-scrollbar-track {
   background: transparent;
 }
 ._4yxtfdf::-webkit-scrollbar-thumb,
@@ -431,7 +694,7 @@ pre::-webkit-scrollbar-track,
 .scrollable::-webkit-scrollbar-thumb,
 textarea::-webkit-scrollbar-thumb,
 pre::-webkit-scrollbar-thumb,
-[role="listbox"]::-webkit-scrollbar-thumb {
+[role=listbox]::-webkit-scrollbar-thumb {
   background: var(--t-bda) !important;
   border-radius: 999px !important;
 }
@@ -442,7 +705,7 @@ pre::-webkit-scrollbar-thumb,
 .scrollable::-webkit-scrollbar-thumb:hover,
 textarea::-webkit-scrollbar-thumb:hover,
 pre::-webkit-scrollbar-thumb:hover,
-[role="listbox"]::-webkit-scrollbar-thumb:hover {
+[role=listbox]::-webkit-scrollbar-thumb:hover {
   background: var(--t-ac) !important;
 }
 
@@ -583,4 +846,201 @@ pre::-webkit-scrollbar-thumb:hover,
 .mitch-push-btn-enable:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 18px var(--t-gl, rgba(180, 94, 255, 0.35));
+}
+
+/* ── Mobile Layout & Touch Ergonomics (max-width: 768px) ──────────── */
+@media (max-width: 768px) {
+  html, body, #root {
+    height: 100vh !important;
+    height: 100dvh !important;
+    min-height: -webkit-fill-available !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+  }
+
+  /* Safe Area Support */
+  #root {
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    padding-left: env(safe-area-inset-left, 0px) !important;
+    padding-right: env(safe-area-inset-right, 0px) !important;
+  }
+
+  /* Space Sidebar scaled cleanly on mobile */
+  ._1ho1fyw0 {
+    width: 3.5rem !important;
+    min-width: 3.5rem !important;
+    padding: 6px 0 !important;
+  }
+
+  ._1ho1fyw4 {
+    width: 2.75rem !important;
+    height: 2.75rem !important;
+    margin: 4px auto !important;
+    touch-action: manipulation !important;
+  }
+
+  /* Room List Sidebar expands to fill full screen on mobile */
+  ._1xki9of0,
+  ._1xki9of1,
+  ._18fjf6z0 {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+  }
+
+  /* Room list items tap targets */
+  .t4fedt8 {
+    min-height: 50px !important;
+    padding: 8px 12px !important;
+    margin: 3px 6px !important;
+    border-radius: 12px !important;
+    touch-action: manipulation !important;
+  }
+
+  /* Room Header on mobile */
+  .hru6be0,
+  .hru6bec,
+  .hru6bed,
+  ._1t5i6nr1,
+  .ty6xms1,
+  ._1v145rl1 {
+    height: 52px !important;
+    min-height: 52px !important;
+    padding: 0 10px !important;
+    padding-right: 56px !important; /* Reserve space for fixed theme button */
+  }
+
+  .hru6be0 h1,
+  .hru6be0 h2,
+  .hru6be0 [role=heading],
+  .hru6be0 ._1xny9xl5,
+  .hru6be0 ._1xny9xl6 {
+    font-size: 1.05rem !important;
+    max-width: calc(100vw - 140px) !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  /* Header action buttons & back button on mobile */
+  .hru6be0 button,
+  .brs7ce5 {
+    min-width: 40px !important;
+    min-height: 40px !important;
+    border-radius: 10px !important;
+    touch-action: manipulation !important;
+    cursor: pointer !important;
+  }
+
+  .brs7ce5:active,
+  .hru6be0 button:active {
+    transform: scale(0.94) !important;
+  }
+
+  /* Chat Timeline on mobile */
+  ._161nxver {
+    padding: 8px 12px !important;
+    border-radius: 14px !important;
+    max-width: 98% !important;
+    margin-bottom: 6px !important;
+  }
+
+  /* Avatars */
+  ._1684mq5c,
+  ._1684mq5d,
+  ._1684mq51 {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    border-radius: 10px !important;
+  }
+
+  /* Composer input container on mobile */
+  .ay20pp9,
+  .coabsl0 {
+    margin: 6px 8px max(8px, env(safe-area-inset-bottom, 8px)) 8px !important;
+    padding: 6px 10px !important;
+    border-radius: 20px !important;
+  }
+
+  /* Prevent iOS Safari automatic zoom on inputs by setting font-size to 16px */
+  textarea,
+  input,
+  input[type="text"] {
+    font-size: 16px !important;
+  }
+
+  /* Action buttons in composer (attach, emoji, send) */
+  .ay20pp9 button,
+  .coabsl0 button {
+    min-width: 38px !important;
+    min-height: 38px !important;
+    touch-action: manipulation !important;
+  }
+
+  /* Theme Button on mobile */
+  #theme-btn {
+    top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    right: calc(10px + env(safe-area-inset-right, 0px)) !important;
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  /* Dialogs / Modals / Settings on mobile */
+  dialog,
+  ._1fc5sz51,
+  ._5z5e2h1,
+  ._1cmtvyv0,
+  ._1f6snux0 {
+    width: 100% !important;
+    max-width: 100vw !important;
+    border-radius: 18px 18px 0 0 !important;
+    max-height: 92dvh !important;
+    margin: auto 0 0 0 !important;
+  }
+
+  /* Banners on mobile */
+  #mitch-sso-banner {
+    width: calc(100% - 24px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    transform: none !important;
+    top: calc(10px + env(safe-area-inset-top, 0px)) !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    text-align: center !important;
+    padding: 10px 14px !important;
+    font-size: 13px !important;
+    gap: 8px !important;
+  }
+
+  #mitch-push-banner {
+    width: calc(100% - 24px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px)) !important;
+    max-width: 100% !important;
+    padding: 12px 14px !important;
+  }
+}
+
+/* Extra small mobile adjustments */
+@media (max-width: 480px) {
+  .hru6be0 h1,
+  .hru6be0 h2,
+  .hru6be0 [role="heading"] {
+    max-width: calc(100vw - 120px) !important;
+    font-size: 0.98rem !important;
+  }
+
+  ._1m2qi7r4,
+  code,
+  pre {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    font-size: 12.5px !important;
+  }
 }
