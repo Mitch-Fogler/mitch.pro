@@ -39,8 +39,21 @@
     <!-- Mitch.pro Global Theme Engine -->
     <script src="/theme.js?v=11"></script>
 
-    <!-- UI hygiene: prevent rogue root scrollbars -->
+    <!-- UI hygiene: hide floating theme button & prevent rogue root scrollbars -->
     <style>
+      #theme-btn {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        position: absolute !important;
+        top: -9999px !important;
+        left: -9999px !important;
+      }
       html, body, #root {
         overflow: hidden !important;
         scrollbar-width: none !important;
@@ -82,6 +95,30 @@
 
     <script>
       window.global ||= window;
+
+      // ── Ensure Sun/Theme Button is Never Rendered in Matrix UI ──
+      (function() {
+        function removeSun() {
+          const btn = document.getElementById('theme-btn');
+          if (btn) btn.remove();
+        }
+        removeSun();
+        if (window.MutationObserver) {
+          const obs = new MutationObserver(function(mutations) {
+            for (let i = 0; i < mutations.length; i++) {
+              for (let j = 0; j < mutations[i].addedNodes.length; j++) {
+                const node = mutations[i].addedNodes[j];
+                if (node && (node.id === 'theme-btn' || (node.querySelector && node.querySelector('#theme-btn')))) {
+                  removeSun();
+                }
+              }
+            }
+          });
+          obs.observe(document.documentElement, { childList: true, subtree: true });
+        }
+        document.addEventListener('DOMContentLoaded', removeSun);
+        window.addEventListener('load', removeSun);
+      })();
 
       // ── Synchronize Cinny Dark/Light Mode & Colors with theme.js ────────
       (function() {

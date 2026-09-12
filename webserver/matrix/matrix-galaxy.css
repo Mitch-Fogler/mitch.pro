@@ -444,62 +444,25 @@ dialog {
   backdrop-filter: blur(24px) saturate(145%) !important;
 }
 
-/* ── Theme Switcher Button ────────────────────────────────────────── */
+/* ── Theme Button Suppression (Hidden in Matrix Chat UI) ────────── */
 #theme-btn {
-  display: inline-flex !important;
-  visibility: visible !important;
-  opacity: 0.92 !important;
-  pointer-events: auto !important;
-  position: fixed !important;
-  top: 13px !important;
-  right: 18px !important;
-  z-index: 99999 !important;
-  width: 36px !important;
-  height: 36px !important;
-  border-radius: 50% !important;
-  padding: 0 !important;
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
   margin: 0 !important;
-  align-items: center !important;
-  justify-content: center !important;
-  cursor: pointer !important;
-  line-height: 1 !important;
-  background: var(--t-bg2, rgba(22, 13, 44, 0.8)) !important;
-  border: 1px solid var(--t-bd, rgba(224, 198, 255, 0.18)) !important;
-  color: var(--t-fg, #faf7ff) !important;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22), 0 0 10px var(--t-gls) !important;
-  backdrop-filter: blur(18px) saturate(140%) !important;
-  -webkit-backdrop-filter: blur(18px) saturate(140%) !important;
-  transition: transform var(--t-motion, 0.15s), opacity var(--t-motion, 0.15s), box-shadow var(--t-motion, 0.15s), border-color var(--t-motion, 0.15s) !important;
-}
-
-#theme-btn:hover {
-  transform: scale(1.08) !important;
-  opacity: 1 !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28), 0 0 16px var(--t-gl) !important;
-  border-color: var(--t-bda) !important;
-}
-
-#theme-btn:active {
-  transform: scale(0.95) !important;
-}
-
-#theme-btn svg {
-  width: 17px !important;
-  height: 17px !important;
-  stroke: currentColor !important;
+  padding: 0 !important;
+  position: absolute !important;
+  top: -9999px !important;
+  left: -9999px !important;
 }
 
 /* ── Light Mode Specific Component Styling ────────────────────────── */
 html.theme-light body {
   color: var(--t-fg, #101426) !important;
   background-color: var(--t-bg, #eef1f9) !important;
-}
-
-html.theme-light #theme-btn {
-  background: rgba(255, 255, 255, 0.88) !important;
-  border-color: rgba(16, 20, 42, 0.14) !important;
-  color: #1e1b4b !important;
-  box-shadow: 0 4px 14px rgba(16, 20, 42, 0.08), 0 0 8px var(--t-gls) !important;
 }
 
 html.theme-light ._1ho1fyw0,
@@ -910,7 +873,6 @@ pre::-webkit-scrollbar-thumb:hover,
     height: 52px !important;
     min-height: 52px !important;
     padding: 0 10px !important;
-    padding-right: 56px !important; /* Reserve space for fixed theme button */
   }
 
   .hru6be0 h1,
@@ -981,13 +943,6 @@ pre::-webkit-scrollbar-thumb:hover,
     touch-action: manipulation !important;
   }
 
-  /* Theme Button on mobile */
-  #theme-btn {
-    top: calc(8px + env(safe-area-inset-top, 0px)) !important;
-    right: calc(10px + env(safe-area-inset-right, 0px)) !important;
-    width: 34px !important;
-    height: 34px !important;
-  }
 
   /* Dialogs / Modals / Settings on mobile */
   dialog,
