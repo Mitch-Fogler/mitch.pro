@@ -7,17 +7,17 @@
   <meta name="description" content="Play hundreds of browser games and earn MitchCoins while you play.">
   <title>Game Portal | mitch.pro</title>
   <script src="/theme.js?v=11"></script>
-  <link rel="stylesheet" href="/game-portal/game-portal.css?v=1">
+  <link rel="stylesheet" href="/game-portal/game-portal.css?v=2">
 </head>
 <body class="game-portal-page" data-shell="off">
   <header class="portal-bar">
     <a class="portal-brand" href="https://mitch.pro/" aria-label="mitch.pro home">
-      <img src="/icon-192.png" alt="" width="38" height="38">
-      <span>mitch<span>.pro</span></span>
+      <span class="brand-mark"><img src="/icon-192.png" alt="" width="38" height="38"></span>
+      <span class="brand-name">mitch<span>.pro</span><small>Games</small></span>
     </a>
     <label class="portal-search">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
-      <input id="game-search" type="search" autocomplete="off" placeholder="Search games" aria-label="Search games">
+      <input id="game-search" type="search" autocomplete="off" placeholder="Find a game..." aria-label="Search games">
       <kbd>/</kbd>
     </label>
     <a class="portal-wallet" id="portal-wallet" href="https://mitch.pro/coins/">
@@ -28,7 +28,7 @@
 
   <main class="portal-main">
     <section class="portal-heading" aria-labelledby="portal-title">
-      <div><h1 id="portal-title">Games</h1><p><span id="game-count">Loading</span> games</p></div>
+      <div class="portal-title-wrap"><span class="library-count"><i></i><span id="game-count">Loading</span> games</span><h1 id="portal-title">Games</h1></div>
       <div class="reward-card" id="reward-card">
         <div class="reward-copy">
           <img src="/mitchcoin.png" alt="" width="34" height="34">
@@ -37,7 +37,14 @@
         <div class="reward-meter" aria-hidden="true"><i id="reward-progress"></i></div>
       </div>
     </section>
-    <nav class="category-strip" id="category-strip" aria-label="Game categories"></nav>
+    <section class="featured-section" id="featured-section" aria-labelledby="featured-title">
+      <div class="section-heading featured-heading"><h2 id="featured-title">Featured</h2><button class="shuffle-button" id="surprise-game" type="button"><span aria-hidden="true">↻</span> Shuffle</button></div>
+      <div class="featured-grid" id="featured-games"></div>
+    </section>
+    <div class="browse-bar">
+      <strong>Browse</strong>
+      <nav class="category-strip" id="category-strip" aria-label="Game categories"></nav>
+    </div>
     <section class="recent-section" id="recent-section" hidden aria-labelledby="recent-title">
       <div class="section-heading"><h2 id="recent-title">Play again</h2></div>
       <div class="game-grid game-grid-recent" id="recent-games"></div>
@@ -64,6 +71,6 @@
     </div>
   </section>
   <div class="coin-toast" id="coin-toast" role="status" aria-live="polite">+2 MitchCoins</div>
-  <script src="/game-portal/portal.js?v=1" defer></script>
+  <script src="/game-portal/portal.js?v=2" defer></script>
 </body>
 </html>

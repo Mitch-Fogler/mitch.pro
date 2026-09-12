@@ -67,10 +67,10 @@
     return Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
 
-  function card(game) {
+  function card(game, variant) {
     var button = document.createElement('button');
     button.type = 'button';
-    button.className = 'game-card';
+    button.className = 'game-card' + (variant ? ' game-card-' + variant : '');
     button.dataset.gameId = game.id;
     button.setAttribute('aria-label', 'Play ' + game.title);
 
@@ -97,8 +97,27 @@
     category.textContent = game.category;
     copy.append(title, category);
     button.appendChild(copy);
+
+    var play = document.createElement('span');
+    play.className = 'game-card-play';
+    play.setAttribute('aria-hidden', 'true');
+    play.textContent = '▶';
+    button.appendChild(play);
     button.addEventListener('click', function () { launch(game, button); });
     return button;
+  }
+
+  function genreFor(title, description, url) {
+    var value = (title + ' ' + description + ' ' + url).toLowerCase();
+    if (/fnaf|backrooms|silent hill|dreader|horror/.test(value)) return 'Horror';
+    if (/multiplayer|1v1|basket bros|shell shock|smash karts|tetr\.io/.test(value)) return 'Multiplayer';
+    if (/race|racing|moto|drift|traffic|car|highway|swerve/.test(value)) return 'Racing';
+    if (/basket|football|soccer|golf|bowl|skate|punch|pool party/.test(value)) return 'Sports';
+    if (/\/retro\/|pokemon|mario|sonic|zelda|metroid|kirby|donkey kong|final fantasy|star fox|mega ?man|tetris/.test(value)) return 'Retro';
+    if (/puzzle|riddle|wordle|2048|bloxorz|alchemy|sort|quiz|calculator|logic/.test(value)) return 'Puzzle';
+    if (/shooter|doom|quake|gun|combat|commando|battle|fight|hobo|shark|tank|action/.test(value)) return 'Action';
+    if (/papa|idle|learn to fly|duck life|buddy|sandbox|tycoon/.test(value)) return 'Casual';
+    return 'Arcade';
   }
 
   function filteredGames() {
@@ -151,6 +170,17 @@
     var games = recentIds().map(function (id) { return state.games[id]; }).filter(Boolean);
     byId('recent-section').hidden = games.length === 0;
     byId('recent-games').replaceChildren.apply(byId('recent-games'), games.map(card));
+  }
+
+  function renderFeatured() {
+    var preferred = ['Slope', 'Retro Bowl', 'Run 3', 'Basket Bros', 'Tunnel Rush'];
+    var picks = preferred.map(function (title) {
+      return state.games.find(function (game) { return game.title === title; });
+    }).filter(Boolean);
+    if (picks.length < 5) picks = picks.concat(state.games.filter(function (game) { return picks.indexOf(game) === -1; }).slice(0, 5 - picks.length));
+    byId('featured-games').replaceChildren.apply(byId('featured-games'), picks.map(function (game, index) {
+      return card(game, index === 0 ? 'hero' : 'featured');
+    }));
   }
 
   function updateRewardUi(data) {
@@ -263,6 +293,11 @@
     else target.requestFullscreen().catch(function () {});
   });
   byId('load-more').addEventListener('click', function () { state.limit += 96; render(); });
+  byId('surprise-game').addEventListener('click', function () {
+    var choices = filteredGames();
+    if (!choices.length) return;
+    launch(choices[Math.floor(Math.random() * choices.length)], byId('surprise-game'));
+  });
   search.addEventListener('input', function () { state.query = search.value.trim().toLowerCase(); state.limit = 96; render(); });
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && !player.hidden) closePlayer();
@@ -287,21 +322,27 @@
           var title = plainText(entry[0]) || 'Game';
           var url = gameUrl(entry[2]);
           if (!url) return;
+          var description = plainText(entry[3]);
+          var category = genreFor(title, description, url);
           games.push({
             id: games.length,
             title: title,
             icon: iconUrl(entry[1]),
             url: url,
-            description: plainText(entry[3]),
-            category: plainText(section.title) || 'Games',
+            description: description,
+            category: category,
+            sourceCategory: plainText(section.title) || 'Games',
             external: entry[4] === 'IgnoreIframe',
-            search: (title + ' ' + plainText(section.title) + ' ' + plainText(entry[3])).toLowerCase()
+            search: (title + ' ' + category + ' ' + plainText(section.title) + ' ' + description).toLowerCase()
           });
         });
       });
       state.games = games;
       byId('game-count').textContent = games.length;
-      renderCategories(Array.from(new Set(games.map(function (game) { return game.category; }))));
+      renderCategories(['Arcade', 'Action', 'Racing', 'Sports', 'Multiplayer', 'Puzzle', 'Retro', 'Casual', 'Horror'].filter(function (category) {
+        return games.some(function (game) { return game.category === category; });
+      }));
+      renderFeatured();
       renderRecent();
       render();
       var requested = Number(new URLSearchParams(location.search).get('game'));
