@@ -7,6 +7,7 @@ services:
     container_name: mitch-webserver-dev
     depends_on:
       - conduit
+      - livekit
     ports:
       - "6800:6800"
     environment:
@@ -15,6 +16,10 @@ services:
       - PIA_USERNAME
       - PIA_PASSWORD
       - CONDUIT_HOST=conduit
+      - LIVEKIT_HOST=livekit
+      - LIVEKIT_PORT=7880
+      - LIVEKIT_API_KEY=mitchlivekit
+      - LIVEKIT_API_SECRET=mitch-secret-livekit-matrix-key-2026
     volumes:
       - .:/app
     working_dir: /app
@@ -79,4 +84,15 @@ services:
       - ./data/conduit:/var/lib/matrix-conduit
     environment:
       - CONDUIT_CONFIG=/etc/conduit.toml
+
+  # LiveKit SFU for Matrix Voice & Video Calling
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: mitch-livekit-dev
+    restart: unless-stopped
+    command: --keys "mitchlivekit: mitch-secret-livekit-matrix-key-2026" --bind 0.0.0.0 --udp-port 7882
+    ports:
+      - "7880:7880"
+      - "7882:7882/udp"
+
 
