@@ -52,7 +52,18 @@ assert(readFileSync('webserver/app-shell.js', 'utf8').includes("label: 'Blooket 
 
 // Top-left brand logo on rjuhsd.school must use mitch.pro logo (/icon-192.png)
 const rjuhsdHtml = readFileSync('webserver/rjuhsd/index.html', 'utf8');
+const rjuhsdRedesign = readFileSync('webserver/rjuhsd-assets/redesign.css', 'utf8');
+const rjuhsdApp = readFileSync('webserver/rjuhsd-assets/app.js', 'utf8');
+const preferencesHtml = readFileSync('webserver/preferences/index.html', 'utf8');
+const preferencesSchoolCss = readFileSync('webserver/preferences-school.css', 'utf8');
 assert(rjuhsdHtml.includes('<a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img class="site-logo" src="/icon-192.png"'), 'rjuhsd top left brand must use mitch.pro logo');
+assert(rjuhsdHtml.includes('/rjuhsd-assets/redesign.css?v=1'), 'rjuhsd must load the schedule-first redesign');
+assert(rjuhsdRedesign.includes('.schedule-zone { order: 2; }'), 'full schedule must appear before secondary school content');
+assert(rjuhsdRedesign.includes('.live-card {') && rjuhsdRedesign.includes('.countdown-dial {'), 'active countdown must have the redesigned live surface');
+assert(rjuhsdApp.includes('document.querySelectorAll(".js-signin-link").forEach(a=>a.remove())'), 'signed-in users must not see sign-in prompts');
+assert(preferencesHtml.includes('/preferences-school.css?v=1'), 'preferences must load its rjuhsd redesign');
+assert(preferencesHtml.includes("classList.add('school-preferences')"), 'preferences must detect the school host');
+assert(preferencesSchoolCss.includes('background: linear-gradient(110deg'), 'school preferences header must reveal the active background');
 assert(!/<a class="brand"[^>]*><span class="brand-logo"><img[^>]*src="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd brand must not use school-based logo');
 
 // Favicon on rjuhsd.school must use mitch.pro favicon (/favicon.ico)

@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <title>Preferences — mitch.pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="/theme.js?v=11"></script>
+<script>if (/(^|\.)rjuhsd\.school$/.test(location.hostname) || /^\/rjuhsd(?:\/|$)/.test(location.pathname)) { document.documentElement.classList.add('school-preferences'); document.title = 'Preferences — rjuhsd.school'; }</script>
+<script src="/theme.js?v=13"></script>
 <script src="/vendor/simplewebauthn.browser.min.js?v=1" defer></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
@@ -746,12 +747,14 @@
     transition: none !important;
   }
 </style>
+<link rel="stylesheet" href="/preferences-school.css?v=1">
 </head>
 <body class="prefs-page">
 <main class="app-main prefs-shell">
   <header class="page-head">
+    <a class="school-prefs-back" href="/">← Schedule</a>
     <h1>Preferences</h1>
-    <p class="page-sub">Theme, account, privacy, and sync — tune how mitch.pro feels and behaves.</p>
+    <p class="page-sub"><span class="default-prefs-copy">Theme, account, privacy, and sync — tune how mitch.pro feels and behaves.</span><span class="school-prefs-copy">Make rjuhsd.school look and work the way you want.</span></p>
   </header>
 
   <div class="pref-summary" aria-label="Current preference snapshot">
@@ -2041,7 +2044,7 @@ function applyAppearanceLive(statusText) {
 }
 
 function updateBgChipActive() {
-  var cur = getCookieValue('bgimg', '') || '/backgrounds/wallhaven-black-mountain.webp';
+  var cur = getCookieValue('bgimg', '') || (document.documentElement.classList.contains('school-preferences') ? '/backgrounds/wallhaven-ghost-of-tsushima.webp' : '/backgrounds/wallhaven-black-mountain.webp');
   document.querySelectorAll('.bg-chip-row .bg-chip').forEach(function(chip) {
     chip.classList.toggle('active', chip.getAttribute('data-url') === cur);
   });
@@ -2077,7 +2080,7 @@ function applyChipPreview(chip, url) {
 function renderPresetBgChips(presetGrid, bgs, cur) {
   if (window.__theme && window.__theme.mergeBackgrounds) bgs = window.__theme.mergeBackgrounds(bgs);
   presetGrid.innerHTML = '';
-  var effective = cur || '/backgrounds/wallhaven-black-mountain.webp';
+  var effective = cur || (document.documentElement.classList.contains('school-preferences') ? '/backgrounds/wallhaven-ghost-of-tsushima.webp' : '/backgrounds/wallhaven-black-mountain.webp');
   bgs.forEach(function(b) {
     var chip = document.createElement('button');
     chip.type = 'button';
@@ -2338,6 +2341,11 @@ function setupAccordions() {
     target.classList.add('open');
     var h = target.querySelector('h2');
     if (h) h.setAttribute('aria-expanded', 'true');
+  } else if (document.documentElement.classList.contains('school-preferences')) {
+    var appearance = document.getElementById('appearance');
+    var appearanceHeading = appearance && appearance.querySelector('h2');
+    if (appearance) appearance.classList.add('open');
+    if (appearanceHeading) appearanceHeading.setAttribute('aria-expanded', 'true');
   }
 }
 
