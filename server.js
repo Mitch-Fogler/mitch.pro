@@ -24555,7 +24555,7 @@ async function handleRequest(req, server) {
       '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/mitchcoin.webp', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/vendor/simplewebauthn.browser.min.js',
       '/home-redesign.css', '/welcome.css',
-      '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
+      '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/redesign.css', '/preferences-school.css', '/rjuhsd-assets/woodcreek.png',
       '/rjuhsd-assets/calendar.js', '/rjuhsd-assets/woodcreek-logo.png', '/rjuhsd-assets/roseville-logo.png', '/rjuhsd-assets/granitebay-logo.png', '/rjuhsd-assets/antelope-logo.png', '/rjuhsd-assets/westpark-logo.png', '/rjuhsd-assets/oakmont-logo.png',
       '/rjuhsd-assets/icon-192.png', '/rjuhsd-assets/icon-512.png', '/rjuhsd-assets/maskable-512.png', '/rjuhsd-assets/apple-touch-icon.png', '/rjuhsd-assets/favicon-32.png',
       '/liquid-glass.js',
