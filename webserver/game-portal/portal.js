@@ -283,7 +283,6 @@
     frame.src = game.url;
     player.hidden = false;
     document.body.style.overflow = 'hidden';
-    history.replaceState(null, '', '?game=' + game.id);
     byId('player-close').focus();
     startRewardLoop();
   }
@@ -294,7 +293,7 @@
     frame.src = 'about:blank';
     player.hidden = true;
     document.body.style.overflow = '';
-    history.replaceState(null, '', location.pathname);
+    if (location.search) history.replaceState(null, '', location.pathname);
     var trigger = state.trigger;
     state.current = null;
     if (trigger && trigger.isConnected) trigger.focus();
@@ -360,8 +359,14 @@
       renderFeatured();
       renderRecent();
       render();
-      var requested = Number(new URLSearchParams(location.search).get('game'));
-      if (Number.isInteger(requested) && games[requested]) launch(games[requested]);
+      var requestedParam = new URLSearchParams(location.search).get('game');
+      if (requestedParam !== null && requestedParam !== '') {
+        var requested = Number(requestedParam);
+        if (Number.isInteger(requested) && games[requested]) {
+          launch(games[requested]);
+          history.replaceState(null, '', location.pathname);
+        }
+      }
       heartbeat(false);
     })
     .catch(function () {
