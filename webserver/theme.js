@@ -727,7 +727,7 @@
     'html[data-bglayer]{background:var(--t-bg)!important}' +
     'html[data-bg-effect]{background:#050b1b!important}' +
     'html[data-bg-effect]::before{display:none!important}' +
-    'html[data-bg-effect].theme-light :is(.page-head,.page-header) :is(h1,p){color:#eef2ff!important}' +
+    'html[data-bg-effect].theme-light body:not(.prefs-page) :is(.page-head,.page-header) :is(h1,p){color:#eef2ff!important}' +
     'html[data-bglayer]::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;' +
       'opacity:var(--t-bg-layer-opacity,1);' +
       // Shorthand, not background-image: page-owned --t-bgr values carry their
