@@ -1,4 +1,4 @@
-/* RJUHSD 2026 refresh: schedule first, one calm school-colored surface system. */
+/* Shared school surfaces and responsive layout. */
 * { box-sizing: border-box; }
 html { scroll-padding-top: 88px; }
 body.school-hub { background: transparent !important; }
@@ -218,4 +218,105 @@ main#main { display: flex; flex-direction: column; gap: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
+}
+
+/* Compact landscape dashboard. */
+body.school-hub { --sans: 'Segoe UI', system-ui, sans-serif; --serif: var(--sans); }
+.school-hub .announcement-bar { display:none; }
+.school-hub .site-header { position:relative; top:auto; width:min(1180px,calc(100% - 40px)); height:auto; min-height:70px; margin:0 auto; padding:12px 0; background:transparent!important; border:0; box-shadow:none; backdrop-filter:none; }
+.school-hub .brand-copy strong { font-size:14px; }
+.school-hub .site-header nav { margin-left:auto; margin-right:16px; }
+.school-hub .site-header nav a { font-size:12px; text-transform:none; letter-spacing:0; color:var(--ink); }
+.school-hub .site-header nav a[href='#today'] { background:var(--wine-soft); color:var(--wine); }
+.school-hub .site-header nav a[href='/preferences/'] { display:inline-flex; }
+.school-hub .school-choice { border:0; font-size:0; }
+.school-hub .school-choice select { min-width:120px; max-width:150px; font-size:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); }
+.school-hub .header-actions .lunch-status { display:none!important; }
+.school-hub main#main { width:min(1180px,calc(100% - 40px)); margin:auto; }
+.school-hub .hero { width:100%; min-height:320px; margin:8px 0 0; padding:28px; grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr); gap:30px; border-radius:22px; background:linear-gradient(110deg,rgba(13,20,24,.82),rgba(13,20,24,.58))!important; box-shadow:0 16px 45px #0002; }
+.school-hub .hero-graphic { display:none; }
+.school-hub .hero-content { order:0; padding:0; }
+.school-hub .hero-date-panel { display:flex; align-items:center; gap:9px; width:auto; border:0; padding:0; margin:0 0 24px; background:none; box-shadow:none; }
+.school-hub .hero-weekday { border:0; padding:0; font-size:10px; letter-spacing:.12em; }
+.school-hub .hero-date-main { padding:0; gap:5px; }
+.school-hub .hero-date-main>strong { font:600 12px/1 var(--sans); letter-spacing:0; }
+.school-hub .hero-date-main>span { min-width:0; padding:0; border:0; }
+.school-hub .hero-date-main b { font:600 12px/1 var(--sans); }
+.school-hub .hero-date-main small,.school-hub .hero-overline { display:none; }
+.school-hub .hero h1 { font-size:clamp(30px,3.6vw,45px); line-height:1.05; letter-spacing:-.055em; margin:0 0 12px; }
+.school-hub .hero h1 em { font-size:.72em; opacity:.7; }
+.school-hub .hero-summary { font-size:12px; line-height:1.6; }
+.school-hub .hero-actions { gap:8px; margin-top:20px; }
+.school-hub .hero-actions .primary-button,.school-hub .hero-actions .secondary-button { min-height:38px; padding:0 12px; text-transform:none; font-size:11px; letter-spacing:0; }
+.school-hub .live-card { min-height:0; width:100%; border:0; border-left:1px solid #ffffff24; border-radius:0; padding-left:28px; background:transparent!important; box-shadow:none; backdrop-filter:none; }
+.school-hub .live-card-top { padding:0; height:28px; border:0; }
+.school-hub .live-card-top>time { font-size:11px; }
+.school-hub .live-card-body { display:grid; grid-template-columns:minmax(0,1fr) auto; text-align:left; padding:16px 0 12px; }
+.school-hub .live-card-body>p:first-of-type { grid-column:1; font-size:9px; margin:0; }
+.school-hub .live-card h2 { grid-column:1; margin:6px 0; font-size:21px; }
+.school-hub .period-range { grid-column:1; font-size:11px; }
+.school-hub .countdown-dial { grid-column:1/-1; width:100%; height:auto; min-height:94px; margin:12px 0; justify-items:start; }
+.school-hub .countdown-dial>svg { display:none; }
+.school-hub .countdown-center { justify-items:start; }
+.school-hub .countdown-center .countdown { font-size:clamp(56px,6.8vw,88px); font-weight:600; letter-spacing:-.065em; line-height:1; }
+.school-hub .countdown-center .countdown-copy { max-width:none; font-size:10px; text-transform:none; letter-spacing:.02em; }
+.school-hub .countdown-details { grid-column:2; grid-row:1/4; display:flex!important; align-items:center; margin:0; padding-left:18px; border:0; border-left:1px solid #fff2; border-radius:0; background:none; }
+.school-hub .countdown-details>span { border:0; padding:0; }
+.school-hub .countdown-details>span:not(:first-child) { display:none; }
+.school-hub .countdown-details strong { font-size:16px; margin-top:7px; }
+.school-hub .live-card-body>.progress { grid-column:1/-1; width:100%; max-width:none; height:5px; }
+.school-hub .progress span { background:#d2e1d6; }
+.school-hub .live-next { min-height:34px; padding:4px 0 0; justify-content:flex-start; gap:12px; background:none; }
+.school-hub .live-next time { margin-left:auto; }
+.school-hub .snapshot { width:100%; margin:12px 0 0; border-radius:14px; box-shadow:none; }
+.school-hub .snapshot article { min-height:65px; padding:12px 20px; }
+.school-hub .snapshot-icon { display:none; }
+.school-hub .snapshot strong { font-size:14px; }
+.school-hub .dashboard-section { width:100%; padding:24px; border-radius:16px; box-shadow:0 8px 26px #00000008; }
+.school-hub .section-label { font-size:9px; letter-spacing:.1em; }
+.school-hub .section-title-row h2,.school-hub .tools-heading h2 { font-size:24px; letter-spacing:-.035em; }
+.school-hub .section-title-row>div>p:last-child { font-size:12px; }
+.school-hub .schedule-grid { grid-template-columns:minmax(0,1fr) 240px; gap:28px; }
+.school-hub .day-brief { align-self:start; }
+.school-hub .timeline-row { min-height:58px; }
+.school-hub .date-tile { display:none; }
+.school-hub .day-card { min-height:115px; padding:14px; }
+.school-hub .day-card .day-date { margin-top:9px; }
+.school-hub .district-schools-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:0; }
+.school-hub .district-school-card { padding:16px; box-shadow:none; border-radius:12px; }
+.school-hub .district-school-card.current-school::before { display:none; }
+.school-hub .district-school-card p { display:none; }
+.school-hub .district-school-card h3 { font-size:15px; }
+.school-hub .district-school-card a { min-height:36px; }
+.school-hub .district-schools-zone .section-title-row p:last-child,.school-hub .apps-zone .section-title-row p:last-child { display:none; }
+.school-hub .app-card { min-height:105px; padding:14px; box-shadow:none; }
+.school-hub .app-card-badge,.school-hub .app-card-head small { display:none; }
+.school-hub .app-card-head h3 { font-size:14px; }
+.school-hub .tool-grid a { min-height:65px; border-radius:10px; background:var(--wine-soft); color:var(--ink); border-color:var(--line); }
+.school-hub .tool-grid small { color:var(--muted); }
+.school-hub footer { width:min(1180px,calc(100% - 40px)); margin:20px auto 0; padding:24px 0 90px; border-top:1px solid var(--line); background:transparent; }
+.school-hub .weather-widget { width:220px!important; opacity:.95; }
+:where(.school-hub) :is(a,button,select):focus-visible { outline:2px solid var(--wine); outline-offset:4px; }
+@media(max-width:1000px) { .school-hub .site-header nav { display:none; } .school-hub .hero { gap:20px; padding:24px; } .school-hub .live-card { padding-left:20px; } }
+@media(max-width:720px) {
+  .school-hub .site-header,.school-hub main#main { width:calc(100% - 20px); }
+  .school-hub .site-header { min-height:60px; padding:8px 0; }
+  .school-hub .hero { display:flex; flex-direction:column; padding:20px; gap:18px; }
+  .school-hub .hero-content { width:100%; order:1; border-top:1px solid #fff2; padding-top:18px; }
+  .school-hub .hero-date-panel { margin-bottom:12px; }
+  .school-hub .hero h1 { font-size:28px; }
+  .school-hub .hero h1 br { display:none; }
+  .school-hub .hero h1 em { display:block; margin-top:3px; }
+  .school-hub .live-card { order:0; padding:0; border:0; }
+  .school-hub .countdown-center .countdown { font-size:76px; }
+  .school-hub .snapshot article { min-height:58px; padding:10px 14px; }
+  .school-hub .dashboard-section { padding:18px 14px; }
+  .school-hub .schedule-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .school-hub .day-brief { order:1; width:100%; }
+  .school-hub .district-schools-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .school-hub .district-school-head { flex-wrap:wrap; }
+  .school-hub .district-school-card { padding:12px; }
+  .school-hub .district-school-card h3 { font-size:13px; }
+  .school-hub .weather-widget { display:none!important; }
+  .school-hub .mobile-nav-dock { border-radius:18px 18px 0 0; background:color-mix(in srgb,var(--card-solid) 94%,transparent); }
 }

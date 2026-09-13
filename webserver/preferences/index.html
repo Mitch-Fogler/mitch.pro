@@ -747,7 +747,7 @@
     transition: none !important;
   }
 </style>
-<link rel="stylesheet" href="/preferences-school.css?v=1">
+<link rel="stylesheet" href="/preferences-school.css?v=2">
 </head>
 <body class="prefs-page">
 <main class="app-main prefs-shell">
@@ -2316,6 +2316,32 @@ function setupAppearanceControls() {
 }
 
 function setupAccordions() {
+  if (document.documentElement.classList.contains('school-preferences')) {
+    var sections = Array.from(document.querySelectorAll('.pref-section'));
+    var links = Array.from(document.querySelectorAll('.prefs-jump-nav a'));
+    function showCategory(id) {
+      if (!sections.some(function(section) { return section.id === id; })) id = 'appearance';
+      sections.forEach(function(section) {
+        section.hidden = section.id !== id;
+        section.classList.add('open');
+      });
+      links.forEach(function(link) {
+        if (link.hash === '#' + id) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+      });
+      if (id === 'homepage' && typeof ensurePinnedGamesLoaded === 'function') ensurePinnedGamesLoaded();
+    }
+    links.forEach(function(link) {
+      link.addEventListener('click', function(event) {
+        event.preventDefault();
+        history.replaceState(null, '', link.hash);
+        showCategory(link.hash.slice(1));
+      });
+    });
+    window.addEventListener('hashchange', function() { showCategory(location.hash.slice(1)); });
+    showCategory(location.hash.slice(1));
+    return;
+  }
   document.querySelectorAll('.pref-section').forEach(function(section) {
     var heading = section.querySelector('h2');
     if (!heading) return;
