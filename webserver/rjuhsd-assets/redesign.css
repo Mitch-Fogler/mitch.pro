@@ -251,48 +251,121 @@ body.school-hub { --sans: 'Segoe UI', system-ui, sans-serif; --serif: var(--sans
 .school-hub .school-choice select { min-width:120px; max-width:150px; font-size:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); }
 .school-hub .header-actions .lunch-status { display:none!important; }
 .school-hub main#main { width:min(1180px,calc(100% - 40px)); margin:auto; }
-.school-hub .hero { width:100%; min-height:320px; margin:8px 0 0; padding:28px; grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr); gap:30px; border-radius:22px; background:linear-gradient(110deg,rgba(13,20,24,.82),rgba(13,20,24,.58))!important; box-shadow:0 16px 45px #0002; color:#fff!important; }
-.school-hub .hero-graphic { display:none; }
-.school-hub .hero-content { order:0; padding:0; color:#fff!important; }
-.school-hub .hero-date-panel { display:flex; align-items:center; gap:9px; width:auto; border:1px solid rgba(255,255,255,.16)!important; border-radius:12px!important; padding:4px 10px!important; margin:0 0 24px; background:rgba(255,255,255,.08)!important; box-shadow:none; color:#fff!important; }
-.school-hub .hero-weekday { border:0; padding:0; font-size:10px; letter-spacing:.12em; color:rgba(255,255,255,.8)!important; }
-.school-hub .hero-date-main { padding:0; gap:5px; color:#fff!important; }
-.school-hub .hero-date-main>strong { font:600 12px/1 var(--sans); letter-spacing:0; color:#fff!important; }
-.school-hub .hero-date-main>span { min-width:0; padding:0; border:0; color:rgba(255,255,255,.8)!important; }
-.school-hub .hero-date-main b { font:600 12px/1 var(--sans); color:#fff!important; }
-.school-hub .hero-date-main small,.school-hub .hero-overline { display:none; }
-.school-hub .hero h1 { font-size:clamp(30px,3.6vw,45px); line-height:1.05; letter-spacing:-.055em; margin:0 0 12px; color:#fff!important; }
-.school-hub .hero h1 em { font-size:.72em; opacity:.85; color:#fff!important; }
-.school-hub .hero-summary { font-size:12px; line-height:1.6; color:rgba(255,255,255,.82)!important; }
-.school-hub .hero-actions { gap:8px; margin-top:20px; }
-.school-hub .hero-actions .primary-button { min-height:38px; padding:0 14px; text-transform:none; font-size:11px; letter-spacing:0; background:var(--school-primary,#500000)!important; color:#fff!important; border-color:var(--school-primary,#500000)!important; }
-.school-hub .hero-actions .secondary-button { min-height:38px; padding:0 14px; text-transform:none; font-size:11px; letter-spacing:0; background:rgba(255,255,255,.12)!important; color:#fff!important; border:1px solid rgba(255,255,255,.24)!important; }
-.school-hub .hero-actions .secondary-button:hover { background:rgba(255,255,255,.22)!important; }
-.school-hub .live-card { min-height:0; width:100%; border:0; border-left:1px solid #ffffff24; border-radius:0; padding-left:28px; background:transparent!important; box-shadow:none; backdrop-filter:none; color:#fff!important; }
-.school-hub .live-card-top { padding:0; height:28px; border:0; }
-.school-hub .live-card-top>span b { color:#fff!important; }
-.school-hub .live-card-top>time { font-size:11px; color:rgba(255,255,255,.85)!important; }
-.school-hub .live-card-body { display:grid; grid-template-columns:minmax(0,1fr) auto; text-align:left; padding:16px 0 12px; color:#fff!important; }
-.school-hub .live-card-body>p:first-of-type { grid-column:1; font-size:9px; margin:0; color:rgba(255,255,255,.75)!important; }
-.school-hub .period-badge { border:1px solid rgba(255,255,255,.25)!important; background:rgba(255,255,255,.1)!important; color:#fff!important; }
-.school-hub .live-card h2 { grid-column:1; margin:6px 0; font-size:21px; color:#fff!important; }
-.school-hub .period-range { grid-column:1; font-size:11px; color:rgba(255,255,255,.8)!important; }
-.school-hub .countdown-dial { grid-column:1/-1; width:100%; height:auto; min-height:94px; margin:12px 0; justify-items:start; }
-.school-hub .countdown-dial>svg { display:none; }
-.school-hub .countdown-center { justify-items:start; }
-.school-hub .countdown-center .countdown { font-size:clamp(56px,6.8vw,88px); font-weight:600; letter-spacing:-.065em; line-height:1; color:#fff!important; }
-.school-hub .countdown-center .countdown-copy { max-width:none; font-size:10px; text-transform:none; letter-spacing:.02em; color:rgba(255,255,255,.8)!important; }
-.school-hub .countdown-details { grid-column:2; grid-row:1/4; display:flex!important; align-items:center; margin:0; padding-left:18px; border:0; border-left:1px solid #fff2; border-radius:0; background:none; }
-.school-hub .countdown-details>span { border:0; padding:0; }
-.school-hub .countdown-details>span:not(:first-child) { display:none; }
-.school-hub .countdown-details small { color:rgba(255,255,255,.7)!important; }
-.school-hub .countdown-details strong { font-size:16px; margin-top:7px; color:#fff!important; }
-.school-hub .live-card-body>.progress { grid-column:1/-1; width:100%; max-width:none; height:5px; }
-.school-hub .progress span { background:#d2e1d6; }
-.school-hub .live-next { min-height:34px; padding:4px 0 0; justify-content:flex-start; gap:12px; background:none; }
-.school-hub .live-next span { color:rgba(255,255,255,.7)!important; }
-.school-hub .live-next strong { color:#fff!important; }
-.school-hub .live-next time { margin-left:auto; color:rgba(255,255,255,.85)!important; }
+.school-hub .hero {
+  width: 100%;
+  min-height: 320px;
+  margin: 8px 0 0;
+  padding: 28px;
+  grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr);
+  gap: 30px;
+  border-radius: 22px;
+  border: 1px solid var(--line) !important;
+  border-top: 4px solid var(--school-primary, #500000) !important;
+  background: color-mix(in srgb, var(--card-solid) 88%, transparent) !important;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, .07) !important;
+  backdrop-filter: blur(18px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+  color: var(--ink) !important;
+  transition: background .22s ease, border-color .22s ease, box-shadow .22s ease, color .22s ease !important;
+}
+.school-hub .hero-graphic { display: none; }
+.school-hub .hero-content { order: 0; padding: 0; color: inherit !important; }
+.school-hub .hero-date-panel { display: flex; align-items: center; gap: 9px; width: auto; border: 1px solid var(--line) !important; border-radius: 12px !important; padding: 4px 10px !important; margin: 0 0 24px; background: var(--wine-soft) !important; box-shadow: none; color: var(--wine) !important; transition: all .2s ease; }
+.school-hub .hero-weekday { border: 0; padding: 0; font-size: 10px; letter-spacing: .12em; color: var(--wine) !important; font-weight: 700; }
+.school-hub .hero-date-main { padding: 0; gap: 5px; color: var(--ink) !important; }
+.school-hub .hero-date-main>strong { font: 600 12px/1 var(--sans); letter-spacing: 0; color: var(--ink) !important; }
+.school-hub .hero-date-main>span { min-width: 0; padding: 0; border: 0; color: var(--muted) !important; }
+.school-hub .hero-date-main b { font: 600 12px/1 var(--sans); color: var(--ink) !important; }
+.school-hub .hero-date-main small, .school-hub .hero-overline { display: none; }
+.school-hub .hero h1 { font-size: clamp(30px, 3.6vw, 45px); line-height: 1.05; letter-spacing: -.055em; margin: 0 0 12px; color: var(--ink) !important; }
+.school-hub .hero h1 em { font-size: .72em; opacity: 1; color: var(--wine) !important; }
+.school-hub .hero-summary { font-size: 12px; line-height: 1.6; color: var(--muted) !important; }
+.school-hub .hero-actions { gap: 8px; margin-top: 20px; }
+.school-hub .hero-actions .primary-button { min-height: 38px; padding: 0 14px; text-transform: none; font-size: 11px; letter-spacing: 0; background: var(--school-primary, #500000) !important; color: #fff !important; border-color: var(--school-primary, #500000) !important; }
+.school-hub .hero-actions .secondary-button { min-height: 38px; padding: 0 14px; text-transform: none; font-size: 11px; letter-spacing: 0; background: var(--card) !important; color: var(--ink) !important; border: 1px solid var(--line) !important; transition: all .15s ease; }
+.school-hub .hero-actions .secondary-button:hover { background: var(--wine-soft) !important; color: var(--wine) !important; border-color: var(--wine) !important; }
+.school-hub .live-card { min-height: 0; width: 100%; border: 0; border-left: 1px solid var(--line) !important; border-radius: 0; padding-left: 28px; background: transparent !important; box-shadow: none; backdrop-filter: none; color: var(--ink) !important; transition: border-color .2s ease; }
+.school-hub .live-card-top { padding: 0; height: 28px; border: 0; }
+.school-hub .live-card-top>span b { color: var(--wine) !important; }
+.school-hub .live-card-top>time { font-size: 11px; color: var(--muted) !important; }
+.school-hub .live-card-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; text-align: left; padding: 16px 0 12px; color: var(--ink) !important; }
+.school-hub .live-card-body>p:first-of-type { grid-column: 1; font-size: 9px; margin: 0; color: var(--wine) !important; font-weight: 700; letter-spacing: .08em; }
+.school-hub .period-badge { border: 1px solid var(--line) !important; background: var(--wine-soft) !important; color: var(--wine) !important; }
+.school-hub .live-card h2 { grid-column: 1; margin: 6px 0; font-size: 21px; color: var(--ink) !important; }
+.school-hub .period-range { grid-column: 1; font-size: 11px; color: var(--muted) !important; }
+.school-hub .countdown-dial { grid-column: 1/-1; width: 100%; height: auto; min-height: 94px; margin: 12px 0; justify-items: start; }
+.school-hub .countdown-dial>svg { display: none; }
+.school-hub .countdown-center { justify-items: start; }
+.school-hub .countdown-center .countdown { font-size: clamp(56px, 6.8vw, 88px); font-weight: 600; letter-spacing: -.065em; line-height: 1; color: var(--ink) !important; }
+.school-hub .countdown-center .countdown-copy { max-width: none; font-size: 10px; text-transform: none; letter-spacing: .02em; color: var(--muted) !important; }
+.school-hub .countdown-details { grid-column: 2; grid-row: 1/4; display: flex !important; align-items: center; margin: 0; padding-left: 18px; border: 0; border-left: 1px solid var(--line) !important; border-radius: 0; background: none; }
+.school-hub .countdown-details>span { border: 0; padding: 0; }
+.school-hub .countdown-details>span:not(:first-child) { display: none; }
+.school-hub .countdown-details small { color: var(--muted) !important; }
+.school-hub .countdown-details strong { font-size: 16px; margin-top: 7px; color: var(--ink) !important; }
+.school-hub .live-card-body>.progress { grid-column: 1/-1; width: 100%; max-width: none; height: 5px; background: var(--line) !important; }
+.school-hub .progress span { background: var(--wine) !important; }
+.school-hub .live-next { min-height: 34px; padding: 4px 0 0; justify-content: flex-start; gap: 12px; background: none; }
+.school-hub .live-next span { color: var(--muted) !important; }
+.school-hub .live-next strong { color: var(--ink) !important; }
+.school-hub .live-next time { margin-left: auto; color: var(--wine) !important; }
+
+/* Dark mode top card (hero HUD): rich dark glass with illuminated dials and white headings */
+body.dark .school-hub .hero {
+  border: 1px solid rgba(255, 255, 255, .16) !important;
+  border-top: 4px solid var(--school-primary, #500000) !important;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--school-primary, #500000) 28%, rgba(13, 20, 24, .88)), rgba(13, 20, 24, .62)) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .hero-content { color: #fff !important; }
+body.dark .school-hub .hero-date-panel {
+  border-color: rgba(255, 255, 255, .16) !important;
+  background: rgba(255, 255, 255, .08) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .hero-weekday { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .hero-date-main { color: #fff !important; }
+body.dark .school-hub .hero-date-main>strong,
+body.dark .school-hub .hero-date-main b { color: #fff !important; }
+body.dark .school-hub .hero-date-main>span { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .hero h1 { color: #fff !important; }
+body.dark .school-hub .hero h1 em { color: rgba(255, 255, 255, .85) !important; }
+body.dark .school-hub .hero-summary { color: rgba(255, 255, 255, .82) !important; }
+body.dark .school-hub .hero-actions .secondary-button {
+  background: rgba(255, 255, 255, .12) !important;
+  border-color: rgba(255, 255, 255, .24) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .hero-actions .secondary-button:hover {
+  background: rgba(255, 255, 255, .22) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .live-card {
+  border-left-color: rgba(255, 255, 255, .18) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .live-card-top>span b { color: #fff !important; }
+body.dark .school-hub .live-card-top>time { color: rgba(255, 255, 255, .85) !important; }
+body.dark .school-hub .live-card-body { color: #fff !important; }
+body.dark .school-hub .live-card-body>p:first-of-type { color: rgba(255, 255, 255, .75) !important; }
+body.dark .school-hub .period-badge {
+  border-color: rgba(255, 255, 255, .25) !important;
+  background: rgba(255, 255, 255, .1) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .live-card h2 { color: #fff !important; }
+body.dark .school-hub .period-range { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .countdown-center .countdown { color: #fff !important; }
+body.dark .school-hub .countdown-center .countdown-copy { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .countdown-details { border-left-color: rgba(255, 255, 255, .15) !important; }
+body.dark .school-hub .countdown-details small { color: rgba(255, 255, 255, .7) !important; }
+body.dark .school-hub .countdown-details strong { color: #fff !important; }
+body.dark .school-hub .live-card-body>.progress { background: rgba(255, 255, 255, .18) !important; }
+body.dark .school-hub .progress span { background: #d2e1d6 !important; }
+body.dark .school-hub .live-next span { color: rgba(255, 255, 255, .7) !important; }
+body.dark .school-hub .live-next strong { color: #fff !important; }
+body.dark .school-hub .live-next time { color: rgba(255, 255, 255, .85) !important; }
 .school-hub .snapshot { width:100%; margin:12px 0 0; border-radius:14px; box-shadow:none; }
 .school-hub .snapshot article { min-height:65px; padding:12px 20px; }
 .school-hub .snapshot-icon { display:none; }
@@ -400,7 +473,8 @@ body.school-hub { --sans: 'Segoe UI', system-ui, sans-serif; --serif: var(--sans
   .school-hub .site-header,.school-hub main#main { width:calc(100% - 20px); }
   .school-hub .site-header { min-height:60px; padding:8px 0; }
   .school-hub .hero { display:flex; flex-direction:column; padding:20px; gap:18px; }
-  .school-hub .hero-content { width:100%; order:1; border-top:1px solid #fff2; padding-top:18px; }
+  .school-hub .hero-content { width:100%; order:1; border-top:1px solid var(--line)!important; padding-top:18px; }
+  body.dark .school-hub .hero-content { border-top-color:rgba(255,255,255,.15)!important; }
   .school-hub .hero-date-panel { margin-bottom:12px; }
   .school-hub .hero h1 { font-size:28px; }
   .school-hub .hero h1 br { display:none; }
