@@ -160,8 +160,8 @@ html.school-preferences .prefs-page .key-badge { min-height: 42px !important; bo
 html.school-preferences .prefs-page .chip { min-height: 44px !important; border-radius: 11px !important; background: var(--t-bg3) !important; }
 html.school-preferences .prefs-page .chip:hover,
 html.school-preferences .prefs-page .chip.active { box-shadow: 0 7px 18px rgba(0,0,0,.13) !important; }
-html.school-preferences .prefs-page .bg-chip-row { grid-template-columns: repeat(auto-fill,minmax(112px,1fr)) !important; }
-html.school-preferences .prefs-page .bg-chip { min-height: 82px; border-radius: 12px !important; }
+html.school-preferences .prefs-page .bg-chip-row { grid-template-columns: repeat(auto-fill,minmax(min(100%,210px),1fr)) !important; }
+html.school-preferences .prefs-page .bg-chip { width:100%; min-height:0; aspect-ratio:16/9; border-radius:12px !important; }
 html.school-preferences .prefs-page .soft-btn,
 html.school-preferences .prefs-page #saveBtn { min-height: 42px !important; border-radius: 10px !important; }
 html.school-preferences .prefs-page .soft-btn.primary,
