@@ -88,7 +88,8 @@ fi
 
 # Keep /usr/local/bin/deploy.sh synchronized with repo if running as root
 if [ -f "$PROJECT_DIR/tools/deploy.sh" ] && [ "$(id -u)" -eq 0 ]; then
-    cp "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh 2>/dev/null || true
+    cp "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh.tmp && mv -f /usr/local/bin/deploy.sh.tmp /usr/local/bin/deploy.sh 2>/dev/null || true
+    chmod +x /usr/local/bin/deploy.sh 2>/dev/null || true
 fi
 
 echo "[deploy] Starting Blue-Green deployment swap..."
