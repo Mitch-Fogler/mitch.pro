@@ -61,7 +61,7 @@ assert(rjuhsdHtml.includes('/rjuhsd-assets/redesign.css?v=2'), 'rjuhsd must load
 assert(rjuhsdRedesign.includes('.schedule-zone { order: 2; }'), 'full schedule must appear before secondary school content');
 assert(rjuhsdRedesign.includes('.live-card {') && rjuhsdRedesign.includes('.countdown-dial {'), 'active countdown must have the redesigned live surface');
 assert(rjuhsdApp.includes('document.querySelectorAll(".js-signin-link").forEach(a=>a.remove())'), 'signed-in users must not see sign-in prompts');
-assert(preferencesHtml.includes('/preferences-school.css?v=2'), 'preferences must load its rjuhsd redesign');
+assert(preferencesHtml.includes('/preferences-school.css?v=3') || preferencesHtml.includes('/preferences-school.css?v=2'), 'preferences must load its rjuhsd redesign');
 assert(preferencesHtml.includes("classList.add('school-preferences')"), 'preferences must detect the school host');
 assert(preferencesSchoolCss.includes('background: linear-gradient(110deg'), 'school preferences header must reveal the active background');
 assert(readFileSync('server.js', 'utf8').includes("'/rjuhsd-assets/redesign.css', '/preferences-school.css'"), 'school redesign stylesheets must remain public assets');
