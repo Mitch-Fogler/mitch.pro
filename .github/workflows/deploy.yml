@@ -6,14 +6,55 @@ on:
       - master
   workflow_dispatch:
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   test:
     name: Unit tests
     runs-on: ubuntu-latest
+    outputs:
+      only_static: ${{ steps.diff_check.outputs.only_static }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for non-static changes
+        id: diff_check
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.event.before }}" != "" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            git fetch origin ${{ github.event.before }} --depth=1 2>/dev/null || true
+            CHANGED=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }} 2>/dev/null || git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          else
+            CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          ONLY_STATIC=true
+          if [ -z "$CHANGED" ]; then
+            ONLY_STATIC=false
+          else
+            while IFS= read -r file; do
+              [ -z "$file" ] && continue
+              case "$file" in
+                webserver/*|docs/*|*.md|.gitignore|LICENSE|*.txt)
+                  ;;
+                *)
+                  ONLY_STATIC=false
+                  break
+                  ;;
+              esac
+            done <<< "$CHANGED"
+          fi
+
+          echo "only_static=$ONLY_STATIC" >> "$GITHUB_OUTPUT"
+          echo "Is only static changes: $ONLY_STATIC"
 
       - name: Install Bun
         uses: oven-sh/setup-bun@v1
@@ -35,7 +76,7 @@ jobs:
     needs: test
 
     steps:
-      - name: Trigger Remote Blue-Green Deployment
+      - name: Trigger Remote Deployment
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -43,6 +84,38 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 38222
           script: |
+            if [ "${{ needs.test.outputs.only_static }}" = "true" ]; then
+              echo "[deploy-ci] Push contains ONLY static changes. Running fast static deploy..."
+              git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
+              git -C /home/mitch/server/bun pull origin master
+
+              SECRET_KEY=""
+              if [ -f /home/mitch/server/bun/.env ]; then
+                SECRET_KEY=$(grep -E "^SECRET_KEY=" /home/mitch/server/bun/.env | cut -d= -f2- | tr -d '"' | tr -d "'")
+              fi
+
+              REFRESHED=false
+              for URL in "http://localhost:6800/api/cache/refresh" "http://localhost:6811/api/cache/refresh" "http://localhost:6812/api/cache/refresh"; do
+                STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+                  -H "Content-Type: application/json" \
+                  -H "Authorization: Bearer $SECRET_KEY" \
+                  -H "X-Internal-Refresh: 1" \
+                  -H "Host: mitch.pro" \
+                  -d '{"files":[]}' "$URL" || echo "000")
+                if [ "$STATUS" = "200" ]; then
+                  REFRESHED=true
+                  echo "[deploy-ci] Static cache refreshed via $URL (HTTP 200)"
+                fi
+              done
+
+              if [ "$REFRESHED" = "true" ]; then
+                echo "[deploy-ci] Static deploy completed successfully in seconds!"
+                exit 0
+              fi
+              echo "[deploy-ci] Cache refresh failed; falling back to full deployment script..."
+            fi
+
+            echo "[deploy-ci] Running full blue-green deployment..."
             sudo -u mitch git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
             sudo /usr/local/bin/deploy.sh
             if ! grep -q "@not_game_content" /home/mitch/server/bun/caddy/Caddyfile; then
