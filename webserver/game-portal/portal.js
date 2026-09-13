@@ -360,8 +360,13 @@
       renderFeatured();
       renderRecent();
       render();
-      var requested = Number(new URLSearchParams(location.search).get('game'));
-      if (Number.isInteger(requested) && games[requested]) launch(games[requested]);
+      var gameParam = new URLSearchParams(location.search).get('game');
+      if (gameParam !== null && gameParam.trim() !== '') {
+        var requested = Number(gameParam);
+        if (Number.isInteger(requested) && requested >= 0 && games[requested]) {
+          launch(games[requested]);
+        }
+      }
       heartbeat(false);
     })
     .catch(function () {
