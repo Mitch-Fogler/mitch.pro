@@ -1,3 +1,4 @@
+/* Game Portal Styles */
 :root {
   --gp-bg: var(--t-bg, #08090d);
   --gp-deep: color-mix(in srgb, var(--gp-bg) 88%, #000);

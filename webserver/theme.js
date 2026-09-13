@@ -237,14 +237,14 @@
   // this manifest is only the offline fallback.
   var THEME_BGS = [
     { id: 'starfield', name: 'Starfield', url: 'effect:starfield', effect: 'starfield', script: '/backgrounds/starfield.js?v=1', preview: 'radial-gradient(circle at 18% 28%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 72% 24%,#c5bcff 0 1.5px,transparent 3px),radial-gradient(circle at 43% 75%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 85% 68%,#d8e8ff 0 1px,transparent 2px),radial-gradient(ellipse at 65% 25%,#17213f,#030713)' },
-    { id: 'wallhaven-ghost-of-tsushima', name: 'Ghost of Tsushima', url: SCHOOL_BACKGROUND_DEFAULT },
-    { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp' },
-    { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp' },
-    { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp' },
-    { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp' },
-    { id: 'brine', name: 'Brine', url: '/backgrounds/bg-brine-deep.webp' },
-    { id: 'neon-grid', name: 'Neon Grid', url: '/backgrounds/bg-neon-grid.webp' },
-    { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp' }
+    { id: 'wallhaven-ghost-of-tsushima', name: 'Ghost of Tsushima', url: SCHOOL_BACKGROUND_DEFAULT, thumbUrl: '/backgrounds/thumbs/wallhaven-ghost-of-tsushima.webp' },
+    { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp', thumbUrl: '/backgrounds/thumbs/wallhaven-black-mountain.webp' },
+    { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp', thumbUrl: '/backgrounds/thumbs/bg-burning-cherry.webp' },
+    { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp', thumbUrl: '/backgrounds/thumbs/bg-aurora-mesh.webp' },
+    { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp', thumbUrl: '/backgrounds/thumbs/bg-dusk-mesh.webp' },
+    { id: 'brine', name: 'Brine', url: '/backgrounds/bg-brine-deep.webp', thumbUrl: '/backgrounds/thumbs/bg-brine-deep.webp' },
+    { id: 'neon-grid', name: 'Neon Grid', url: '/backgrounds/bg-neon-grid.webp', thumbUrl: '/backgrounds/thumbs/bg-neon-grid.webp' },
+    { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp', thumbUrl: '/backgrounds/thumbs/bg-paper-grain.webp' }
   ];
 
   function isHomePage() {
@@ -727,7 +727,7 @@
     'html[data-bglayer]{background:var(--t-bg)!important}' +
     'html[data-bg-effect]{background:#050b1b!important}' +
     'html[data-bg-effect]::before{display:none!important}' +
-    'html[data-bg-effect].theme-light :is(.page-head,.page-header) :is(h1,p){color:#eef2ff!important}' +
+    'html[data-bg-effect].theme-light body:not(.prefs-page) :is(.page-head,.page-header) :is(h1,p){color:#eef2ff!important}' +
     'html[data-bglayer]::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;' +
       'opacity:var(--t-bg-layer-opacity,1);' +
       // Shorthand, not background-image: page-owned --t-bgr values carry their
@@ -776,8 +776,8 @@
     '.theme-light .sw-notif-item{background:rgba(0,0,0,0.025)!important;border:1px solid rgba(0,0,0,0.07)!important;}' +
     '.theme-light .sw-notif-empty{color:rgba(15,17,35,0.45)!important;}' +
     '.theme-light .sw-notif-head button,.theme-light .sw-notif-head a.sw-notif-settings,.theme-light .sw-notif-actions button,.theme-light .sw-notif-open{background:rgba(0,0,0,0.04)!important;border:1px solid rgba(0,0,0,0.1)!important;color:var(--t-ac)!important;}' +
-    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action){background:rgba(255,255,255,0.7)!important;border:1px solid rgba(0,0,0,0.12)!important;color:var(--t-ac)!important;}' +
-    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):hover{background:rgba(255,255,255,0.9)!important;box-shadow:0 4px 16px rgba(0,0,0,0.08)!important;}' +
+    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):not(.bg-chip):not(.bg-chip-del):not(.chip):not(.soft-btn):not(.weather-summary):not(.primary-button):not(.secondary-button):not([data-theme]){background:rgba(255,255,255,0.7)!important;border:1px solid rgba(0,0,0,0.12)!important;color:var(--t-ac)!important;}' +
+    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):not(.bg-chip):not(.bg-chip-del):not(.chip):not(.soft-btn):not(.weather-summary):not(.primary-button):not(.secondary-button):not([data-theme]):hover{background:rgba(255,255,255,0.9)!important;box-shadow:0 4px 16px rgba(0,0,0,0.08)!important;}' +
     '.theme-light input:not([type=range]):not([type=color]),.theme-light textarea,.theme-light select{background:rgba(255,255,255,0.7)!important;color:#0f1123!important;border:1px solid rgba(0,0,0,0.12)!important;}' +
     '.theme-light input::placeholder,.theme-light textarea::placeholder{color:rgba(15,17,35,0.4)!important;}' +
     '.theme-light .back-btn{color:var(--t-ac)!important;}' +
@@ -825,7 +825,7 @@
     // a dark amber and drop the glow so usernames stay legible.
     '.theme-light .name.gold_glow,.theme-light .entry-name.gold_glow,.theme-light .display-name.gold_glow,.theme-light .author.gold_glow{color:#b45309!important;text-shadow:none!important;}' +
     '.theme-light .badge-premium,.theme-light .badge-shop,.theme-light .premium-label{color:#b45309!important;}';
-  lightStyle.textContent = lightStyle.textContent.replaceAll('.theme-light button:not', '.theme-light body:not(.mitch-design) button:not');
+  lightStyle.textContent = lightStyle.textContent.replaceAll('.theme-light button:not', '.theme-light body:not(.mitch-design):not(.prefs-page):not(.school-hub) button:not');
   document.head.appendChild(lightStyle);
 
   function buildToggle() {
