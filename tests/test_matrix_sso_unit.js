@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import './test_matrix_word_filter.js';
 import { join } from 'node:path';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -686,6 +687,22 @@ try {
   assert.equal(resSend.status, 200, 'Sending Matrix message should return 200');
   const dataSend = await resSend.json();
   assert(dataSend.event_id, 'Send message response must contain event_id');
+
+  for (const [version, eventType, content, expected] of [
+    ['v3', 'm.room.message', { body: 'Try SCRAMJET' }, 403],
+    ['r0', 'm.room.message', { body: 'hello', 'm.new_content': { body: 'ultraviolet' } }, 403],
+    ['v3', 'm.room.message', { body: 'hello', formatted_body: '<b>pro</b>xy' }, 403],
+    ['v3', 'm.room.message', { body: 'Torres explained the method' }, 200],
+    ['v3', 'm.room.encrypted', { algorithm: 'm.megolm.v1.aes-sha2', ciphertext: 'opaque-test-content' }, 200],
+  ]) {
+    const filtered = await fetch(`${BASE_URL}/_matrix/client/${version}/rooms/!official_general:mitch.pro/send/${eventType}/policy_${randomBytes(4).toString('hex')}`, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+      body: JSON.stringify(content),
+    });
+    assert.equal(filtered.status, expected, `Matrix word policy: ${version} ${eventType} ${JSON.stringify(content)}`);
+    if (expected === 403) assert.equal((await filtered.json()).errcode, 'M_FORBIDDEN');
+  }
 
   const resInvite = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/invite`, {
     method: 'POST',

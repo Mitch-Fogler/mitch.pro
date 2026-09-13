@@ -33,6 +33,7 @@ import { RJUHSD_ORIGIN, bellScheduleRedirect, blooketBotRedirect } from './lib/s
 import { ProxmoxDesktopService, ProxmoxServiceError } from './lib/proxmox_desktop.js';
 import { canAccessVmRecord, validateDesktopSession, VmOperationGate } from './lib/vm_security.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
+import { matrixMessageBlocked } from './lib/matrix_word_filter.js';
 import {
   GAME_PORTAL_REWARD_PER_MINUTE,
   GAME_PORTAL_DAILY_CAP,
@@ -9170,6 +9171,18 @@ async function handleRequest(req, server) {
     const sendMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/send\/([^/]+)(?:\/([^/]+))?$/);
     const stateMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/state\/([^/]+)(?:\/([^/]+))?$/);
     const inviteMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/invite$/);
+
+    // Enforce readable-message policy before forwarding to the homeserver.
+    // This includes replacements (edits), captions, and formatted text, for all roles.
+    const policySend = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0|v1|unstable)\/rooms\/[^/]+\/send\/([^/]+)(?:\/[^/]+)?$/);
+    if (policySend && decodeURIComponent(policySend[1]) === 'm.room.message' && capturedBodyText !== null) {
+      let content;
+      try { content = JSON.parse(capturedBodyText); }
+      catch { return jsonResp(400, { errcode: 'M_BAD_JSON', error: 'Invalid message content.' }); }
+      if (matrixMessageBlocked(content)) {
+        return jsonResp(403, { errcode: 'M_FORBIDDEN', error: 'Your message contains a word or phrase that is not allowed in this chat. Please edit it and try again.' });
+      }
+    }
 
     // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
     const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
