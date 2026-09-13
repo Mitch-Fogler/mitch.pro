@@ -13,4 +13,6 @@ assert(matrixMessageBlocked({ body: 'hello', 'm.new_content': { body: 'VPN' } })
 assert(matrixMessageBlocked({ body: 'hello', formatted_body: '<b>pro</b>xy' }));
 assert(matrixMessageBlocked({ formatted_body: '&#112;roxy' }));
 assert(matrixMessageBlocked({ body: 'photo', filename: 'nude.png' }));
+assert(matrixMessageBlocked({ body: 'go check scrammerjet unblocker' }));
+assert(matrixMessageBlocked({ body: 'play on gn math during class' }));
 console.log('Matrix policy: all terms, boundaries, edits, HTML, Unicode, and attachment names passed.');
