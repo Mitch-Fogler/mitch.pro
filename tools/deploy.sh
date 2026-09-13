@@ -98,7 +98,7 @@ send_notification "Rebuilding and starting webserver-$INACTIVE_SLOT (Port $INACT
 
 # 3. Build and boot the inactive slot container, SSH gateway, and conduit
 echo "[deploy] Rebuilding and starting webserver-$INACTIVE_SLOT, ssh-gateway, and conduit..."
-run_docker_compose --progress=plain up -d --build "webserver-$INACTIVE_SLOT" ssh-gateway conduit
+run_docker_compose --progress=plain up -d --build "webserver-$INACTIVE_SLOT" ssh-gateway conduit deploy-sync
 
 # 4. Poll the inactive container's health check until it is fully ready
 echo "[deploy] Waiting for webserver-$INACTIVE_SLOT to be fully started and responsive..."
