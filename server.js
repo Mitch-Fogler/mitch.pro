@@ -9096,20 +9096,38 @@ async function handleRequest(req, server) {
   // id; the path is always rebuilt from the stored metadata record, never
   // from user input.
   {
-    const bgMatch = method === 'GET' && /^\/api\/bg\/([0-9a-f]{24})\.(png|jpg|webp|webm)$/.exec(path);
+    const bgMatch = method === 'GET' && /^\/api\/bg\/(?:(thumb)\/)?([0-9a-f]{24})\.(png|jpg|webp|webm)$/.exec(path);
     if (bgMatch) {
+      const isThumb = bgMatch[1] === 'thumb';
+      const fileId = bgMatch[2];
+      const reqExt = bgMatch[3];
       const lib = bgLibrary();
       let rec = null;
       let ownerNorm = '';
       for (const [norm, items] of Object.entries(lib)) {
-        const hit = (Array.isArray(items) ? items : []).find(item => item.id === bgMatch[1]);
+        const hit = (Array.isArray(items) ? items : []).find(item => item.id === fileId);
         if (hit) { rec = hit; ownerNorm = norm; break; }
       }
-      const ext = rec ? bgMimeExt(rec.mime) : '';
-      if (!rec || ext !== bgMatch[2] || !/^[0-9a-f]{24}\.[a-z0-9]+$/.test(rec.file)) {
+      if (!rec) return new Response(null, { status: 404 });
+      const dir = join(BG_UPLOAD_DIR, createHash('sha256').update(ownerNorm).digest('hex').slice(0, 32));
+      if (isThumb) {
+        const thumbPath = join(dir, `${fileId}_thumb.webp`);
+        if (existsSync(thumbPath)) {
+          return new Response(Bun.file(thumbPath), {
+            headers: {
+              'Content-Type': 'image/webp',
+              'Cache-Control': 'public, max-age=31536000, immutable',
+              'Access-Control-Allow-Origin': PICKLE_ORIGIN,
+              'Vary': 'Origin',
+              'Cross-Origin-Resource-Policy': 'cross-origin'
+            }
+          });
+        }
+      }
+      const ext = bgMimeExt(rec.mime);
+      if (ext !== reqExt || !/^[0-9a-f]{24}\.[a-z0-9]+$/.test(rec.file)) {
         return new Response(null, { status: 404 });
       }
-      const dir = join(BG_UPLOAD_DIR, createHash('sha256').update(ownerNorm).digest('hex').slice(0, 32));
       return new Response(Bun.file(join(dir, rec.file)), {
         headers: {
           'Content-Type': rec.mime,
@@ -10737,6 +10755,46 @@ async function handleRequest(req, server) {
     }
   }
 
+  const thumbConverting = new Set();
+
+  function generateBackgroundThumbs(dir) {
+    try {
+      if (!existsSync(dir)) return;
+      const thumbsDir = join(dir, 'thumbs');
+      if (!existsSync(thumbsDir)) {
+        try { mkdirSync(thumbsDir, { recursive: true }); } catch {}
+      }
+      const files = readdirSync(dir);
+      for (const f of files) {
+        if (f === 'thumbs') continue;
+        const ext = extname(f).toLowerCase();
+        if (ext !== '.webp' && ext !== '.webm' && ext !== '.png' && ext !== '.jpg' && ext !== '.jpeg') continue;
+        const inputPath = join(dir, f);
+        try {
+          if (statSync(inputPath).isDirectory()) continue;
+        } catch { continue; }
+        const base = basename(f, ext);
+        const thumbFile = join(thumbsDir, `${base}.webp`);
+        if (existsSync(thumbFile) && statSync(thumbFile).size > 0) continue;
+        if (thumbConverting.has(inputPath)) continue;
+        thumbConverting.add(inputPath);
+        const isVideo = ext === '.webm' || ext === '.mp4';
+        const ffmpegArgs = isVideo
+          ? ['-y', '-ss', '00:00:01', '-i', inputPath, '-vframes', '1', '-vf', 'scale=240:-1', '-q:v', '75', thumbFile]
+          : ['-y', '-i', inputPath, '-vf', 'scale=240:-1', '-q:v', '75', thumbFile];
+        const proc = spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
+        proc.on('exit', (code) => {
+          thumbConverting.delete(inputPath);
+          if (code === 0 && existsSync(thumbFile) && statSync(thumbFile).size > 0) {
+            bgListCacheMtime = -1;
+          }
+        });
+      }
+    } catch (err) {
+      console.error('[backgrounds] thumb generation error:', err?.message || err);
+    }
+  }
+
   function bgLibrary() { return loadJson(BACKGROUNDS_FILE, {}); }
 
   /* GET /api/backgrounds/list — the official wallpaper chips. Reads
@@ -10750,18 +10808,26 @@ async function handleRequest(req, server) {
     try {
       const dir = join(WEBROOT, 'backgrounds');
       convertBackgroundsToWebm(dir);
+      generateBackgroundThumbs(dir);
       const mtime = statSync(dir).mtimeMs;
       if (!bgListCache || mtime !== bgListCacheMtime) {
+        const thumbsDir = join(dir, 'thumbs');
         bgListCache = readdirSync(dir)
-          .filter(f => f.endsWith('.webp') || f.endsWith('.webm'))
+          .filter(f => (f.endsWith('.webp') || f.endsWith('.webm')) && !statSync(join(dir, f)).isDirectory())
           .sort()
-          .map(f => ({
-            id: f.replace(/\.(webp|webm)$/, '').replace(/^bg-/, ''),
-            name: f.replace(/\.(webp|webm)$/, '').replace(/^bg-/, '').replace(/-/g, ' ')
-                   .replace(/\b\w/g, c => c.toUpperCase()),
-            url: `/backgrounds/${f}`,
-            type: f.endsWith('.webm') ? 'video' : 'image'
-          }));
+          .map(f => {
+            const base = f.replace(/\.(webp|webm)$/, '');
+            const thumbName = `${base}.webp`;
+            const hasThumb = existsSync(join(thumbsDir, thumbName));
+            return {
+              id: base.replace(/^bg-/, ''),
+              name: base.replace(/^bg-/, '').replace(/-/g, ' ')
+                     .replace(/\b\w/g, c => c.toUpperCase()),
+              url: `/backgrounds/${f}`,
+              thumbUrl: hasThumb ? `/backgrounds/thumbs/${thumbName}` : `/backgrounds/${f}`,
+              type: f.endsWith('.webm') ? 'video' : 'image'
+            };
+          });
         bgListCacheMtime = mtime;
       }
       return jsonResp(200, { ok: true, items: bgListCache });
@@ -10815,6 +10881,14 @@ async function handleRequest(req, server) {
     const filename = `${id}.${ext}`;
     const filePath = join(uDir, filename);
     writeFileSync(filePath, bytes);
+    try {
+      const thumbPath = join(uDir, `${id}_thumb.webp`);
+      const isVideo = ext === 'webm' || ext === 'mp4';
+      const ffmpegArgs = isVideo
+        ? ['-y', '-ss', '00:00:01', '-i', filePath, '-vframes', '1', '-vf', 'scale=240:-1', '-q:v', '75', thumbPath]
+        : ['-y', '-i', filePath, '-vf', 'scale=240:-1', '-q:v', '75', thumbPath];
+      spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
+    } catch {}
 
     items.push({
       id,
@@ -10833,14 +10907,19 @@ async function handleRequest(req, server) {
     const { email } = authedEmailForRequest();
     if (!email) return jsonResp(401, { error: 'not logged in' });
     const norm = normalizeEmail(email);
-    const items = (bgLibrary()[norm] || []).map(item => ({
-      id: item.id,
-      url: `/api/bg/${item.file}`,
-      mime: item.mime,
-      bytes: item.bytes,
-      name: item.name || '',
-      ts: item.ts
-    }));
+    const uDir = bgUserDir(norm);
+    const items = (bgLibrary()[norm] || []).map(item => {
+      const hasThumb = existsSync(join(uDir, `${item.id}_thumb.webp`));
+      return {
+        id: item.id,
+        url: `/api/bg/${item.file}`,
+        thumbUrl: hasThumb ? `/api/bg/thumb/${item.id}.webp` : `/api/bg/${item.file}`,
+        mime: item.mime,
+        bytes: item.bytes,
+        name: item.name || '',
+        ts: item.ts
+      };
+    });
     return jsonResp(200, { ok: true, items });
   }
 
@@ -10858,6 +10937,7 @@ async function handleRequest(req, server) {
     if (idx === -1) return jsonResp(404, { error: 'not found' });
     const [removed] = items.splice(idx, 1);
     try { unlinkSync(join(bgUserDir(norm), removed.file)); } catch {}
+    try { unlinkSync(join(bgUserDir(norm), `${removed.id}_thumb.webp`)); } catch {}
     lib[norm] = items;
     await saveJson(BACKGROUNDS_FILE, lib);
     return jsonResp(200, { ok: true });
@@ -24727,7 +24807,11 @@ function isPrivateIP(ip, ipType) {
 
 // ── Start server ──────────────────────────────────────────────────────────────
 
-try { convertBackgroundsToWebm(join(WEBROOT, 'backgrounds')); } catch {}
+try {
+  const bgDir = join(WEBROOT, 'backgrounds');
+  convertBackgroundsToWebm(bgDir);
+  generateBackgroundThumbs(bgDir);
+} catch {}
 
 console.log(`Starting server on http://${HOST}:${PORT}...`);
 

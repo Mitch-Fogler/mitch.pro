@@ -237,14 +237,14 @@
   // this manifest is only the offline fallback.
   var THEME_BGS = [
     { id: 'starfield', name: 'Starfield', url: 'effect:starfield', effect: 'starfield', script: '/backgrounds/starfield.js?v=1', preview: 'radial-gradient(circle at 18% 28%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 72% 24%,#c5bcff 0 1.5px,transparent 3px),radial-gradient(circle at 43% 75%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 85% 68%,#d8e8ff 0 1px,transparent 2px),radial-gradient(ellipse at 65% 25%,#17213f,#030713)' },
-    { id: 'wallhaven-ghost-of-tsushima', name: 'Ghost of Tsushima', url: SCHOOL_BACKGROUND_DEFAULT },
-    { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp' },
-    { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp' },
-    { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp' },
-    { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp' },
-    { id: 'brine', name: 'Brine', url: '/backgrounds/bg-brine-deep.webp' },
-    { id: 'neon-grid', name: 'Neon Grid', url: '/backgrounds/bg-neon-grid.webp' },
-    { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp' }
+    { id: 'wallhaven-ghost-of-tsushima', name: 'Ghost of Tsushima', url: SCHOOL_BACKGROUND_DEFAULT, thumbUrl: '/backgrounds/thumbs/wallhaven-ghost-of-tsushima.webp' },
+    { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp', thumbUrl: '/backgrounds/thumbs/wallhaven-black-mountain.webp' },
+    { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp', thumbUrl: '/backgrounds/thumbs/bg-burning-cherry.webp' },
+    { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp', thumbUrl: '/backgrounds/thumbs/bg-aurora-mesh.webp' },
+    { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp', thumbUrl: '/backgrounds/thumbs/bg-dusk-mesh.webp' },
+    { id: 'brine', name: 'Brine', url: '/backgrounds/bg-brine-deep.webp', thumbUrl: '/backgrounds/thumbs/bg-brine-deep.webp' },
+    { id: 'neon-grid', name: 'Neon Grid', url: '/backgrounds/bg-neon-grid.webp', thumbUrl: '/backgrounds/thumbs/bg-neon-grid.webp' },
+    { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp', thumbUrl: '/backgrounds/thumbs/bg-paper-grain.webp' }
   ];
 
   function isHomePage() {

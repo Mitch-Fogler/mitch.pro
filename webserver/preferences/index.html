@@ -341,9 +341,6 @@
     border: 1px solid var(--t-bd) !important;
     border-radius: 12px !important;
     background-color: var(--t-bg3);
-    background-size: cover !important;
-    background-position: center !important;
-    background-repeat: no-repeat !important;
     cursor: pointer;
     overflow: hidden;
     transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
@@ -372,7 +369,7 @@
     font-size: 11px;
     font-weight: 900;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-    z-index: 3;
+    z-index: 4;
   }
   .bg-chip-del {
     position: absolute;
@@ -387,10 +384,53 @@
     color: #fff;
     font-size: 12px;
     line-height: 1;
-    z-index: 3;
+    z-index: 4;
   }
   .bg-chip:hover .bg-chip-del { display: grid; }
   .bg-chip-del:hover { background: #e11d48; }
+
+  .bg-chip-alt {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--t-fg2);
+    text-align: center;
+    line-height: 1.25;
+    word-break: break-word;
+    pointer-events: none;
+    z-index: 1;
+    background: var(--t-bg3);
+    border-radius: inherit;
+    transition: opacity 0.22s ease;
+  }
+  .bg-chip.loaded .bg-chip-alt {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .bg-chip-media {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+    z-index: 2;
+  }
+  .bg-chip.loaded .bg-chip-media {
+    opacity: 1;
+  }
+  .bg-chip-media.bg-chip-vid {
+    opacity: 1;
+  }
 
   .sort-item {
     display: flex;
@@ -2158,40 +2198,88 @@ function attachBgWheelScroll(el) {
   }, { passive: false });
 }
 
-function applyChipPreview(chip, url) {
+function applyChipPreview(chip, url, name, thumbUrl) {
   var background = window.__theme && window.__theme.getBackground && window.__theme.getBackground(url);
   if (background && background.preview) {
     chip.style.backgroundImage = background.preview;
     var label = document.createElement('span');
     label.textContent = background.name;
-    label.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:3px 6px;background:rgba(5,11,27,0.65);color:#eef2ff;font-size:11px;font-weight:700;letter-spacing:0.02em;text-align:center;pointer-events:none;';
+    label.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:3px 6px;background:rgba(5,11,27,0.65);color:#eef2ff;font-size:11px;font-weight:700;letter-spacing:0.02em;text-align:center;pointer-events:none;z-index:2;';
     chip.appendChild(label);
+    chip.classList.add('loaded');
     return;
   }
-  if (/\.(webm|mp4)($|\?)/i.test(url)) {
-    var vid = document.createElement('video');
-    var srcUrl = url.includes('#') ? url : (url + '#t=0.1');
-    vid.src = srcUrl;
-    vid.preload = 'metadata';
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit;';
-    chip.style.position = 'relative';
-    chip.style.overflow = 'hidden';
-    chip.appendChild(vid);
-    chip.addEventListener('mouseenter', function() { vid.play().catch(function(){}); });
-    chip.addEventListener('mouseleave', function() { vid.pause(); try { vid.currentTime = 0.1; } catch(e){} });
-  } else {
-    chip.style.backgroundImage = 'url("' + url + '")';
-    var img = new Image();
-    img.onload = function() {
-      if (img.naturalHeight > img.naturalWidth * 1.15) {
-        chip.style.backgroundSize = 'contain';
-        chip.style.backgroundRepeat = 'no-repeat';
-        chip.style.backgroundPosition = 'center';
+
+  var displayName = name || chip.title || (url.split('/').pop().replace(/\.(webp|webm|png|jpg|jpeg)$/i, '').replace(/^bg-/, '').replace(/-/g, ' '));
+  var isVid = /\.(webm|mp4)($|\?)/i.test(url);
+  var previewSrc = thumbUrl;
+  if (!previewSrc) {
+    if (url.startsWith('/backgrounds/')) {
+      var base = url.split('/').pop().replace(/\.(webp|webm|png|jpg|jpeg)$/i, '');
+      previewSrc = '/backgrounds/thumbs/' + base + '.webp';
+    } else if (url.startsWith('/api/bg/')) {
+      var match = url.match(/\/api\/bg\/([0-9a-f]{24})\./i);
+      previewSrc = match ? ('/api/bg/thumb/' + match[1] + '.webp') : url;
+    } else {
+      previewSrc = url;
+    }
+  }
+
+  // Alt / placeholder text displayed before image is fully loaded
+  var alt = document.createElement('span');
+  alt.className = 'bg-chip-alt';
+  alt.textContent = displayName;
+  alt.setAttribute('aria-hidden', 'true');
+  chip.appendChild(alt);
+
+  // Compressed preview image
+  var img = document.createElement('img');
+  img.className = 'bg-chip-media';
+  img.alt = displayName;
+  img.loading = 'lazy';
+  img.onload = function() {
+    if (img.naturalHeight > img.naturalWidth * 1.15) {
+      img.style.objectFit = 'contain';
+    }
+    chip.classList.add('loaded');
+  };
+  img.onerror = function() {
+    if (previewSrc !== url && !isVid) {
+      previewSrc = url;
+      img.src = url;
+    }
+  };
+  img.src = previewSrc;
+  if (img.complete && img.naturalWidth > 0) {
+    if (img.naturalHeight > img.naturalWidth * 1.15) {
+      img.style.objectFit = 'contain';
+    }
+    chip.classList.add('loaded');
+  }
+  chip.appendChild(img);
+
+  if (isVid) {
+    var vid = null;
+    chip.addEventListener('mouseenter', function() {
+      if (!vid) {
+        vid = document.createElement('video');
+        var srcUrl = url.includes('#') ? url : (url + '#t=0.1');
+        vid.src = srcUrl;
+        vid.muted = true;
+        vid.playsInline = true;
+        vid.loop = true;
+        vid.className = 'bg-chip-media bg-chip-vid';
+        vid.style.zIndex = '3';
+        chip.appendChild(vid);
       }
-    };
-    img.src = url;
+      vid.play().catch(function(){});
+    });
+    chip.addEventListener('mouseleave', function() {
+      if (vid) {
+        vid.pause();
+        try { vid.currentTime = 0.1; } catch(e){}
+      }
+    });
   }
 }
 
@@ -2205,9 +2293,9 @@ function renderPresetBgChips(presetGrid, bgs, cur) {
     chip.type = 'button';
     chip.className = 'bg-chip' + (effective === b.url ? ' active' : '');
     chip.setAttribute('data-url', b.url);
-    applyChipPreview(chip, b.url);
     chip.title = b.name;
     chip.setAttribute('aria-label', 'Use ' + b.name + ' background');
+    applyChipPreview(chip, b.url, b.name, b.thumbUrl);
     chip.onclick = function() {
       setCookieValue('bgimg', b.url);
       document.getElementById('bgImageInput').value = b.url;
@@ -2247,8 +2335,10 @@ function renderBgChips() {
       chip.type = 'button';
       chip.className = 'bg-chip' + (cur === item.url ? ' active' : '');
       chip.setAttribute('data-url', item.url);
-      applyChipPreview(chip, item.url);
-      chip.title = item.name || 'Uploaded background';
+      var title = item.name || 'Uploaded background';
+      chip.title = title;
+      chip.setAttribute('aria-label', 'Use ' + title);
+      applyChipPreview(chip, item.url, title, item.thumbUrl);
       chip.onclick = function() {
         setCookieValue('bgimg', item.url);
         document.getElementById('bgImageInput').value = item.url;
@@ -2258,7 +2348,7 @@ function renderBgChips() {
       };
       var del = document.createElement('span');
       del.className = 'bg-chip-del';
-      del.style.zIndex = '2';
+      del.style.zIndex = '4';
       del.textContent = '×';
       del.title = 'Delete this background';
       del.onclick = function(ev) {
