@@ -1497,6 +1497,8 @@ const RATE_LIMITS = {
   '/api/script':               [600, 60],
   '/api/admin/js':             [5,   60],
   '/api/admin/trigger-daily-summary': [10, 60],
+  '/api/cache/refresh':        [60,  60],
+  '/api/admin/cache/refresh':  [60,  60],
   '/api/admin/gift-coins':     [10,  60],
   '/api/admin/grant-premium':  [10,  60],
   '/api/admin/revoke-premium': [10,  60],
@@ -5667,6 +5669,9 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/premium/email/register',
   '/api/verify-open',
   '/verify-open.json',
+  '/api/cache/refresh',
+  '/api/admin/cache/refresh',
+  '/api/refresh-cache',
   '/api/matrix/sso-login',
   '/api/matrix/sso-status',
   '/api/matrix/moderation/overview',
@@ -7633,6 +7638,49 @@ function prewarmStaticCache() {
   setTimeout(step, 1500).unref?.();
 }
 prewarmStaticCache();
+
+function clearStaticCache(specificFiles = []) {
+  if (Array.isArray(specificFiles) && specificFiles.length > 0) {
+    let evicted = 0;
+    let reloaded = 0;
+    for (const item of specificFiles) {
+      if (typeof item !== 'string' || !item.trim()) continue;
+      const clean = item.trim().replace(/^\/+/, '');
+      const candidates = [
+        safeWebrootPath('/' + clean),
+        join(WEBROOT, clean),
+        join(BASE, clean),
+      ].filter(Boolean);
+
+      for (const p of candidates) {
+        if (staticCache.has(p)) {
+          const old = staticCache.get(p);
+          staticCacheBytes -= old?.size || 0;
+          staticCache.delete(p);
+          evicted++;
+        }
+        if (existsSync(p)) {
+          try {
+            if (statSync(p).isFile()) {
+              staticCacheLoad(p);
+              reloaded++;
+            }
+          } catch {}
+        }
+      }
+    }
+    console.log(`[static-cache] Selective refresh: evicted ${evicted}, reloaded ${reloaded} entries.`);
+    return { evicted, reloaded, full: false };
+  }
+
+  const count = staticCache.size;
+  const bytes = staticCacheBytes;
+  staticCache.clear();
+  staticCacheBytes = 0;
+  console.log(`[static-cache] Full cache refresh triggered. Cleared ${count} files (~${(bytes / 1024 / 1024).toFixed(1)} MB). Prewarming...`);
+  prewarmStaticCache();
+  return { evicted: count, reloaded: 0, full: true };
+}
 
 async function serveStatic(urlPath, req = null) {
   // Normalise path
@@ -9929,6 +9977,71 @@ async function handleRequest(req, server) {
       }, DEV_TEST_EMAIL, DEV_TEST_EMAIL, { devSuperuser: true });
     }
     return errResp(405, null, null);
+  }
+
+  function isAuthorizedCacheRefresh(request, clientIp) {
+    if (process.env.NODE_ENV === 'test') return true;
+    const configuredSecret = (process.env.DEPLOY_SECRET || process.env.SECRET_KEY || '').trim();
+    const authHeader = (request.headers.get('Authorization') || '').trim();
+    const bearerToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+    const tokenHeader = (request.headers.get('X-Deploy-Token') || '').trim();
+    const token = bearerToken || tokenHeader;
+
+    if (configuredSecret && token && token === configuredSecret) {
+      return true;
+    }
+
+    const rawMitch = (request.headers.get('X-Mitch-Client-IP') || '').trim();
+    const rawReal = (request.headers.get('X-Real-IP') || '').trim();
+    const xff = (request.headers.get('X-Forwarded-For') || '').trim();
+    const isDirectLoopback = !rawMitch && !rawReal && !xff && (clientIp === '127.0.0.1' || clientIp === '::1');
+    if (isDirectLoopback && request.headers.get('X-Internal-Refresh') === '1') {
+      return true;
+    }
+
+    try {
+      const cookies = getCookies(request);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (validId(sid) && isAnyAdminId(sid)) {
+        return true;
+      }
+    } catch {}
+
+    return false;
+  }
+
+  // Static cache refresh endpoint (used by CI/CD and deployment hooks)
+  if (path === '/api/cache/refresh' || path === '/api/admin/cache/refresh' || path === '/api/refresh-cache') {
+    if (method === 'GET') {
+      return jsonResp(200, {
+        cacheSize: staticCache.size,
+        cacheBytes: staticCacheBytes,
+        maxBytes: STATIC_CACHE_MAX_BYTES,
+      });
+    }
+    if (method !== 'POST') return errResp(405, 'method not allowed');
+    if (!isAuthorizedCacheRefresh(req, ip)) {
+      return jsonResp(401, { error: 'unauthorized', message: 'Valid deploy token or secret key required' });
+    }
+
+    let filesToRefresh = [];
+    try {
+      const body = await req.json().catch(() => null);
+      if (body && Array.isArray(body.files)) {
+        filesToRefresh = body.files.filter(f => typeof f === 'string' && f.trim());
+      }
+    } catch {}
+
+    const result = clearStaticCache(filesToRefresh);
+    return jsonResp(200, {
+      success: true,
+      message: 'Static cache refreshed',
+      evicted: result.evicted,
+      reloaded: result.reloaded,
+      full: result.full,
+      selective: !result.full,
+      timestamp: Date.now(),
+    });
   }
 
   // Enforce admin passphrase for all administrative API actions
