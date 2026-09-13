@@ -383,12 +383,12 @@
     .price { font-size: 0.95rem; }
   }
 </style>
+<link rel="stylesheet" href="/shop/market.css?v=1">
 </head>
 <body class="shop-page">
-<main class="app-main">
+<main class="app-main" id="market-page">
   <header class="page-head">
     <div>
-      <div class="shop-kicker">Shop</div>
       <h1>Market</h1>
       <p class="subline" id="shop-note">Loading catalog…</p>
     </div>
@@ -602,7 +602,7 @@
     if (item.discountPct) tags.push(`<span class="pill gold">${item.discountPct}% off</span>`);
     const primary = item.type === 'premium' || (!owned && !locked(item));
     return `
-      <article class="${classes.join(' ')}" data-id="${esc(item.id)}" style="cursor: pointer;">
+      <article class="${classes.join(' ')}" data-id="${esc(item.id)}">
         <div>
           <div class="item-kicker">${tags.join('')}</div>
           <div class="item-title">${badgeIcons[item.id] ? `<span style="margin-right:8px; opacity:0.8;">${badgeIcons[item.id]}</span>` : ''}${esc(item.name)}</div>
@@ -612,6 +612,7 @@
         <div>
           <div class="price-row">
             <div class="price mitch-coin-price">${priceHtml(item)} <small>MitchCoins</small></div>
+            <button class="item-info" type="button" data-info="${esc(item.id)}" aria-label="Details for ${esc(item.name)}">Details</button>
           </div>
           <button class="btn-buy ${primary ? 'primary' : ''} ${active ? 'active' : ''}" data-item="${esc(item.id)}" ${disabled ? 'disabled' : ''}>
             ${buttonLabel(item, owned, active)}
@@ -646,23 +647,20 @@
       if (!grouped[section]) grouped[section] = [];
       grouped[section].push(item);
     });
-    market.innerHTML = Object.entries(grouped).map(([section, sectionItems], index) => `
-      <details class="section" ${activeTab !== 'all' || index === 0 ? 'open' : ''}>
-        <summary class="section-head">
-          <div class="section-title">${esc(section)}</div>
+    market.innerHTML = Object.entries(grouped).map(([section, sectionItems]) => `
+      <section class="section" aria-label="${esc(section)}">
+        <header class="section-head">
+          <h2 class="section-title">${esc(section)}</h2>
           <div class="section-count">${sectionItems.length} item${sectionItems.length === 1 ? '' : 's'}</div>
-        </summary>
+        </header>
         <div class="market-grid">${sectionItems.map(renderItem).join('')}</div>
-      </details>
+      </section>
     `).join('');
     market.querySelectorAll('.btn-buy[data-item]').forEach(btn => {
       btn.addEventListener('click', () => handleItem(btn.dataset.item));
     });
-    market.querySelectorAll('.card[data-id]').forEach(card => {
-      card.addEventListener('click', (event) => {
-        if (event.target.closest('button, input, a')) return;
-        openModal(card.dataset.id);
-      });
+    market.querySelectorAll('[data-info]').forEach(button => {
+      button.addEventListener('click', () => openModal(button.dataset.info));
     });
   }
 
