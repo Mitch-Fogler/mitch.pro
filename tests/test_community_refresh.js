@@ -8,6 +8,7 @@ assert.equal(trial.expiresAt, now + 60000);
 assert.equal(guestPreview(trial.token, secret, now + 30000).expiresAt, trial.expiresAt, 'Refresh must not restart preview');
 assert.ok(guestPreview(trial.token, secret, now + 61000).expiresAt < now + 61000, 'Expired preview stays expired');
 assert.notEqual(guestPreview(trial.token.replace(/.$/, 'z'), secret, now + 10).token, trial.token, 'Tampered signatures rejected');
+assert.doesNotThrow(() => guestPreview(`${now}.${'é'.repeat(64)}`, secret, now), 'Malformed cookie must not cause a server error');
 const options = { owner: true, actor:'owner@example.test', passwords:{ 'a@example.test':'hash', 'b@example.test':'hash', 'owner@example.test':'hash' }, coins:{ 'a@example.test':123,'b@example.test':456 }, protectedEmail: email => email === 'owner@example.test' };
 for (const action of ['reset-coins','remove-registrations']) assert.throws(()=>planOwnerAction({...options,owner:false,action}), e=>e.status===403);
 assert.throws(()=>planOwnerAction({...options,action:'remove-registrations',emails:['owner@example.test'],confirmation:'REMOVE 1 REGISTRATIONS'}),e=>e.status===403);
