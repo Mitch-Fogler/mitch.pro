@@ -5,6 +5,10 @@ html{scroll-behavior:smooth}.prefs-page{min-height:100vh!important;background-co
    toggles and section dots; on the light palette those read as noisy
    confetti. Re-tint them here (html.theme-light raises specificity). */
 html.theme-light .prefs-page::before{background:radial-gradient(circle at 18% 10%,rgba(79,70,229,.07),transparent 28%),radial-gradient(circle at 84% 28%,rgba(124,58,237,.05),transparent 30%)!important}
+html.theme-light .prefs-page .page-head{border-color:var(--t-bd)!important;background:var(--t-bg2)!important;box-shadow:inset 0 1px rgba(255,255,255,.8),0 16px 45px rgba(16,20,42,.07)!important}
+html.theme-light .prefs-page .page-head h1{color:var(--t-fg)!important}
+html.theme-light .prefs-page .page-head h1::before{color:var(--t-ac)!important}
+html.theme-light .prefs-page .page-head .page-sub{color:var(--t-fg2)!important}
 html.theme-light .prefs-page .page-head::before{background:linear-gradient(145deg,#4f46e5,#7c3aed);box-shadow:inset 0 1px rgba(255,255,255,.35),0 18px 44px rgba(79,70,229,.22)}
 html.theme-light .prefs-page .page-head::after{box-shadow:0 0 0 45px rgba(16,20,42,.02),0 0 0 90px rgba(16,20,42,.015)}
 html.theme-light .prefs-page .pref-section::before{background:radial-gradient(circle at 95% 0,rgba(79,70,229,.07),transparent 28%)}

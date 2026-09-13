@@ -76,6 +76,50 @@ html.school-preferences .prefs-page .status-pill {
   background: color-mix(in srgb,var(--t-bg2) 82%,transparent) !important;
   backdrop-filter: blur(16px);
 }
+
+/* —— School Preferences Light Mode Overrides —— */
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-page::before {
+  background: rgba(240,243,250,.45) !important;
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .school-prefs-back {
+  border: 1px solid var(--t-bd, rgba(16,20,42,.16)) !important;
+  background: color-mix(in srgb, var(--t-bg2, #ffffff) 88%, transparent) !important;
+  color: var(--t-fg, #101426) !important;
+  box-shadow: 0 2px 8px rgba(16,20,42,.06);
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .school-prefs-back:hover {
+  border-color: var(--t-bda, rgba(79,70,229,.5)) !important;
+  background: var(--t-bg2, #ffffff) !important;
+  color: var(--school-primary, #500000) !important;
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-page .page-head {
+  border: 1px solid var(--t-bd, rgba(16,20,42,.14)) !important;
+  border-top: 4px solid var(--school-primary, #500000) !important;
+  background: linear-gradient(110deg, rgba(255,255,255,.94), rgba(255,255,255,.80)) !important;
+  box-shadow: 0 14px 40px rgba(16,20,42,.08) !important;
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-page .page-head h1 {
+  color: var(--t-fg, #101426) !important;
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-page .page-head h1::before {
+  color: var(--school-primary, #500000) !important;
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-page .page-sub {
+  color: var(--t-fg2, #3f4560) !important;
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-page .status-pill {
+  border: 1px solid var(--t-bd) !important;
+  box-shadow: 0 4px 14px rgba(16,20,42,.05) !important;
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-jump-nav {
+  border: 1px solid var(--t-bd);
+  box-shadow: 0 8px 24px rgba(16,20,42,.06);
+}
+html:is(.school-preferences.theme-light, .theme-light.school-preferences) .prefs-page .pref-section {
+  border: 1px solid var(--t-bd) !important;
+  box-shadow: 0 14px 40px rgba(16,20,42,.06) !important;
+}
+
 html.school-preferences .prefs-jump-nav {
   position: sticky;
   top: 12px;
