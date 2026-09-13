@@ -37,6 +37,9 @@
     var raw = String(value || '');
     if (raw.indexOf('/img/games/') === 0) return '/game-portal/icons/' + raw.slice('/img/games/'.length);
     if (raw.indexOf('/img/gamems/') === 0) return '/game-portal/icons/' + raw.slice('/img/gamems/'.length);
+    if (raw.indexOf('https://img.gamemonetize.com/') === 0) {
+      return '/proxy/gm-icon/' + raw.slice('https://img.gamemonetize.com/'.length);
+    }
     return safeUrl(raw);
   }
 

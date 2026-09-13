@@ -196,6 +196,7 @@ const GAMES_EXTERNAL_FILE    = join(DATA_DIR, 'games_external');
 const GAME_CATEGORIES_FILE   = join(DATA_DIR, 'game_categories.json');
 const GAME_CATEGORIES_LOCAL  = join(DATA_DIR, 'game_categories_local.json');
 const GAME_CATEGORIES_EXTERNAL = join(DATA_DIR, 'game_categories_external.json');
+const GAME_ICONS_DIR          = join(DATA_DIR, 'game_icons');
 const REVOKED_FILE           = join(DATA_DIR, 'revoked.json');
 const APPEALS_FILE           = join(DATA_DIR, 'appeals.json');
 const APPLICATIONS_FILE      = join(DATA_DIR, 'applications.json');
@@ -10020,6 +10021,47 @@ async function handleRequest(req, server) {
     } catch (e) {
       console.error('[proxy] captcha fetch failed:', e?.message || e);
       return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy captcha API.' });
+    }
+  }
+
+  // ── GameMonetize Image/Thumbnail Cache Proxy ──
+  if (path.startsWith('/proxy/gm-icon/')) {
+    const subPath = path.slice('/proxy/gm-icon/'.length);
+    if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(subPath)) {
+      return errResp(400, 'invalid image path');
+    }
+    const localFile = join(GAME_ICONS_DIR, subPath.replace('/', '_'));
+    if (existsSync(localFile)) {
+      const bytes = readFileSync(localFile);
+      const ext = localFile.split('.').pop().toLowerCase();
+      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      return new Response(bytes, {
+        headers: {
+          'Content-Type': mime,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+    try {
+      const upstreamRes = await fetchWithTimeout(`https://img.gamemonetize.com/${subPath}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      if (!upstreamRes.ok) return errResp(404, 'image not found');
+      const buf = await upstreamRes.arrayBuffer();
+      if (!existsSync(GAME_ICONS_DIR)) mkdirSync(GAME_ICONS_DIR, { recursive: true });
+      writeFileSync(localFile, Buffer.from(buf));
+      return new Response(buf, {
+        headers: {
+          'Content-Type': upstreamRes.headers.get('content-type') || 'image/jpeg',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    } catch {
+      return errResp(502, 'image fetch failed');
     }
   }
 
