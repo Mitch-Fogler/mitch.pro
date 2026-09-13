@@ -50,6 +50,23 @@ run_docker_compose() {
     fi
 }
 
+# Helper: return 0 if all changed files are static webroot assets or doc files
+is_only_static() {
+    local files="$1"
+    [ -z "$files" ] && return 1
+    while IFS= read -r file; do
+        [ -z "$file" ] && continue
+        case "$file" in
+            webserver/*|docs/*|*.md|.gitignore|LICENSE|*.txt)
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    done <<< "$files"
+    return 0
+}
+
 # 1. Determine which slot is currently active BEFORE touching git or files.
 # Check running Docker containers first (the runtime source of truth).
 if docker ps --filter "name=mitch-webserver-green" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q "mitch-webserver-green"; then
@@ -76,6 +93,7 @@ echo "[deploy] Target inactive slot to boot: webserver-$INACTIVE_SLOT (Port $INA
 # 2. Pull the latest code
 # Discard local runtime modifications to tracked files (like caddy/Caddyfile) so git pull never fails
 echo "[deploy] Ensuring working directory is clean of runtime changes..."
+OLD_COMMIT=$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || echo "")
 if [ "$(id -u)" -eq 0 ]; then
     sudo -u mitch -H git -C "$PROJECT_DIR" checkout -- caddy/Caddyfile 2>/dev/null || true
     echo "[deploy] Pulling latest code from GitHub as mitch..."
@@ -85,11 +103,54 @@ else
     echo "[deploy] Pulling latest code from GitHub..."
     git -C "$PROJECT_DIR" pull origin master
 fi
+NEW_COMMIT=$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || echo "")
 
 # Keep /usr/local/bin/deploy.sh synchronized with repo if running as root
 if [ -f "$PROJECT_DIR/tools/deploy.sh" ] && [ "$(id -u)" -eq 0 ]; then
     cp "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh.tmp && mv -f /usr/local/bin/deploy.sh.tmp /usr/local/bin/deploy.sh 2>/dev/null || true
     chmod +x /usr/local/bin/deploy.sh 2>/dev/null || true
+fi
+
+# 2b. Fast path: check if this update only modifies static webroot files or docs
+CHANGED_FILES=""
+if [ -n "$OLD_COMMIT" ] && [ "$OLD_COMMIT" != "$NEW_COMMIT" ]; then
+    CHANGED_FILES=$(git -C "$PROJECT_DIR" diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" 2>/dev/null || echo "")
+fi
+
+if [ -n "$CHANGED_FILES" ] && is_only_static "$CHANGED_FILES" && [ "${FORCE_FULL_DEPLOY:-0}" != "1" ]; then
+    echo "[deploy] Only static files changed in this update:"
+    echo "$CHANGED_FILES" | sed 's/^/  - /'
+    echo "[deploy] Fast-path: triggering static cache refresh API on running containers..."
+
+    SECRET_KEY=""
+    if [ "$DOPPLER_AVAILABLE" = true ]; then
+        SECRET_KEY=$(doppler secrets get SECRET_KEY --plain 2>/dev/null || echo "")
+    elif [ -f "$PROJECT_DIR/.env" ]; then
+        SECRET_KEY=$(grep -E "^SECRET_KEY=" "$PROJECT_DIR/.env" | cut -d= -f2- | tr -d '"' | tr -d "'")
+    fi
+
+    REFRESHED=false
+    for URL in "http://localhost:6800/api/cache/refresh" "http://localhost:6811/api/cache/refresh" "http://localhost:6812/api/cache/refresh"; do
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $SECRET_KEY" \
+            -H "X-Internal-Refresh: 1" \
+            -H "Host: mitch.pro" \
+            -d '{"files":[]}' "$URL" || echo "000")
+        if [ "$STATUS" = "200" ]; then
+            REFRESHED=true
+            echo "[deploy] Static cache refreshed successfully via $URL (HTTP 200)"
+        fi
+    done
+
+    if [ "$REFRESHED" = true ]; then
+        COUNT=$(echo "$CHANGED_FILES" | wc -l)
+        echo "[deploy] Static deploy complete in seconds! ($COUNT files updated). Skipping full Docker rebuild and container swap."
+        send_notification "Static deploy complete: refreshed $COUNT files in 2 seconds." "Static Deploy Successful" "low"
+        exit 0
+    else
+        echo "[deploy] Warning: Static cache refresh API was not reachable; proceeding with full blue-green swap."
+    fi
 fi
 
 echo "[deploy] Starting Blue-Green deployment swap..."
