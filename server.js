@@ -11,6 +11,7 @@ import https from 'https';
 import { Client as SSHClient } from 'ssh2';
 import {
   configureDataStore,
+  getDataStore,
   appendAppLog,
   queryAppLogs,
   readDocument,
@@ -34,6 +35,8 @@ import { ProxmoxDesktopService, ProxmoxServiceError } from './lib/proxmox_deskto
 import { canAccessVmRecord, validateDesktopSession, VmOperationGate } from './lib/vm_security.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
 import { matrixMessageBlocked } from './lib/matrix_word_filter.js';
+import { guestPreview } from './lib/guest_preview.js';
+import { planOwnerAction } from './lib/owner_account_tools.js';
 import {
   GAME_PORTAL_REWARD_PER_MINUTE,
   GAME_PORTAL_DAILY_CAP,
@@ -1479,6 +1482,7 @@ const NEWSLETTER_BAN_THRESH   = 10;
 const NEWSLETTER_BAN_DURATION = 7 * 24 * 3600;
 
 const RATE_LIMITS = {
+  '/api/admin/owner-accounts': [10, 60],
   '/api/webauthn/login/options':   [10,  60],
   '/api/webauthn/login/verify':    [10,  60],
   '/api/webauthn/register/options': [20,  60],
@@ -2107,32 +2111,6 @@ async function isSecurePassword(password) {
   } catch {}
   if (badPasswords.map(p => p.toLowerCase()).includes(password.toLowerCase())) {
     return { valid: false, error: 'Password is too common and insecure.' };
-  }
-
-  try {
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha1').update(password).digest('hex').toUpperCase();
-    const prefix = hash.slice(0, 5);
-    const suffix = hash.slice(5);
-    
-    const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
-      headers: { 'User-Agent': 'mitch.pro-password-validator' }
-    });
-    if (res.ok) {
-      const text = await res.text();
-      const lines = text.split('\n');
-      for (const line of lines) {
-        const [partsuff, countStr] = line.trim().split(':');
-        if (partsuff === suffix) {
-          const count = parseInt(countStr || '0', 10);
-          if (count > 0) {
-            return { valid: false, error: 'This password has been leaked in a data breach ' + count + ' times and is unsafe to use.' };
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.error('[hibp] API check failed:', e);
   }
 
   return { valid: true };
@@ -2795,7 +2773,9 @@ function devTestRequestAllowed(req) {
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || isPrivateIp(hostname);
   } catch { return false; }
 }
+const ownerAccountActionTimes = new Map();
 const PUBLIC_API_PATHS = new Set([
+  '/api/guest-session',
   '/api/webauthn/login/options',
   '/api/webauthn/login/verify',
   '/api/signup',
@@ -7526,7 +7506,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=4" defer></script>';
+  const tag = '<script src="/broadcast.js?v=5" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -9032,7 +9012,7 @@ async function handleRequest(req, server) {
     const configuredSite = site();
     let primaryHost = '';
     try { primaryHost = new URL(configuredSite.primary).hostname.toLowerCase(); } catch {}
-    if (currentHost && currentHost === primaryHost && configuredSite.alternate) {
+    if (currentHost && currentHost === primaryHost && configuredSite.alternate && checkPasswordCookie(req)) {
       const destination = configuredSite.alternate.replace(/\/+$/, '') + '/game-portal/' + url.search;
       const bridge = configuredSite.primary.replace(/\/+$/, '') + '/api/sso/bridge?back=' + encodeURIComponent(destination);
       return Response.redirect(bridge, 302);
@@ -9931,6 +9911,14 @@ async function handleRequest(req, server) {
     return errResp(405, null, null);
   }
 
+  if (path === '/api/guest-session' && method === 'GET') {
+    const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    if (checkPasswordCookie(req)) return new Response(JSON.stringify({ authenticated: true }), { headers });
+    const state = guestPreview(getCookies(req)['mitch_guest'], createHmac('sha256', ID_SECRET).update('guest-preview-v1').digest());
+    headers.append('Set-Cookie', setCookieHeader('mitch_guest', state.token, req, 31536000, true));
+    return new Response(JSON.stringify({ authenticated: false, expiresAt: state.expiresAt, serverNow: state.serverNow }), { headers });
+  }
+
   // Enforce admin passphrase for all administrative API actions
   if (path.startsWith('/api/admin/') && path !== '/api/admin/passphrase-status') {
     try {
@@ -9959,6 +9947,67 @@ async function handleRequest(req, server) {
     } catch (e) {
       console.error('[auth] Admin passphrase check failed:', e);
       return jsonResp(500, { error: 'internal_error' });
+    }
+  }
+
+  if (path === '/api/admin/owner-accounts') {
+    const cookies = getCookies(req);
+    const sid = cookies.studentId || cookies.id || '';
+    const actor = normalizeEmail(emailFromSid(sid) || '');
+    if (!checkPasswordCookie(req, sid) || !isOwnerEmail(actor)) return jsonResp(403, { error: 'Owner access required.' });
+    if (method !== 'POST') return jsonResp(405, { error: 'Use POST.' });
+    const origin = req.headers.get('origin');
+    try { if (!origin || new URL(origin).host !== requestHost(req)) return jsonResp(403, { error: 'Open this tool from the owner panel.' }); }
+    catch { return jsonResp(403, { error: 'Invalid origin.' }); }
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    try {
+      const input = await req.json();
+      const passwords = structuredClone(loadPasswords());
+      if (input.action === 'list') return jsonResp(200, { accounts: Object.keys(passwords).sort().map(email => ({ email, protected: isOwnerEmail(email) || email === actor })), coinAccounts: Object.keys(loadCoins()).length });
+      const plan = planOwnerAction({ ...input, actor, owner: true, passwords, coins: loadCoins(), protectedEmail: isOwnerEmail });
+      if (Date.now() - (ownerAccountActionTimes.get(actor) || 0) < 60000) return jsonResp(429, { error: 'Wait one minute between bulk account changes.' });
+      const before = {};
+      const after = {};
+      const stage = (file, data) => { before[file] = structuredClone(data); after[file] = structuredClone(data); return after[file]; };
+      if (plan.action === 'reset-coins') { stage(COINS_FILE, loadCoins()); after[COINS_FILE] = plan.nextCoins; }
+      else {
+        const selected = new Set(plan.targets);
+        const matches = email => selected.has(normalizeEmail(email || ''));
+        const nextPasswords = stage(PASSWORDS_FILE, passwords);
+        const passkeys = stage(PASSKEYS_FILE, loadPasskeys());
+        const codes = stage(SIGNUP_CODES_FILE, loadJson(SIGNUP_CODES_FILE, {}));
+        const tokens = stage(TOKENS_FILE, loadTokens());
+        const names = stage(NAMES_FILE, loadJson(NAMES_FILE, {}));
+        const sessions = stage(AUTH_SESSIONS_FILE, loadAuthSessions());
+        const generations = stage(GENERATIONS_FILE, loadGenerations());
+        for (const email of plan.targets) {
+          delete nextPasswords[email]; delete passkeys[email]; delete codes[email];
+          generations[email] = { gen: currentSessionGeneration(email) + 1, last_registered: Date.now() / 1000 };
+        }
+        for (const [key, record] of Object.entries(tokens)) if (matches(record.norm_email || record.email)) delete tokens[key];
+        for (const [key, email] of Object.entries(names)) if (matches(email)) delete names[key];
+        for (const [key, record] of Object.entries(sessions)) if (matches(record.normEmail || record.email)) delete sessions[key];
+      }
+      const backupDir = join(DATA_DIR, 'owner-action-backups');
+      mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+      const nonce = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', createHmac('sha256', ID_SECRET).update('owner-backup-v1').digest(), nonce);
+      const encrypted = Buffer.concat([cipher.update(JSON.stringify({ action: plan.action, at: Date.now(), before }), 'utf8'), cipher.final()]);
+      writeFileSync(join(backupDir, `${Date.now()}-${randomBytes(8).toString('hex')}.enc`), Buffer.concat([nonce, cipher.getAuthTag(), encrypted]), { mode: 0o600, flag: 'wx' });
+      getDataStore().transaction(() => { for (const [file, data] of Object.entries(after)) writeDocument(file, data); })();
+      ownerAccountActionTimes.set(actor, Date.now());
+      if (plan.action === 'reset-coins') coinsCache = after[COINS_FILE];
+      else {
+        passwordsCache = after[PASSWORDS_FILE]; tokensCache = after[TOKENS_FILE];
+        const selected = new Set(plan.targets);
+        for (const [key, record] of pendingTwoFactor) if (selected.has(normalizeEmail(record.normEmail || ''))) pendingTwoFactor.delete(key);
+      }
+      logAdminAction(actor, plan.action === 'reset-coins' ? 'COINS_RESET_ALL' : 'REGISTRATIONS_REMOVED', { count: plan.targets.length, targets: plan.action === 'reset-coins' ? undefined : plan.targets, success: true });
+      return jsonResp(200, { ok: true, count: plan.targets.length });
+    } catch (error) {
+      if (error.status) return jsonResp(error.status, { error: error.message });
+      logAdminAction(actor, 'OWNER_ACCOUNT_ACTION_FAILED', { success: false });
+      return jsonResp(500, { error: 'The change could not be saved. Reload the account list before trying again.' });
     }
   }
 
@@ -15499,7 +15548,7 @@ async function handleRequest(req, server) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=4" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=5" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -24400,7 +24449,7 @@ async function handleRequest(req, server) {
 	    if ((path.endsWith('.html') || path === '/' || (path.endsWith('/') && path.length > 1)) && path !== '/admin.html' && path !== '/roblox.html') {
 	      let filePath;
 	      if (path === '/') {
-	        filePath = checkPasswordCookie(req) ? join(WEBROOT, 'index.html') : join(WEBROOT, 'index-sales.html');
+	        filePath = join(WEBROOT, 'index.html');
 	      }
 	      else if (path.endsWith('/')) filePath = safeWebrootPath(path.replace(/^\//, '') + 'index.html');
 
@@ -24432,9 +24481,13 @@ async function handleRequest(req, server) {
           const pageCookies = getCookies(req);
           const pageSid = pageCookies['studentId'] || pageCookies['id'] || '';
           const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
+          if (!isRjuhsdHost(req) && !isPickleHost(req) && (!isEmbeddedGameRuntime || isStandaloneGamePortal)) {
+            injectStr += '<link rel="stylesheet" href="/community-refresh.css?v=1">\n';
+            if (!isAuthenticatedHtml) injectStr += '<script src="/guest-preview.js?v=1" defer></script>\n';
+          }
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=4" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=5" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }
@@ -24549,6 +24602,7 @@ async function handleRequest(req, server) {
 
     // Public assets whitelist
     const PUBLIC_ASSETS = new Set([
+      '/community-refresh.css', '/guest-preview.js', '/home-friends.js', '/home.css', '/home-dayboard.js',
       '/tab-cloak.js', '/tab-cloak.css', '/cloak-google-classroom.svg', '/cloak-google-drive.svg', '/cloak-google-docs.svg', '/cloak-clever.png',
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',

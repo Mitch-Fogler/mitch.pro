@@ -16,6 +16,7 @@
 <link rel="stylesheet" href="/home.css?v=4">
 <link rel="stylesheet" href="/home-redesign.css?v=5">
 <script src="/app-shell.js" defer></script>
+<script src="/home-friends.js?v=1" defer></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -35,7 +36,7 @@
 <script src="/theme.js?v=11"></script>
 <script src="/ssh/xterm.js" defer></script>
 <script src="/ssh/xterm-addon-fit.js" defer></script>
-<script src="/home-dayboard.js?v=1" defer></script>
+<script src="/home-dayboard.js?v=2" defer></script>
 <!-- AUTH_INJECT_START -->
 <style>
   #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
@@ -61,7 +62,7 @@ async function loadSites() {
       return;
     }
     if (!data.success) {
-      document.getElementById('links').innerHTML = '<div style="padding:40px;text-align:center;color:var(--t-fg2);font-weight:700;">Authentication required.<br><a href="/enroll/" style="color:var(--t-ac);font-size:0.85rem;">Click here to sign up or log in.</a></div>';
+      document.getElementById('links').innerHTML = '<a class="home-schedule-button" href="/game-portal/">Play games <b aria-hidden="true">↗</b></a>';
       return;
     }
     parseSites(data.content || '');
@@ -3579,23 +3580,7 @@ if (document.readyState === 'loading') {
         </div>
       </article>
 
-      <article class="home-day-card home-bell-card">
-        <header class="home-card-head">
-          <div><small>Woodcreek High School</small><h3>Today’s bell schedule</h3></div>
-          <a class="home-official-link" href="https://rjuhsd.school/">rjuhsd.school ↗</a>
-        </header>
-        <div class="home-bell-hero">
-          <div><span class="home-live-pill" id="home-bell-state"><i></i> CHECKING</span><strong id="home-bell-current">Checking today’s schedule</strong><small id="home-bell-countdown">Pacific time</small></div>
-          <div class="home-lunch-toggle" role="group" aria-label="Lunch schedule">
-            <button type="button" id="home-first-lunch">1st lunch</button>
-            <button type="button" id="home-second-lunch">2nd lunch</button>
-          </div>
-        </div>
-        <a class="home-bell-cta" href="https://rjuhsd.school/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.8"/></svg>Open the bell schedule</a>
-        <div class="home-schedule-heading"><button type="button" id="home-day-prev" aria-label="Previous day">‹</button><span><b id="home-schedule-label">Today</b><small id="home-bell-note">Loading schedule</small></span><button type="button" id="home-day-next" aria-label="Next day">›</button></div>
-        <ol class="home-periods" id="home-periods"></ol>
-        <footer><span id="home-bell-footer">Periods only — no personal class data</span></footer>
-      </article>
+      <a class="home-schedule-button" href="https://rjuhsd.school/?school=woodcreek">Newly Improved Bell Schedule <span>(Woodcreek High School)</span><b aria-hidden="true">↗</b></a>
     </div>
   </section>
 
@@ -3920,7 +3905,7 @@ goBack = function() {
     };
   })();
 </script>
-<script src="/broadcast.js?v=4"></script>
+<script src="/broadcast.js?v=5"></script>
 <script src="/sync.js?v=1779165304438"></script>
 <script src="/cookie-consent.js" defer></script>
 </body>
