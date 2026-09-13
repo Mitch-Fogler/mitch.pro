@@ -42,6 +42,8 @@
 
   function gameUrl(value) {
     var raw = String(value || '');
+    if (raw.indexOf('/games/') === 0) return location.origin + raw;
+    if (raw.indexOf('/proxy/') === 0) return location.origin + raw;
     if (raw.indexOf('/') === 0) return location.origin + '/proxy/calculated2' + raw;
     var safe = safeUrl(raw);
     if (!safe) return '';
@@ -52,6 +54,9 @@
     if (parsed.hostname === 'calculated2.github.io') {
       return location.origin + '/proxy/calculated2' + parsed.pathname + parsed.search + parsed.hash;
     }
+    if (parsed.hostname === 'html5.gamemonetize.co' || parsed.hostname === 'html5.gamemonetize.com') {
+      return location.origin + '/proxy/gamemonetize' + parsed.pathname + parsed.search + parsed.hash;
+    }
     return safe;
   }
 
@@ -59,7 +64,14 @@
     if (game.external) return false;
     try {
       var url = new URL(game.url);
-      return url.origin === location.origin && (url.pathname.indexOf('/proxy/luma/') === 0 || url.pathname.indexOf('/proxy/calculated2/') === 0);
+      if (url.origin === location.origin && (
+        url.pathname.indexOf('/proxy/luma/') === 0 ||
+        url.pathname.indexOf('/proxy/calculated2/') === 0 ||
+        url.pathname.indexOf('/proxy/gamemonetize/') === 0 ||
+        url.pathname.indexOf('/games/') === 0
+      )) return true;
+      if (url.hostname === 'html5.gamemonetize.co' || url.hostname === 'html5.gamemonetize.com') return true;
+      return false;
     } catch (_) { return false; }
   }
 

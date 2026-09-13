@@ -9963,6 +9963,18 @@ async function handleRequest(req, server) {
 
   // ── Open general proxy removed (arbitrary-site proxying is not allowed) ──
   if (path === '/prox' || path.startsWith('/prox/')) {
+    const gmMatch = path.match(/^\/prox\/(?:https?:\/?\/?|https?\/)?(?:html5\.)?gamemonetize(?:\.(?:co|com))?\/(.*)$/i);
+    if (gmMatch) {
+      return Response.redirect(`/proxy/gamemonetize/${gmMatch[1]}${url.search}`, 302);
+    }
+    const lumaMatch = path.match(/^\/prox\/(?:https?:\/?\/?|https?\/)?lumassets\.pages\.dev\/(.*)$/i);
+    if (lumaMatch) {
+      return Response.redirect(`/proxy/luma/${lumaMatch[1]}${url.search}`, 302);
+    }
+    const calcMatch = path.match(/^\/prox\/(?:https?:\/?\/?|https?\/)?calculated2\.github\.io\/(.*)$/i);
+    if (calcMatch) {
+      return Response.redirect(`/proxy/calculated2/${calcMatch[1]}${url.search}`, 302);
+    }
     return jsonResp(410, { error: 'gone', message: 'Open proxy access has been removed. Game-specific proxies remain available.' });
   }
 
@@ -9978,7 +9990,9 @@ async function handleRequest(req, server) {
     try {
       const headers = new Headers();
       for (const [k, v] of req.headers.entries()) {
-        if (!['host', 'cookie', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
+        const lk = k.toLowerCase();
+        if (!['host', 'cookie', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip', 'cdn-loop'].includes(lk) &&
+            !lk.startsWith('cf-') && !lk.startsWith('x-forwarded-') && !lk.startsWith('x-real-')) {
           headers.set(k, v);
         }
       }
@@ -10009,46 +10023,12 @@ async function handleRequest(req, server) {
     }
   }
 
-  // ── GameMonetize Transparent Reverse Proxy ──
-  if (path.startsWith('/proxy/gamemonetize/')) {
-    const targetPath = path.slice('/proxy/gamemonetize/'.length);
-    const targetUrl = `https://html5.gamemonetize.co/${targetPath}${url.search}`;
-    try {
-      const headers = new Headers();
-      for (const [k, v] of req.headers.entries()) {
-        if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
-          headers.set(k, v);
-        }
-      }
-      
-      const upstreamRes = await fetchWithTimeout(targetUrl, {
-        method: req.method,
-        headers: headers,
-        body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null
-      });
-      
-      const resHeaders = new Headers(upstreamRes.headers);
-      resHeaders.set('Access-Control-Allow-Origin', '*');
-      resHeaders.delete('content-security-policy');
-      resHeaders.delete('x-frame-options');
-      resHeaders.delete('content-encoding');
-      resHeaders.delete('content-length');
-      
-      return new Response(upstreamRes.body, {
-        status: upstreamRes.status,
-        headers: resHeaders
-      });
-    } catch (e) {
-      console.error('[proxy] GameMonetize fetch failed:', e?.message || e);
-      return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy GameMonetize game.' });
-    }
-  }
-
   // Fixed-origin game proxy. This keeps the integrated player same-origin,
   // strips user credentials, and never accepts a browser-supplied destination.
   const gameProxyOrigins = {
     '/proxy/luma/': 'https://lumassets.pages.dev',
     '/proxy/calculated2/': 'https://calculated2.github.io',
+    '/proxy/gamemonetize/': 'https://html5.gamemonetize.co',
   };
   let gameProxyPrefix = Object.keys(gameProxyOrigins).find(prefix => path.startsWith(prefix));
   let gameProxyPath = '';
@@ -10072,6 +10052,9 @@ async function handleRequest(req, server) {
           headers.set(key, value);
         }
       }
+      if (!headers.get('user-agent')) {
+        headers.set('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+      }
       const upstreamRes = await fetchWithTimeout(targetUrl, { method, headers, redirect: 'follow' });
       const resHeaders = new Headers(upstreamRes.headers);
       resHeaders.delete('set-cookie');
@@ -10082,6 +10065,7 @@ async function handleRequest(req, server) {
       resHeaders.delete('cross-origin-embedder-policy');
       resHeaders.delete('content-encoding');
       resHeaders.delete('content-length');
+      resHeaders.set('Access-Control-Allow-Origin', '*');
       resHeaders.set('Cache-Control', 'public, max-age=3600');
 
       const contentType = String(resHeaders.get('content-type') || '').toLowerCase();
@@ -10097,6 +10081,7 @@ async function handleRequest(req, server) {
       if (contentType.includes('text/html') && !/<base\b/i.test(content)) {
         let finalPath = gameProxyPath;
         try { finalPath = new URL(upstreamRes.url).pathname; } catch {}
+        if (!finalPath.endsWith('/') && !/\.[a-z0-9]+$/i.test(finalPath)) finalPath += '/';
         const directory = finalPath.endsWith('/') ? finalPath : finalPath.replace(/[^/]*$/, '');
         const base = `<base href="${gameProxyPrefix}${directory.replace(/^\/+/, '')}">`;
         content = /<head\b[^>]*>/i.test(content) ? content.replace(/<head\b[^>]*>/i, match => match + base) : base + content;
@@ -10412,6 +10397,8 @@ async function handleRequest(req, server) {
             let href = g.href;
             if (href.startsWith('https://html5.gamemonetize.co/')) {
               href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
+            } else if (href.startsWith('https://html5.gamemonetize.com/')) {
+              href = href.replace('https://html5.gamemonetize.com/', '/proxy/gamemonetize/');
             }
             return `${g.type} ${href} ${g.label}`;
           }).join('\n');
@@ -10422,6 +10409,8 @@ async function handleRequest(req, server) {
         let href = g.href;
         if (href.startsWith('https://html5.gamemonetize.co/')) {
           href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
+        } else if (href.startsWith('https://html5.gamemonetize.com/')) {
+          href = href.replace('https://html5.gamemonetize.com/', '/proxy/gamemonetize/');
         }
         return `${g.type} ${href} ${g.label}`;
       }).join('\n');
