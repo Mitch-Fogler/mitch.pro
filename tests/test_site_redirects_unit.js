@@ -64,6 +64,7 @@ assert(rjuhsdApp.includes('document.querySelectorAll(".js-signin-link").forEach(
 assert(preferencesHtml.includes('/preferences-school.css?v=1'), 'preferences must load its rjuhsd redesign');
 assert(preferencesHtml.includes("classList.add('school-preferences')"), 'preferences must detect the school host');
 assert(preferencesSchoolCss.includes('background: linear-gradient(110deg'), 'school preferences header must reveal the active background');
+assert(readFileSync('server.js', 'utf8').includes("'/rjuhsd-assets/redesign.css', '/preferences-school.css'"), 'school redesign stylesheets must remain public assets');
 assert(!/<a class="brand"[^>]*><span class="brand-logo"><img[^>]*src="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd brand must not use school-based logo');
 
 // Favicon on rjuhsd.school must use mitch.pro favicon (/favicon.ico)
