@@ -20,6 +20,7 @@ services:
     depends_on:
       - conduit
       - livekit
+      - deploy-sync
     ports:
       - "127.0.0.1:6811:6800"
     volumes:
@@ -99,6 +100,7 @@ services:
     depends_on:
       - conduit
       - livekit
+      - deploy-sync
     ports:
       - "127.0.0.1:6812:6800"
     volumes:
@@ -255,5 +257,34 @@ services:
     ports:
       - "127.0.0.1:7880:7880"
       - "7882:7882/udp"
+
+  # Deploy script synchronization sidecar (synchronizes /usr/local/bin/deploy.sh on the host)
+  deploy-sync:
+    image: caddy:2.7-alpine
+    container_name: mitch-deploy-sync
+    restart: unless-stopped
+    volumes:
+      - /usr/local/bin:/host_bin
+      - ./tools/deploy.sh:/repo_deploy.sh:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        trap "exit 0" TERM INT
+        if [ -f /repo_deploy.sh ]; then
+          cp -f /repo_deploy.sh /host_bin/deploy.sh.tmp
+          chmod 755 /host_bin/deploy.sh.tmp
+          mv -f /host_bin/deploy.sh.tmp /host_bin/deploy.sh
+          echo "[deploy-sync] Initialized /usr/local/bin/deploy.sh from repository"
+        fi
+        while true; do
+          if [ -f /repo_deploy.sh ] && ! cmp -s /repo_deploy.sh /host_bin/deploy.sh; then
+            cp -f /repo_deploy.sh /host_bin/deploy.sh.tmp
+            chmod 755 /host_bin/deploy.sh.tmp
+            mv -f /host_bin/deploy.sh.tmp /host_bin/deploy.sh
+            echo "[deploy-sync] Synchronized /usr/local/bin/deploy.sh from repository"
+          fi
+          sleep 2
+        done
 
 
