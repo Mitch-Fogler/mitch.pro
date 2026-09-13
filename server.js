@@ -24118,9 +24118,9 @@ async function handleRequest(req, server) {
           '})();\n' +
           '</script>';
         if (html.includes('</body>')) {
-          html = html.replace('</body>', verifyScript + '\n</body>');
+          html = html.replace('</body>', '\n</body>');
         } else {
-          html += verifyScript;
+          html += '';
         }
       }
 
