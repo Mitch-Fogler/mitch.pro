@@ -49,7 +49,7 @@ assert(client.includes("'/api/game-portal/heartbeat'"), 'Portal must report acti
 assert(client.includes("'X-Mitch-Requested-With': '1'"), 'Reward heartbeat must include the application CSRF header');
 assert(client.includes("'/proxy/luma'") && client.includes("'/proxy/calculated2'"), 'Integrated games must use the fixed same-origin game proxy');
 assert(server.includes("touchUserPresence(email, active ? `Playing ${game}` : 'Browsing games')"), 'Game activity must feed live presence');
-assert(server.includes("'/proxy/luma/': 'https://lumassets.pages.dev'") && server.includes("'/proxy/calculated2/': 'https://calculated2.github.io'"), 'The game proxy must only use fixed upstream origins');
+assert(server.includes("'/proxy/luma/': 'https://lumassets.pages.dev'") && server.includes("'/proxy/calculated2/': 'https://calculated2.github.io'") && server.includes("'/proxy/gamemonetize/': 'https://html5.gamemonetize.co'"), 'The game proxy must only use fixed upstream origins');
 assert(server.includes("!path.startsWith('/game-portal/')"), 'Portal assets must load before sign-in so SSO can complete cleanly');
 assert(client.includes('function genreFor(') && client.includes('renderFeatured();'), 'Catalog must provide useful genres and a featured shelf');
 assert(styles.includes('.featured-grid') && styles.includes('@media (min-width: 761px) and (max-height: 780px)'), 'Portal redesign must include its arcade shelf and Chromebook density layout');
