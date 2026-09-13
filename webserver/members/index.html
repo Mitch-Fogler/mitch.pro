@@ -371,7 +371,7 @@
       if (member.friendStatus === 'friends') return '<button type="button" disabled>Friends</button>';
       if (member.friendStatus === 'outgoing') return '<button type="button" data-action="cancel" data-key="' + key + '">Cancel Request</button>';
       if (member.friendStatus === 'incoming') return '<button type="button" data-action="accept" data-key="' + key + '">Accept Request</button>';
-      return '<button type="button" data-action="friend" data-key="' + key + '">Add Friend</button>';
+      return '<button type="button" data-action="friend" data-key="' + key + '">Send friend request</button>';
     }
 
     function dmHref(member) {

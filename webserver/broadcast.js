@@ -469,7 +469,7 @@
     var wrap = document.createElement('div');
     wrap.id = 'sw-notif-wrap';
     wrap.innerHTML = 
-      '<button id="sw-notif-btn" type="button" title="Notifications" aria-expanded="false" aria-controls="sw-notif-panel">&#128276;<span id="sw-notif-count">0</span></button>' +
+      '<button id="sw-notif-btn" type="button" title="Notifications" aria-label="Notifications" aria-expanded="false" aria-controls="sw-notif-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4M12 1v1"/></svg><span id="sw-notif-count">0</span></button>' +
       '<div id="sw-notif-panel">' +
       '  <div class="sw-notif-head">' +
       '    <span>Notifications</span>' +

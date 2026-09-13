@@ -636,6 +636,24 @@
     <section class="tool-group" id="owner-tools">
       <div class="section-head"><h2>Site operations</h2><span class="tag">Owner access</span></div>
       <div class="actions-panel" id="owner-operations"></div>
+      <section class="owner-account-tools" id="owner-account-tools" hidden aria-label="Owner account controls">
+        <h3>Accounts &amp; Mitch Coins</h3>
+        <p>Remove sign-in registrations so those email addresses can sign up again. This revokes website sessions, passwords, passkeys, and recovery links. Profiles, posts, chat history, and existing Matrix sessions are not deleted. Owner accounts are protected.</p>
+        <button type="button" data-load>Load registered accounts</button>
+        <input type="search" placeholder="Find an email address" aria-label="Search registered accounts">
+        <button type="button" data-all>Select all non-owner accounts</button><button type="button" data-none>Deselect all</button>
+        <div class="owner-account-list"></div>
+        <p data-count>Select the accounts to remove.</p>
+        <input type="text" data-confirmation autocomplete="off" aria-label="Registration removal confirmation" placeholder="REMOVE 0 REGISTRATIONS">
+        <button type="button" data-remove data-danger>Remove selected registrations</button>
+        <hr>
+        <h4>Reset everyone's Mitch Coins</h4>
+        <p>Sets every current balance to zero, including staff. Purchased items and lifetime achievements stay. This cannot be undone from this panel. An encrypted recovery snapshot is saved on the server.</p>
+        <input type="text" data-coin-confirmation autocomplete="off" aria-label="Coin reset confirmation" placeholder="Type RESET ALL COINS">
+        <button type="button" data-reset data-danger>Reset all balances to zero</button>
+        <p role="status" aria-live="polite"></p>
+      </section>
+      <script src="/admin/owner-accounts.js?v=1" defer></script>
       <div class="owner-shortcuts"><a href="#people-tools">Accounts &amp; roles ↗</a><a href="#content-tools">Site content ↗</a><a href="#logs-tools">System logs ↗</a><a href="#audit-tools">Activity history ↗</a></div>
     </section>
     <section class="tool-group active" id="approval-tools">

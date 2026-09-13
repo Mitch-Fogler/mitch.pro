@@ -157,6 +157,7 @@
     return { label: date.weekday === 3 ? 'Wednesday collaboration' : ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][date.weekday] + ' schedule', note: /late start/.test(names) ? events[0].title : (date.weekday === 3 ? '9:30 AM start' : (lunchChoice === 'first' ? '1st lunch' : '2nd lunch')), periods: periods };
   }
   function renderBells() {
+    if (!el('home-periods')) return;
     var date = dateForOffset(selectedOffset), schedule = scheduleFor(date), now = localParts(), currentMinutes = now.hour * 60 + now.minute;
     var isToday = selectedOffset === 0, active = -1, next = -1;
     if (isToday) schedule.periods.forEach(function (period, index) { if (currentMinutes >= minutes(period[1]) && currentMinutes < minutes(period[2])) active = index; if (next < 0 && currentMinutes < minutes(period[1])) next = index; });
@@ -186,11 +187,14 @@
     el('home-cal-prev').onclick = function () { moveMonth(-1); };
     el('home-cal-next').onclick = function () { moveMonth(1); };
     el('home-cal-today').onclick = function () { var now = localParts(); calendarCursor = { year: now.year, month: now.month }; renderCalendar(); };
+    if (el('home-periods')) {
     el('home-first-lunch').onclick = function () { setLunch('first'); };
     el('home-second-lunch').onclick = function () { setLunch('second'); };
     el('home-day-prev').onclick = function () { selectedOffset -= 1; renderBells(); };
     el('home-day-next').onclick = function () { selectedOffset += 1; renderBells(); };
-    setInterval(renderBells, 30000); setInterval(loadWeather, 600000); setInterval(loadCalendar, 1800000);
+    setInterval(renderBells, 30000);
+    }
+    setInterval(loadWeather, 600000); setInterval(loadCalendar, 1800000);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
