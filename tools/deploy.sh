@@ -50,15 +50,40 @@ run_docker_compose() {
     fi
 }
 
-# 0. Pull the latest code
-if [ "$(id -u)" -eq 0 ]; then
-    # Running as root (via sudo / deployer), pull as mitch to preserve credentials and ownership
-    echo "[deploy] Pulling latest code from GitHub as mitch..."
-    sudo -u mitch -H git -C /home/mitch/server/bun pull origin master
+# 1. Determine which slot is currently active BEFORE touching git or files.
+# Check running Docker containers first (the runtime source of truth).
+if docker ps --filter "name=mitch-webserver-green" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q "mitch-webserver-green"; then
+    ACTIVE_SLOT="green"
+    INACTIVE_SLOT="blue"
+    INACTIVE_PORT=6811
+elif docker ps --filter "name=mitch-webserver-blue" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q "mitch-webserver-blue"; then
+    ACTIVE_SLOT="blue"
+    INACTIVE_SLOT="green"
+    INACTIVE_PORT=6812
+elif grep -q "webserver-green" "$CADDYFILE_PATH" 2>/dev/null; then
+    ACTIVE_SLOT="green"
+    INACTIVE_SLOT="blue"
+    INACTIVE_PORT=6811
 else
-    # Running as mitch directly, pull directly
+    ACTIVE_SLOT="blue"
+    INACTIVE_SLOT="green"
+    INACTIVE_PORT=6812
+fi
+
+echo "[deploy] Active slot detected: webserver-$ACTIVE_SLOT"
+echo "[deploy] Target inactive slot to boot: webserver-$INACTIVE_SLOT (Port $INACTIVE_PORT)"
+
+# 2. Pull the latest code
+# Discard local runtime modifications to tracked files (like caddy/Caddyfile) so git pull never fails
+echo "[deploy] Ensuring working directory is clean of runtime changes..."
+if [ "$(id -u)" -eq 0 ]; then
+    sudo -u mitch -H git -C "$PROJECT_DIR" checkout -- caddy/Caddyfile 2>/dev/null || true
+    echo "[deploy] Pulling latest code from GitHub as mitch..."
+    sudo -u mitch -H git -C "$PROJECT_DIR" pull origin master
+else
+    git -C "$PROJECT_DIR" checkout -- caddy/Caddyfile 2>/dev/null || true
     echo "[deploy] Pulling latest code from GitHub..."
-    git -C /home/mitch/server/bun pull origin master
+    git -C "$PROJECT_DIR" pull origin master
 fi
 
 # Keep /usr/local/bin/deploy.sh synchronized with repo if running as root
@@ -68,27 +93,13 @@ fi
 
 echo "[deploy] Starting Blue-Green deployment swap..."
 
-# 1. Determine which slot is currently active based on Caddyfile routing
-if grep -q "webserver-blue" "$CADDYFILE_PATH"; then
-    ACTIVE_SLOT="blue"
-    INACTIVE_SLOT="green"
-    INACTIVE_PORT=6812
-else
-    ACTIVE_SLOT="green"
-    INACTIVE_SLOT="blue"
-    INACTIVE_PORT=6811
-fi
-
-echo "[deploy] Active slot is: webserver-$ACTIVE_SLOT"
-echo "[deploy] Target inactive slot to boot is: webserver-$INACTIVE_SLOT (Port $INACTIVE_PORT)"
-
 send_notification "Rebuilding and starting webserver-$INACTIVE_SLOT (Port $INACTIVE_PORT)..." "Deploy Started" "default"
 
-# 2. Build and boot the inactive slot container, SSH gateway, and conduit
+# 3. Build and boot the inactive slot container, SSH gateway, and conduit
 echo "[deploy] Rebuilding and starting webserver-$INACTIVE_SLOT, ssh-gateway, and conduit..."
 run_docker_compose --progress=plain up -d --build "webserver-$INACTIVE_SLOT" ssh-gateway conduit
 
-# 3. Poll the inactive container's health check until it is fully ready
+# 4. Poll the inactive container's health check until it is fully ready
 echo "[deploy] Waiting for webserver-$INACTIVE_SLOT to be fully started and responsive..."
 MAX_ATTEMPTS=30
 ATTEMPT=0
@@ -112,64 +123,19 @@ if [ "$HEALTHY" = false ]; then
     exit 1
 fi
 
-# 4. Swap routing in the Caddyfile
+# 5. Swap routing in the Caddyfile (targeted slot replacement, preserving headers/CSP/configs)
 echo "[deploy] Swapping Caddy proxy configuration to point to webserver-$INACTIVE_SLOT..."
-cat << EOF > "$CADDYFILE_PATH"
-:6800 {
-    # Resolve client IP: CF-Connecting-IP -> X-Mitch-Client-IP (from Nginx) -> X-Real-IP -> immediate peer
-    map {header.CF-Connecting-IP} {cf_ip} {
-        ""      {header.X-Mitch-Client-IP}
-        default {header.CF-Connecting-IP}
-    }
-    map {cf_ip} {real_ip} {
-        ""      {header.X-Real-IP}
-        default {cf_ip}
-    }
-    map {real_ip} {mitch_client_ip} {
-        ""      {remote_host}
-        default {real_ip}
-    }
+sed -i -E "s/(webserver-)(blue|green)(:6800)/\1$INACTIVE_SLOT\3/g" "$CADDYFILE_PATH"
+if ! grep -q "webserver-$INACTIVE_SLOT:6800" "$CADDYFILE_PATH"; then
+    echo "[deploy] Warning: standard sed pattern did not match; applying general replacement..."
+    sed -i -E "s/webserver-[^:]+:6800/webserver-$INACTIVE_SLOT:6800/g" "$CADDYFILE_PATH"
+fi
 
-    reverse_proxy webserver-$INACTIVE_SLOT:6800 {
-        header_up X-Mitch-Client-IP {mitch_client_ip}
-        header_up X-Real-IP {mitch_client_ip}
-        header_up X-Forwarded-For {mitch_client_ip}
-        header_up CF-Connecting-IP {mitch_client_ip}
-    }
-
-    @not_game_proxy {
-        not path /proxy/*
-    }
-    header @not_game_proxy {
-        X-Content-Type-Options nosniff
-        Referrer-Policy strict-origin-when-cross-origin
-        X-Frame-Options SAMEORIGIN
-        Content-Security-Policy "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https://fonts.googleapis.com https://cdnjs.cloudflare.com https://www.google.com https://www.gstatic.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' blob: data: https: wss: ws:; worker-src 'self' blob: data:; frame-src 'self' https://www.google.com https://www.recaptcha.net https://html5.gamemonetize.co https://lumassets.pages.dev https://calculated2.github.io"
-        -Server
-    }
-
-    header /proxy/* {
-        X-Content-Type-Options nosniff
-        Access-Control-Allow-Origin *
-        -Server
-    }
-
-    # Cross-Origin Isolation for WebVM iframe nesting support
-    @coop_paths {
-        path / /webvm/*
-    }
-    header @coop_paths {
-        Cross-Origin-Opener-Policy "same-origin"
-        Cross-Origin-Embedder-Policy "credentialless"
-    }
-}
-EOF
-
-# 5. Hot-reload Caddy (0ms downtime swap)
+# 6. Hot-reload Caddy (0ms downtime swap)
 echo "[deploy] Reloading Caddy proxy configuration..."
 run_docker_compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyfile
 
-# Absorb the first post-reload upstream connection inside the deploy. This also
+# 7. Absorb the first post-reload upstream connection inside the deploy. This also
 # verifies the public proxy path before the old slot is removed.
 echo "[deploy] Warming the newly routed application through Caddy..."
 WARMED=false
@@ -186,7 +152,7 @@ if [ "$WARMED" = false ]; then
     exit 1
 fi
 
-# 6. Tear down the old container slot
+# 8. Tear down the old container slot
 echo "[deploy] Stopping and tearing down the old webserver-$ACTIVE_SLOT..."
 run_docker_compose stop "webserver-$ACTIVE_SLOT"
 

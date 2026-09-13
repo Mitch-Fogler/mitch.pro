@@ -43,4 +43,5 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 38222
           script: |
+            sudo -u mitch git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
             sudo /usr/local/bin/deploy.sh
