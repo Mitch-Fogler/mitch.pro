@@ -44,5 +44,4 @@ jobs:
           port: 38222
           script: |
             sudo -u mitch git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
-            sudo -u mitch git -C /home/mitch/server/bun pull origin master
-            sudo bash /home/mitch/server/bun/tools/deploy.sh
+            sudo /usr/local/bin/deploy.sh
