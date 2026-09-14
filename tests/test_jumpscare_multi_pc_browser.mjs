@@ -50,7 +50,7 @@ try {
 
   for (const page of pages) {
     assert.equal(await page.locator('#admin-video-jumpscare').count(), 1, 'Each PC should show exactly one video overlay');
-    assert.equal(await page.locator('#admin-video-jumpscare video').getAttribute('src'), '/media/admin-jumpscare-krupp-1935.mp4');
+    assert.equal(await page.locator('#admin-video-jumpscare video').getAttribute('src'), '/media/admin-jumpscare-krupp-1935.webm');
   }
 
   console.log('Two independent PCs receive one deduplicated video through the WebSocket-blocked polling fallback.');
