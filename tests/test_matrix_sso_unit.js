@@ -408,7 +408,8 @@ try {
   const configData = await resConfig.json();
   assert.equal(configData.defaultHomeserver, 0);
   assert(Array.isArray(configData.homeserverList));
-  assert(configData.homeserverList.includes(identityHost), 'homeserverList must include identity/alternate host');
+  assert.deepEqual(configData.homeserverList, ['mitchdog.com'], 'Matrix must use only the canonical homeserver endpoint');
+  assert.equal(configData.allowCustomHomeservers, false, 'custom homeservers must remain disabled');
   assert(configData.featuredCommunities);
   assert.equal(configData.featuredCommunities.openAsDefault, true);
   assert(configData.featuredCommunities.servers.includes('mitch.pro'));
@@ -416,8 +417,8 @@ try {
   const matrixPage = readFileSync(join(REPO_ROOT, 'webserver', 'matrix', 'index.html'), 'utf8');
   assert(matrixPage.includes('storedSessionIsValid(stored.token, stored.userId)'), 'Matrix must reuse a valid browser device session');
   assert(matrixPage.includes("navigator.locks.request('mitch-matrix-session'"), 'Concurrent tabs must serialize Matrix SSO');
-  assert(matrixPage.includes('Stay on the host that opened Matrix'), 'Matrix must remain on the host that opened chat');
-  assert(!matrixPage.includes('hostname !== targetHost'), 'Matrix must not force-redirect to the alternate host');
+  assert(matrixPage.includes('mitch_plaintext_chat_v1'), 'Matrix must remove obsolete crypto storage');
+  assert(matrixPage.includes('index-BVlPv2dR.js?v=plaintext2'), 'Matrix bundle URL must invalidate the old encrypted client cache');
   assert(!matrixPage.includes('__MATRIX_SSO_TARGET__'), 'Matrix page must not depend on __MATRIX_SSO_TARGET__ redirect injection');
 
   const resMatrixHtml = await fetch(`${BASE_URL}/matrix/`);

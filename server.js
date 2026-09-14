@@ -5499,7 +5499,7 @@ const RJUHSD_SCHOOLS = {
   antelope:       { name: 'Antelope High School',       url: 'https://antelope.rjuhsd.us' },
   oakmont:        { name: 'Oakmont High School',        url: 'https://oakmont.rjuhsd.us' },
 };
-const MITCH_ORIGIN  = 'https://mitch.pro';
+const MITCH_ORIGIN  = 'https://mitchdog.com';
 
 function isRjuhsdHost(req) {
   const h = String(requestHost(req)).toLowerCase().split(':')[0];
@@ -7910,21 +7910,6 @@ function generateLiveKitToken({ identity, name, roomName }) {
 
 
 function matrixSsoTargetOrigin() {
-  const s = site();
-  const alt = (s && s.alternate) ? String(s.alternate).trim() : '';
-  if (alt) {
-    try {
-      const u = new URL(alt);
-      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
-    } catch {}
-  }
-  const prim = (s && s.primary) ? String(s.primary).trim() : '';
-  if (prim) {
-    try {
-      const u = new URL(prim);
-      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
-    } catch {}
-  }
   return 'https://mitchdog.com';
 }
 
@@ -9088,6 +9073,16 @@ async function handleRequest(req, server) {
   const path   = url.pathname;
   const method = req.method;
 
+  // Keep the old hostname available for API compatibility, but use one public
+  // origin for pages so browser sessions and Matrix storage cannot diverge.
+  const incomingHost = requestHost(req).split(':')[0].toLowerCase();
+  const isCompatibilityEndpoint = path.startsWith('/api/') ||
+    path.startsWith('/_matrix/') || path.startsWith('/.well-known/matrix/') ||
+    path === '/ws' || path === '/health' || path === '/healthz';
+  if (incomingHost === 'mitch.pro' && (method === 'GET' || method === 'HEAD') && !isCompatibilityEndpoint) {
+    return Response.redirect(`https://mitchdog.com${path}${url.search}`, 308);
+  }
+
   const bellRedirect = bellScheduleRedirect(url, method);
   if (bellRedirect) return Response.redirect(bellRedirect, 302);
   const botRedirect = blooketBotRedirect(url, method);
@@ -9517,15 +9512,11 @@ async function handleRequest(req, server) {
 
   // Dynamic Cinny client configuration for Mitch.pro
   if (path === '/matrix/config.json' && method === 'GET') {
-    const host = requestHost(req) || 'mitch.pro';
-    const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
-    const serverEntry = (host.split(':')[0] === 'localhost' || host.split(':')[0] === '127.0.0.1') ? `${proto}${host}` : host;
     const targetHost = matrixSsoTargetHost();
-    const serverList = Array.from(new Set([serverEntry, targetHost, 'mitch.pro'])).filter(Boolean);
     return jsonResp(200, {
       defaultHomeserver: 0,
-      homeserverList: serverList,
-      allowCustomHomeservers: true,
+      homeserverList: [targetHost],
+      allowCustomHomeservers: false,
       featuredCommunities: {
         openAsDefault: true,
         servers: ['mitch.pro'],
@@ -9572,9 +9563,7 @@ async function handleRequest(req, server) {
           userId: authResult.user_id
         });
       }
-      const host = requestHost(req) || 'mitch.pro';
-      const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
-      const baseUrl = `${proto}${host}`;
+      const baseUrl = matrixSsoTargetOrigin();
 
       const targetPowerLevel = getMatrixPowerLevelForSid(uid);
       const role = targetPowerLevel === 100 ? 'admin' : (targetPowerLevel === 50 ? 'moderator' : 'member');
@@ -11625,7 +11614,7 @@ async function handleRequest(req, server) {
       // Email notification
       const emailSubject = "Mitch.pro Marketplace — You are a mediator!";
       const itemDesc = listing.type === 'cosmetic' ? listing.itemId : 'Custom: ' + listing.description;
-      const mUrl = `https://mitch.pro/marketplace/`;
+      const mUrl = `https://mitchdog.com/marketplace/`;
       sendEmailBg(listing.mediator, emailSubject, makeMediatorEscrowHtml(listing.mediator, maskEmail(listing.seller), maskEmail(email), listing.price, itemDesc, mUrl));
       return jsonResp(200, { ok: true, message: "Purchase placed in mediator escrow successfully!" });
     } else {
@@ -15322,7 +15311,7 @@ async function handleRequest(req, server) {
         if (!invSent[norm]) invSent[norm] = [];
         const alreadySent = invSent[norm].includes(normalizeEmail(toEmail));
 
-        const inviteLink = `https://mitch.pro/enroll?ref=${encodeURIComponent(code)}&email=${encodeURIComponent(toEmail)}`;
+        const inviteLink = `https://mitchdog.com/enroll?ref=${encodeURIComponent(code)}&email=${encodeURIComponent(toEmail)}`;
         const _s = site();
         const senderDisplay = email.split('@')[0];
 
@@ -18769,7 +18758,7 @@ async function handleRequest(req, server) {
         code,
         isPremium: isPremiumEmail(email),
         signups,
-        inviteUrl: `https://mitch.pro/enroll?ref=${encodeURIComponent(code)}&email=THEIR_EMAIL`
+        inviteUrl: `https://mitchdog.com/enroll?ref=${encodeURIComponent(code)}&email=THEIR_EMAIL`
       });
     }
 
