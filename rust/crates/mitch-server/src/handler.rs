@@ -542,6 +542,12 @@ pub async fn handle(
         {
             return resp;
         }
+        // pickle-* group (Step 9 batch 5): The Barrel, Clubhouse, Bulletin.
+        if let Some(resp) =
+            crate::routes::pickle::handle(&state, &method, &path, headers, body_bytes).await
+        {
+            return resp;
+        }
         // Unmatched /api/ paths fall through to static 404 (same as bun).
     }
 

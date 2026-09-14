@@ -710,6 +710,154 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'csrf_blocked'
   },
+  // ── pickle-* route group (Step 9 batch 5) ──────────────────────────────────
+  {
+    name: 'GET /api/pickle-chat/history (Authenticated)',
+    path: '/api/pickle-chat/history',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/pickle-chat/history (Anonymous)',
+    path: '/api/pickle-chat/history',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/pickle-chat/send (Anonymous)',
+    path: '/api/pickle-chat/send',
+    method: 'POST',
+    token: null,
+    body: { text: 'hello from the barrel' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-chat/react (Anonymous)',
+    path: '/api/pickle-chat/react',
+    method: 'POST',
+    token: null,
+    body: { msgId: 'deadbeefdeadbeef', emoji: '🥒' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-chat/presence (Anonymous)',
+    path: '/api/pickle-chat/presence',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-club/vote (Anonymous)',
+    path: '/api/pickle-club/vote',
+    method: 'POST',
+    token: null,
+    body: { choice: 0 },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-club/crunch (Anonymous)',
+    path: '/api/pickle-club/crunch',
+    method: 'POST',
+    token: null,
+    body: { rating: 7 },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-club/join (Anonymous)',
+    path: '/api/pickle-club/join',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-club/decide (Anonymous)',
+    path: '/api/pickle-club/decide',
+    method: 'POST',
+    token: null,
+    body: { email: 'nobody@student.rjuhsd.us', decision: 'approved' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-club/owners (Anonymous)',
+    path: '/api/pickle-club/owners',
+    method: 'POST',
+    token: null,
+    body: { email: 'nobody@student.rjuhsd.us', action: 'appoint' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/pickle-club/membership (Authenticated)',
+    path: '/api/pickle-club/membership',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/pickle-club/applicants (Authenticated)',
+    path: '/api/pickle-club/applicants',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/pickle-club/features (Authenticated)',
+    path: '/api/pickle-club/features',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/pickle-bulletin/post (Anonymous)',
+    path: '/api/pickle-bulletin/post',
+    method: 'POST',
+    token: null,
+    body: { title: 'Club update', html: '<p>hello</p>' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-bulletin/react (Anonymous)',
+    path: '/api/pickle-bulletin/react',
+    method: 'POST',
+    token: null,
+    body: { id: 'deadbeefdeadbeef', emoji: '🔥' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/pickle-bulletin/delete (Anonymous)',
+    path: '/api/pickle-bulletin/delete',
+    method: 'POST',
+    token: null,
+    body: { id: 'deadbeefdeadbeef' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/pickle-bulletin/state (Authenticated)',
+    path: '/api/pickle-bulletin/state',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',

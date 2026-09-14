@@ -61,6 +61,23 @@ pub fn str_or(v: Option<&Value>, fallback: &str) -> String {
     }
 }
 
+/// `String.prototype.slice(0, end)` — UTF-16 code-unit semantics (emoji count
+/// as 2). A cut landing mid-surrogate-pair drops the whole pair (the JS output
+/// would carry a lone surrogate, which JSON can't represent either).
+pub fn js_slice_utf16(s: &str, end: usize) -> String {
+    let mut units = 0usize;
+    let mut out = String::new();
+    for c in s.chars() {
+        let len = if (c as u32) > 0xFFFF { 2 } else { 1 };
+        if units + len > end {
+            break;
+        }
+        units += len;
+        out.push(c);
+    }
+    out
+}
+
 /// `Number(v)` → `None` for NaN (object, non-numeric string, sparse array).
 pub fn number(v: &Value) -> Option<f64> {
     match v {

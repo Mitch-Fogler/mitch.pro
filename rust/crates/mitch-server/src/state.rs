@@ -35,11 +35,12 @@ pub struct AppState {
     pub prox_blocklist: std::sync::RwLock<std::collections::HashSet<String>>,
     /// `featuredGameHref` (server.js:1181).
     pub featured_game_href: std::sync::RwLock<String>,
-    /// `picklePresence` (server.js:1260) — norm email -> last-seen ms.
+    /// `picklePresence` (server.js:1260) — norm email -> last-seen ms, as a
+    /// JS `Map`: insertion-ordered Vec so the features endpoint's `online`
+    /// names list iterates in first-seen order (Map.set keeps position).
     /// Process-local, single-instance assumption preserved from JS.
-    /// (Readers land with the pickle-club group, Step 9 batch 5.)
     #[allow(dead_code)]
-    pub pickle_presence: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    pub pickle_presence: std::sync::Mutex<Vec<(String, i64)>>,
     /// `userPresence` (server.js:1064) — norm email -> {lastSeen, playing}.
     /// The `/ws` heartbeat writer lands with the Step 11 presence work;
     /// friends/list reads it for the online/playing fields.
@@ -161,7 +162,7 @@ impl AppState {
             shadow_bans: std::sync::RwLock::new(shadow_bans),
             prox_blocklist: std::sync::RwLock::new(prox_blocklist),
             featured_game_href: std::sync::RwLock::new(String::new()),
-            pickle_presence: std::sync::Mutex::new(std::collections::HashMap::new()),
+            pickle_presence: std::sync::Mutex::new(Vec::new()),
             user_presence: std::sync::Mutex::new(std::collections::HashMap::new()),
             matrix_pending_email_alerts: std::sync::Mutex::new(std::collections::HashMap::new()),
             pending_security_codes: std::sync::Mutex::new(std::collections::HashMap::new()),

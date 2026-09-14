@@ -44,6 +44,34 @@ pub fn log_admin_action(
     let _ = store.write_document(&file, &json!(next));
 }
 
+/// `logCheat(email, game, details, ip)` — server.js:665-679. cheat_logs.json,
+/// newest first via unshift, capped at 1000.
+pub fn log_cheat(
+    store: &DataStore,
+    data_dir: &Path,
+    email: &str,
+    game: &str,
+    details: &str,
+    ip: &str,
+) {
+    let file = data_dir.join("cheat_logs.json");
+    let logs = store
+        .read_document(&file, json!([]))
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    let mut next = Vec::with_capacity(logs.len() + 1);
+    next.push(json!({
+        "email": if email.is_empty() { "unknown" } else { email },
+        "game": if game.is_empty() { "unknown" } else { game },
+        "details": if details.is_empty() { "" } else { details },
+        "ts": now_millis(),
+        "ip": if ip.is_empty() { "unknown" } else { ip },
+    }));
+    next.extend(logs.into_iter().take(999));
+    let _ = store.write_document(&file, &json!(next));
+}
+
 /// `maskEmail(email)` — server.js:1352. Despite the name this is an IDENTITY
 /// function (the JS predates masking); empty input returns 'anonymous'.
 pub fn mask_email(email: &str) -> String {
