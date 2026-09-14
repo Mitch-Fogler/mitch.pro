@@ -79,22 +79,22 @@ pub fn add_coins(
     }
     save_coins(store, data_dir, &coins);
 
-    // Track lifetime earned in stats.
+    // Track lifetime earned in stats — JS merges into the user's existing
+    // entry (`stats[norm].lifetime_earned = …`, server.js:3092-3095); the
+    // entry keeps its other fields (pixels, streaks, …).
     if amount > 0.0 {
-        let entry = stats
-            .as_object_mut()
-            .map(|m| m.entry(norm.clone()).or_insert(json!({})))
-            .cloned()
-            .unwrap_or(json!({}));
-        let lifetime = entry
-            .get("lifetime_earned")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
         if let Some(map) = stats.as_object_mut() {
-            map.insert(
-                norm.clone(),
-                json!({ "lifetime_earned": lifetime + adjusted }),
-            );
+            let entry = map.entry(norm.clone()).or_insert_with(|| json!({}));
+            if !entry.is_object() {
+                *entry = json!({});
+            }
+            if let Some(obj) = entry.as_object_mut() {
+                let lifetime = obj
+                    .get("lifetime_earned")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                obj.insert("lifetime_earned".into(), json!(lifetime + adjusted));
+            }
         }
         let _ = store.write_document(&data_dir.join("user_stats.json"), &stats);
     }

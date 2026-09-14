@@ -31,12 +31,33 @@ use std::sync::Arc;
 /// `CHUNK = 64` (server.js:4437).
 pub const CHUNK: f64 = 64.0;
 
+/// `PREMIUM_COLORS` (server.js:336-340) — reserved hex colors, lowercase.
+pub const PREMIUM_COLORS: &[&str] = &[
+    "#ffd700", "#ffc0cb", "#ff69b4", "#00ffff", "#7fffd4", "#adff2f", "#ff4500", "#da70d6",
+    "#40e0d0", "#f0e68c", "#e6e6fa", "#b8860b",
+];
+
+/// JSON.stringify of a JS number — integral values render without a fraction
+/// part (`5` not `5.0`), NaN/Infinity render as `null`.
+pub fn js_json_num(n: f64) -> Value {
+    if n.is_finite() && n.fract() == 0.0 && n.abs() <= 9.007_199_254_740_992e15 {
+        json!(n as i64)
+    } else {
+        serde_json::Number::from_f64(n)
+            .map(Value::Number)
+            .unwrap_or(Value::Null)
+    }
+}
+
 /// `canvasHeatmap` (server.js:4309) — "x,y" -> ts, JS `Map` insertion order.
 /// Updates of an existing key keep its position, so a plain Vec with a
 /// search-and-keep is the faithful shape.
 pub struct CanvasState {
     /// `canvasPixels` (server.js:4312) — "x,y" -> pixel object.
     pub pixels: std::sync::RwLock<Map<String, Value>>,
+    /// `canvasBanned` (server.js:4314) — painter -> { reason, ts, byAdmin },
+    /// updated in memory by `saveCanvasBans` on ban/unban.
+    pub bans: std::sync::RwLock<Map<String, Value>>,
     /// `canvasChunks` (server.js:4313) — "cx,cy" -> { "x,y": pixel } object.
     /// The inner chunk is a `Value::Object`: serde_json's newer `Map` only
     /// carries the entry/get API at `Map<String, Value>` depth, and an object
@@ -90,20 +111,37 @@ fn js_num_str(s: &str) -> f64 {
     t.parse::<f64>().unwrap_or(f64::NAN)
 }
 
-/// JS `${number}` stringification for the chunk-key coordinates. Canvas
-/// coordinates are bounded to ±500000 so plain integer rendering matches JS
-/// for every finite result; NaN/Infinity keep their JS names.
+/// JS `String(number)` / `${number}` — ECMA-262 Number::toString. Both JS and
+/// Rust produce the shortest round-trip digits; they differ only in when they
+/// switch to exponent form (JS: decimal exponent n ≤ -6 or n > 21) and in the
+/// `e+` sign for positive exponents. NaN/Infinity keep their JS names.
 fn js_num_to_string(n: f64) -> String {
     if n.is_nan() {
-        "NaN".to_string()
-    } else if n.is_infinite() {
-        if n > 0.0 {
+        return "NaN".to_string();
+    }
+    if n.is_infinite() {
+        return if n > 0.0 {
             "Infinity".to_string()
         } else {
             "-Infinity".to_string()
-        }
+        };
+    }
+    if n == 0.0 {
+        return "0".to_string(); // String(-0) === "0"
+    }
+    // `{:e}` gives "mantissa e exp" with the shortest digit string, exactly
+    // the digits JS uses. n = digits × 10^(exp - (digits.len()-1)) in ECMA
+    // terms, so the ECMA `n` is exp here (mantissa is d.ddd).
+    let sci = format!("{:e}", n);
+    let (mantissa, exp) = sci.split_once('e').unwrap_or((sci.as_str(), "0"));
+    let exp: i32 = exp.parse().unwrap_or(0);
+    if !(-6..21).contains(&exp) {
+        let sign = if exp >= 0 { "+" } else { "" };
+        format!("{}e{}{}", mantissa, sign, exp)
     } else {
-        format!("{}", n as i64)
+        // Fixed notation: Rust's Display prints the same shortest digits
+        // positionally (integral values render without a fraction part).
+        format!("{}", n)
     }
 }
 
@@ -121,6 +159,18 @@ pub fn pixel_key(x: f64, y: f64) -> String {
     format!("{},{}", js_num_to_string(x), js_num_to_string(y))
 }
 
+/// Argument bundle for `delete_pixel_raw` (the admin-erase raw-key variant).
+pub struct RawPixelDelete<'a> {
+    pub key: &'a str,
+    pub ck: &'a str,
+    /// History `x`/`y` values — `None` is a JS `undefined`, which
+    /// JSON.stringify drops from the history line.
+    pub x: Option<Value>,
+    pub y: Option<Value>,
+    pub painter: &'a str,
+    pub email: &'a str,
+}
+
 impl CanvasState {
     /// Boot load (server.js:4312-4315 + `rebuildCanvasChunks()` at 4448).
     pub fn load(store: &DataStore, data_dir: &Path) -> Self {
@@ -135,10 +185,16 @@ impl CanvasState {
             .as_object()
             .cloned()
             .unwrap_or_default();
+        let bans: Map<String, Value> = store
+            .read_document(&canvas_banned_file(data_dir), json!({}))
+            .as_object()
+            .cloned()
+            .unwrap_or_default();
         Self {
             pixels: std::sync::RwLock::new(pixels),
             chunks: std::sync::RwLock::new(chunks),
             locks: std::sync::RwLock::new(locks),
+            bans: std::sync::RwLock::new(bans),
             heatmap: std::sync::Mutex::new(Vec::new()),
             zone_pixels: std::sync::Mutex::new(std::collections::HashMap::new()),
             zone_chunks: std::sync::Mutex::new(std::collections::HashMap::new()),
@@ -245,22 +301,61 @@ impl CanvasState {
     ) {
         let key = pixel_key(x, y);
         let ck = chunk_key(x, y);
+        self.delete_pixel_raw(
+            data_dir,
+            RawPixelDelete {
+                key: &key,
+                ck: &ck,
+                x: Some(js_json_num(x)),
+                y: Some(js_json_num(y)),
+                painter,
+                email,
+            },
+            zone_id,
+        );
+    }
+
+    /// `deleteCanvasPixel` with the caller-supplied key/chunk-key — the
+    /// admin-erase endpoint keys off the RAW `${x},${y}` template (x/y can be
+    /// strings), so the pixel key and the history `x`/`y` values are the raw
+    /// ones while the chunk key comes from `Number(x)`.
+    pub fn delete_pixel_raw(&self, data_dir: &Path, d: RawPixelDelete<'_>, zone_id: Option<&str>) {
+        let RawPixelDelete {
+            key,
+            ck,
+            x,
+            y,
+            painter,
+            email,
+        } = d;
         let now = mitch_lib::school::now_millis();
-        let entry =
-            json!({ "x": x, "y": y, "color": "", "ts": now, "painter": painter, "email": email });
+        // JS object-literal key order; a JS `undefined` x/y (body key absent)
+        // is dropped by JSON.stringify, so `None` omits the key.
+        let mut entry = Map::new();
+        if let Some(x) = x {
+            entry.insert("x".into(), x);
+        }
+        if let Some(y) = y {
+            entry.insert("y".into(), y);
+        }
+        entry.insert("color".into(), json!(""));
+        entry.insert("ts".into(), json!(now));
+        entry.insert("painter".into(), json!(painter));
+        entry.insert("email".into(), json!(email));
+        let entry = Value::Object(entry);
         match zone_id {
             Some(zone_id) => {
                 {
                     let mut zone_pixels =
                         self.zone_pixels.lock().unwrap_or_else(|e| e.into_inner());
                     if let Some(pixels) = zone_pixels.get_mut(zone_id) {
-                        pixels.remove(&key);
+                        pixels.remove(key);
                     }
                 }
                 let mut zone_chunks = self.zone_chunks.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(chunks) = zone_chunks.get_mut(zone_id) {
-                    if let Some(chunk) = chunks.get_mut(&ck).and_then(|v| v.as_object_mut()) {
-                        chunk.remove(&key);
+                    if let Some(chunk) = chunks.get_mut(ck).and_then(|v| v.as_object_mut()) {
+                        chunk.remove(key);
                     }
                 }
                 drop(zone_chunks);
@@ -269,11 +364,11 @@ impl CanvasState {
             None => {
                 {
                     let mut pixels = self.pixels.write().unwrap_or_else(|e| e.into_inner());
-                    pixels.remove(&key);
+                    pixels.remove(key);
                 }
                 let mut chunks = self.chunks.write().unwrap_or_else(|e| e.into_inner());
-                if let Some(chunk) = chunks.get_mut(&ck).and_then(|v| v.as_object_mut()) {
-                    chunk.remove(&key);
+                if let Some(chunk) = chunks.get_mut(ck).and_then(|v| v.as_object_mut()) {
+                    chunk.remove(key);
                 }
                 drop(chunks);
                 append_history_line(&canvas_history_file(data_dir), &entry);
@@ -393,8 +488,8 @@ fn history_entry(
     email: Option<&Value>,
 ) -> Value {
     json!({
-        "x": x,
-        "y": y,
+        "x": js_json_num(x),
+        "y": js_json_num(y),
         "color": color.cloned().unwrap_or(Value::Null),
         "ts": mitch_lib::jsval::or(ts, json!(mitch_lib::school::now_millis())),
         "painter": mitch_lib::jsval::or(painter, json!("")),
@@ -481,10 +576,36 @@ pub fn load_bans(store: &Arc<DataStore>, data_dir: &Path) -> Value {
     store.read_document(&canvas_banned_file(data_dir), json!({}))
 }
 
+/// `saveCanvasBans(data)` (server.js:4547-4550) — swaps the in-memory
+/// `canvasBanned` map AND writes the file.
+pub fn save_bans(
+    store: &Arc<DataStore>,
+    data_dir: &Path,
+    state: &CanvasState,
+    bans: Map<String, Value>,
+) {
+    *state.bans.write().unwrap_or_else(|e| e.into_inner()) = bans.clone();
+    let _ = store.write_document(&canvas_banned_file(data_dir), &Value::Object(bans));
+}
+
 #[cfg(test)]
 mod tests {
     #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
     use super::*;
+
+    #[test]
+    fn pixel_keys_match_js_number_tostring() {
+        assert_eq!(pixel_key(5.0, 12.0), "5,12");
+        assert_eq!(pixel_key(1.5, -2.25), "1.5,-2.25");
+        assert_eq!(pixel_key(0.0, -0.0), "0,0"); // String(-0) === "0"
+        assert_eq!(pixel_key(f64::NAN, f64::INFINITY), "NaN,Infinity");
+        // ECMA exponential boundary: fixed through 1e-6, exponential at 1e-7.
+        assert_eq!(pixel_key(1e-6, 1e-7), "0.000001,1e-7");
+        // Fixed through 1e20 (n=21), exponential at 1e21 (n=22) with "e+".
+        assert_eq!(pixel_key(1e20, 1e21), "100000000000000000000,1e+21");
+        // Fractional brush coordinates keep their decimals.
+        assert_eq!(pixel_key(499999.75, -0.5), "499999.75,-0.5");
+    }
 
     #[test]
     fn chunk_keys_match_js_floor_division() {

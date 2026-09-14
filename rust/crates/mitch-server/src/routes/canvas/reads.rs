@@ -14,7 +14,7 @@ use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
 /// `authSidFromCookies` (server.js:5814) — `studentId || id || ''`.
-fn canvas_sid(state: &Arc<AppState>, headers: &HeaderMap) -> String {
+pub(crate) fn canvas_sid(state: &Arc<AppState>, headers: &HeaderMap) -> String {
     me_uid(&cookies_of(state, headers))
 }
 

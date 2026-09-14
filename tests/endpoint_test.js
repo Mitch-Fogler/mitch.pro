@@ -991,6 +991,69 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'csrf_blocked'
   },
+  // ── canvas painting (Step 10 batch 2) ─────────────────────────────────────
+  {
+    name: 'GET /api/canvas/pixel (Anonymous)',
+    path: '/api/canvas/pixel',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/canvas/pixel (Anonymous)',
+    path: '/api/canvas/pixel',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/pixels/bulk (Anonymous)',
+    path: '/api/canvas/pixels/bulk',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/erase (Anonymous)',
+    path: '/api/canvas/erase',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/admin-erase (Anonymous)',
+    path: '/api/canvas/admin-erase',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/admin-ban (Anonymous)',
+    path: '/api/canvas/admin-ban',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/admin-unban (Anonymous)',
+    path: '/api/canvas/admin-unban',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',

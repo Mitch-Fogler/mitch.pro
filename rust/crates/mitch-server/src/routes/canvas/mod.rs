@@ -6,6 +6,7 @@
 //! bookmarks + zones families and `/api/admin/canvas-report-status` in
 //! batch 3. The `broadcastCanvasDelta` WS fan-outs land with Step 11.
 
+mod paint;
 mod reads;
 pub mod state_core;
 
@@ -42,6 +43,16 @@ pub async fn handle(
             Some(reads::pixels(state, method, headers, search, body))
         }
         (_, "/api/canvas/history") => Some(reads::history(state, headers, search)),
+        // Batch 2: the painting family. Non-POST falls through to the 404
+        // ladder exactly like the JS `&& method === 'POST'` guards.
+        (_, "/api/canvas/pixel")
+        | (_, "/api/canvas/pixels/bulk")
+        | (_, "/api/canvas/erase")
+        | (_, "/api/canvas/admin-erase")
+        | (_, "/api/canvas/admin-ban")
+        | (_, "/api/canvas/admin-unban") => {
+            paint::dispatch(state, method, path, headers, body_bytes)
+        }
         (_, "/api/canvas/whoami") => Some(reads::whoami(state, headers)),
         (_, "/api/canvas/admin-bans") => Some(reads::admin_bans(state)),
         // heatmap sits inside the JS GET-routes region: other methods fall
