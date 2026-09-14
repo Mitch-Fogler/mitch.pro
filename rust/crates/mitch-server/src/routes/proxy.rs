@@ -377,6 +377,41 @@ pub async fn ping(
         let _ = norm;
     }
 
+    // Presence leg (server.js:15617-15639): the playingGame ladder keyed off
+    // the lowercased page, then touchUserPresence.
+    if let Some(ref em) = email {
+        let page_lower = page.to_lowercase();
+        let playing_game = if page_lower.contains("/games/chess/") {
+            "Chess".to_string()
+        } else if page_lower.contains("/games/casino/") || page_lower.contains("/casino/") {
+            "Casino".to_string()
+        } else if page_lower.contains("/canvas/") {
+            "Canvas".to_string()
+        } else if page_lower.contains("/encrypt.html")
+            || page_lower.contains("/encrypt/")
+            || page_lower.contains("/matrix/")
+        {
+            "Chat".to_string()
+        } else if page_lower.contains("/games/") {
+            match regex::Regex::new(r"/games/([^/]+)").ok().and_then(|re| {
+                re.captures(&page)
+                    .and_then(|c| c.get(1))
+                    .map(|m| m.as_str().to_string())
+            }) {
+                Some(m) => m,
+                None => "Games".to_string(),
+            }
+        } else {
+            String::new()
+        };
+        let playing = if playing_game.is_empty() {
+            page.clone()
+        } else {
+            playing_game
+        };
+        crate::ws::touch_user_presence(state, em, &playing);
+    }
+
     Some(json_response(
         200,
         json!({ "success": true, "challenges": [] }),

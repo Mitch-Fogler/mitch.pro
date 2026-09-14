@@ -416,7 +416,7 @@ pub(crate) async fn handle(
         .write_document(&data_file(state, store.dms), &Value::Array(pruned))
         .ok();
 
-    match fanout {
+    match &fanout {
         Fanout::Group {
             members,
             group_name,
@@ -425,7 +425,7 @@ pub(crate) async fn handle(
                 "?group={}",
                 encode_uri_component(&group_id)
             )));
-            for member in &members {
+            for member in members.iter() {
                 let member_norm =
                     auth::normalize_email(&jsval::string(&jsval::or(Some(member), json!(""))));
                 if member_norm == sender_norm {
@@ -456,7 +456,7 @@ pub(crate) async fn handle(
         }
         Fanout::Dm { to_canonical } => {
             // recActive comes from e2eUsers (the /ws batch) — always false here.
-            if notif_allowed(state, &to_canonical, "dm") {
+            if notif_allowed(state, to_canonical, "dm") {
                 let dm_url = notification_url(&chat_app_url(&format!(
                     "?to={}",
                     encode_uri_component(&sender_canonical)
@@ -470,11 +470,11 @@ pub(crate) async fn handle(
                         "url": dm_url,
                         "tag": format!("dm-{now}"),
                     });
-                    crate::routes::push::send_web_push_clean(state, &to_canonical, &payload).await;
+                    crate::routes::push::send_web_push_clean(state, to_canonical, &payload).await;
                 } else {
                     ntfy_notify_user(
                         state,
-                        &to_canonical,
+                        to_canonical,
                         &format!("Message from {sender_display}"),
                         notify_body,
                         &dm_url,
@@ -493,9 +493,37 @@ pub(crate) async fn handle(
         "",
     );
 
-    // The WebSocket `new_dm` broadcast is deferred to the /ws batch; the HTTP
-    // response below is already full parity.
+    // The WebSocket `new_dm` broadcast (server.js:19600-19642) — recipients
+    // are the group roster, or for a DM the sender + resolved peer (the JS
+    // username leg never matches: broadcast sockets carry no username).
+    let mut ws_recipients: std::collections::HashSet<String> = std::collections::HashSet::new();
+    ws_recipients.insert(sender_norm.clone());
+    match &fanout {
+        Fanout::Group { members, .. } => {
+            ws_recipients.extend(members.iter().map(|m| {
+                let raw = jsval::string(&jsval::or(Some(m), json!("")));
+                let resolved = dm::resolve_member_ref(&idx, &raw);
+                if resolved.is_empty() {
+                    auth::normalize_email(&raw)
+                } else {
+                    resolved
+                }
+            }));
+        }
+        Fanout::Dm { to_canonical } => {
+            ws_recipients.insert(if to_canonical.is_empty() {
+                auth::normalize_email(&to)
+            } else {
+                to_canonical.clone()
+            });
+        }
+    }
     let masked = masked_msg(state, &Value::Object(msg));
+    crate::ws::broadcast(
+        state,
+        crate::ws::WsRecipients::Emails(ws_recipients),
+        json!({ "type": "new_dm", "message": masked }).to_string(),
+    );
     Some(json_response(
         200,
         json!({ "success": true, "message": masked }),

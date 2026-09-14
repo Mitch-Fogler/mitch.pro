@@ -981,8 +981,16 @@ pub fn execute_moderator_approved_action(
                 return Err((400, "message required".into()));
             }
             let jumpscare = s("type").as_str() == Some("jumpscare");
-            // WebSocket fan-out lands with Step 11 (/ws); today the socket set
-            // is empty so this is a no-op like the JS with zero clients.
+            // WS fan-out (server.js:7093-7100).
+            crate::ws::broadcast(
+                state,
+                crate::ws::WsRecipients::All,
+                json!({
+                    "type": if jumpscare { "admin_jumpscare" } else { "admin_broadcast" },
+                    "message": msg,
+                })
+                .to_string(),
+            );
             mitch_lib::admin::log_admin_action(
                 &state.store,
                 &state.cfg.data_dir,

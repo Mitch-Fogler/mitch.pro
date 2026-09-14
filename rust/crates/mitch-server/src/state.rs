@@ -76,6 +76,20 @@ pub struct AppState {
     /// `e2eMessages` (server.js:849) — relayed E2E ciphertexts keyed by the
     /// sorted-pair `e2eKey`, newest-last, 500 cap per conversation.
     pub e2e_messages: std::sync::Mutex<std::collections::HashMap<String, Vec<E2eMessage>>>,
+    /// `allSockets` (server.js:858) — the broadcast-socket registry
+    /// (`ws.data.isBroadcast`), keyed by connection id. Only the presence/
+    /// fan-out subset of `ws.data` is carried (`email` normalized + `sid`).
+    pub ws_broadcasts: std::sync::Mutex<std::collections::HashMap<u64, crate::ws::WsClient>>,
+    /// Connection id allocator for `ws_broadcasts`.
+    pub ws_next_id: std::sync::atomic::AtomicU64,
+    /// The fan-out channel standing in for the JS per-socket `ws.send` loop;
+    /// every connected broadcast socket subscribes.
+    pub ws_tx: tokio::sync::broadcast::Sender<Arc<crate::ws::WsEnvelope>>,
+    /// `cvOnline` (server.js:881) — chess-vs online map; `touchUserPresence`
+    /// writes under both the raw email and the normalized key. Consumers land
+    /// with Step 12 (chess-vs).
+    #[allow(dead_code)]
+    pub cv_online: std::sync::Mutex<std::collections::HashMap<String, i64>>,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -208,6 +222,12 @@ impl AppState {
             canvas,
             e2e_users: std::sync::Mutex::new(Vec::new()),
             e2e_messages: std::sync::Mutex::new(std::collections::HashMap::new()),
+            ws_broadcasts: std::sync::Mutex::new(std::collections::HashMap::new()),
+            ws_next_id: std::sync::atomic::AtomicU64::new(1),
+            // 1024-slot queue: per-socket delivery is lossless under normal
+            // load; a lagged receiver skips forward like a slow JS client.
+            ws_tx: tokio::sync::broadcast::channel(1024).0,
+            cv_online: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 

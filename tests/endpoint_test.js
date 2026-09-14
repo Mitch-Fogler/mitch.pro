@@ -1683,6 +1683,78 @@ const tests = [
     token: USER_TOKEN,
     body: { privateKey: 'some-key', passphrase: 'pass' },
     expectedStatus: 403
+  },
+  // Step 11 remainder: /ws broadcast socket + presence heartbeat surface.
+  {
+    name: 'GET /ws (Anonymous, no upgrade header) falls through to pages',
+    path: '/ws',
+    method: 'GET',
+    token: null,
+    expectedStatus: 200
+  },
+  {
+    name: 'POST /ws (Anonymous, no Origin)',
+    path: '/ws',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /ws upgrade headers (Anonymous) requires authentication',
+    path: '/ws',
+    method: 'GET',
+    token: null,
+    expectedStatus: 401,
+    headers: { Upgrade: 'websocket', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'authentication required'
+  },
+  {
+    name: 'GET /ws upgrade headers (Cross-origin) rejected',
+    path: '/ws',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    headers: { Upgrade: 'websocket', Origin: 'https://untrusted.example' },
+    verify: (b) => b && b.error === 'websocket origin rejected'
+  },
+  {
+    name: 'POST /api/presence/heartbeat (Anonymous, no Origin)',
+    path: '/api/presence/heartbeat',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/presence/heartbeat (Anonymous, wrong verb)',
+    path: '/api/presence/heartbeat',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/presence/heartbeat (CSRF headers, Anonymous)',
+    path: '/api/presence/heartbeat',
+    method: 'POST',
+    token: null,
+    body: { playing: 'Chess' },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/presence/heartbeat (CSRF headers, Authenticated)',
+    path: '/api/presence/heartbeat',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { playing: 'Chess' },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
   }
 ];
 

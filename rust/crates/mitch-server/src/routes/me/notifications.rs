@@ -747,7 +747,12 @@ fn me_notifications_read(
             obj.insert(norm.clone(), Value::Array(mine_matrix));
         }
         let _ = state.store.write_document(&matrix_file, &all_matrix);
-        // JS also calls triggerNotificationRefresh() (WS fan-out, Step 11).
+        // JS also calls triggerNotificationRefresh() (server.js:3120-3127).
+        crate::ws::broadcast(
+            state,
+            crate::ws::WsRecipients::All,
+            json!({ "type": "refresh_notifications" }).to_string(),
+        );
     }
 
     json_response(200, json!({ "ok": true }))

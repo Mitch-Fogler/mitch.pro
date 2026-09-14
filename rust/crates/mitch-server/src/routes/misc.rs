@@ -18,6 +18,7 @@
 use crate::state::AppState;
 use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::Response;
+use mitch_lib::jsval;
 use serde_json::{json, Value};
 use std::sync::Arc;
 
@@ -30,6 +31,7 @@ pub async fn handle(
     headers: &HeaderMap,
     _search: &str,
     body: &serde_json::Value,
+    body_bytes: &[u8],
 ) -> Option<Response> {
     if path == "/api/site-info" && *method == Method::GET {
         return Some(site_info(state));
@@ -55,7 +57,36 @@ pub async fn handle(
     if path == "/api/games" && (*method == Method::GET || *method == Method::POST) {
         return Some(games(state, body, headers));
     }
+    // POST /api/presence/heartbeat (server.js:16307-16316) — the Step 11
+    // presence writer; POST-only, everything else falls through.
+    if path == "/api/presence/heartbeat" && *method == Method::POST {
+        return Some(presence_heartbeat(state, headers, body_bytes));
+    }
     None
+}
+
+/// `String(body.playing || '').trim()` — the presence heartbeat's playing
+/// field. NOTE: unlike most heartbeat endpoints there is no isRevoked check.
+fn presence_heartbeat(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -> Response {
+    let cookies = crate::routes::me::cookies_of(state, headers);
+    let sid = cookies
+        .get("studentId")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| cookies.get("id").unwrap_or(""))
+        .to_string();
+    if !mitch_lib::auth::valid_id(&sid, &state.id_secret) {
+        return json_response(401, json!({ "error": "unauthorized" }));
+    }
+    let Some(email) = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, &sid) else {
+        return json_response(401, json!({ "error": "email not found" }));
+    };
+    let Some(body) = crate::routes::me::parse_body_strict(body_bytes) else {
+        return json_response(400, json!({ "error": "bad json" }));
+    };
+    let playing = jsval::string(&jsval::or(body.get("playing"), json!("")));
+    let playing = playing.trim();
+    crate::ws::touch_user_presence(state, &email, playing);
+    json_response(200, json!({ "ok": true }))
 }
 
 fn json_response(code: u16, obj: serde_json::Value) -> Response {

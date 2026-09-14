@@ -13,6 +13,39 @@ mod zones;
 
 pub use state_core::CanvasState;
 
+/// `broadcastCanvasDelta(delta)` (server.js:3133-3140) — `{type:
+/// 'canvas_delta', ...delta}` to every broadcast socket. Insertion-ordered
+/// chunk list stands in for the JS `Set`.
+pub(crate) fn broadcast_canvas_delta(
+    state: &std::sync::Arc<AppState>,
+    action: &str,
+    zone_id: Option<&str>,
+    payload_key: &str,
+    payload: Value,
+) {
+    let mut delta = serde_json::Map::new();
+    delta.insert("action".into(), json!(action));
+    delta.insert(
+        "zoneId".into(),
+        json!(match zone_id {
+            Some(z) => Value::String(z.to_string()),
+            None => Value::Null,
+        }),
+    );
+    if !payload_key.is_empty() {
+        delta.insert(payload_key.into(), payload);
+    }
+    // Key order = the JS literal: `type` first, then the delta fields.
+    let mut payload = serde_json::Map::new();
+    payload.insert("type".into(), json!("canvas_delta"));
+    payload.extend(delta);
+    crate::ws::broadcast(
+        state,
+        crate::ws::WsRecipients::All,
+        Value::Object(payload).to_string(),
+    );
+}
+
 use crate::routes::me::json_response;
 use crate::state::AppState;
 use axum::http::{HeaderMap, Method};

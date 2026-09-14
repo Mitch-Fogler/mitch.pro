@@ -339,19 +339,35 @@ pub fn handle(
         if !ctx.is_any_admin(state) {
             return Some(forbidden());
         }
-        let msg = body.get("msg").cloned().unwrap_or(Value::Null);
+        let msg = body.get("msg").cloned();
         let typ = body.get("type").cloned().unwrap_or(Value::Null);
-        // WebSocket fan-out lands with Step 11; zero sockets today.
+        // WS fan-out (server.js:12729-12735): `message: undefined` drops the
+        // key from the JSON payload (a present null is kept).
+        let payload_type = if typ.as_str() == Some("jumpscare") {
+            "admin_jumpscare"
+        } else {
+            "admin_broadcast"
+        };
+        let mut payload = serde_json::Map::new();
+        payload.insert("type".into(), json!(payload_type));
+        if let Some(m) = &msg {
+            payload.insert("message".into(), m.clone());
+        }
+        crate::ws::broadcast(
+            state,
+            crate::ws::WsRecipients::All,
+            Value::Object(payload).to_string(),
+        );
         mitch_lib::admin::log_admin_action(
             &state.store,
             &state.cfg.data_dir,
             &ctx.email(state),
-            if typ.as_str() == Some("jumpscare") {
+            if payload_type == "admin_jumpscare" {
                 "jumpscare"
             } else {
                 "broadcast"
             },
-            json!({ "message": msg }),
+            json!({ "message": msg.unwrap_or(Value::Null) }),
         );
         return Some(json_response(200, json!({ "ok": true })));
     }

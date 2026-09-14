@@ -274,6 +274,7 @@ pub async fn handle(
     uri: &axum::http::Uri,
     headers: &HeaderMap,
     body_bytes: &[u8],
+    ws_upgrade: Option<axum::extract::ws::WebSocketUpgrade>,
 ) -> Response {
     let path = uri.path().to_string();
     let search = uri.query().unwrap_or("").to_string();
@@ -486,6 +487,22 @@ pub async fn handle(
         return redirect("/enroll/", 302);
     }
 
+    // 4b2. /ws global broadcast upgrade — server.js:11711-11723. The password
+    // gate exempts /ws, so this arm's own origin + sid ladder is the gate,
+    // exactly like the JS. GET /ws without an upgrade header falls through
+    // to the page block below.
+    if path == "/ws" {
+        let is_upgrade = headers
+            .get("upgrade")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.to_lowercase())
+            .as_deref()
+            == Some("websocket");
+        if is_upgrade {
+            return crate::ws::handle_upgrade(&state, headers, ws_upgrade);
+        }
+    }
+
     // 4c. API route dispatch — the ported route groups (plan Step 7+).
     if path.starts_with("/api/") {
         // Captcha proxy (solve/submit/stats/token/next/puzzle/images).
@@ -515,7 +532,8 @@ pub async fn handle(
             // Unmatched admin paths fall through to the static 404 below.
         }
         if let Some(resp) =
-            crate::routes::misc::handle(&state, &method, &path, headers, &search, &body).await
+            crate::routes::misc::handle(&state, &method, &path, headers, &search, &body, body_bytes)
+                .await
         {
             return resp;
         }

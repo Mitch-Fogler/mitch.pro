@@ -561,7 +561,8 @@ pub fn zones_clear(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> 
     if history.exists() {
         let _ = std::fs::write(&history, b"");
     }
-    // broadcastCanvasDelta({ action: 'clear', zoneId }) lands with Step 11.
+    // broadcastCanvasDelta({ action: 'clear', zoneId }) (server.js:22344).
+    super::broadcast_canvas_delta(state, "clear", Some(zone_id.as_str()), "", Value::Null);
     json_response(200, json!({ "ok": true }))
 }
 

@@ -78,6 +78,16 @@ pub fn js_slice_utf16(s: &str, end: usize) -> String {
     out
 }
 
+/// A whole double as a JSON value without a trailing `.0` — the
+/// `JSON.stringify` rendering of a JS number (NaN/Infinity become null).
+pub fn num_value(n: f64) -> Value {
+    if n.is_finite() && n.fract() == 0.0 && n.abs() < 9.007_199_254_740_992e15 {
+        serde_json::json!(n as i64)
+    } else {
+        serde_json::json!(n)
+    }
+}
+
 /// `Number(v)` → `None` for NaN (object, non-numeric string, sparse array).
 pub fn number(v: &Value) -> Option<f64> {
     match v {

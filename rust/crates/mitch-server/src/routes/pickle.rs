@@ -413,7 +413,40 @@ async fn chat_send(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]
         .write_document(&chat_file, &json!(next_history[start..].to_vec()));
     touch_presence(state, &norm_email);
 
-    // `isBroadcast` WS fan-out (server.js:16677-16686) — Step 11.
+    // `pickle_chat` WS fan-out (server.js:16676-16686) — the payload
+    // recomputes the masked email, active color, and jar at send time.
+    {
+        let mut out = msg.as_object().cloned().unwrap_or_default();
+        out.insert("email".into(), json!(mask_email(&email)));
+        match mitch_lib::shop::public_active_color(
+            &state.store,
+            &jsval::str_or(
+                msg.get("email"),
+                &jsval::string(&jsval::or(msg.get("name"), json!(""))),
+            ),
+            &jsval::or(msg.get("color"), json!(Value::Null)),
+        ) {
+            Some(color) => {
+                out.insert("color".into(), json!(color));
+            }
+            None => {
+                out.remove("color"); // JS: `{...msg, color: undefined}` drops the key
+            }
+        }
+        out.insert(
+            "jar".into(),
+            pickle_jar_for(
+                state,
+                &jsval::string(&jsval::or(msg.get("email"), json!(""))),
+                None,
+            ),
+        );
+        crate::ws::broadcast(
+            state,
+            crate::ws::WsRecipients::All,
+            json!({ "type": "pickle_chat", "msg": Value::Object(out) }).to_string(),
+        );
+    }
     json_response(200, json!({ "ok": true }))
 }
 
@@ -444,7 +477,12 @@ fn chat_react(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -> 
     let norm_email = auth::normalize_email(&email);
     let tally = toggle_reaction(&mut history, idx, &emoji, &norm_email);
     let _ = state.store.write_document(&chat_file, &history);
-    // `pickle_chat_react` WS fan-out (server.js:16718-16723) — Step 11.
+    // `pickle_chat_react` WS fan-out (server.js:16718-16723).
+    crate::ws::broadcast(
+        state,
+        crate::ws::WsRecipients::All,
+        json!({ "type": "pickle_chat_react", "msgId": msg_id, "reactions": tally }).to_string(),
+    );
     let my_reactions = my_reactions_of(history.as_array().and_then(|a| a.get(idx)), &norm_email);
     json_response(
         200,
@@ -1089,7 +1127,14 @@ async fn bulletin_post(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &
             "title": title,
         }),
     );
-    // `pickle_bulletin_new` WS fan-out (server.js:16916-16920) — Step 11.
+    // `pickle_bulletin_new` WS fan-out (server.js:16916-16920) — public
+    // viewer ('').
+    crate::ws::broadcast(
+        state,
+        crate::ws::WsRecipients::All,
+        json!({ "type": "pickle_bulletin_new", "post": pickle_bulletin_public(&post, "") })
+            .to_string(),
+    );
     json_response(
         200,
         json!({ "ok": true, "post": pickle_bulletin_public(&post, &norm) }),
@@ -1122,7 +1167,12 @@ fn bulletin_react(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8])
     let norm_email = auth::normalize_email(&email);
     let tally = toggle_reaction(&mut posts, idx, &emoji, &norm_email);
     let _ = state.store.write_document(&file, &posts);
-    // `pickle_bulletin_react` WS fan-out (server.js:16952-16956) — Step 11.
+    // `pickle_bulletin_react` WS fan-out (server.js:16952-16956).
+    crate::ws::broadcast(
+        state,
+        crate::ws::WsRecipients::All,
+        json!({ "type": "pickle_bulletin_react", "id": post_id, "reactions": tally }).to_string(),
+    );
     let my_reactions = my_reactions_of(posts.as_array().and_then(|a| a.get(idx)), &norm_email);
     json_response(
         200,
@@ -1171,7 +1221,12 @@ fn bulletin_delete(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]
         "pickle_bulletin_delete",
         json!({ "id": post_id }),
     );
-    // `pickle_bulletin_delete` WS fan-out (server.js:16989-16993) — Step 11.
+    // `pickle_bulletin_delete` WS fan-out (server.js:16989-16993).
+    crate::ws::broadcast(
+        state,
+        crate::ws::WsRecipients::All,
+        json!({ "type": "pickle_bulletin_delete", "id": post_id }).to_string(),
+    );
     json_response(200, json!({ "ok": true }))
 }
 

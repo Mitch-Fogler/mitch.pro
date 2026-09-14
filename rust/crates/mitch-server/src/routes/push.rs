@@ -51,7 +51,7 @@ pub fn push_admin_notification(
 
 /// Sends one web-push message; returns true when the endpoint reported
 /// 410/404 (subscription gone — callers then delete it like the JS does).
-async fn send_web_push(
+pub(crate) async fn send_web_push(
     state: &Arc<AppState>,
     _vapid_public: &str,
     target_email: &str,

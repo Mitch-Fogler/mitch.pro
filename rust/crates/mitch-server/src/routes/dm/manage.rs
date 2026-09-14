@@ -530,7 +530,7 @@ pub(super) async fn clear(
 /// `/api/dm/expiry` — set the conversation-wide auto-delete window. Either
 /// DM participant (or any group member) can change it; it applies to
 /// messages from everyone in the conversation. The live `chat_expiry` WS
-/// broadcast is deferred to the /ws batch.
+/// broadcast is wired below (server.js:20056-20062).
 pub(super) async fn expiry(
     state: &Arc<AppState>,
     headers: &HeaderMap,
@@ -565,6 +565,9 @@ pub(super) async fn expiry(
     let group_id;
     let with;
     let key;
+    // JS wsTargets — the normalized-email set the `chat_expiry` broadcast
+    // fans out to (server.js:20000-20020).
+    let mut ws_targets: std::collections::HashSet<String> = std::collections::HashSet::new();
     if let Some(gid_v) = body.get("groupId").filter(|v| truthy(v)) {
         let gid = jsval::string(gid_v);
         let groups: Vec<Value> = state
@@ -592,6 +595,7 @@ pub(super) async fn expiry(
         key = format!("{}{}", exp_pfx, dm::group_expiry_key(&gid));
         group_id = Some(gid);
         with = None;
+        ws_targets.extend(member_norms);
     } else if let Some(with_v) = body.get("with").filter(|v| truthy(v)) {
         // resolveMemberRef returns '' for anything that isn't a real member,
         // which doubles as the exists check.
@@ -602,6 +606,8 @@ pub(super) async fn expiry(
         group_id = None;
         with = Some(peer_resolved.clone());
         key = format!("{}{}", exp_pfx, dm::dm_expiry_key(&norm, &peer_resolved));
+        ws_targets.insert(norm.clone());
+        ws_targets.insert(peer_resolved.clone());
     } else {
         return json_response(400, json!({ "error": "missing target" }));
     }
@@ -696,6 +702,27 @@ pub(super) async fn expiry(
                 .ok();
             pruned_any = true;
         }
+    }
+    // The live `chat_expiry` WS broadcast (server.js:20056-20062). JS
+    // JSON.stringify drops undefined groupId/with keys, so build the map
+    // conditionally.
+    {
+        let mut payload = serde_json::Map::new();
+        payload.insert("type".into(), json!("chat_expiry"));
+        payload.insert("key".into(), json!(key));
+        payload.insert("expiry".into(), js_num_value(requested));
+        if let Some(gid) = &group_id {
+            payload.insert("groupId".into(), json!(gid));
+        }
+        if let Some(w) = &with {
+            payload.insert("with".into(), json!(w));
+        }
+        payload.insert("reload".into(), json!(pruned_any));
+        crate::ws::broadcast(
+            state,
+            crate::ws::WsRecipients::Emails(ws_targets),
+            Value::Object(payload).to_string(),
+        );
     }
     json_response(
         200,

@@ -13,6 +13,7 @@
 // the same via lib.rs:17); the binary itself keeps them denied.
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+use axum::extract::FromRequestParts;
 use axum::extract::State;
 use axum::http::Request;
 use axum::response::Response;
@@ -79,9 +80,17 @@ async fn get_any(
     State(state): State<Arc<state::AppState>>,
     req: Request<axum::body::Body>,
 ) -> Response {
-    let method = req.method().clone();
-    let headers = req.headers().clone();
-    let uri = req.uri().clone();
+    let (mut parts, body) = req.into_parts();
+    let method = parts.method.clone();
+    let headers = parts.headers.clone();
+    let uri = parts.uri.clone();
+    // The WS upgrade half-connection lives in the request extensions (hyper
+    // inserts it for upgrade requests); handler.rs's `/ws` arm needs it, and
+    // this is the only point that owns the full request. Extraction fails
+    // (None) for any non-upgrade request.
+    let ws_upgrade = axum::extract::ws::WebSocketUpgrade::from_request_parts(&mut parts, &())
+        .await
+        .ok();
     // Read the body (empty for GET/HEAD; bounded for API POSTs). The JS
     // enforces its caps inside the handlers — the largest chat JSON envelope
     // is ~2.3MB and raw attachment uploads reach 250MB — so the read cap is
@@ -94,9 +103,9 @@ async fn get_any(
         "/api/dm/send" => mitch_lib::dm::max_chat_json_body_bytes(),
         _ => 256 * 1024,
     };
-    let body_bytes = match axum::body::to_bytes(req.into_body(), cap).await {
+    let body_bytes = match axum::body::to_bytes(body, cap).await {
         Ok(b) => b,
         Err(_) => axum::body::Bytes::from(vec![0u8; cap + 1]),
     };
-    handler::handle(state, method, &uri, &headers, &body_bytes).await
+    handler::handle(state, method, &uri, &headers, &body_bytes, ws_upgrade).await
 }

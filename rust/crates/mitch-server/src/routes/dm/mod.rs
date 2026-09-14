@@ -15,6 +15,7 @@ mod attachment;
 mod inbox;
 mod manage;
 mod notif;
+pub(crate) use notif::notif_allowed;
 mod send;
 
 use crate::routes::me::{cookies_of, data_file};

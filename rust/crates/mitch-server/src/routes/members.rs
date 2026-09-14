@@ -213,7 +213,7 @@ fn members(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
                 120_000,
             )),
         );
-        let member_online = is_user_present(&presence_map, &email, now);
+        let member_online = is_user_present(state, &email, now);
         member.insert("online".into(), json!(member_online));
         member.insert(
             "playing".into(),

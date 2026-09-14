@@ -6,7 +6,7 @@
 
 use super::me::{cookies_of, data_file, json_response, me_uid, parse_body_strict};
 use crate::routes::push::send_web_push_clean;
-use crate::state::{AppState, UserPresence, PRESENCE_FALLBACK_TTL_MS};
+use crate::state::AppState;
 use axum::http::{HeaderMap, Method};
 use axum::response::Response;
 use mitch_lib::auth;
@@ -376,7 +376,7 @@ fn friends_list(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
                 prof.get("username").filter(|v| jsval::truthy(v)),
                 json!(profile::default_username_for_email(&f_norm)),
             )));
-            let is_online = is_user_present(&presence_map, &f_norm, now);
+            let is_online = is_user_present(state, &f_norm, now);
             let playing = if is_online {
                 presence_map
                     .get(&f_norm)
@@ -447,21 +447,10 @@ fn requests_pending(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/// `isUserPresent(email, now)` (server.js:1077-1084) — the broadcast-socket
-/// leg arrives with the Step 11 WS work; the presence-map TTL leg is live.
-pub(crate) fn is_user_present(
-    presence: &std::collections::HashMap<String, UserPresence>,
-    email: &str,
-    now: i64,
-) -> bool {
-    let norm = auth::normalize_email(email);
-    if norm.is_empty() {
-        return false;
-    }
-    match presence.get(&norm) {
-        Some(p) => now - p.last_seen < PRESENCE_FALLBACK_TTL_MS,
-        None => false,
-    }
+/// `isUserPresent(email, now)` (server.js:1077-1084) — both legs live since
+/// the Step 11 WS batch; the map-only port moved to `crate::ws`.
+pub(crate) fn is_user_present(state: &std::sync::Arc<AppState>, email: &str, now: i64) -> bool {
+    crate::ws::is_user_present(state, email, now)
 }
 
 /// `friends[key] ||= []; if (!includes(x)) push(x)` (server.js:16110-16115).

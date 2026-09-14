@@ -280,6 +280,11 @@ pub fn pixel_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> R
     }
     let pixel_data = Value::Object(pixel_data);
 
+    // changedPixels/changedChunks (server.js:21935-21941) — the paint loop's
+    // bookkeeping, now feeding the canvas_delta WS broadcast below.
+    let mut changed_pixels: Vec<Value> = Vec::new();
+    let mut changed_chunks: Vec<String> = Vec::new();
+
     let center_key = state_core::pixel_key(x, y);
     for (px, py, pkey) in &to_paint {
         state.canvas.set_pixel(
@@ -290,6 +295,19 @@ pub fn pixel_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> R
             pixel_data.clone(),
             zone_opt,
         );
+        changed_pixels.push(json!({
+            "x": jsval::num_value(*px),
+            "y": jsval::num_value(*py),
+            "data": pixel_data.clone(),
+        }));
+        let ck = format!(
+            "{},{}",
+            (px / 64.0).floor() as i64,
+            (py / 64.0).floor() as i64
+        );
+        if !changed_chunks.contains(&ck) {
+            changed_chunks.push(ck);
+        }
         if !has_zone {
             state.canvas.heatmap_set(pkey, now);
             // body.lock + the exact center pixel + premium: the weekly lock
@@ -363,6 +381,20 @@ pub fn pixel_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> R
             state.coin_multiplier(),
         );
     }
+    // canvas_delta broadcast (server.js:21969-21975).
+    if !changed_pixels.is_empty() {
+        if changed_pixels.len() > 300 {
+            super::broadcast_canvas_delta(
+                state,
+                "invalidate",
+                zone_opt,
+                "chunks",
+                json!(changed_chunks),
+            );
+        } else {
+            super::broadcast_canvas_delta(state, "set", zone_opt, "pixels", json!(changed_pixels));
+        }
+    }
     json_response(200, json!({ "ok": true }))
 }
 
@@ -407,6 +439,8 @@ pub fn bulk_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> Re
 
     let now = now_ms();
     let mut count: i64 = 0;
+    // changedChunks (server.js:21817) — insertion-ordered for the broadcast.
+    let mut changed_chunks: Vec<String> = Vec::new();
     for p in &points {
         let obj = p.as_object();
         let x = num_field(obj, "x");
@@ -458,6 +492,14 @@ pub fn bulk_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> Re
         if !has_zone {
             state.canvas.heatmap_set(&state_core::pixel_key(x, y), now);
         }
+        let ck = format!(
+            "{},{}",
+            (x / 64.0).floor() as i64,
+            (y / 64.0).floor() as i64
+        );
+        if !changed_chunks.contains(&ck) {
+            changed_chunks.push(ck);
+        }
         count += 1;
     }
 
@@ -471,6 +513,16 @@ pub fn bulk_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> Re
             state.data_dir(),
             &email,
             state.coin_multiplier(),
+        );
+    }
+    // canvas_delta broadcast (server.js:21844-21846).
+    if !changed_chunks.is_empty() {
+        super::broadcast_canvas_delta(
+            state,
+            "invalidate",
+            if has_zone { Some(&zone_key) } else { None },
+            "chunks",
+            json!(changed_chunks),
         );
     }
     json_response(200, json!({ "ok": true, "count": count }))
@@ -562,6 +614,9 @@ pub fn erase_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> R
 
     let painter_str = jsval::string(&painter);
     let steps = brush_sz.ceil() as i64;
+    // erasedPixels/erasedChunks (server.js:22010-22011).
+    let mut erased_pixels: Vec<Value> = Vec::new();
+    let mut erased_chunks: Vec<String> = Vec::new();
     for i in 0..steps {
         for j in 0..steps {
             let px = x - half + i as f64;
@@ -585,12 +640,44 @@ pub fn erase_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value) -> R
             state
                 .canvas
                 .delete_pixel(state.data_dir(), px, py, &painter_str, &email, zone_opt);
+            erased_pixels.push(json!({
+                "x": jsval::num_value(px),
+                "y": jsval::num_value(py),
+            }));
+            let ck = format!(
+                "{},{}",
+                (px / 64.0).floor() as i64,
+                (py / 64.0).floor() as i64
+            );
+            if !erased_chunks.contains(&ck) {
+                erased_chunks.push(ck);
+            }
         }
     }
     if has_zone {
         state
             .canvas
             .save_zone_pixels(&state.store, state.data_dir(), &zone_key);
+    }
+    // canvas_delta broadcast (server.js:22025-22031).
+    if !erased_pixels.is_empty() {
+        if erased_pixels.len() > 300 {
+            super::broadcast_canvas_delta(
+                state,
+                "invalidate",
+                if has_zone { Some(&zone_key) } else { None },
+                "chunks",
+                json!(erased_chunks),
+            );
+        } else {
+            super::broadcast_canvas_delta(
+                state,
+                "delete",
+                if has_zone { Some(&zone_key) } else { None },
+                "pixels",
+                json!(erased_pixels),
+            );
+        }
     }
     json_response(200, json!({ "ok": true }))
 }
@@ -653,6 +740,14 @@ pub fn admin_erase_post(state: &Arc<AppState>, headers: &HeaderMap, body: &Value
         &admin_email,
         "canvas_erase",
         xy_details(x, y),
+    );
+    // canvas_delta broadcast (server.js:21760).
+    super::broadcast_canvas_delta(
+        state,
+        "delete",
+        None,
+        "pixels",
+        json!([{ "x": jsval::num_value(x.and_then(jsval::number).unwrap_or(f64::NAN)), "y": jsval::num_value(y.and_then(jsval::number).unwrap_or(f64::NAN)) }]),
     );
     json_response(200, json!({ "ok": true }))
 }
