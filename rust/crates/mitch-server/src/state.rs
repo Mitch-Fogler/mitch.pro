@@ -35,6 +35,15 @@ pub struct AppState {
     pub prox_blocklist: std::sync::RwLock<std::collections::HashSet<String>>,
     /// `featuredGameHref` (server.js:1181).
     pub featured_game_href: std::sync::RwLock<String>,
+    /// `picklePresence` (server.js:1260) — norm email -> last-seen ms.
+    /// Process-local, single-instance assumption preserved from JS.
+    /// (Readers land with the pickle-club group, Step 9 batch 5.)
+    #[allow(dead_code)]
+    pub pickle_presence: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `matrixPendingEmailAlerts` (server.js:8497) — key `norm:roomId`.
+    /// The delayed-alert scheduler itself lands with the Step 11 DM group;
+    /// the cancel path is live so notification reads stay correct.
+    pub matrix_pending_email_alerts: std::sync::Mutex<std::collections::HashMap<String, i64>>,
 }
 
 impl AppState {
@@ -99,6 +108,8 @@ impl AppState {
             shadow_bans: std::sync::RwLock::new(shadow_bans),
             prox_blocklist: std::sync::RwLock::new(prox_blocklist),
             featured_game_href: std::sync::RwLock::new(String::new()),
+            pickle_presence: std::sync::Mutex::new(std::collections::HashMap::new()),
+            matrix_pending_email_alerts: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 

@@ -18,11 +18,13 @@
 
 pub mod admin;
 pub mod auth;
+pub mod chat;
 pub mod coins;
 pub mod config;
 pub mod crypto;
 pub mod data;
 pub mod email;
+pub mod jsval;
 pub mod log;
 pub mod profile;
 pub mod shop;

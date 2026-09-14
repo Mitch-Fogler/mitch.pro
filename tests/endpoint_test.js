@@ -446,6 +446,125 @@ const tests = [
     expectedStatus: 401
   },
   {
+    name: 'GET /api/me/notif-prefs (Authenticated)',
+    path: '/api/me/notif-prefs',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 200,
+    verify: (b) => b && b.prefs && typeof b.prefs.quietStart === 'string'
+  },
+  {
+    name: 'POST /api/me/notif-prefs (Defaults round-trip)',
+    path: '/api/me/notif-prefs',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { dm: true, digest: false, tzOffset: -420 },
+    expectedStatus: 200,
+    verify: (b) => b && b.ok === true && b.prefs.digest === false && b.prefs.tzOffset === -420
+  },
+  {
+    name: 'POST /api/me/notif-prefs (Same quiet bounds rejected)',
+    path: '/api/me/notif-prefs',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { quietEnabled: true, quietStart: '22:00', quietEnd: '22:00' },
+    expectedStatus: 400,
+    verify: (b) => b && b.error === 'quiet hours start and end must differ'
+  },
+  {
+    name: 'POST /api/me/notif-prefs (Bad quiet format rejected)',
+    path: '/api/me/notif-prefs',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { quietStart: '25:99' },
+    expectedStatus: 400,
+    verify: (b) => b && b.error === 'quiet hours must be HH:MM'
+  },
+  {
+    name: 'GET /api/me/notif-prefs (Anonymous)',
+    path: '/api/me/notif-prefs',
+    method: 'GET',
+    token: null,
+    expectedStatus: 401,
+    verify: (b) => b && b.error === 'Not authenticated'
+  },
+  {
+    name: 'POST /api/me/coin-gifts/read (Authenticated)',
+    path: '/api/me/coin-gifts/read',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { ids: [] },
+    expectedStatus: 200,
+    verify: (b) => b && b.ok === true
+  },
+  {
+    name: 'POST /api/me/coin-gifts/read (Anonymous)',
+    path: '/api/me/coin-gifts/read',
+    method: 'POST',
+    token: null,
+    body: { ids: [] },
+    expectedStatus: 401,
+    verify: (b) => b && b.error === 'unauthorized'
+  },
+  {
+    name: 'GET /api/me/coin-gifts (Authenticated)',
+    path: '/api/me/coin-gifts',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 200,
+    verify: (b) => b && Array.isArray(b.notices)
+  },
+  {
+    name: 'GET /api/me/coin-gifts (Anonymous)',
+    path: '/api/me/coin-gifts',
+    method: 'GET',
+    token: null,
+    expectedStatus: 401,
+    verify: (b) => b && b.error === 'Not authenticated'
+  },
+  {
+    name: 'GET /api/me/notifications (Authenticated)',
+    path: '/api/me/notifications',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 200,
+    verify: (b) => b && Array.isArray(b.notifications) && typeof b.unread === 'number'
+  },
+  {
+    name: 'GET /api/me/notifications (Anonymous)',
+    path: '/api/me/notifications',
+    method: 'GET',
+    token: null,
+    expectedStatus: 401,
+    verify: (b) => b && b.error === 'Not authenticated'
+  },
+  {
+    name: 'POST /api/me/notifications/read (Authenticated)',
+    path: '/api/me/notifications/read',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { all: true },
+    expectedStatus: 200,
+    verify: (b) => b && b.ok === true
+  },
+  {
+    name: 'POST /api/me/notifications/read (Anonymous)',
+    path: '/api/me/notifications/read',
+    method: 'POST',
+    token: null,
+    body: { all: true },
+    expectedStatus: 401,
+    verify: (b) => b && b.error === 'unauthorized'
+  },
+  {
+    name: 'POST /api/me/complete-tutorial (Anonymous)',
+    path: '/api/me/complete-tutorial',
+    method: 'POST',
+    token: null,
+    expectedStatus: 401,
+    verify: (b) => b && b.error === 'not logged in'
+  },
+  {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',
     method: 'GET',

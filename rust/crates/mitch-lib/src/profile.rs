@@ -189,7 +189,7 @@ pub fn resolve_target_email(
                 }
             }
             if let Some(display) = profile.get("displayName").and_then(|v| v.as_str()) {
-                if display.to_lowercase().trim().to_string() == target && has_pw(norm_email) {
+                if display.to_lowercase().trim() == target && has_pw(norm_email) {
                     return Some(norm_email.clone());
                 }
             }
@@ -277,7 +277,7 @@ pub fn sanitize_profile_image_url(
             return String::new();
         }
         let stripped: String = payload.chars().filter(|c| !c.is_whitespace()).collect();
-        if stripped.is_empty() || stripped.len() % 4 != 0 {
+        if stripped.is_empty() || !stripped.len().is_multiple_of(4) {
             return String::new();
         }
         let bytes = crate::crypto::base64_decode(&stripped);
@@ -327,6 +327,380 @@ pub fn sanitize_profile_website_url(value: &str) -> String {
         }
         Err(_) => String::new(),
     }
+}
+
+/// `isValidUsername` (server.js:2330-2332).
+pub fn is_valid_username(username: &str) -> bool {
+    let norm = normalize_username(username);
+    let ok_len = (2..=40).contains(&norm.chars().count());
+    let ok_chars = !norm.is_empty()
+        && norm
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'));
+    ok_len && ok_chars && !username.contains('@')
+}
+
+/// `defaultUsernameForEmail(email, used)` with the dedup set — used by
+/// `ensureProfileDefaults` (server.js:2334-2345).
+pub fn default_username_for_email_used(
+    email: &str,
+    used: &mut std::collections::HashSet<String>,
+) -> String {
+    let local: String = email
+        .split('@')
+        .next()
+        .unwrap_or("")
+        .to_lowercase()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let mut collapsed = String::new();
+    let mut last_dash = false;
+    for c in local.chars() {
+        if c == '-' {
+            if !last_dash {
+                collapsed.push(c);
+            }
+            last_dash = true;
+        } else {
+            collapsed.push(c);
+            last_dash = false;
+        }
+    }
+    let local = collapsed
+        .trim_start_matches(['.', '_', '-'])
+        .trim_end_matches(['.', '_', '-'])
+        .to_string();
+    let local = if local.is_empty() {
+        "user".to_string()
+    } else {
+        local
+    };
+    let mut candidate = local.clone();
+    let mut i = 2;
+    while used.contains(&candidate) {
+        candidate = format!("{}-{}", local, i);
+        i += 1;
+    }
+    used.insert(candidate.clone());
+    candidate
+}
+
+/// `canonicalDeliveryEmail` (server.js:1383-1458): map a normalized storage
+/// key back to the real dotted address via names.json → profiles.json →
+/// tokens.json, with sid resolution for non-email inputs.
+pub fn canonical_delivery_email(
+    store: &DataStore,
+    data_dir: &Path,
+    id_secret: &[u8],
+    raw: &str,
+) -> String {
+    let mut raw = raw.trim().to_string();
+    if raw.is_empty() {
+        return String::new();
+    }
+    if !raw.contains('@') {
+        if let Some(from_sid) = crate::auth::email_from_sid(store, id_secret, &raw) {
+            raw = from_sid;
+        } else {
+            let names =
+                store.read_document(&store.base_dir.join(crate::auth::names_file()), json!({}));
+            if let Some(hit) = names.get(&raw).and_then(|v| v.as_str()) {
+                if hit.contains('@') {
+                    raw = hit.to_string();
+                }
+            }
+        }
+        if !raw.contains('@') {
+            return raw;
+        }
+    }
+    let norm = crate::auth::normalize_email(&raw);
+    let local_dotted = |e: &str| {
+        e.split('@')
+            .next()
+            .map(|l| l.contains('.'))
+            .unwrap_or(false)
+    };
+
+    // 1. names.json — dotted local or any-case difference wins.
+    let names = store.read_document(&store.base_dir.join(crate::auth::names_file()), json!({}));
+    if let Some(map) = names.as_object() {
+        for email in map.values() {
+            if let Some(e) = email.as_str() {
+                if e.contains('@')
+                    && crate::auth::normalize_email(e) == norm
+                    && (local_dotted(e) || e != norm)
+                {
+                    return e.to_lowercase().trim().to_string();
+                }
+            }
+        }
+    }
+
+    // 2. profiles.json — user-customized profile email.
+    let profiles = store.read_document(&data_dir.join("profiles.json"), json!({}));
+    if let Some(p) = profiles.get(norm.as_str()) {
+        if let Some(e) = p.get("email").and_then(|v| v.as_str()) {
+            if e.contains('@')
+                && crate::auth::normalize_email(e) == norm
+                && (local_dotted(e) || e != norm)
+            {
+                return e.to_lowercase().trim().to_string();
+            }
+        }
+    }
+
+    // 3. tokens.json — enrollment tokens.
+    let tokens = store.read_document(&data_dir.join("tokens.json"), json!({}));
+    if let Some(map) = tokens.as_object() {
+        for data in map.values() {
+            if let Some(e) = data.get("email").and_then(|v| v.as_str()) {
+                if e.contains('@')
+                    && crate::auth::normalize_email(e) == norm
+                    && (local_dotted(e) || e != norm)
+                {
+                    return e.to_lowercase().trim().to_string();
+                }
+            }
+        }
+    }
+
+    // 4. Any match in names.json.
+    if let Some(map) = names.as_object() {
+        for email in map.values() {
+            if let Some(e) = email.as_str() {
+                if crate::auth::normalize_email(e) == norm {
+                    return e.to_lowercase().trim().to_string();
+                }
+            }
+        }
+    }
+
+    raw
+}
+
+/// `displayEmail` (server.js:1460-148成分5): profile email when dotted, else
+/// the canonical address, swapping the @student.rjuhsd.us storage domain for
+/// the @student.mitch.pro display domain when no better candidate exists.
+pub fn display_email(
+    store: &DataStore,
+    data_dir: &Path,
+    id_secret: &[u8],
+    norm_or_email: &str,
+) -> String {
+    let raw = norm_or_email.to_string();
+    if raw.is_empty() {
+        return String::new();
+    }
+    let norm = crate::auth::normalize_email(&raw);
+    let profiles = store.read_document(&data_dir.join("profiles.json"), json!({}));
+    if let Some(p) = profiles.get(norm.as_str()) {
+        if let Some(e) = p.get("email").and_then(|v| v.as_str()) {
+            if e.split('@')
+                .next()
+                .map(|l| l.contains('.'))
+                .unwrap_or(false)
+            {
+                return e.to_string();
+            }
+        }
+    }
+    let canonical = canonical_delivery_email(store, data_dir, id_secret, &raw);
+    if canonical
+        .split('@')
+        .next()
+        .map(|l| l.contains('.'))
+        .unwrap_or(false)
+    {
+        return canonical.replace("@student.rjuhsd.us", "@student.mitch.pro");
+    }
+    raw.replace("@student.rjuhsd.us", "@student.mitch.pro")
+}
+
+/// `ensureProfileDefaults` (server.js:2411-2446): normalize + persist a
+/// profile record with the full default set. Returns the stored record.
+pub fn ensure_profile_defaults(
+    store: &DataStore,
+    data_dir: &Path,
+    id_secret: &[u8],
+    norm_email: &str,
+    original_email: &str,
+    patch: &Value,
+) -> Value {
+    let profiles_file = data_dir.join("profiles.json");
+    let profiles = store.read_document(&profiles_file, json!({}));
+    let mut used = std::collections::HashSet::new();
+    if let Some(map) = profiles.as_object() {
+        for (email, p) in map {
+            if email != norm_email {
+                let u =
+                    normalize_username(p.get("username").and_then(|v| v.as_str()).unwrap_or(""));
+                if !u.is_empty() {
+                    used.insert(u);
+                }
+            }
+        }
+    }
+    let existing = profiles.get(norm_email).cloned().unwrap_or(json!({}));
+    // JS: patch.username || existing.username || '' (truthiness).
+    let truthy_str = |v: Option<&Value>| -> Option<String> {
+        match v {
+            Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+            _ => None,
+        }
+    };
+    let username_raw = truthy_str(patch.get("username"))
+        .or_else(|| truthy_str(existing.get("username")))
+        .unwrap_or_default();
+    let mut username = normalize_username(&username_raw);
+    if !is_valid_username(&username) || used.contains(&username) {
+        username = default_username_for_email_used(norm_email, &mut used);
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    // JS `a ?? b ?? ''` — only null/undefined fall through, '' wins when set.
+    let nullish = |keys: &[Option<&Value>]| -> Option<String> {
+        for v in keys.iter().flatten() {
+            if !v.is_null() {
+                if let Some(s) = v.as_str() {
+                    return Some(s.to_string());
+                }
+            }
+        }
+        Some(String::new())
+    };
+    let existing_clone = existing.clone();
+    let nickname = nullish(&[
+        patch.get("nickname"),
+        existing.get("nickname"),
+        existing.get("displayName"),
+    ])
+    .unwrap_or_default()
+    .trim()
+    .chars()
+    .take(40)
+    .collect::<String>();
+    let display_name = nullish(&[
+        patch.get("displayName"),
+        existing.get("displayName"),
+        patch.get("nickname"),
+        existing.get("nickname"),
+    ])
+    .unwrap_or_default()
+    .trim()
+    .chars()
+    .take(40)
+    .collect::<String>();
+    let email_src = truthy_str(existing.get("email"))
+        .or_else(|| Some(original_email.to_string()))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| norm_email.to_string());
+    let completed = existing
+        .get("hasCompletedTutorial")
+        .and_then(|v| v.as_bool())
+        .or_else(|| {
+            existing
+                .get("has_completed_tutorial")
+                .and_then(|v| v.as_bool())
+        })
+        .unwrap_or(false)
+        || patch
+            .get("hasCompletedTutorial")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    let js_or_empty = |key: &str| -> Value {
+        match existing.get(key) {
+            Some(Value::String(s)) if s.is_empty() => json!(""),
+            Some(v) if !v.is_null() => v.clone(),
+            _ => json!(""),
+        }
+    };
+    // Start from `...existing` so unknown keys (2fa fields etc.) survive,
+    // then override the normalized fields exactly like the JS spread.
+    let mut record = existing_clone;
+    // existing is always an object or {} — reset to a fresh object if the
+    // store ever hands back something else.
+    if !record.is_object() {
+        record = serde_json::json!({});
+    }
+    let obj = record
+        .as_object_mut()
+        .unwrap_or_else(|| unreachable!("just checked record is an object"));
+    obj.insert(
+        "email".into(),
+        json!(canonical_delivery_email(
+            store, data_dir, id_secret, &email_src
+        )),
+    );
+    obj.insert("username".into(), json!(username));
+    obj.insert("nickname".into(), json!(nickname));
+    obj.insert("displayName".into(), json!(display_name));
+    obj.insert("bio".into(), js_or_empty("bio"));
+    obj.insert("website".into(), js_or_empty("website"));
+    obj.insert("pfp".into(), js_or_empty("pfp"));
+    obj.insert("background".into(), js_or_empty("background"));
+    let trim_take = |keys: &[Option<&Value>], n: usize| -> String {
+        nullish(keys)
+            .unwrap_or_default()
+            .trim()
+            .chars()
+            .take(n)
+            .collect::<String>()
+    };
+    obj.insert(
+        "gradYear".into(),
+        json!(trim_take(
+            &[patch.get("gradYear"), existing.get("gradYear")],
+            20
+        )),
+    );
+    obj.insert(
+        "gender".into(),
+        json!(trim_take(
+            &[patch.get("gender"), existing.get("gender")],
+            40
+        )),
+    );
+    obj.insert(
+        "referralSource".into(),
+        json!(trim_take(
+            &[patch.get("referralSource"), existing.get("referralSource")],
+            80
+        )),
+    );
+    obj.insert("hasCompletedTutorial".into(), json!(completed));
+    obj.insert(
+        "createdAt".into(),
+        existing
+            .get("createdAt")
+            .cloned()
+            .filter(|v| !v.is_null() && *v != json!(0))
+            .unwrap_or(json!(now)),
+    );
+    obj.insert("updatedAt".into(), json!(now));
+    obj.insert(
+        "profileBonusClaimed".into(),
+        json!(existing
+            .get("profileBonusClaimed")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)),
+    );
+
+    let mut profiles_out = profiles;
+    if let Some(map) = profiles_out.as_object_mut() {
+        map.insert(norm_email.to_string(), record.clone());
+    }
+    let _ = store.write_document(&profiles_file, &profiles_out);
+    record
 }
 
 #[cfg(test)]
