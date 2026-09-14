@@ -1390,6 +1390,198 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'password required'
   },
+  // ── e2e secure-chat relay (Step 11 batch 4). join/heartbeat/send have no
+  // method check; get-key is GET-only; register-key/verify-password are
+  // POST-only; users/messages live inside the JS GET branch, so wrong verbs
+  // fall through the page section to the final 405. No e2e path is
+  // CSRF-exempt, so every no-Origin POST hits csrf_blocked first.
+  {
+    name: 'GET /api/e2e/get-key (Anonymous)',
+    path: '/api/e2e/get-key',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/e2e/get-key (Anonymous, wrong verb)',
+    path: '/api/e2e/get-key',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'PUT /api/e2e/get-key (Anonymous, wrong verb)',
+    path: '/api/e2e/get-key',
+    method: 'PUT',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/register-key (Anonymous, wrong verb)',
+    path: '/api/e2e/register-key',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/e2e/register-key (Anonymous)',
+    path: '/api/e2e/register-key',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/e2e/register-key bad json (Anonymous)',
+    path: '/api/e2e/register-key',
+    method: 'POST',
+    token: null,
+    body: '{nope',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/verify-password (Anonymous, wrong verb)',
+    path: '/api/e2e/verify-password',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/e2e/verify-password (Anonymous)',
+    path: '/api/e2e/verify-password',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/join (Anonymous)',
+    path: '/api/e2e/join',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/e2e/join (Anonymous)',
+    path: '/api/e2e/join',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/e2e/join bad json (Anonymous)',
+    path: '/api/e2e/join',
+    method: 'POST',
+    token: null,
+    body: '{nope',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'PUT /api/e2e/join (Anonymous)',
+    path: '/api/e2e/join',
+    method: 'PUT',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/heartbeat (Anonymous)',
+    path: '/api/e2e/heartbeat',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/e2e/heartbeat (Anonymous)',
+    path: '/api/e2e/heartbeat',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/send (Anonymous)',
+    path: '/api/e2e/send',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/e2e/send (Anonymous)',
+    path: '/api/e2e/send',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/users (Anonymous)',
+    path: '/api/e2e/users',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'HEAD /api/e2e/users (Anonymous, wrong verb)',
+    path: '/api/e2e/users',
+    method: 'HEAD',
+    token: null,
+    expectedStatus: 403
+  },
+  {
+    name: 'POST /api/e2e/users (Anonymous, wrong verb)',
+    path: '/api/e2e/users',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/messages (Anonymous)',
+    path: '/api/e2e/messages',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/e2e/messages (Anonymous, wrong verb)',
+    path: '/api/e2e/messages',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/e2e/unknown-path (Anonymous)',
+    path: '/api/e2e/definitely-not-a-route',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',

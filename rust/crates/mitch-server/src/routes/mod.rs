@@ -12,6 +12,7 @@ pub mod canvas;
 pub mod casino;
 pub mod chess_vs;
 pub mod dm;
+pub mod e2e;
 pub mod friends;
 pub mod games;
 pub mod jeopardy;

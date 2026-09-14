@@ -128,6 +128,21 @@ pub fn random_bytes(n: usize) -> Vec<u8> {
     out
 }
 
+/// `genServerKeypair()` (server.js:3993) — an ECDH P-256 pair whose public
+/// half exports as the raw 65-byte `04…` point hex. The JS draws the key via
+/// WebCrypto; here the 32-byte scalar comes from `random_bytes` with a retry
+/// on the (probability-zero) invalid-scalar case, which keeps p256 free of a
+/// second rand_core version.
+pub fn generate_p256_keypair() -> (p256::SecretKey, String) {
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
+    loop {
+        if let Ok(sk) = p256::SecretKey::from_slice(&random_bytes(32)) {
+            let pub_hex = hex(sk.public_key().to_encoded_point(false).as_bytes());
+            return (sk, pub_hex);
+        }
+    }
+}
+
 /// Standard base64 decode (with padding), mirroring `Buffer.from(s, 'base64')`
 /// for the charset-validated inputs the callers pass.
 pub fn base64_decode(s: &str) -> Vec<u8> {

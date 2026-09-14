@@ -67,6 +67,37 @@ pub struct AppState {
     /// Canvas state (server.js:4304-4556) — in-memory pixel/chunk/lock caches
     /// with the 30s flush and hourly heatmap sweep in `crate::workers`.
     pub canvas: crate::routes::canvas::CanvasState,
+    /// `e2eUsers` (server.js:848) — live E2E-DM registrations, keyed by the
+    /// canonical nickname (= normalized email; join enforces the equality).
+    /// A `Vec` of pairs to preserve the JS object's insertion order (join
+    /// overwrites in place; Object.entries iterates first-seen order).
+    /// Swept every 60s (entries older than 5 min dropped) in `crate::workers`.
+    pub e2e_users: std::sync::Mutex<Vec<(String, E2eUser)>>,
+    /// `e2eMessages` (server.js:849) — relayed E2E ciphertexts keyed by the
+    /// sorted-pair `e2eKey`, newest-last, 500 cap per conversation.
+    pub e2e_messages: std::sync::Mutex<std::collections::HashMap<String, Vec<E2eMessage>>>,
+}
+
+/// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
+/// generated per join (the JS CryptoKey / raw-point hex); the JS never reads
+/// `priv_key` back today, but the pair is kept for the Step 11 `/ws` relay.
+#[allow(dead_code)]
+pub struct E2eUser {
+    pub pub_key: String,
+    pub priv_key: p256::SecretKey,
+    pub server_pub_hex: String,
+    pub last_seen: i64,
+    pub email: String,
+}
+
+/// A relayed E2E message in `e2eMessages` (server.js:15795).
+#[derive(Clone)]
+pub struct E2eMessage {
+    pub from: String,
+    pub to: String,
+    pub data: String,
+    pub iv: String,
+    pub timestamp: i64,
 }
 
 /// A record in `pendingSecurityCodes` (server.js:2482-2486).
@@ -175,6 +206,8 @@ impl AppState {
             happy_hour_active: std::sync::atomic::AtomicBool::new(false),
             computed_happy_hour: std::sync::atomic::AtomicI64::new(computed_happy_hour),
             canvas,
+            e2e_users: std::sync::Mutex::new(Vec::new()),
+            e2e_messages: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 

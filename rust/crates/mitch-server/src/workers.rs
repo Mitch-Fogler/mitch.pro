@@ -33,4 +33,16 @@ pub fn spawn(state: std::sync::Arc<crate::state::AppState>) {
             }
         });
     }
+    // e2eUsers sweeper — every 60s, entries with last_seen older than 5 min
+    // dropped (server.js:4044-4049).
+    {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tick.tick().await;
+                crate::routes::e2e::sweep_e2e_users(&state);
+            }
+        });
+    }
 }

@@ -551,6 +551,14 @@ pub async fn handle(
         {
             return resp;
         }
+        // e2e group (Step 11 batch 4) — get-key at server.js:13739 (before dm
+        // at 19452), the rest at 15371-15795; paths are disjoint from dm so
+        // the wiring order only mirrors the JS file position.
+        if let Some(resp) =
+            crate::routes::e2e::handle(&state, &method, &path, headers, body_bytes, &search).await
+        {
+            return resp;
+        }
         // canvas group (Step 10 batch 1).
         if let Some(resp) = crate::routes::canvas::handle(
             &state, &method, &path, headers, &search, &body, body_bytes,
