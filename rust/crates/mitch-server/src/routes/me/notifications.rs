@@ -547,21 +547,13 @@ fn urlencoding_encode(s: &str) -> String {
 }
 
 /// `dmContentOf(msg).text` (server.js:479-488) — open `enc1:` payloads.
+/// On a failed unseal JS falls through to the raw stored text (server.js:490),
+/// which is what the shared `dm_content_parts` mirrors.
 fn dm_content_of(msg: &Value, id_secret: &[u8]) -> String {
-    let text = msg.get("text").and_then(|v| v.as_str()).unwrap_or("");
-    if text.starts_with(mitch_lib::crypto::DM_AT_REST_PREFIX) {
-        let key: [u8; 32] = mitch_lib::crypto::hmac_sha256(
-            id_secret,
-            mitch_lib::crypto::DM_AT_REST_PURPOSE.as_bytes(),
-        );
-        let opened =
-            mitch_lib::crypto::open_at_rest(&key, text, mitch_lib::crypto::DM_AT_REST_PREFIX);
-        if let Some(t) = opened.get("text").and_then(|v| v.as_str()) {
-            return t.to_string();
-        }
-        return String::new();
-    }
-    text.to_string()
+    super::dm_content_parts(msg, id_secret)
+        .0
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_default()
 }
 
 /// `/api/me/notifications/read` — server.js:14222-14304. Marks coin gifts,

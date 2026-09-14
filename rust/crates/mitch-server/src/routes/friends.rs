@@ -449,7 +449,7 @@ fn requests_pending(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
 
 /// `isUserPresent(email, now)` (server.js:1077-1084) — the broadcast-socket
 /// leg arrives with the Step 11 WS work; the presence-map TTL leg is live.
-fn is_user_present(
+pub(crate) fn is_user_present(
     presence: &std::collections::HashMap<String, UserPresence>,
     email: &str,
     now: i64,
@@ -486,6 +486,6 @@ fn notification_url(path: &str) -> String {
 }
 
 /// `encodeURIComponent` (JS semantics — see `auth::encode_uri_component`).
-fn encode_uri_component(s: &str) -> String {
+pub(crate) fn encode_uri_component(s: &str) -> String {
     auth::encode_uri_component(s)
 }

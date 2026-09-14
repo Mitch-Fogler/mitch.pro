@@ -858,6 +858,72 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'password required'
   },
+  // ── userdata + member rosters (Step 9 batch 6) ─────────────────────────────
+  {
+    name: 'GET /api/userdata (Authenticated)',
+    path: '/api/userdata',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/userdata (Anonymous)',
+    path: '/api/userdata',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/userdata (Anonymous)',
+    path: '/api/userdata',
+    method: 'POST',
+    token: null,
+    body: { foo: 'bar' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/members (Authenticated)',
+    path: '/api/members',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/members (Anonymous)',
+    path: '/api/members',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/admin-members (Authenticated)',
+    path: '/api/admin-members',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/moderator-members (Authenticated)',
+    path: '/api/moderator-members',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/owner-members (Authenticated)',
+    path: '/api/owner-members',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',

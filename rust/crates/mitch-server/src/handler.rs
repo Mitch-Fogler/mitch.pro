@@ -548,6 +548,12 @@ pub async fn handle(
         {
             return resp;
         }
+        // members + userdata group (Step 9 batch 6).
+        if let Some(resp) =
+            crate::routes::members::handle(&state, &method, &path, headers, body_bytes).await
+        {
+            return resp;
+        }
         // Unmatched /api/ paths fall through to static 404 (same as bun).
     }
 

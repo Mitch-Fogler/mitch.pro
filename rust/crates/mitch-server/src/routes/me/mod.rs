@@ -74,6 +74,37 @@ pub(crate) fn cookies_of(state: &AppState, headers: &HeaderMap) -> mitch_lib::au
     )
 }
 
+/// `dmContentOf(msg)` (server.js:479-490) — returns `(text, image)` where
+/// `None` means JS `undefined` (the key is dropped by `JSON.stringify`).
+/// `openAtRest` returns the original sealed string on any failure (server.js:465),
+/// so a failed unseal falls through to the raw-text default like JS does.
+pub(crate) fn dm_content_parts(msg: &Value, id_secret: &[u8]) -> (Option<Value>, Option<Value>) {
+    let default_text = msg.get("text").cloned();
+    let default_image = msg.get("image").cloned();
+    let Some(text) = msg.get("text").and_then(|v| v.as_str()) else {
+        return (default_text, default_image);
+    };
+    if !text.starts_with(mitch_lib::crypto::DM_AT_REST_PREFIX) {
+        return (default_text, default_image);
+    }
+    let key: [u8; 32] =
+        mitch_lib::crypto::hmac_sha256(id_secret, mitch_lib::crypto::DM_AT_REST_PURPOSE.as_bytes());
+    let opened = mitch_lib::crypto::open_at_rest(&key, text, mitch_lib::crypto::DM_AT_REST_PREFIX);
+    if opened.is_object() {
+        // text: typeof opened.text === 'string' ? opened.text : ''
+        let text = opened
+            .get("text")
+            .and_then(|v| v.as_str())
+            .map(|s| serde_json::json!(s))
+            .unwrap_or_else(|| serde_json::json!(""));
+        // image: opened.image !== undefined ? opened.image : msg.image
+        let image = opened.get("image").cloned().or(default_image);
+        (Some(text), image)
+    } else {
+        (default_text, default_image)
+    }
+}
+
 /// `cookies['studentId'] || cookies['id'] || ''` — the JS fallback that the
 /// me/* endpoints use before `emailFromSid`.
 pub(crate) fn me_uid(cookies: &mitch_lib::auth::Cookies) -> String {

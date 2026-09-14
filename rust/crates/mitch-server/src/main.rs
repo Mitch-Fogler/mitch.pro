@@ -9,6 +9,10 @@
 //! request prelude, /enroll/ health. Session-dependent pieces are stubbed
 //! (Step 6); API routes are later steps.
 
+// Tests assert on panic-y outcomes with unwrap/expect freely (mitch-lib does
+// the same via lib.rs:17); the binary itself keeps them denied.
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 use axum::extract::State;
 use axum::http::Request;
 use axum::response::Response;

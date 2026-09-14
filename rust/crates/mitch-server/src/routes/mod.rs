@@ -16,6 +16,7 @@ pub mod friends;
 pub mod games;
 pub mod jeopardy;
 pub mod me;
+pub mod members;
 pub mod misc;
 pub mod pickle;
 pub mod proxy;
