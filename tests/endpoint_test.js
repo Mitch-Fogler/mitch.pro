@@ -1179,6 +1179,128 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'csrf_blocked'
   },
+  // ── dm inbox/manage (Step 11 batch 2) ──
+  {
+    name: 'GET /api/dm/groups (Anonymous)',
+    path: '/api/dm/groups',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/dm/groups (Anonymous)',
+    path: '/api/dm/groups',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'PUT /api/dm/groups (Anonymous)',
+    path: '/api/dm/groups',
+    method: 'PUT',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/dm/inbox (Anonymous)',
+    path: '/api/dm/inbox',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/dm/inbox?with=peer (Anonymous)',
+    path: '/api/dm/inbox?with=peer%40student.rjuhsd.us&since=5&limit=3',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/dm/inbox?group=g1 (Anonymous)',
+    path: '/api/dm/inbox?group=g1&before=99',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/dm/inbox (Anonymous)',
+    path: '/api/dm/inbox',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/dm/mark-read (Anonymous)',
+    path: '/api/dm/mark-read',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/dm/mark-read bad json (Anonymous)',
+    path: '/api/dm/mark-read',
+    method: 'POST',
+    token: null,
+    body: '{nope',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/group/leave (Anonymous)',
+    path: '/api/dm/group/leave',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/clear (Anonymous)',
+    path: '/api/dm/clear',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/expiry (Anonymous)',
+    path: '/api/dm/expiry',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/expiry bad json (Anonymous)',
+    path: '/api/dm/expiry',
+    method: 'POST',
+    token: null,
+    body: '{nope',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/report (Anonymous)',
+    path: '/api/dm/report',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',

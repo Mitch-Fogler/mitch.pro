@@ -8,6 +8,8 @@
 //!   the `/ws` batch too, so `recActive` is always false here — invisible in
 //!   HTTP responses; it only gates which notification channel fans out.
 
+use super::is_revoked_id;
+use super::js_num_value;
 use super::notif::{notif_allowed, notification_url, ntfy_notify_user};
 use crate::handler::get_real_ip;
 use crate::hosts::is_pickle_host;
@@ -655,16 +657,6 @@ fn validate_image(image_raw: &Value) -> Result<Option<Value>, (u16, &'static str
     Ok(None)
 }
 
-/// `Number(x) || 0` — a whole double serializes without a trailing `.0`,
-/// exactly like `JSON.stringify` of a JS number.
-fn js_num_value(n: f64) -> Value {
-    if n.is_finite() && n.fract() == 0.0 && n.abs() < 9.007_199_254_740_992e15 {
-        json!(n as i64)
-    } else {
-        json!(n)
-    }
-}
-
 /// `loadPushSubscriptions()` (server.js:2154) — push_subs.json with
 /// normalized keys; only truthy object subscriptions survive.
 fn load_push_subscriptions(state: &AppState) -> Value {
@@ -681,14 +673,4 @@ fn load_push_subscriptions(state: &AppState) -> Value {
         }
     }
     Value::Object(normalized)
-}
-
-/// `isRevoked(id)` (server.js:2769) — key presence in revoked.json.
-/// (members.rs keeps a private copy; DM needs it before its email lookup.)
-fn is_revoked_id(state: &AppState, sid: &str) -> bool {
-    state
-        .store
-        .read_document(&data_file(state, "revoked.json"), json!({}))
-        .get(sid)
-        .is_some()
 }

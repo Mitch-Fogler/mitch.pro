@@ -98,6 +98,23 @@ pub fn get_chat_expiry(store: &DataStore, data_dir: &Path, key: &str) -> f64 {
     }
 }
 
+/// `setChatExpiry(key, ms)` (server.js:6191-6196) — a valid window stores,
+/// everything else (including 0) DELETES the key.
+pub fn set_chat_expiry(store: &DataStore, data_dir: &Path, key: &str, ms: f64) {
+    let mut all = store.read_document(&data_dir.join("chat_expiry.json"), json!({}));
+    let Some(obj) = all.as_object_mut() else {
+        return;
+    };
+    if ms != 0.0 && CHAT_EXPIRY_OPTIONS.contains(&ms) {
+        obj.insert(key.to_string(), json!(ms));
+    } else {
+        obj.remove(key);
+    }
+    store
+        .write_document(&data_dir.join("chat_expiry.json"), &all)
+        .ok();
+}
+
 /// `isDmMessageRead(m)` (server.js:6213-6221).
 pub fn is_dm_message_read(m: &Value) -> bool {
     if m.is_null() {
