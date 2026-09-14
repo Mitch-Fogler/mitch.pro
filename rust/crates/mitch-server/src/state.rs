@@ -40,6 +40,11 @@ pub struct AppState {
     /// (Readers land with the pickle-club group, Step 9 batch 5.)
     #[allow(dead_code)]
     pub pickle_presence: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `userPresence` (server.js:1064) — norm email -> {lastSeen, playing}.
+    /// The `/ws` heartbeat writer lands with the Step 11 presence work;
+    /// friends/list reads it for the online/playing fields.
+    #[allow(dead_code)]
+    pub user_presence: std::sync::Mutex<std::collections::HashMap<String, UserPresence>>,
     /// `matrixPendingEmailAlerts` (server.js:8497) — key `norm:roomId`.
     /// The delayed-alert scheduler itself lands with the Step 11 DM group;
     /// the cancel path is live so notification reads stay correct.
@@ -76,6 +81,16 @@ pub struct PendingEmailChange {
     pub expires: i64,
     pub attempts: u32,
 }
+
+/// A record in `userPresence` (server.js:1064, 1112-1116).
+#[derive(Clone)]
+pub struct UserPresence {
+    pub last_seen: i64,
+    pub playing: String,
+}
+
+/// `PRESENCE_FALLBACK_TTL_MS` (server.js:1065).
+pub const PRESENCE_FALLBACK_TTL_MS: i64 = 45_000;
 
 impl AppState {
     pub fn new(cfg: SiteConfig, store: Arc<mitch_lib::data::DataStore>) -> Self {
@@ -147,6 +162,7 @@ impl AppState {
             prox_blocklist: std::sync::RwLock::new(prox_blocklist),
             featured_game_href: std::sync::RwLock::new(String::new()),
             pickle_presence: std::sync::Mutex::new(std::collections::HashMap::new()),
+            user_presence: std::sync::Mutex::new(std::collections::HashMap::new()),
             matrix_pending_email_alerts: std::sync::Mutex::new(std::collections::HashMap::new()),
             pending_security_codes: std::sync::Mutex::new(std::collections::HashMap::new()),
             pending_email_changes: std::sync::Mutex::new(std::collections::HashMap::new()),

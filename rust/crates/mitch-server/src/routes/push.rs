@@ -49,21 +49,22 @@ pub fn push_admin_notification(
     });
 }
 
-/// Sends one web-push message; removes the subscription on 410/404.
+/// Sends one web-push message; returns true when the endpoint reported
+/// 410/404 (subscription gone — callers then delete it like the JS does).
 async fn send_web_push(
     state: &Arc<AppState>,
     _vapid_public: &str,
     target_email: &str,
     sub: &serde_json::Value,
     payload: &serde_json::Value,
-) {
+) -> bool {
     let endpoint = sub
         .get("endpoint")
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
     if endpoint.is_empty() {
-        return;
+        return false;
     }
     let keys = sub.get("keys").cloned().unwrap_or(serde_json::json!({}));
     let p256dh = keys
@@ -86,22 +87,22 @@ async fn send_web_push(
         &info,
     ) else {
         tracing::warn!("vapid signature builder init failed");
-        return;
+        return false;
     };
     let Ok(sig) = sig_builder.build() else {
         tracing::warn!("vapid signature build failed");
-        return;
+        return false;
     };
     let payload_str = payload.to_string();
     let mut message = web_push::WebPushMessageBuilder::new(&info);
     message.set_vapid_signature(sig);
     message.set_payload(web_push::ContentEncoding::Aes128Gcm, payload_str.as_bytes());
     let Ok(message) = message.build() else {
-        return;
+        return false;
     };
     use web_push::WebPushClient as _;
     let Ok(client) = web_push::IsahcWebPushClient::new() else {
-        return;
+        return false;
     };
     if let Err(e) = client.send(message).await {
         let gone = matches!(
@@ -118,6 +119,36 @@ async fn send_web_push(
             let _ = state.store.write_document(&file, &subs);
         }
         tracing::warn!("push send failed: {e}");
+    }
+    false
+}
+
+/// `sendWebPushClean(subs, email, payload)` (server.js:2263-2276). Loads
+/// push_subs.json, looks the subscription up by the NORMALIZED email only,
+/// and deletes it from the store on 410/404. Awaited by the friends flows
+/// exactly as the JS awaits it.
+pub async fn send_web_push_clean(state: &Arc<AppState>, email: &str, payload: &serde_json::Value) {
+    let vapid_public = std::env::var("VAPID_PUBLIC_KEY")
+        .map(|v| v.trim().to_string())
+        .unwrap_or_default();
+    if vapid_public.is_empty() {
+        return; // JS parity: `if (!VAPID_PUBLIC) return;`
+    }
+    let key = mitch_lib::auth::normalize_email(email);
+    if key.is_empty() {
+        return;
+    }
+    let file = state.cfg.data_dir.join("push_subs.json");
+    let subs = state.store.read_document(&file, serde_json::json!({}));
+    let Some(sub) = subs.get(&key).cloned() else {
+        return;
+    };
+    if send_web_push(state, &vapid_public, &key, &sub, payload).await {
+        let mut subs = state.store.read_document(&file, serde_json::json!({}));
+        if let Some(map) = subs.as_object_mut() {
+            map.remove(&key);
+        }
+        let _ = state.store.write_document(&file, &subs);
     }
 }
 

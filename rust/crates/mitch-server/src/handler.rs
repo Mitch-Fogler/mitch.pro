@@ -536,6 +536,12 @@ pub async fn handle(
         {
             return resp;
         }
+        // friends/* group (Step 9 batch 4).
+        if let Some(resp) =
+            crate::routes::friends::handle(&state, &method, &path, headers, body_bytes).await
+        {
+            return resp;
+        }
         // Unmatched /api/ paths fall through to static 404 (same as bun).
     }
 

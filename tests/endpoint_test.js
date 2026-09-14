@@ -651,6 +651,66 @@ const tests = [
     verify: (b) => b && b.error === 'csrf_blocked'
   },
   {
+    name: 'GET /api/friends/list (Authenticated)',
+    path: '/api/friends/list',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/friends/list (Anonymous)',
+    path: '/api/friends/list',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/friends/requests/pending (Authenticated)',
+    path: '/api/friends/requests/pending',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/friends/request (Anonymous)',
+    path: '/api/friends/request',
+    method: 'POST',
+    token: null,
+    body: { email: 'nobody@student.rjuhsd.us' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/friends/request/cancel (Anonymous)',
+    path: '/api/friends/request/cancel',
+    method: 'POST',
+    token: null,
+    body: { email: 'nobody@student.rjuhsd.us' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/friends/request/respond (Anonymous)',
+    path: '/api/friends/request/respond',
+    method: 'POST',
+    token: null,
+    body: { email: 'nobody@student.rjuhsd.us', action: 'accept' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/friends/remove (Anonymous)',
+    path: '/api/friends/remove',
+    method: 'POST',
+    token: null,
+    body: { email: 'nobody@student.rjuhsd.us' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',
     method: 'GET',
