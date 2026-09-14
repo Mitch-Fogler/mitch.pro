@@ -554,6 +554,14 @@ pub async fn handle(
         {
             return resp;
         }
+        // canvas group (Step 10 batch 1).
+        if let Some(resp) = crate::routes::canvas::handle(
+            &state, &method, &path, headers, &search, &body, body_bytes,
+        )
+        .await
+        {
+            return resp;
+        }
         // Unmatched /api/ paths fall through to static 404 (same as bun).
     }
 

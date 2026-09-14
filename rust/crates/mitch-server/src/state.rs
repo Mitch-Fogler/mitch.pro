@@ -64,6 +64,9 @@ pub struct AppState {
     /// `computedHappyHour` (server.js:1189) — computed once at boot from the
     /// session log (server.js:25249).
     pub computed_happy_hour: std::sync::atomic::AtomicI64,
+    /// Canvas state (server.js:4304-4556) — in-memory pixel/chunk/lock caches
+    /// with the 30s flush and hourly heatmap sweep in `crate::workers`.
+    pub canvas: crate::routes::canvas::CanvasState,
 }
 
 /// A record in `pendingSecurityCodes` (server.js:2482-2486).
@@ -134,6 +137,7 @@ impl AppState {
             &cfg.base_dir.join("data"),
             mitch_lib::school::now_millis(),
         );
+        let canvas = crate::routes::canvas::CanvasState::load(&store, &cfg.data_dir.clone());
         Self {
             cfg,
             static_cache: StaticCache::new(),
@@ -170,6 +174,7 @@ impl AppState {
             last_recaptcha_success: std::sync::Mutex::new(std::collections::HashMap::new()),
             happy_hour_active: std::sync::atomic::AtomicBool::new(false),
             computed_happy_hour: std::sync::atomic::AtomicI64::new(computed_happy_hour),
+            canvas,
         }
     }
 

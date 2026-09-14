@@ -55,7 +55,10 @@ async fn main() {
     )
     .await;
 
-    let app: Router = Router::new().fallback(get_any).with_state(state);
+    let app: Router = Router::new().fallback(get_any).with_state(state.clone());
+
+    // Background interval workers (canvas 30s flush, heatmap sweep, …).
+    crate::workers::spawn(state);
 
     let port = std::env::var("PORT")
         .ok()

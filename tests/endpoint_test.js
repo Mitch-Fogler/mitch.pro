@@ -924,6 +924,73 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'password required'
   },
+  // ── canvas reads (Step 10 batch 1) ────────────────────────────────────────
+  {
+    name: 'GET /api/canvas/whoami (Anonymous)',
+    path: '/api/canvas/whoami',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/canvas/chunks (Anonymous)',
+    path: '/api/canvas/chunks',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/canvas/pixels (Anonymous)',
+    path: '/api/canvas/pixels',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/canvas/history (Anonymous)',
+    path: '/api/canvas/history',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/canvas/heatmap (Anonymous)',
+    path: '/api/canvas/heatmap',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/canvas/admin-bans (Anonymous)',
+    path: '/api/canvas/admin-bans',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/canvas/moderate (Anonymous)',
+    path: '/api/canvas/moderate',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/report (Anonymous)',
+    path: '/api/canvas/report',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',
