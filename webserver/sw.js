@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v40';
+const CACHE_NAME = 'mitch-pro-cache-v41';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -58,8 +58,13 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  const requestUrl = new URL(e.request.url);
-  const isThemeJs = requestUrl.pathname === '/theme.js';
+const requestUrl = new URL(e.request.url);
+// Let the admin broadcast video stream directly from the network. Service
+// Worker cache.put can fail on large authenticated/range media responses.
+if (requestUrl.pathname === '/media/admin-jumpscare-krupp-1935.mp4') {
+  return;
+}
+const isThemeJs = requestUrl.pathname === '/theme.js';
 
   if (isThemeJs) {
     // Force a fresh fetch by using cache: 'no-store' and a timestamp parameter
