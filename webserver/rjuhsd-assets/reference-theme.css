@@ -233,6 +233,8 @@ body.dark .event-content h3,body.dark .board-heading h3,body.dark .snapshot stro
 .calendar-days>button{cursor:default}
 .calendar-days>button:nth-child(7n+1),.calendar-days>button:nth-child(7n){color:var(--muted);background:#faf8f8}
 .calendar-days>button:hover{border-color:#d9b7b7;background:#fbf3f3}
+html.theme-light .calendar-days>button:hover:not(.today),body:not(.dark) .calendar-days>button:hover:not(.today){border-color:#d9b7b7;background:#fbf3f3!important;color:var(--ink)}
+html.theme-light .calendar-days>button.today:hover,body:not(.dark) .calendar-days>button.today:hover{filter:brightness(1.08);box-shadow:0 6px 14px rgba(80,0,0,.28)}
 .calendar-days>button.today{color:#fff;background:var(--wine);border-color:var(--wine);box-shadow:0 5px 12px rgba(80,0,0,.2)}
 .calendar-days>button.has-event:after{content:"";position:absolute;bottom:5px;width:5px;height:5px;background:#9a1515;border-radius:50%}
 .calendar-days>button.today.has-event:after{background:#fff}
@@ -285,7 +287,11 @@ body.dark .event-content h3,body.dark .board-heading h3,body.dark .snapshot stro
 body.dark .woodcreek-calendar,body.dark .calendar-main,body.dark .weather-widget,body.dark .weather-summary{background:var(--card)}
 body.dark .calendar-agenda,body.dark .weather-details{background:#292426}
 body.dark .calendar-agenda li{background:#211d1e;border-color:#4a4244}
-body.dark .calendar-days>button:nth-child(7n+1),body.dark .calendar-days>button:nth-child(7n),body.dark .weather-summary:hover{background:#292426}
+body.dark .calendar-days>button:not(.today):nth-child(7n+1),body.dark .calendar-days>button:not(.today):nth-child(7n),html:not(.theme-light) body .calendar-days>button:not(.today):nth-child(7n+1),html:not(.theme-light) body .calendar-days>button:not(.today):nth-child(7n),body.dark .weather-summary:hover{background:#292426}
+:is(body.dark, html:not(.theme-light) body) .calendar-days>button:hover:not(.today){background:color-mix(in srgb,var(--school-primary,#500000) 28%,#282225)!important;border-color:color-mix(in srgb,var(--wine,#d5677e) 45%,rgba(255,255,255,.2))!important;color:#fff!important}
+:is(body.dark, html:not(.theme-light) body) .calendar-days>button.today{background:var(--school-primary,#500000)!important;border-color:rgba(255,255,255,.25)!important;color:#fff!important;box-shadow:0 5px 12px rgba(80,0,0,.35)}
+:is(body.dark, html:not(.theme-light) body) .calendar-days>button.today:hover{border-color:rgba(255,255,255,.45)!important;filter:brightness(1.12)}
+:is(body.dark, html:not(.theme-light) body) .calendar-days>button.has-event:not(.today):after{background:var(--wine,#d5677e)}
 body.dark .weather-symbol{background:#3b2529;border-color:#55363c}
 
 @media(max-width:850px){.woodcreek-calendar{grid-template-columns:1fr}.calendar-main{border-right:0;border-bottom:1px solid var(--line)}.calendar-agenda ol{grid-template-columns:1fr 1fr}.calendar-agenda>a{margin-top:0}}
