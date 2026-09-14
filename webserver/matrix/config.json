@@ -15,5 +15,10 @@
   "hashRouter": {
     "enabled": false,
     "basename": "/matrix"
+  },
+
+  "elementCall": {
+    "url": "/matrix/public/element-call",
+    "useInternalInstance": true
   }
 }

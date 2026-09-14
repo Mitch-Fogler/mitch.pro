@@ -254,8 +254,12 @@ services:
       - 0.0.0.0
       - --udp-port
       - "7882"
+      - --rtc.tcp_port
+      - "7881"
+      - --rtc.use_external_ip
     ports:
       - "127.0.0.1:7880:7880"
+      - "7881:7881"
       - "7882:7882/udp"
 
   # Deploy script synchronization sidecar (synchronizes /usr/local/bin/deploy.sh on the host)

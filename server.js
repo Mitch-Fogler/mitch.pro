@@ -2840,6 +2840,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/backgrounds/list',
   '/api/matrix/sso-login',
   '/api/matrix/sso-status',
+  '/api/matrix/report-room',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -5689,6 +5690,7 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/matrix/moderation/kick',
   '/api/matrix/moderation/ban',
   '/api/matrix/moderation/redact',
+  '/api/matrix/report-room',
 ]);
 
 function csrfFailureIfUnsafe(req, path, method) {
@@ -7881,7 +7883,7 @@ function getMatrixPasswordForUid(uid) {
 }
 
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'mitchlivekit';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || (ID_SECRET ? createHmac('sha256', ID_SECRET).update('livekit-secret').digest('hex') : 'mitch-secret-livekit-matrix-key-2026');
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'mitch-secret-livekit-matrix-key-2026';
 
 function generateLiveKitToken({ identity, name, roomName }) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -8100,6 +8102,14 @@ async function syncMatrixUserToOfficialRooms(userId, userToken, targetPowerLevel
   if (plRes.ok) {
     const plData = await plRes.json();
     plData.users = plData.users || {};
+    plData.events = plData.events || {};
+    let plChanged = false;
+    for (const callEv of ['org.matrix.msc3401.call.member', 'org.matrix.msc3401.call', 'org.matrix.msc4143.rtc.member']) {
+      if (plData.events[callEv] !== 0) {
+        plData.events[callEv] = 0;
+        plChanged = true;
+      }
+    }
     const currentPL = plData.users[userId] !== undefined ? plData.users[userId] : 0;
     if (currentPL !== targetPowerLevel) {
       if (targetPowerLevel > 0) {
@@ -8107,6 +8117,9 @@ async function syncMatrixUserToOfficialRooms(userId, userToken, targetPowerLevel
       } else {
         delete plData.users[userId];
       }
+      plChanged = true;
+    }
+    if (plChanged) {
       const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
         method: 'PUT',
         headers: {
@@ -9257,39 +9270,41 @@ async function handleRequest(req, server) {
     }
 
     // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
-    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
+    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report(?:\/([^/]+))?$/);
     if (reportMatch && capturedBodyText !== null) {
       try {
         const roomId = decodeURIComponent(reportMatch[1]);
-        const eventId = decodeURIComponent(reportMatch[2]);
+        const eventId = reportMatch[2] ? decodeURIComponent(reportMatch[2]) : '';
         let parsed = {};
         try { parsed = JSON.parse(capturedBodyText); } catch {}
-        const reason = parsed.reason || 'Reported message';
+        const reason = parsed.reason || (eventId ? 'Reported message' : 'Reported chat without entering');
 
         const cookies = getCookies(req);
         const sid = cookies['studentId'] || cookies['id'] || '';
         let reporter = sid ? (emailFromSid(sid) || sid) : '';
 
-        let eventSender = 'unknown';
-        let eventBody = `Reported message event ${eventId}`;
+        let eventSender = eventId ? 'unknown' : 'room-report';
+        let eventBody = eventId ? `Reported message event ${eventId}` : `Chat reported without opening: ${reason}`;
         let eventTs = Date.now();
         const authHeader = req.headers.get('authorization') || '';
 
-        try {
-          const eventRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`, {
-            headers: authHeader ? { 'Authorization': authHeader } : {}
-          });
-          if (eventRes.ok) {
-            const ev = await eventRes.json();
-            if (ev.sender) eventSender = ev.sender;
-            if (ev.origin_server_ts) eventTs = ev.origin_server_ts;
-            if (ev.content && typeof ev.content.body === 'string') {
-              eventBody = ev.content.body;
-            } else if (ev.content) {
-              eventBody = JSON.stringify(ev.content);
+        if (eventId) {
+          try {
+            const eventRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`, {
+              headers: authHeader ? { 'Authorization': authHeader } : {}
+            });
+            if (eventRes.ok) {
+              const ev = await eventRes.json();
+              if (ev.sender) eventSender = ev.sender;
+              if (ev.origin_server_ts) eventTs = ev.origin_server_ts;
+              if (ev.content && typeof ev.content.body === 'string') {
+                eventBody = ev.content.body;
+              } else if (ev.content) {
+                eventBody = JSON.stringify(ev.content);
+              }
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
 
         if (!reporter && authHeader) {
           try {
@@ -9305,7 +9320,7 @@ async function handleRequest(req, server) {
         if (!reporter) reporter = 'matrix-user';
 
         const reports = loadJson(CHAT_REPORTS_FILE, []);
-        const cleanId = (eventId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+        const cleanId = (eventId || ('room-' + Date.now())).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
         const reportEntry = {
           id: 'matrix-' + cleanId,
           reason: `[Matrix Room ${roomId}] ${reason}`.slice(0, 500),
@@ -9313,8 +9328,9 @@ async function handleRequest(req, server) {
           ts: Date.now(),
           status: 'Needs review',
           matrixRoomId: roomId,
-          matrixEventId: eventId,
+          matrixEventId: eventId || '',
           matrixSender: eventSender,
+          reportedWithoutEntering: !eventId,
           context: [
             {
               from: eventSender,
@@ -9330,8 +9346,13 @@ async function handleRequest(req, server) {
         saveJson(CHAT_REPORTS_FILE, reports);
 
         try {
-          ntfy(`[Matrix Report] ${reporter} reported message from ${eventSender} in ${roomId}: ${reason}`, { title: 'Chat Safety' });
+          const alertSubject = eventId ? `message from ${eventSender} in ${roomId}` : `room ${roomId} (without opening)`;
+          ntfy(`[Matrix Report] ${reporter} reported ${alertSubject}: ${reason}`, { title: 'Chat Safety' });
         } catch (_) {}
+
+        if (!eventId) {
+          return jsonResp(200, {});
+        }
       } catch (err) {
         console.warn('[matrix-report] Error intercepting report:', err?.message || err);
       }
@@ -9650,6 +9671,69 @@ async function handleRequest(req, server) {
     return jsonResp(200, { ok: true }, { 'Access-Control-Allow-Origin': '*' });
   }
 
+  // Matrix Report Room Without Entering (Abuse/Filter-Bypass/Infohazard Prevention)
+  if (path === '/api/matrix/report-room' && (method === 'POST' || method === 'OPTIONS')) {
+    if (method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+    let body = {};
+    try { body = await req.json(); } catch (_) {}
+    const roomId = String(body.roomId || '').trim();
+    if (!roomId) return jsonResp(400, { error: 'Room ID required' }, { 'Access-Control-Allow-Origin': '*' });
+    const reason = String(body.reason || 'Reported chat without entering').slice(0, 500);
+    const roomName = String(body.roomName || roomId).slice(0, 200);
+
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    let reporter = sid ? (emailFromSid(sid) || sid) : '';
+    if (!reporter) {
+      const authHeader = req.headers.get('authorization') || '';
+      const tok = authHeader.replace(/^Bearer\s+/i, '');
+      const acc = matrixTokenToAccount.get(tok);
+      if (acc && acc.normEmail) reporter = acc.normEmail;
+    }
+    if (!reporter) reporter = String(body.reporter || 'matrix-user').slice(0, 100);
+
+    const reports = loadJson(CHAT_REPORTS_FILE, []);
+    const cleanId = ('room-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)).replace(/[^a-zA-Z0-9_-]/g, '');
+    const reportEntry = {
+      id: cleanId,
+      reason: `[Matrix Room ${roomName} (${roomId})] ${reason}`,
+      reportedBy: reporter,
+      ts: Date.now(),
+      status: 'Needs review',
+      matrixRoomId: roomId,
+      matrixRoomName: roomName,
+      reportedWithoutEntering: true,
+      context: [
+        {
+          from: 'system',
+          to: roomId,
+          text: `Chat reported without opening: ${reason} (Room: ${roomName})`,
+          ts: Date.now(),
+          reported: true
+        }
+      ]
+    };
+    reports.push(reportEntry);
+    if (reports.length > 5000) reports.splice(0, reports.length - 5000);
+    saveJson(CHAT_REPORTS_FILE, reports);
+
+    try {
+      ntfy(`[Matrix Chat Report] ${reporter} reported room "${roomName}" (${roomId}) without opening: ${reason}`, { title: 'Chat Safety Alert' });
+    } catch (_) {}
+
+    return jsonResp(200, { success: true, message: 'Chat reported successfully' }, { 'Access-Control-Allow-Origin': '*' });
+  }
+
   // ── Matrix VoIP & LiveKit SFU Service for Voice/Video Calls ──────────────────
   if (path.startsWith('/livekit') && method === 'OPTIONS') {
     return new Response(null, {
@@ -9664,15 +9748,16 @@ async function handleRequest(req, server) {
   }
 
   // LiveKit SFU Token Generation (MSC3401 / MSC4143 MatrixRTC / Element Call)
-  if ((path === '/livekit/sfu/get' || path === '/livekit/get_token') && (method === 'POST' || method === 'GET')) {
+  if ((path === '/livekit/sfu/get' || path === '/livekit/get_token' || path === '/livekit/token' || path === '/livekit/jwt') && (method === 'POST' || method === 'GET')) {
     let body = {};
     if (method === 'POST') {
       try {
         const text = await req.text();
         body = JSON.parse(text);
       } catch (_) {}
-    } else {
-      for (const [k, v] of url.searchParams.entries()) body[k] = v;
+    }
+    for (const [k, v] of url.searchParams.entries()) {
+      if (body[k] === undefined) body[k] = v;
     }
 
     const cookies = getCookies(req);
@@ -9682,8 +9767,8 @@ async function handleRequest(req, server) {
     const profiles = loadJson(PROFILES_FILE, {});
     const prof = normEmail ? (profiles[normEmail] || {}) : {};
 
-    const room = body.room || body.room_id || 'default';
-    let rawUserId = body.member?.claimed_user_id || body.user_id || '';
+    const room = body.room || body.room_id || body.roomId || 'default';
+    let rawUserId = body.member?.claimed_user_id || body.claimed_user_id || body.user_id || body.userId || body.openid_token?.user_id || '';
     if (!rawUserId && normEmail) {
       const username = prof.username || defaultUsernameForEmail(normEmail);
       rawUserId = `@${username}:mitch.pro`;
@@ -9691,7 +9776,7 @@ async function handleRequest(req, server) {
     if (!rawUserId) rawUserId = `@user_${Math.random().toString(36).slice(2, 8)}:mitch.pro`;
 
     const identity = rawUserId.startsWith('@') ? rawUserId : `@${rawUserId.replace(/[^a-zA-Z0-9._=-]/g, '')}:mitch.pro`;
-    const displayName = body.name || prof.displayName || identity.split(':')[0].replace(/^@/, '');
+    const displayName = body.name || body.member?.display_name || prof.displayName || identity.split(':')[0].replace(/^@/, '');
 
     const jwt = generateLiveKitToken({ identity, name: displayName, roomName: room });
     const host = requestHost(req) || 'mitch.pro';
@@ -9701,7 +9786,9 @@ async function handleRequest(req, server) {
 
     return jsonResp(200, {
       url: wsUrl,
-      jwt: jwt
+      jwt: jwt,
+      token: jwt,
+      access_token: jwt
     }, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
