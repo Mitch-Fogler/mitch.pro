@@ -46,6 +46,12 @@ pub async fn handle(
     if path == "/api/leaderboard" && *method == Method::GET {
         return Some(leaderboard(state, headers));
     }
+    // GET /api/me/coins — server.js:23789-23802 (merged tree). Public wallet
+    // for the signed-out top bar; the authed branch assembles coins,
+    // achievements, and user stats.
+    if path == "/api/me/coins" && *method == Method::GET {
+        return Some(me_coins(state, headers));
+    }
     if path == "/api/games" && (*method == Method::GET || *method == Method::POST) {
         return Some(games(state, body, headers));
     }
@@ -457,6 +463,53 @@ fn games(state: &Arc<AppState>, body: &serde_json::Value, headers: &HeaderMap) -
             "offset": offset,
             "limit": limit,
             "hasMore": offset + limit < total,
+        }),
+    )
+}
+
+/// `GET /api/me/coins` — server.js:23789-23802. Signed-out visitors get a
+/// clean `{authenticated: false, coins: null}` (the wallet renders in the
+/// public top bar); authed sessions get coins + achievements + user stats.
+fn me_coins(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_header,
+        &state.store,
+        &state.id_secret,
+        false,
+    );
+    let sid = cookies.auth_sid();
+    if !mitch_lib::auth::valid_id(&sid, &state.id_secret) {
+        return json_response(200, json!({ "authenticated": false, "coins": null }));
+    }
+    let email = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, &sid);
+    let Some(email) = email else {
+        return json_response(200, json!({ "authenticated": false, "coins": null }));
+    };
+    let norm = mitch_lib::auth::normalize_email(&email);
+    let coins = mitch_lib::coins::get_coins(&state.store, state.data_dir(), &email);
+    let achievements = state
+        .store
+        .read_document(&state.data_dir().join("achievements.json"), json!({}))
+        .get(norm.as_str())
+        .cloned()
+        .unwrap_or(json!([]));
+    let stats = state
+        .store
+        .read_document(&state.data_dir().join("user_stats.json"), json!({}))
+        .get(norm.as_str())
+        .cloned()
+        .unwrap_or(json!({}));
+    json_response(
+        200,
+        json!({
+            "authenticated": true,
+            "coins": coins,
+            "achievements": achievements,
+            "stats": stats,
         }),
     )
 }

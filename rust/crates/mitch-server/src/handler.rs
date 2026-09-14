@@ -440,7 +440,9 @@ pub async fn handle(
     let cfg = &state.cfg;
     let webroot = cfg.webroot.clone();
 
-    // 4b. Password Enforcement (Unified) — server.js ~8272-8297.
+    // 4b. Password Enforcement (Unified) — server.js ~8300-8330 (merged
+    // tree: games/matrix/game-portal/msn-games/rjuhsd/sexypickleclub are
+    // public, plus /api/me/coins).
     let clean_path = {
         let trimmed = path.trim_end_matches('/');
         if path.ends_with('/') && path != "/" {
@@ -450,6 +452,7 @@ pub async fn handle(
         }
     };
     let is_exempt = clean_path == "/enroll"
+        || clean_path == "/api/me/coins"
         || clean_path == "/larp"
         || clean_path == "/larp/rezero"
         || clean_path == "/bell"
@@ -459,6 +462,15 @@ pub async fn handle(
         || clean_path == "/unsubscribe"
         || path.starts_with("/unsubscribe/")
         || crate::state::PUBLIC_API_PATHS.contains(&clean_path.as_str())
+        || clean_path.starts_with("/games")
+        || clean_path == "/matrix"
+        || clean_path.starts_with("/matrix/")
+        || clean_path.starts_with("/game-portal")
+        || clean_path.starts_with("/msn-games")
+        || clean_path == "/rjuhsd"
+        || clean_path.starts_with("/rjuhsd/")
+        || clean_path == "/sexypickleclub"
+        || clean_path.starts_with("/sexypickleclub/")
         || path.starts_with("/api/puzzle/")
         || path == "/api/sms-reply"
         || path.starts_with("/admin")
@@ -632,7 +644,9 @@ pub async fn handle(
         }
     }
 
-    // 10. HTML auth gate (unauthenticated stub: non-open pages → /enroll/).
+    // 10. HTML auth gate — server.js:24625-24643 (merged tree: /games and
+    // /matrix are open; banned sessions get the ban page; /admin/vms needs a
+    // fully-authenticated VM actor).
     let mut html_base = path.clone();
     if html_base.ends_with(".html") {
         html_base = html_base[..html_base.len() - 5].to_string();
@@ -641,14 +655,52 @@ pub async fn handle(
         html_base = html_base[..html_base.len() - 1].to_string();
     }
     let is_html_request = path.ends_with(".html") || path.ends_with('/');
-    let is_open_html_page = is_html_request && HTML_OPEN.contains(&html_base.as_str());
-    if is_html_request
-        && !is_open_html_page
-        && !path.starts_with("/unsubscribe/")
-        && !state.check_password_cookie(headers, None)
-        && path != "/"
-    {
-        return redirect("/enroll/", 302);
+    let is_open_html_page = is_html_request
+        && (HTML_OPEN.contains(&html_base.as_str())
+            || html_base.starts_with("/games")
+            || html_base.starts_with("/matrix"));
+    if is_html_request && (html_base == "/admin/vms" || html_base.starts_with("/admin/vms/")) {
+        match authenticated_vm_actor(&state, headers, node_env_test) {
+            None => return redirect("/enroll/", 302),
+            Some((_, _, is_admin)) if !is_admin => {
+                return err_resp(403, Some("Admin access required."), None)
+            }
+            Some(_) => {}
+        }
+    }
+    if is_html_request && !is_open_html_page && !path.starts_with("/unsubscribe/") {
+        let cookie_header = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let cookies = mitch_lib::auth::get_cookies_from_header_value(
+            cookie_header,
+            &state.store,
+            &state.id_secret,
+            node_env_test,
+        );
+        let sid = cookies
+            .get("studentId")
+            .filter(|s| !s.is_empty())
+            .or_else(|| cookies.get("id"))
+            .unwrap_or("");
+        if let Some(ban) = mitch_lib::auth::banned_info_for_sid(&state.store, &state.id_secret, sid)
+        {
+            let reason = ban
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("This account is banned from the website.");
+            let by = ban
+                .get("by")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("site admin");
+            return banned_response(reason, by);
+        }
+        if !state.check_password_cookie(headers, None) && path != "/" {
+            return redirect("/enroll/", 302);
+        }
     }
     // .html → sibling-directory 302 (file missing but <dir>/index.html exists).
     if path.ends_with(".html") {
@@ -665,6 +717,22 @@ pub async fn handle(
                         return redirect(&format!("/{dir_name}/{search}"), 302);
                     }
                 }
+            }
+        }
+    }
+
+    // SPA route fallback for Matrix Chat (/matrix/*) — server.js:24647-24657.
+    if path.starts_with("/matrix/") && !path.contains('.') {
+        let index_path = std::path::Path::new(&webroot)
+            .join("matrix")
+            .join("index.html");
+        if index_path.exists() {
+            if let Ok(content) = std::fs::read_to_string(&index_path) {
+                return Response::builder()
+                    .status(StatusCode::OK)
+                    .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                    .body(axum::body::Body::from(content))
+                    .expect("static response");
             }
         }
     }
@@ -708,7 +776,9 @@ pub async fn handle(
             .expect("static response");
     }
 
-    // 13. Public assets gate (unauthenticated).
+    // 13. Public assets gate (unauthenticated) — server.js:24838 (merged
+    // tree: /matrix/, /games, /game-portal/ are public; banned sessions get
+    // the ban page before the redirect).
     let clean_path = html_base.clone();
     let is_piece_svg = path.starts_with("/games/chess-bot/pieces-svg/") && path.ends_with(".svg");
     let public_api = crate::state::PUBLIC_API_PATHS.contains(&clean_path.as_str());
@@ -717,12 +787,44 @@ pub async fn handle(
         && !public_api
         && !PUBLIC_ASSETS.contains(&path.as_str())
         && !is_piece_svg
+        && !path.starts_with("/matrix/")
         && !path.starts_with("/unsubscribe/")
         && !path.starts_with("/images/")
         && !path.starts_with("/backgrounds/")
         && !is_larp
+        && !path.starts_with("/games")
+        && !path.starts_with("/game-portal/")
         && !state.check_password_cookie(headers, None)
     {
+        let cookie_header = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let cookies = mitch_lib::auth::get_cookies_from_header_value(
+            cookie_header,
+            &state.store,
+            &state.id_secret,
+            node_env_test,
+        );
+        let sid = cookies
+            .get("studentId")
+            .filter(|s| !s.is_empty())
+            .or_else(|| cookies.get("id"))
+            .unwrap_or("");
+        if let Some(ban) = mitch_lib::auth::banned_info_for_sid(&state.store, &state.id_secret, sid)
+        {
+            let reason = ban
+                .get("reason")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("This account is banned from the website.");
+            let by = ban
+                .get("by")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("site admin");
+            return banned_response(reason, by);
+        }
         return redirect("/enroll/", 302);
     }
 
@@ -742,6 +844,53 @@ fn html_response(html: String) -> Response {
 
 /// `banOpenPaths` — server.js:7605. Exact-path matches only.
 const BAN_OPEN_PATHS: &[&str] = &["/appeal.html", "/api/appeal", "/api/pass"];
+
+/// `authenticatedVmActor(req)` — server.js:25606. Valid non-revoked sid whose
+/// password cookie matches, with a normalized email; returns (sid, email,
+/// is_admin).
+fn authenticated_vm_actor(
+    state: &AppState,
+    headers: &HeaderMap,
+    node_env_test: bool,
+) -> Option<(String, String, bool)> {
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_header,
+        &state.store,
+        &state.id_secret,
+        node_env_test,
+    );
+    let sid = cookies
+        .get("studentId")
+        .filter(|s| !s.is_empty())
+        .or_else(|| cookies.get("id"))
+        .unwrap_or("")
+        .to_string();
+    if sid.is_empty() || !mitch_lib::auth::valid_id(&sid, &state.id_secret) {
+        return None;
+    }
+    let revoked: serde_json::Value = state.store.read_document(
+        &state.cfg.data_dir.join("revoked.json"),
+        serde_json::json!({}),
+    );
+    if revoked.get(&sid).is_some() {
+        return None;
+    }
+    if !state.check_password_cookie(headers, Some(&sid)) {
+        return None;
+    }
+    let email = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, &sid)?;
+    let norm = mitch_lib::auth::normalize_email(&email);
+    if norm.is_empty() {
+        return None;
+    }
+    let is_admin =
+        mitch_lib::auth::is_admin_id(&state.store, &state.id_secret, &sid, node_env_test);
+    Some((sid, norm, is_admin))
+}
 
 /// `bannedResponse(info)` — server.js:5004. 403 HTML ban page with an alert
 /// script; `reason`/`by` are HTML-escaped, the alert text is JSON-escaped
