@@ -328,7 +328,7 @@
           const script = document.createElement("script");
           script.type = "module";
           script.crossOrigin = "anonymous";
-          script.src = "/matrix/assets/index-BVlPv2dR.js";
+          script.src = "/matrix/assets/index-BVlPv2dR.js?v=plaintext2";
           document.head.appendChild(script);
         }
 
@@ -337,6 +337,27 @@
             token: localStorage.getItem("cinny_access_token") || '',
             userId: localStorage.getItem("cinny_user_id") || ''
           };
+        }
+
+        async function removeLegacyCryptoStorage() {
+          if (localStorage.getItem('mitch_plaintext_chat_v1') === '1') return;
+          try {
+            if (indexedDB.databases) {
+              const databases = await indexedDB.databases();
+              for (const database of databases) {
+                if (database.name && /crypto/i.test(database.name)) indexedDB.deleteDatabase(database.name);
+              }
+            } else {
+              indexedDB.deleteDatabase('crypto-store');
+            }
+          } catch (_) {}
+          localStorage.setItem('mitch_plaintext_chat_v1', '1');
+        }
+
+        function clearStoredSession() {
+          for (const key of ['cinny_access_token', 'cinny_device_id', 'cinny_user_id', 'cinny_hs_base_url']) {
+            localStorage.removeItem(key);
+          }
         }
 
         async function storedSessionIsValid(token, expectedUserId) {
@@ -364,6 +385,7 @@
 
         async function initMitchSSO() {
           try {
+            await removeLegacyCryptoStorage();
             const statusRes = await fetch('/api/matrix/sso-status', {
               credentials: 'same-origin',
               cache: 'no-store'
@@ -376,10 +398,13 @@
             if (stored.token && stored.userId &&
                 (!status.authenticated || stored.userId === status.user_id) &&
                 await storedSessionIsValid(stored.token, stored.userId)) {
+              localStorage.setItem('cinny_hs_base_url', 'https://mitchdog.com');
               if (banner) banner.style.display = 'none';
               bootCinny();
               return;
             }
+
+            if (stored.token || stored.userId) clearStoredSession();
 
             if (!status.authenticated) {
               if (banner) banner.style.display = 'flex';

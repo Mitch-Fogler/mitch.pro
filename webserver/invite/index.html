@@ -458,7 +458,7 @@
         document.getElementById('stat-signups').textContent = d.signups;
         document.getElementById('stat-coins').textContent = (d.signups * 2000).toLocaleString();
 
-        const baseLink = `https://mitch.pro/enroll?ref=${encodeURIComponent(d.code)}&email=THEIR_EMAIL`;
+        const baseLink = `https://mitchdog.com/enroll?ref=${encodeURIComponent(d.code)}&email=THEIR_EMAIL`;
         document.getElementById('link-text').textContent = baseLink;
 
         if (d.isPremium) {
@@ -505,7 +505,7 @@
         if (d.success) {
           myCode = d.code;
           document.getElementById('code-text').textContent = d.code;
-          document.getElementById('link-text').textContent = `https://mitch.pro/enroll?ref=${encodeURIComponent(d.code)}&email=THEIR_EMAIL`;
+          document.getElementById('link-text').textContent = `https://mitchdog.com/enroll?ref=${encodeURIComponent(d.code)}&email=THEIR_EMAIL`;
           msg.className = 'msg ok'; msg.textContent = '✓ Code updated!';
         } else {
           msg.className = 'msg err'; msg.textContent = d.error || 'Failed to set code.';
