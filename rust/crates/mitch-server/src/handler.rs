@@ -554,6 +554,13 @@ pub async fn handle(
         {
             return resp;
         }
+        // dm group (Step 11 batch 1) — wired before canvas (JS file order:
+        // dm at 19452, canvas at 21634+).
+        if let Some(resp) =
+            crate::routes::dm::handle(&state, &method, &path, headers, body_bytes).await
+        {
+            return resp;
+        }
         // canvas group (Step 10 batch 1).
         if let Some(resp) = crate::routes::canvas::handle(
             &state, &method, &path, headers, &search, &body, body_bytes,

@@ -25,6 +25,7 @@ pub mod coins;
 pub mod config;
 pub mod crypto;
 pub mod data;
+pub mod dm;
 pub mod e2e;
 pub mod email;
 pub mod jsval;

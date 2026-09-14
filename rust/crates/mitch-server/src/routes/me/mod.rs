@@ -15,7 +15,7 @@
 
 mod account;
 mod cosmetics;
-mod notifications;
+pub(crate) mod notifications;
 mod security;
 
 use crate::state::AppState;

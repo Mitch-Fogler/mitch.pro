@@ -1152,6 +1152,33 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'csrf_blocked'
   },
+  // ── dm send (Step 11 batch 1) ──
+  {
+    name: 'GET /api/dm/send (Anonymous)',
+    path: '/api/dm/send',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/dm/send (Anonymous)',
+    path: '/api/dm/send',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/send bad json (Anonymous)',
+    path: '/api/dm/send',
+    method: 'POST',
+    token: null,
+    body: '{nope',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',
