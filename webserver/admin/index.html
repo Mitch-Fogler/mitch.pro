@@ -825,13 +825,13 @@
     <div class="moderation-panel">
       <form class="action-card danger" onsubmit="broadcastAlert(event)">
         <h2>Global Broadcast</h2>
-        <p>Send an emergency popup or jumpscare to ALL active users via WebSocket.</p>
-        <select id="broadcast-type" style="margin-bottom:8px; width:100%;">
+        <p>Send an emergency popup or the full-screen video to all active users.</p>
+        <select id="broadcast-type" style="margin-bottom:8px; width:100%;" onchange="updateBroadcastMode()">
           <option value="normal">Normal Alert</option>
-          <option value="jumpscare">JUMPSCARE</option>
+          <option value="jumpscare">Video Jumpscare</option>
         </select>
-        <input id="broadcast-msg" type="text" placeholder="ALERT MESSAGE..." required>
-        <button type="submit">BROADCAST NOW</button>
+        <input id="broadcast-msg" type="text" placeholder="Alert message" required>
+        <button id="broadcast-submit" type="submit">Broadcast alert</button>
         <div id="broadcast-status" class="form-status"></div>
       </form>
       <form class="action-card" onsubmit="shadowBan(event)">
@@ -1389,16 +1389,27 @@
       e.preventDefault();
       setStatus('broadcast-status', 'Submitting...', '');
       try {
+        const type = document.getElementById('broadcast-type').value;
         const d = await postAdmin('/api/admin/broadcast', {
           msg: document.getElementById('broadcast-msg').value,
-          type: document.getElementById('broadcast-type').value,
+          type: type,
         });
-        setStatus('broadcast-status', d.pending ? pendingText(d) : 'Broadcast sent.', 'ok');
+        setStatus('broadcast-status', d.pending ? pendingText(d) : (type === 'jumpscare' ? 'Video sent to ' + Number(d.recipients || 0) + ' active devices.' : 'Broadcast sent.'), 'ok');
         if (d.pending) loadModeratorRequests();
-        else e.target.reset();
+        else { e.target.reset(); updateBroadcastMode(); }
       } catch (err) {
         setStatus('broadcast-status', err.message, 'err');
       }
+    }
+
+    function updateBroadcastMode() {
+      const type = document.getElementById('broadcast-type').value;
+      const message = document.getElementById('broadcast-msg');
+      const submit = document.getElementById('broadcast-submit');
+      const videoMode = type === 'jumpscare';
+      message.required = !videoMode;
+      message.placeholder = videoMode ? 'Optional caption' : 'Alert message';
+      submit.textContent = videoMode ? 'Play video for everyone' : 'Broadcast alert';
     }
 
     async function addModerator(e) {
