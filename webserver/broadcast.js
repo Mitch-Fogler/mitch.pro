@@ -1,6 +1,10 @@
 (function setupBroadcast() {
     var ws;
     var presenceTimer;
+    var reconnectTimer;
+    var fallbackTimer;
+    var LAST_BROADCAST_KEY = 'mitch:last-admin-broadcast';
+    var lastBroadcastId = '';
     function stopPresencePing() {
       if (presenceTimer) clearInterval(presenceTimer);
       presenceTimer = null;
@@ -10,26 +14,52 @@
         try { ws.send(JSON.stringify({ type: 'presence_ping' })); } catch(ex) {}
       }
     }
+    function hasSeenBroadcast(data) {
+      if (!data || !data.broadcastId) return false;
+      if (lastBroadcastId === data.broadcastId) return true;
+      try {
+        if (sessionStorage.getItem(LAST_BROADCAST_KEY) === data.broadcastId) return true;
+        sessionStorage.setItem(LAST_BROADCAST_KEY, data.broadcastId);
+      } catch(ex) {}
+      lastBroadcastId = data.broadcastId;
+      return false;
+    }
+    function handleMessage(data) {
+      if (data.type === 'admin_broadcast') {
+        if (!hasSeenBroadcast(data)) showBroadcast(data.message);
+      } else if (data.type === 'admin_jumpscare') {
+        if (!hasSeenBroadcast(data)) showJumpscare(data.message);
+      } else if (data.type === 'refresh_notifications') {
+        if (typeof window.__refreshNotifications === 'function') {
+          window.__refreshNotifications();
+        }
+      } else if (data.type === 'new_dm') {
+        if (typeof window.__handleIncomingDm === 'function') {
+          window.__handleIncomingDm(data.message || null);
+        }
+      }
+      window.dispatchEvent(new CustomEvent('ws-broadcast-message', { detail: data }));
+    }
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(function() {
+        reconnectTimer = null;
+        connect();
+      }, 1800);
+    }
     function connect() {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
       var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(protocol + '//' + location.host + '/ws');
+      try {
+        ws = new WebSocket(protocol + '//' + location.host + '/ws');
+      } catch(ex) {
+        scheduleReconnect();
+        return;
+      }
       ws.onmessage = function(e) {
         try {
           var data = JSON.parse(e.data);
-          if (data.type === 'admin_broadcast') {
-            showBroadcast(data.message);
-          } else if (data.type === 'admin_jumpscare') {
-            showJumpscare(data.message);
-          } else if (data.type === 'refresh_notifications') {
-            if (typeof window.__refreshNotifications === 'function') {
-              window.__refreshNotifications();
-            }
-          } else if (data.type === 'new_dm') {
-            if (typeof window.__handleIncomingDm === 'function') {
-              window.__handleIncomingDm(data.message || null);
-            }
-          }
-          window.dispatchEvent(new CustomEvent('ws-broadcast-message', { detail: data }));
+          handleMessage(data);
         } catch(ex) {}
       };
       ws.onopen = function() {
@@ -41,8 +71,28 @@
       ws.onclose = function() {
         stopPresencePing();
         window.dispatchEvent(new CustomEvent('ws-broadcast-status', { detail: { connected: false } }));
-        setTimeout(connect, 1800);
+        scheduleReconnect();
       };
+    }
+    function pollLatestBroadcast() {
+      fetch('/api/broadcast/latest', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+      }).then(function(response) {
+        if (!response.ok) return null;
+        return response.json();
+      }).then(function(result) {
+        if (result && result.active && result.event) handleMessage(result.event);
+      }).catch(function() {});
+    }
+    function start() {
+      connect();
+      pollLatestBroadcast();
+      fallbackTimer = setInterval(pollLatestBroadcast, 3000);
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) pollLatestBroadcast();
+      });
     }
     function showJumpscare(msg) {
       showVideoJumpscare(msg);
@@ -107,8 +157,8 @@
       document.body.appendChild(el);
       el.querySelector('#close-broadcast').onclick = function() { el.remove(); };
     }
-    if (document.body) connect();
-    else document.addEventListener('DOMContentLoaded', connect);
+    if (document.body) start();
+    else document.addEventListener('DOMContentLoaded', start, { once: true });
 })();
 
 // Site-wide Notifications

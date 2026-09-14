@@ -1246,6 +1246,36 @@ function loadGlobalGameStats() {
 }
 
 const allSockets = new Set();
+const ADMIN_BROADCAST_TTL_MS = 5 * 60 * 1000;
+let latestAdminBroadcast = null;
+
+function activeAdminBroadcast(now = Date.now()) {
+  if (!latestAdminBroadcast || latestAdminBroadcast.expiresAt <= now) {
+    latestAdminBroadcast = null;
+    return null;
+  }
+  return latestAdminBroadcast;
+}
+
+function publishAdminBroadcast(type, message) {
+  const now = Date.now();
+  const event = {
+    broadcastId: `${now.toString(36)}-${randomBytes(6).toString('hex')}`,
+    type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast',
+    message: String(message || ''),
+    createdAt: now,
+    expiresAt: now + ADMIN_BROADCAST_TTL_MS,
+  };
+  latestAdminBroadcast = event;
+  const socketPayload = JSON.stringify(event);
+  let recipients = 0;
+  for (const ws of allSockets) {
+    if (ws.data?.isBroadcast && ws.readyState === 1) {
+      try { ws.send(socketPayload); recipients++; } catch {}
+    }
+  }
+  return { recipients, broadcastId: event.broadcastId, expiresAt: event.expiresAt };
+}
 
 // Sexy Pickle Club presence ("in the barrel right now"). Heartbeats from the
 // Barrel page keep this fresh; in-memory only, so a fresh boot is an empty room.
@@ -7085,15 +7115,9 @@ function executeModeratorApprovedAction(action, rawPayload, approverEmail, reque
     const type = payload.type === 'jumpscare' ? 'jumpscare' : 'normal';
     const msg = String(payload.msg || '').trim().slice(0, 500);
     if (type === 'normal' && !msg) adminActionError(400, 'message required');
-    const socketPayload = JSON.stringify({ type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast', message: msg });
-    let recipients = 0;
-    for (const ws of allSockets) {
-      if (ws.data && ws.data.isBroadcast) {
-        try { ws.send(socketPayload); recipients++; } catch {}
-      }
-    }
+    const delivery = publishAdminBroadcast(type, msg);
     logAdminAction(actor, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg, requestedBy: requesterEmail });
-    return { ok: true, recipients };
+    return { ok: true, ...delivery };
   }
   if (action === 'shadow_ban') {
     const target = normalizeEmail(payload.email);
@@ -7512,7 +7536,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=6" defer></script>';
+  const tag = '<script src="/broadcast.js?v=7" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -12712,8 +12736,21 @@ async function handleRequest(req, server) {
       return jsonResp(200, { ok: true });
       }
 
+      // Polling fallback for networks that block or interrupt WebSockets.
+      if (path === '/api/broadcast/latest' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid) || !checkPasswordCookie(req, sid)) {
+        return jsonResp(401, { error: 'authentication required' });
+      }
+      const event = activeAdminBroadcast();
+      const response = jsonResp(200, { ok: true, active: !!event, event });
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      return response;
+      }
+
       // POST /api/admin/broadcast
-      if (path === '/api/admin/broadcast') {
+      if (path === '/api/admin/broadcast' && method === 'POST') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
@@ -12722,15 +12759,9 @@ async function handleRequest(req, server) {
       const type = body.type === 'jumpscare' ? 'jumpscare' : 'normal';
       const msg = String(body.msg || '').trim().slice(0, 500);
       if (type === 'normal' && !msg) return jsonResp(400, { error: 'message required' });
-      const payload = JSON.stringify({ type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast', message: msg });
-      let recipients = 0;
-      for (const ws of allSockets) {
-        if (ws.data && ws.data.isBroadcast) {
-          try { ws.send(payload); recipients++; } catch {}
-        }
-      }
+      const delivery = publishAdminBroadcast(type, msg);
       logAdminAction(adminEmail, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg });
-      return jsonResp(200, { ok: true, recipients });
+      return jsonResp(200, { ok: true, ...delivery });
       }
 
     // POST /api/admin/casino/rig
@@ -15746,7 +15777,7 @@ async function handleRequest(req, server) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=6" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=7" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -24685,7 +24716,7 @@ async function handleRequest(req, server) {
           }
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=6" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=7" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }

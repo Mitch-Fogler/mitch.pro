@@ -1394,7 +1394,7 @@
           msg: document.getElementById('broadcast-msg').value,
           type: type,
         });
-        setStatus('broadcast-status', d.pending ? pendingText(d) : (type === 'jumpscare' ? 'Video sent to ' + Number(d.recipients || 0) + ' active devices.' : 'Broadcast sent.'), 'ok');
+        setStatus('broadcast-status', d.pending ? pendingText(d) : (type === 'jumpscare' ? 'Video sent. ' + Number(d.recipients || 0) + ' active tabs received it instantly; every signed-in PC also checks automatically.' : 'Broadcast sent.'), 'ok');
         if (d.pending) loadModeratorRequests();
         else { e.target.reset(); updateBroadcastMode(); }
       } catch (err) {
