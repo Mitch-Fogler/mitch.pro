@@ -17,6 +17,10 @@ services:
     build: .
     container_name: mitch-webserver-blue
     restart: unless-stopped
+    depends_on:
+      - conduit
+      - livekit
+      - deploy-sync
     ports:
       - "127.0.0.1:6811:6800"
     volumes:
@@ -59,6 +63,11 @@ services:
       - RECAPTCHA_SITE_KEY
       - BLOOKET_BOT_HOST=blooket-bot
       - SSH_GATEWAY_URL=ws://ssh-gateway:6820
+      - CONDUIT_HOST=conduit
+      - LIVEKIT_HOST=livekit
+      - LIVEKIT_PORT=7880
+      - LIVEKIT_API_KEY=mitchlivekit
+      - LIVEKIT_API_SECRET=mitch-secret-livekit-matrix-key-2026
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       # Proxmox bridge — explicit pass-through so the loader doesn't
@@ -73,6 +82,14 @@ services:
       - PVE_NODE
       - PVE_TEMPLATE_LINUX
       - PVE_LXC_TEMPLATE
+      - PROXMOX_HOST
+      - PROXMOX_PORT
+      - PROXMOX_NODE
+      - PROXMOX_TOKEN_ID
+      - PROXMOX_TOKEN_SECRET
+      - PROXMOX_VERIFY_TLS
+      - PROXMOX_TLS_SERVERNAME
+      - PROXMOX_DESKTOP_TEMPLATES
       - HIDE_VM_FEATURES
 
   # Production Slot B: Green Webserver
@@ -80,6 +97,10 @@ services:
     build: .
     container_name: mitch-webserver-green
     restart: unless-stopped
+    depends_on:
+      - conduit
+      - livekit
+      - deploy-sync
     ports:
       - "127.0.0.1:6812:6800"
     volumes:
@@ -118,6 +139,11 @@ services:
       - RECAPTCHA_SITE_KEY
       - BLOOKET_BOT_HOST=blooket-bot
       - SSH_GATEWAY_URL=ws://ssh-gateway:6820
+      - CONDUIT_HOST=conduit
+      - LIVEKIT_HOST=livekit
+      - LIVEKIT_PORT=7880
+      - LIVEKIT_API_KEY=mitchlivekit
+      - LIVEKIT_API_SECRET=mitch-secret-livekit-matrix-key-2026
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       - PVE_SSH_HOST
@@ -129,6 +155,14 @@ services:
       - PVE_NODE
       - PVE_TEMPLATE_LINUX
       - PVE_LXC_TEMPLATE
+      - PROXMOX_HOST
+      - PROXMOX_PORT
+      - PROXMOX_NODE
+      - PROXMOX_TOKEN_ID
+      - PROXMOX_TOKEN_SECRET
+      - PROXMOX_VERIFY_TLS
+      - PROXMOX_TLS_SERVERNAME
+      - PROXMOX_DESKTOP_TEMPLATES
       - HIDE_VM_FEATURES
 
   # SSH Gateway sidecar (internal only — admin SSH via WebSocket)
@@ -228,3 +262,63 @@ services:
       - "127.0.0.1:8191:8191"
     environment:
       - LOG_LEVEL=info
+
+  # Matrix Conduit Homeserver (Ultra-lightweight Rust backend)
+  conduit:
+    image: matrixconduit/matrix-conduit:latest
+    container_name: mitch-matrix-conduit
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6167:6167"
+    volumes:
+      - ./conduit.toml:/etc/conduit.toml:ro
+      - ./data/conduit:/var/lib/matrix-conduit
+    environment:
+      - CONDUIT_CONFIG=/etc/conduit.toml
+
+  # LiveKit SFU for Matrix Voice & Video Calling (MSC3401 / MSC4143 MatrixRTC)
+  livekit:
+    image: livekit/livekit-server:latest
+    container_name: mitch-livekit
+    restart: unless-stopped
+    command:
+      - --keys
+      - "mitchlivekit: mitch-secret-livekit-matrix-key-2026"
+      - --bind
+      - 0.0.0.0
+      - --udp-port
+      - "7882"
+    ports:
+      - "127.0.0.1:7880:7880"
+      - "7882:7882/udp"
+
+  # Deploy script synchronization sidecar (synchronizes /usr/local/bin/deploy.sh on the host)
+  deploy-sync:
+    image: caddy:2.7-alpine
+    container_name: mitch-deploy-sync
+    restart: unless-stopped
+    volumes:
+      - /usr/local/bin:/host_bin
+      - ./tools/deploy.sh:/repo_deploy.sh:ro
+    command:
+      - /bin/sh
+      - -c
+      - |
+        trap "exit 0" TERM INT
+        if [ -f /repo_deploy.sh ]; then
+          cp -f /repo_deploy.sh /host_bin/deploy.sh.tmp
+          chmod 755 /host_bin/deploy.sh.tmp
+          mv -f /host_bin/deploy.sh.tmp /host_bin/deploy.sh
+          echo "[deploy-sync] Initialized /usr/local/bin/deploy.sh from repository"
+        fi
+        while true; do
+          if [ -f /repo_deploy.sh ] && ! cmp -s /repo_deploy.sh /host_bin/deploy.sh; then
+            cp -f /repo_deploy.sh /host_bin/deploy.sh.tmp
+            chmod 755 /host_bin/deploy.sh.tmp
+            mv -f /host_bin/deploy.sh.tmp /host_bin/deploy.sh
+            echo "[deploy-sync] Synchronized /usr/local/bin/deploy.sh from repository"
+          fi
+          sleep 2
+        done
+
+

@@ -28,17 +28,18 @@ function applySchoolIdentity(){
  const brand=window.RJUHSD_SCHOOL_DATA[school];
  document.documentElement.style.setProperty("--school-primary",brand.primary);
  document.documentElement.style.setProperty("--school-secondary",brand.secondary);
- document.querySelectorAll('img[src*="/rjuhsd-assets/"]').forEach(img=>{img.src=brand.logo;img.alt=img.closest('[aria-hidden="true"]')?"":schoolName()+" logo"});
- document.querySelector('link[rel="icon"]').href=brand.logo;
+ document.querySelectorAll('img[src*="/rjuhsd-assets/"]:not(.brand-logo img):not(.site-logo):not(.district-school-logo)').forEach(img=>{img.src=brand.logo;img.alt=img.closest('[aria-hidden="true"]')?"":schoolName()+" logo"});
+ const fi=document.querySelector('link[rel="icon"]');if(fi)fi.href="/favicon.ico";
  const tc=document.querySelector('meta[name="theme-color"]');if(tc)tc.content=document.documentElement.classList.contains("theme-light")?"#f7f4f4":"#0c0809";
  $("schedule-mode").innerHTML='<option value="auto">Automatic</option><option value="regular">Regular day</option>'+Object.keys(brand.specials).map(k=>'<option value="'+k+'">'+safe(window.RJUHSD_CALENDAR.labels[k])+'</option>').join("");
  $("schedule-mode").value=scheduleMode;
  $("period0-label").hidden=!brand.days[1][1].some(p=>p.name==="Period 0");
- document.title=schoolName()+" bell schedule | rjuhsd.school";
+ document.title=schoolName()+" Bell Schedule | RJUHSD Hub";
  $("school-heading").textContent=SCHOOLS[school].name;
  $("hero-overline").textContent=schoolName();
  document.querySelectorAll(".brand-copy strong").forEach(e=>e.textContent=schoolName());
  document.querySelectorAll(".brand-copy small").forEach(e=>e.textContent="rjuhsd.school");
+ document.querySelectorAll(".district-school-card").forEach(c=>{c.classList.toggle("current-school",c.dataset.schoolCard===school)});
  $("official-bells").href=official()+"/"+SCHOOLS[school].bell;
  document.querySelectorAll('a[href*="woodcreek.rjuhsd.us"]:not(#official-bells)').forEach(a=>a.dataset.schoolLink="true");
  document.querySelectorAll("[data-school-link]").forEach(a=>{a.href=official()+"/"+SCHOOLS[school].calendar;if(a.querySelector(".tool-logo")){a.href=official();a.querySelector("strong").textContent="School website"}});
@@ -69,7 +70,7 @@ async function loadWeather(){
  const selected=school,s=SCHOOLS[selected];
  try{
  const r=await fetch("https://api.open-meteo.com/v1/forecast?latitude="+s.lat+"&longitude="+s.lon+"&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FLos_Angeles&forecast_days=7",{signal:AbortSignal.timeout(10000)});
- if(!r.ok)throw Error();const w=await r.json();if(selected!==school)return;if(!Number.isFinite(w.current?.temperature_2m))throw Error();renderWeather(w);
+ if(!r.ok){r.text().catch(()=>{});throw Error();}const w=await r.json();if(selected!==school)return;if(!Number.isFinite(w.current?.temperature_2m))throw Error();renderWeather(w);
  }catch{if(selected===school){$("weather-condition").textContent="Forecast unavailable";$("weather-updated").textContent="Weather service is temporarily unavailable"}}
 }
 function renderNow(){const p=pacific(),s=schedule(),clock=new Intl.DateTimeFormat("en-US",{timeZone:"America/Los_Angeles",hour:"numeric",minute:"2-digit"}).format(new Date());$("live-clock").textContent=clock;$("header-clock").textContent=clock;if(!data.today?.inSession||data.today?.manual||p.date!==data.now?.iso||!s.length){$("live-mode").textContent=data.today?.manual?"PREVIEW":p.date===data.now?.iso?"TODAY":"PREVIEW";$("current-eyebrow").textContent="TODAY AT "+SCHOOLS[school].name.toUpperCase();$("current-period").textContent=data.today?.event||data.today?.title||"Schedule preview";$("current-range").textContent=schoolName();$("countdown").textContent="—";$("countdown-copy").textContent="No live bell countdown right now";$("live-progress").style.width="0";$("next-period").textContent=data.nextSchool?.title||"Check back soon";$("next-time").textContent=data.nextSchool?.date||"—";$("snapshot-progress").textContent="Not in session";return}const now=p.minutes+p.seconds/60,current=s.find(x=>now>=mins(x.start)&&now<mins(x.end)),next=s.find(x=>mins(x.start)>now),dayPct=Math.min(100,Math.max(0,(now-mins(s[0].start))/(mins(s.at(-1).end)-mins(s[0].start))*100));$("snapshot-progress").textContent=`${Math.round(dayPct)}% complete`;if(current){const sec=Math.max(0,Math.round((mins(current.end)-now)*60));$("live-mode").textContent="LIVE";$("current-eyebrow").textContent="HAPPENING NOW";$("current-period").textContent=current.name;$("current-range").textContent=`${time(current.start)} – ${time(current.end)}`;$("countdown").textContent=`${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`;$("countdown-copy").textContent="until the next bell";$("period-badge").textContent=current.name.match(/\d/)?.[0]||current.name[0];$("live-progress").style.width=`${(now-mins(current.start))/(mins(current.end)-mins(current.start))*100}%`;const n=s[s.indexOf(current)+1];$("next-period").textContent=n?.name||"Dismissal";$("next-time").textContent=n?time(n.start):time(current.end)}else if(next){const sec=Math.round((mins(next.start)-now)*60);$("live-mode").textContent=now<mins(s[0].start)?"STARTING SOON":"PASSING";$("current-eyebrow").textContent=now<mins(s[0].start)?"BEFORE SCHOOL":"PASSING PERIOD";$("current-period").textContent=now<mins(s[0].start)?"School starts soon":"Head to class";$("current-range").textContent=`Next bell at ${time(next.start)}`;$("countdown").textContent=`${String(Math.floor(sec/60)).padStart(2,"0")}:${String(sec%60).padStart(2,"0")}`;$("countdown-copy").textContent="until class begins";$("period-badge").textContent="→";$("live-progress").style.width="0";$("next-period").textContent=next.name;$("next-time").textContent=time(next.start)}else{$("live-mode").textContent="DONE";$("current-eyebrow").textContent="SCHOOL’S OUT";$("current-period").textContent="That’s a wrap";$("current-range").textContent=`Dismissed at ${time(s.at(-1).end)}`;$("countdown").textContent="DONE";$("countdown-copy").textContent="See you next school day";$("period-badge").textContent="✓";$("live-progress").style.width="100%";$("next-period").textContent="Next school day";$("next-time").textContent="—"}}
@@ -92,28 +93,42 @@ async function load(){
  data=buildData();render();
  try{
   const r=await fetch("/api/school-info?school="+selected,{cache:"no-store",signal:AbortSignal.timeout(20000)});
-  if(!r.ok)throw Error("Calendar unavailable");
+  if(!r.ok){r.text().catch(()=>{});throw Error("Calendar unavailable");}
   const result=await r.json();if(version!==requestVersion)return;
   calendarVerified=result.calendar_verified===true&&!result.stale;events=(result.events||[]).map(e=>({date:e.date,text:e.title}));
   data=buildData();render();$("source-status").textContent=calendarVerified?"Official calendar checked · Bell times verified September 2026":"Weekly bell times · Official calendar could not be fully verified";
  }catch{if(version===requestVersion){calendarVerified=false;$("source-status").textContent="Calendar unavailable · District breaks are included; check school announcements for special days.";$("announcement-text").textContent="Calendar unavailable — showing published weekly times."}}
 }
 $("school-select").innerHTML=Object.entries(SCHOOLS).map(([key,s])=>'<option value="'+key+'">'+s.name+'</option>').join("");
-$("school-select").value=school;
-$("school-select").addEventListener("change",()=>{school=$("school-select").value;remember("rjuhsd_school",school);lunch=saved("rjuhsd_lunch_"+school,"1");events=[];calendarCursor=null;scheduleMode="auto";includePeriod0=false;$("include-period0").checked=false;applySchoolIdentity();load();loadWeather();const url=new URL(location.href);url.searchParams.set("school",school);history.replaceState(null,"",url)});
+function switchSchool(s){
+ if(!SCHOOLS[s]||s===school)return;
+ school=s;
+ if($("school-select"))$("school-select").value=school;
+ remember("rjuhsd_school",school);
+ lunch=saved("rjuhsd_lunch_"+school,"1");
+ events=[];calendarCursor=null;scheduleMode="auto";includePeriod0=false;
+ if($("include-period0"))$("include-period0").checked=false;
+ applySchoolIdentity();
+ data=buildData();
+ render();
+ load();
+ loadWeather();
+ try{const url=new URL(location.href);url.searchParams.set("school",school);history.replaceState(null,"",url)}catch{}
+}
+$("school-select").addEventListener("change",()=>switchSchool($("school-select").value));
+document.addEventListener("click",e=>{const b=e.target.closest("[data-switch-school]");if(b){const s=b.dataset.switchSchool;if(s){switchSchool(s)}}});
 $("schedule-mode").addEventListener("change",()=>{scheduleMode=$("schedule-mode").value;data=buildData();render()});
 $("include-period0").addEventListener("change",()=>{includePeriod0=$("include-period0").checked;data=buildData();render()});
 applySchoolIdentity();
 document.querySelectorAll("[data-choose-lunch]").forEach(b=>b.addEventListener("click",()=>chooseLunch(b.dataset.chooseLunch)));["change-lunch","hero-change-lunch","brief-change-lunch"].forEach(id=>$(id).addEventListener("click",openLunch));$("calendar-prev").addEventListener("click",()=>moveCalendar(-1));$("calendar-next").addEventListener("click",()=>moveCalendar(1));$("calendar-today").addEventListener("click",()=>{const d=new Date(`${data.now?.iso||pacific().date}T12:00:00`);calendarCursor={year:d.getFullYear(),month:d.getMonth()};renderEvents()});$("weather-toggle").addEventListener("click",()=>{const open=$("weather-toggle").getAttribute("aria-expanded")!=="true";$("weather-toggle").setAttribute("aria-expanded",String(open));$("weather-details").hidden=!open;$("weather-widget").classList.toggle("expanded",open)});function syncRjuhsdTheme(){const isLight=document.documentElement.classList.contains("theme-light")||(window.__theme&&window.__theme.get()==="light");document.body.classList.toggle("dark",!isLight);const tc=document.querySelector('meta[name="theme-color"]');if(tc)tc.content=isLight?"#f7f4f4":"#0c0809";const b=$("theme-btn")||$("theme-toggle");if(b){const sun='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.5 1.5m11.2 11.2 1.5 1.5M2 12h2m16 0h2M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/></svg>';const moon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';b.innerHTML=isLight?moon:sun;b.setAttribute("title",isLight?"Switch to dark theme":"Switch to light theme");b.setAttribute("aria-label",isLight?"Switch to dark theme":"Switch to light theme")}}syncRjuhsdTheme();window.addEventListener("themechange",syncRjuhsdTheme);const tb=$("theme-btn")||$("theme-toggle");if(tb){tb.addEventListener("click",()=>{const isLight=document.documentElement.classList.contains("theme-light");const next=isLight?"dark":"light";document.cookie="theme="+encodeURIComponent(next)+";path=/;max-age=31536000";if(window.__theme&&typeof window.__theme.apply==="function"){window.__theme.apply(next)}else{document.documentElement.classList.toggle("theme-light",next==="light");document.body.classList.toggle("dark",next==="dark")}syncRjuhsdTheme()})}load();loadWeather();setInterval(renderNowAdvanced,1000);setInterval(load,120000);setInterval(loadWeather,600000);
-// Sign-in state: swap every "Sign in with mitch.pro" affordance for the
-// account link once we know the visitor already has a session. Any failure
-// (offline, timeout) leaves the sign-in markup untouched.
+// Keep auth prompts out of the way for signed-in visitors. Controls remain
+// hidden until the session check finishes so they never flash on screen.
 try{
  const meCtl=new AbortController();const meTimer=setTimeout(()=>meCtl.abort(),6000);
- fetch("/api/me",{credentials:"include",signal:meCtl.signal}).then(r=>r.ok?r.json():null).then(me=>{
+ fetch("/api/me",{credentials:"include",signal:meCtl.signal}).then(r=>{if(!r.ok){r.text().catch(()=>{});return null;}return r.json();}).then(me=>{
   clearTimeout(meTimer);
-  if(!me||!me.email){const h=document.querySelector(".hero-signin-btn");if(h)h.hidden=false;return}
-  document.querySelectorAll(".js-signin-link").forEach(a=>{a.classList.add("is-signed-in");a.href="/preferences/";a.textContent="My account"});
+  if(!me||!me.email){document.body.classList.add("auth-guest");document.querySelectorAll(".js-signin-link").forEach(a=>a.hidden=false);return}
+  document.querySelectorAll(".js-signin-link").forEach(a=>a.remove());
  }).catch(()=>{clearTimeout(meTimer)});
 }catch(e){}
 })();

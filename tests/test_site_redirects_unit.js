@@ -49,4 +49,70 @@ for (const file of ['webserver/app-shell.js', 'webserver/index.html', 'webserver
   assert(readFileSync(file, 'utf8').includes('https://woodcreek.site/'), `${file} must point Blooket Bot to woodcreek.site`);
 }
 assert(readFileSync('webserver/app-shell.js', 'utf8').includes("label: 'Blooket Bot'"), 'Blooket Bot must be in the shared top navigation');
-console.log('Bell and Blooket links, legacy redirects, query preservation, assets, PWA shortcuts, and direct navigation passed.');
+
+// Top-left brand logo on rjuhsd.school must use mitch.pro logo (/icon-192.png)
+const rjuhsdHtml = readFileSync('webserver/rjuhsd/index.html', 'utf8');
+const rjuhsdRedesign = readFileSync('webserver/rjuhsd-assets/redesign.css', 'utf8');
+const rjuhsdApp = readFileSync('webserver/rjuhsd-assets/app.js', 'utf8');
+const preferencesHtml = readFileSync('webserver/preferences/index.html', 'utf8');
+const preferencesSchoolCss = readFileSync('webserver/preferences-school.css', 'utf8');
+assert(rjuhsdHtml.includes('<a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img class="site-logo" src="/icon-192.png"'), 'rjuhsd top left brand must use mitch.pro logo');
+assert(rjuhsdHtml.includes('/rjuhsd-assets/redesign.css?v=2'), 'rjuhsd must load the schedule-first redesign');
+assert(rjuhsdHtml.includes('/rjuhsd-assets/reference-theme.css?v=10'), 'rjuhsd must load updated reference-theme.css?v=10');
+const referenceThemeCss = readFileSync('webserver/rjuhsd-assets/reference-theme.css', 'utf8');
+assert(referenceThemeCss.includes('.calendar-days>button:hover:not(.today)'), 'dark calendar date hover must be styled without white box');
+assert(referenceThemeCss.includes('body.dark .calendar-days>button:not(.today):nth-child(7n+1)'), 'weekend styling must not clobber today highlight');
+assert(rjuhsdRedesign.includes('.schedule-zone { order: 2; }'), 'full schedule must appear before secondary school content');
+assert(rjuhsdRedesign.includes('.live-card {') && rjuhsdRedesign.includes('.countdown-dial {'), 'active countdown must have the redesigned live surface');
+assert(rjuhsdApp.includes('document.querySelectorAll(".js-signin-link").forEach(a=>a.remove())'), 'signed-in users must not see sign-in prompts');
+assert(preferencesHtml.includes('/preferences-school.css?v=4') || preferencesHtml.includes('/preferences-school.css?v=3') || preferencesHtml.includes('/preferences-school.css?v=2'), 'preferences must load its rjuhsd redesign');
+assert(preferencesHtml.includes("classList.add('school-preferences')"), 'preferences must detect the school host');
+assert(preferencesSchoolCss.includes('background: linear-gradient(110deg'), 'school preferences header must reveal the active background');
+assert(preferencesSchoolCss.includes('.school-preferences.theme-light') || preferencesSchoolCss.includes(':is(.school-preferences.theme-light'), 'school preferences must support light mode');
+assert(preferencesSchoolCss.includes('.prefs-page .page-head h1') && preferencesSchoolCss.includes('var(--t-fg'), 'school preferences light mode header must use readable ink color');
+assert(readFileSync('server.js', 'utf8').includes("'/rjuhsd-assets/redesign.css', '/preferences-school.css'"), 'school redesign stylesheets must remain public assets');
+assert(!/<a class="brand"[^>]*><span class="brand-logo"><img[^>]*src="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd brand must not use school-based logo');
+
+// Favicon on rjuhsd.school must use mitch.pro favicon (/favicon.ico)
+assert(rjuhsdHtml.includes('<link rel="icon" href="/favicon.ico">'), 'rjuhsd favicon must use mitch.pro /favicon.ico');
+assert(!/<link\s+rel="icon"[^>]*href="\/rjuhsd-assets\//.test(rjuhsdHtml), 'rjuhsd must not use rjuhsd-assets favicon');
+
+const appJs = readFileSync('webserver/rjuhsd-assets/app.js', 'utf8');
+assert(!appJs.includes("href=brand.logo"), 'app.js must not overwrite favicon with school logo');
+
+// SEO & All-Schools bell schedules verification
+const schools = ['woodcreek', 'roseville', 'granitebay', 'antelope', 'westpark', 'oakmont'];
+const schoolDisplayNames = [
+  'Woodcreek High School Bell Schedule',
+  'Roseville High School Bell Schedule',
+  'Granite Bay High School Bell Schedule',
+  'Antelope High School Bell Schedule',
+  'West Park High School Bell Schedule',
+  'Oakmont High School Bell Schedule'
+];
+
+for (const name of schoolDisplayNames) {
+  assert(rjuhsdHtml.includes(`<h3>${name}</h3>`), `rjuhsd/index.html must include heading for ${name}`);
+}
+
+for (const s of schools) {
+  assert(rjuhsdHtml.includes(`data-school-card="${s}"`), `rjuhsd/index.html must have school card for ${s}`);
+  assert(rjuhsdHtml.includes(`data-switch-school="${s}"`), `rjuhsd/index.html must have school switcher for ${s}`);
+}
+
+assert(rjuhsdHtml.includes('"@type": "ItemList"'), 'rjuhsd/index.html must have Schema.org ItemList');
+assert(rjuhsdHtml.includes('"@type": "FAQPage"'), 'rjuhsd/index.html must have Schema.org FAQPage');
+assert(rjuhsdHtml.includes('id="schools"'), 'rjuhsd/index.html must have #schools section');
+assert(rjuhsdHtml.includes('id="faq"'), 'rjuhsd/index.html must have #faq section');
+
+const sitemap = readFileSync('webserver/sitemap.xml', 'utf8');
+assert(sitemap.includes('https://rjuhsd.school/'), 'sitemap.xml must include rjuhsd.school');
+for (const s of schools) {
+  assert(sitemap.includes(`https://rjuhsd.school/?school=${s}`), `sitemap.xml must include ${s}`);
+}
+
+const robots = readFileSync('webserver/robots.txt', 'utf8');
+assert(robots.includes('Allow: /?school=*'), 'robots.txt must allow school queries');
+assert(robots.includes('Sitemap: https://rjuhsd.school/sitemap.xml'), 'robots.txt must reference sitemap.xml');
+
+console.log('Bell and Blooket links, legacy redirects, query preservation, assets, PWA shortcuts, all-school SEO, sitemaps, and direct navigation passed.');

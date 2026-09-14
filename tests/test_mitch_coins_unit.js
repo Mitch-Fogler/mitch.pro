@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 const source = readFileSync('webserver/mitch-coins.js', 'utf8');
 const children = [], listeners = {}, intervals = new Set();
-let calls = 0, amount = 1250.25, responseStatus = 200;
+let calls = 0, amount = 1250.25, responseStatus = 200, responseData = null;
 const host = {
   classList: { add() {} },
   querySelector: selector => selector === '.mitch-wallet' ? children[0] : null,
@@ -18,7 +18,7 @@ const document = {
   createElement: () => ({ dataset: {}, value: {}, attributes: {}, classList: { add() {} }, querySelector() { return this.value; }, setAttribute(name, value) { this.attributes[name] = value; } }),
   addEventListener: (name, fn) => { listeners[name] = fn; }
 };
-const nativeFetch = async () => { calls++; return new Response(JSON.stringify({ coins: amount }), { status: responseStatus }); };
+const nativeFetch = async () => { calls++; return new Response(JSON.stringify(responseData || { coins: amount }), { status: responseStatus }); };
 const context = vm.createContext({
   document, location: { href: 'https://mitch.pro/', origin: 'https://mitch.pro', hostname: 'mitch.pro', pathname: '/' },
   URL, Intl, Date, AbortController, Response, Promise,
@@ -34,7 +34,7 @@ assert.equal(children.length, 1);
 assert.equal(children[0].value.textContent, '1,250.25');
 assert.equal(children[0].dataset.state, 'ready');
 assert(children[0].innerHTML.includes('/mitchcoin.png'));
-assert.equal(children[0].href, '/shop/');
+assert.equal(children[0].href, '/coins/');
 vm.runInContext(source, context);
 assert.equal(children.length, 1, 'Repeated loading must not duplicate wallets');
 assert.equal(intervals.size, 1, 'Repeated loading must not duplicate polling');
@@ -52,6 +52,11 @@ responseStatus = 401;
 await context.MitchCoins.refresh();
 assert.equal(children[0].href, '/enroll/');
 assert.equal(children[0].value.textContent, 'Sign in');
+responseStatus = 200; amount = null; responseData = { authenticated: false, coins: null };
+await context.MitchCoins.refresh();
+assert.equal(children[0].href, '/enroll/');
+assert.equal(children[0].value.textContent, 'Sign in', 'Public guest response must not render as a failed wallet');
+responseData = null;
 responseStatus = 500;
 await context.MitchCoins.refresh();
 assert.equal(children[0].value.textContent, '—', 'Failures must not invent a zero balance');

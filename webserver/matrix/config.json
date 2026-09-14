@@ -1,0 +1,19 @@
+{
+  "defaultHomeserver": 0,
+  "homeserverList": ["mitch.pro"],
+  "allowCustomHomeservers": true,
+
+  "featuredCommunities": {
+    "openAsDefault": true,
+    "spaces": [],
+    "rooms": [
+      "#general:mitch.pro"
+    ],
+    "servers": ["mitch.pro"]
+  },
+
+  "hashRouter": {
+    "enabled": false,
+    "basename": "/matrix"
+  }
+}

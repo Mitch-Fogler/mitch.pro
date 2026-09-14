@@ -679,6 +679,24 @@
     <section class="tool-group" id="owner-tools">
       <div class="section-head"><h2>Site operations</h2><span class="tag">Owner access</span></div>
       <div class="actions-panel" id="owner-operations"></div>
+      <section class="owner-account-tools" id="owner-account-tools" hidden aria-label="Owner account controls">
+        <h3>Accounts &amp; Mitch Coins</h3>
+        <p>Remove sign-in registrations so those email addresses can sign up again. This revokes website sessions, passwords, passkeys, and recovery links. Profiles, posts, chat history, and existing Matrix sessions are not deleted. Owner accounts are protected.</p>
+        <button type="button" data-load>Load registered accounts</button>
+        <input type="search" placeholder="Find an email address" aria-label="Search registered accounts">
+        <button type="button" data-all>Select all non-owner accounts</button><button type="button" data-none>Deselect all</button>
+        <div class="owner-account-list"></div>
+        <p data-count>Select the accounts to remove.</p>
+        <input type="text" data-confirmation autocomplete="off" aria-label="Registration removal confirmation" placeholder="REMOVE 0 REGISTRATIONS">
+        <button type="button" data-remove data-danger>Remove selected registrations</button>
+        <hr>
+        <h4>Reset everyone's Mitch Coins</h4>
+        <p>Sets every current balance to zero, including staff. Purchased items and lifetime achievements stay. This cannot be undone from this panel. An encrypted recovery snapshot is saved on the server.</p>
+        <input type="text" data-coin-confirmation autocomplete="off" aria-label="Coin reset confirmation" placeholder="Type RESET ALL COINS">
+        <button type="button" data-reset data-danger>Reset all balances to zero</button>
+        <p role="status" aria-live="polite"></p>
+      </section>
+      <script src="/admin/owner-accounts.js?v=1" defer></script>
       <div class="owner-shortcuts"><a href="#people-tools">Accounts &amp; roles ↗</a><a href="#content-tools">Site content ↗</a><a href="#logs-tools">System logs ↗</a><a href="#audit-tools">Activity history ↗</a></div>
     </section>
     <section class="tool-group active" id="approval-tools">
@@ -766,6 +784,10 @@
         <span class="tag">kvm vms, lxc containers, approvals</span>
       </div>
       <div class="actions-panel" style="display: grid; grid-template-columns: 1fr; gap: 14px;">
+        <div class="action-card" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+          <div><h2 style="margin-bottom:5px">Graphical Computer Admin</h2><p style="margin:0">Create, assign, control, and open customer Linux desktops.</p></div>
+          <a href="/admin/vms/" class="quick-action-btn" style="text-decoration:none">Open Computer Admin →</a>
+        </div>
         <!-- VM Requests & Soft-Delete Restore Actions -->
         <div class="action-card" style="width: 100%;">
           <h2>Active & Pending VM Requests</h2>
@@ -875,6 +897,51 @@
         <h2>Live Traffic Feed</h2>
         <p>Real-time page visits.</p>
         <div id="traffic-feed" class="live-feed"></div>
+      </div>
+      <div class="action-card" id="matrix-moderation-card" style="grid-column: 1 / -1;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+          <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:#10b981;"></span>
+            Matrix Chat Moderation &amp; Staff
+          </h2>
+          <div style="display:flex; gap:8px;">
+            <a href="/matrix/" target="_blank" style="font-size:0.8rem; color:var(--t-ac); text-decoration:none; border:1px solid var(--t-bd); padding:4px 10px; border-radius:6px; background:var(--t-bg3);">Open Web Chat ↗</a>
+            <button type="button" class="mini" onclick="loadMatrixModeration()">Refresh</button>
+          </div>
+        </div>
+        <p style="margin-top:0; color:var(--t-fg2); font-size:0.82rem;">Official room: <code style="color:var(--t-ac);">#general:mitch.pro</code>. Staff power levels: Admin (100), Moderator (50), Member (0).</p>
+
+        <div style="margin-top: 14px;">
+          <h3 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--t-fg2); margin-bottom: 8px;">Active Room Staff</h3>
+          <div id="matrix-staff-roster" style="min-height: 48px;"><span class="muted">Loading room staff...</span></div>
+        </div>
+
+        <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
+          <!-- User Role & Punishment Form -->
+          <form onsubmit="submitMatrixUserAction(event)" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.15); padding:12px; border-radius:8px; border:1px solid var(--t-bd);">
+            <h4 style="margin:0; font-size:0.85rem;">Manage User / Staff Role</h4>
+            <input id="matrix-target-user" type="text" placeholder="@username:mitch.pro or username" required style="font-size:0.82rem;">
+            <select id="matrix-user-action" style="font-size:0.82rem;">
+              <option value="set_admin">Promote to Admin (Power Level 100)</option>
+              <option value="set_mod">Promote to Moderator (Power Level 50)</option>
+              <option value="set_member">Demote to Member (Power Level 0)</option>
+              <option value="kick">Kick User from General</option>
+              <option value="ban">Ban User from General</option>
+            </select>
+            <input id="matrix-action-reason" type="text" placeholder="Reason (optional)" maxlength="200" style="font-size:0.82rem;">
+            <button type="submit" style="font-size:0.82rem; padding:8px;">Execute Action</button>
+            <div id="matrix-moderation-status" class="form-status"></div>
+          </form>
+
+          <!-- Message Redaction Form -->
+          <form onsubmit="submitMatrixRedact(event)" style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.15); padding:12px; border-radius:8px; border:1px solid var(--t-bd);">
+            <h4 style="margin:0; font-size:0.85rem;">Redact Message Event</h4>
+            <input id="matrix-redact-event-id" type="text" placeholder="Event ID ($...)" required style="font-size:0.82rem;">
+            <input id="matrix-redact-reason" type="text" placeholder="Reason for redaction" maxlength="200" style="font-size:0.82rem;">
+            <button type="submit" class="warn" style="font-size:0.82rem; padding:8px;">Redact Message</button>
+            <div id="matrix-redact-status" class="form-status"></div>
+          </form>
+        </div>
       </div>
       <div class="action-card warning" id="soft-maintenance-card" style="display: none;">
         <h2>Site Access</h2>
@@ -1234,7 +1301,7 @@
     let currentUser = null;
     let moderatorRequests = [];
     function getAdminHeaders(extra = {}) {
-      const headers = { ...extra };
+      const headers = { 'X-Mitch-Requested-With': '1', ...extra };
       const pass = sessionStorage.getItem('admin_passphrase');
       if (pass) {
         headers['X-Admin-Passphrase'] = pass;
@@ -2054,7 +2121,7 @@
         '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td><b>' + esc(r.targetHandle ? '@' + r.targetHandle : r.target) + '</b><div class="muted">' + esc(r.target) + '</div></td><td>' + esc(r.reporter) + '</td><td><div class="chat-text"><b>' + esc(r.reason) + '</b>' + (r.details ? '<br>' + esc(r.details) : '') + '</div></td><td>' + statusPill(r.status) + (r.resolvedBy ? '<div class="muted">By ' + esc(r.resolvedBy) + '</div>' : '') + '</td><td><div class="row-actions"><button type="button" class="mini ok" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"reviewed")\'>Reviewed</button><button type="button" class="mini warn" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"action taken")\'>Action taken</button><button type="button" class="mini" onclick=\'resolveProfileReport(' + JSON.stringify(r.id) + ',"dismissed")\'>Dismiss</button></div></td></tr>'
       );
 
-      table('chatReports-table', ['Time', 'Reporter', 'Reason', 'Reported Chat Context'], filtered.chatReports || [], r => {
+      table('chatReports-table', ['Time', 'Reporter', 'Reason', 'Reported Chat Context', 'Actions'], filtered.chatReports || [], r => {
         let transcriptHtml = '';
         if (Array.isArray(r.context) && r.context.length > 0) {
           transcriptHtml = '<div class="chat-transcript" style="font-family: monospace; background: rgba(0,0,0,0.2); border: 1px solid var(--t-bd); border-radius: 4px; padding: 8px; max-height: 200px; overflow-y: auto; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px; text-align: left; max-width: 600px;">' +
@@ -2073,7 +2140,26 @@
         } else {
           transcriptHtml = '<span class="muted">No context provided</span>';
         }
-        return '<tr><td>' + esc(fmtTime(r.ts)) + '</td><td><span class="pill ok">' + esc(r.reportedBy) + '</span></td><td>' + esc(r.reason) + '</td><td>' + transcriptHtml + '</td></tr>';
+
+        const isMatrix = !!(r.matrixEventId || (r.id && String(r.id).startsWith('matrix-')));
+        const typeBadge = isMatrix ? '<span class="pill warn" style="font-size:0.7rem; margin-right:4px;">Matrix</span> ' : '';
+        const statusBadge = r.status ? ` <span class="pill ${r.status === 'Resolved' ? 'ok' : 'warn'}" style="font-size:0.7rem;">${esc(r.status)}</span>` : '';
+
+        let actionsHtml = '<div class="row-actions" style="display:flex; flex-wrap:wrap; gap:4px;">';
+        if (isMatrix && r.matrixEventId) {
+          actionsHtml += `<button type="button" class="mini warn" onclick="matrixRedact('${esc(r.matrixRoomId || '')}', '${esc(r.matrixEventId)}', 'Redacted via safety report')">Redact</button>`;
+        }
+        if (isMatrix && r.matrixSender && r.matrixSender !== 'unknown') {
+          actionsHtml += `<button type="button" class="mini danger" onclick="matrixKickUser('${esc(r.matrixSender)}', 'Kicked via report')">Kick</button>`;
+          actionsHtml += `<button type="button" class="mini danger" onclick="matrixBanUser('${esc(r.matrixSender)}', 'Banned via report')">Ban</button>`;
+        }
+        if (r.status !== 'Resolved') {
+          actionsHtml += `<button type="button" class="mini ok" onclick="resolveChatReport(${r.ts}, 'resolve')">Resolve</button>`;
+        }
+        actionsHtml += `<button type="button" class="mini" onclick="resolveChatReport(${r.ts}, 'delete')">Delete</button>`;
+        actionsHtml += '</div>';
+
+        return '<tr><td>' + esc(fmtTime(r.ts)) + statusBadge + '</td><td><span class="pill ok">' + esc(r.reportedBy) + '</span></td><td>' + typeBadge + esc(r.reason) + '</td><td>' + transcriptHtml + '</td><td>' + actionsHtml + '</td></tr>';
       });
 
       table('cheatLogs-table', ['Time', 'Email', 'Game', 'Details', 'IP'], filtered.cheatLogs || [], r =>
@@ -2204,6 +2290,174 @@
       }
     }
 
+    async function resolveChatReport(ts, action = 'resolve') {
+      try {
+        const res = await fetch('/api/admin/chat-reports/resolve', {
+          method: 'POST',
+          credentials: 'include',
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+          body: JSON.stringify({ ts, action })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Failed to update report');
+        await loadData();
+      } catch (err) {
+        alert('Failed to resolve report: ' + err.message);
+      }
+    }
+
+    async function loadMatrixModeration() {
+      const container = document.getElementById('matrix-staff-roster');
+      if (!container) return;
+      try {
+        const res = await fetch('/api/matrix/moderation/overview', {
+          credentials: 'include',
+          headers: getAdminHeaders()
+        });
+        if (!res.ok) {
+          container.innerHTML = '<span class="muted">Could not load Matrix staff roster.</span>';
+          return;
+        }
+        const data = await res.json();
+        if (!data.staff || !data.staff.length) {
+          container.innerHTML = '<span class="muted">No staff currently assigned in official room.</span>';
+          return;
+        }
+        container.innerHTML = data.staff.map(s => {
+          const isAdm = s.powerLevel >= 100;
+          const badgeClass = isAdm ? 'pill ok' : 'pill warn';
+          return `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--t-bd); border-radius:6px; margin-bottom:6px; flex-wrap:wrap; gap:6px;">` +
+            `<div><b>${esc(s.userId)}</b> <span class="${badgeClass}" style="margin-left:6px; font-size:0.75rem;">${esc(s.role)} (PL ${s.powerLevel})</span></div>` +
+            `<div style="display:flex; gap:6px;">` +
+            (isAdm
+              ? `<button type="button" class="mini warn" onclick="matrixSetRole('${esc(s.userId)}', 50)">Set Mod (50)</button>`
+              : `<button type="button" class="mini ok" onclick="matrixSetRole('${esc(s.userId)}', 100)">Set Admin (100)</button>`) +
+            `<button type="button" class="mini danger" onclick="matrixSetRole('${esc(s.userId)}', 0)">Remove Staff (0)</button>` +
+            `</div></div>`;
+        }).join('');
+      } catch (e) {
+        container.innerHTML = '<span class="muted">Error loading Matrix staff: ' + esc(e.message) + '</span>';
+      }
+    }
+
+    async function submitMatrixUserAction(e) {
+      e.preventDefault();
+      const userIdInput = document.getElementById('matrix-target-user');
+      const actionSelect = document.getElementById('matrix-user-action');
+      const reasonInput = document.getElementById('matrix-action-reason');
+      const statusEl = document.getElementById('matrix-moderation-status');
+      if (!userIdInput) return;
+
+      const userId = userIdInput.value.trim();
+      const action = actionSelect.value;
+      const reason = reasonInput.value.trim();
+
+      statusEl.textContent = 'Processing...';
+      statusEl.className = 'form-status';
+
+      try {
+        if (action === 'set_admin' || action === 'set_mod' || action === 'set_member') {
+          const pl = action === 'set_admin' ? 100 : (action === 'set_mod' ? 50 : 0);
+          await matrixSetRole(userId, pl);
+          statusEl.textContent = `Set ${userId} to Power Level ${pl}`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'kick') {
+          await matrixKickUser(userId, reason, true);
+          statusEl.textContent = `User ${userId} was kicked`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'ban') {
+          await matrixBanUser(userId, reason, true);
+          statusEl.textContent = `User ${userId} was banned`;
+          statusEl.className = 'form-status ok';
+        }
+        userIdInput.value = '';
+        reasonInput.value = '';
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'form-status err';
+      }
+    }
+
+    async function submitMatrixRedact(e) {
+      e.preventDefault();
+      const eventIdInput = document.getElementById('matrix-redact-event-id');
+      const reasonInput = document.getElementById('matrix-redact-reason');
+      const statusEl = document.getElementById('matrix-redact-status');
+      if (!eventIdInput) return;
+
+      const eventId = eventIdInput.value.trim();
+      const reason = reasonInput.value.trim();
+
+      statusEl.textContent = 'Redacting...';
+      statusEl.className = 'form-status';
+
+      try {
+        await matrixRedact('', eventId, reason, true);
+        statusEl.textContent = `Event ${eventId} redacted successfully`;
+        statusEl.className = 'form-status ok';
+        eventIdInput.value = '';
+        reasonInput.value = '';
+      } catch (err) {
+        statusEl.textContent = err.message;
+        statusEl.className = 'form-status err';
+      }
+    }
+
+    async function matrixSetRole(userId, powerLevel) {
+      if (!userId) return;
+      const res = await fetch('/api/matrix/moderation/set-role', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId, powerLevel: Number(powerLevel) })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to update Matrix role');
+      loadMatrixModeration();
+    }
+
+    async function matrixKickUser(userId, reason, skipConfirm = false) {
+      if (!skipConfirm && !confirm(`Kick ${userId} from official room?`)) return;
+      const res = await fetch('/api/matrix/moderation/kick', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId, reason: reason || 'Kicked by staff' })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to kick user');
+      if (!skipConfirm) alert(`User ${userId} was kicked.`);
+      loadMatrixModeration();
+    }
+
+    async function matrixBanUser(userId, reason, skipConfirm = false) {
+      if (!skipConfirm && !confirm(`Permanently BAN ${userId} from official room?`)) return;
+      const res = await fetch('/api/matrix/moderation/ban', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId, reason: reason || 'Banned by staff' })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to ban user');
+      if (!skipConfirm) alert(`User ${userId} was banned.`);
+      loadMatrixModeration();
+    }
+
+    async function matrixRedact(roomId, eventId, reason, skipConfirm = false) {
+      if (!skipConfirm && !confirm(`Redact/delete event ${eventId}?`)) return;
+      const res = await fetch('/api/matrix/moderation/redact', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ roomId, eventId, reason: reason || 'Inappropriate content' })
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || 'Failed to redact event');
+      if (!skipConfirm) alert(`Event ${eventId} redacted successfully.`);
+      loadData();
+    }
+
     const MODERATOR_DIRECT_ACTIONS = new Set([
       '/api/admin/restricted-mode',
       '/api/admin/shadow-ban',
@@ -2214,7 +2468,10 @@
       '/api/admin/prox/block',
       '/api/admin/prox/unblock',
       '/api/admin/chat-reports/resolve',
-      '/api/admin/broadcast'
+      '/api/admin/broadcast',
+      '/api/matrix/moderation/kick',
+      '/api/matrix/moderation/ban',
+      '/api/matrix/moderation/redact'
     ]);
 
     async function postAdmin(url, body) {
@@ -2297,6 +2554,8 @@
       }
     }
 
+    const failedVmDeletions = new Set();
+
     async function loadVmRequests() {
       setStatus('vm-requests-global-status', 'Loading VM requests...', '');
       try {
@@ -2353,6 +2612,7 @@
           
           let actionsHtml = '';
           const safeEmail = app.email;
+          const hasFailed = failedVmDeletions.has(safeEmail);
           if (app.status === 'pending') {
             const randomVmid = Math.floor(Math.random() * 100) + 200;
             const inputId = 'vmid-' + normEmail.replace(/[^a-z0-9]/g, '');
@@ -2365,21 +2625,20 @@
             `;
           } else if (app.status === 'approved') {
             actionsHtml = `
-              <div style="text-align:right;">
+              <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:6px;">
                 <button onclick="terminateVmRequest('${safeEmail}')" class="mini" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border-color:rgba(239,68,68,0.2);">Delete VM</button>
+                ${hasFailed ? `<button onclick="terminateVmRequest('${safeEmail}', true)" class="mini" style="background:#ef4444; color:#fff; border-color:#ef4444; font-weight:700;">⚠️ Force Delete</button>` : ''}
               </div>
             `;
           } else if (app.status === 'deleted') {
             const isRestorable = (Date.now() - app.deletedAt) < (7 * 24 * 3600 * 1000);
-            if (isRestorable) {
-              actionsHtml = `
-                <div style="text-align:right;">
-                  <button onclick="restoreVmRequest('${safeEmail}')" class="mini" style="background:rgba(139,92,246, 0.15); color:#8b5cf6; border-color:rgba(139,92,246,0.3);">Undo Delete</button>
-                </div>
-              `;
-            } else {
-              actionsHtml = `<span style="font-size:0.75rem; color:var(--t-fg2);">Expired</span>`;
-            }
+            actionsHtml = `
+              <div style="text-align:right; display:flex; align-items:center; justify-content:flex-end; gap:6px;">
+                ${isRestorable ? `<button onclick="restoreVmRequest('${safeEmail}')" class="mini" style="background:rgba(139,92,246, 0.15); color:#8b5cf6; border-color:rgba(139,92,246,0.3);">Undo Delete</button>` : ''}
+                <button onclick="purgeVmRequest('${safeEmail}')" class="mini" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border-color:rgba(239,68,68,0.2);">Purge</button>
+                ${hasFailed ? `<button onclick="purgeVmRequest('${safeEmail}', true)" class="mini" style="background:#ef4444; color:#fff; border-color:#ef4444; font-weight:700;">⚠️ Force Delete</button>` : ''}
+              </div>
+            `;
           } else {
             actionsHtml = `&mdash;`;
           }
@@ -2434,15 +2693,61 @@
       }
     }
 
-    async function terminateVmRequest(email) {
-      if (!(await customConfirm('Stop VM', 'Are you sure you want to stop and soft-delete this student\'s VM? It can be restored within 7 days.'))) return;
-      setStatus('vm-requests-global-status', 'Stopping VM & marking as deleted...', '');
+    async function terminateVmRequest(email, force = false) {
+      if (!force) {
+        if (!(await customConfirm('Delete VM', 'Are you sure you want to stop and soft-delete this student\'s VM? It can be restored within 7 days.'))) return;
+      } else {
+        if (!(await customConfirm('Force Delete VM', 'Force delete will ignore any errors from Proxmox and delete the VM from the system anyway. Proceed?'))) return;
+      }
+      setStatus('vm-requests-global-status', force ? 'Force deleting VM (ignoring Proxmox errors)...' : 'Stopping VM & marking as deleted...', '');
       try {
-        const d = await postAdmin('/api/admin/terminate-vm', { email });
-        setStatus('vm-requests-global-status', d.message || 'VM soft-deleted.', 'ok');
+        const d = await postAdmin('/api/admin/terminate-vm', { email, force });
+        setStatus('vm-requests-global-status', d.message || (force ? 'VM force deleted.' : 'VM soft-deleted.'), 'ok');
+        failedVmDeletions.delete(email);
         loadVmRequests();
       } catch (err) {
-        setStatus('vm-requests-global-status', err.message, 'err');
+        failedVmDeletions.add(email);
+        const errorMsg = err.message || 'Failed to stop VM on Proxmox.';
+        const statusEl = document.getElementById('vm-requests-global-status');
+        if (statusEl) {
+          statusEl.className = 'form-status err';
+          statusEl.innerHTML = `
+            <span>${esc(errorMsg)}</span>
+            <button type="button" class="mini" style="margin-left: 12px; background: #ef4444; color: #fff; border: 1px solid #ef4444; border-radius: 4px; padding: 3px 8px; font-weight: 700; cursor: pointer;" onclick="terminateVmRequest('${email}', true)">
+              ⚠️ Force Delete
+            </button>
+          `;
+        }
+        loadVmRequests();
+      }
+    }
+
+    async function purgeVmRequest(email, force = false) {
+      if (!force) {
+        if (!(await customConfirm('Purge VM', 'Permanently destroy this VM and remove it completely? This cannot be undone.'))) return;
+      } else {
+        if (!(await customConfirm('Force Purge VM', 'Force delete will ignore any errors from Proxmox and permanently delete the record anyway. Proceed?'))) return;
+      }
+      setStatus('vm-requests-global-status', force ? 'Force purging VM (ignoring Proxmox errors)...' : 'Purging VM from Proxmox...', '');
+      try {
+        const d = await postAdmin('/api/admin/purge-vm', { email, force });
+        setStatus('vm-requests-global-status', d.message || 'VM permanently purged.', 'ok');
+        failedVmDeletions.delete(email);
+        loadVmRequests();
+      } catch (err) {
+        failedVmDeletions.add(email);
+        const errorMsg = err.message || 'Failed to purge VM on Proxmox.';
+        const statusEl = document.getElementById('vm-requests-global-status');
+        if (statusEl) {
+          statusEl.className = 'form-status err';
+          statusEl.innerHTML = `
+            <span>${esc(errorMsg)}</span>
+            <button type="button" class="mini" style="margin-left: 12px; background: #ef4444; color: #fff; border: 1px solid #ef4444; border-radius: 4px; padding: 3px 8px; font-weight: 700; cursor: pointer;" onclick="purgeVmRequest('${email}', true)">
+              ⚠️ Force Delete
+            </button>
+          `;
+        }
+        loadVmRequests();
       }
     }
 
@@ -2556,10 +2861,7 @@
         const verifyRes = await fetch('/api/admin/passphrase-status', {
           method: 'POST',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Admin-Passphrase': savedPass
-          }
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Admin-Passphrase': savedPass })
         });
         if (!verifyRes.ok) {
           sessionStorage.removeItem('admin_passphrase');
@@ -2600,6 +2902,7 @@
       await checkPassphraseStatus();
       await loadSoftMaintenanceStatus();
       await loadShopCatalog();
+      await loadMatrixModeration();
       if (currentUser.isAdmin && location.hash === '#logs-tools') {
         loadAppLogs();
       }
@@ -2637,10 +2940,7 @@
           const verifyRes = await fetch('/api/admin/passphrase-status', {
             method: 'POST',
             credentials: 'include',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Admin-Passphrase': savedPass
-            }
+            headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Admin-Passphrase': savedPass })
           });
           if (verifyRes.ok) {
             document.getElementById('lock-box-icon').textContent = '🔓';
@@ -2684,10 +2984,7 @@
         const res = await fetch('/api/admin/passphrase-status', {
           method: 'POST',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Admin-Passphrase': pass
-          }
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Admin-Passphrase': pass })
         });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));

@@ -1,0 +1,24 @@
+{
+  "name": "Mitch.pro Matrix Chat",
+  "short_name": "Mitch Matrix",
+  "description": "Official decentralized, end-to-end encrypted Matrix chat on mitch.pro.",
+  "dir": "auto",
+  "lang": "en-US",
+  "display": "standalone",
+  "orientation": "portrait",
+  "start_url": "./",
+  "background_color": "#070510",
+  "theme_color": "#070510",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

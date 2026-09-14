@@ -6,10 +6,10 @@
 //
 // Idempotent: re-running just overwrites the test entries.
 
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { createHash, createHmac } from 'crypto';
-import { configureDataStore, readDocument, writeDocument } from '../lib/data_store.js';
+import { createHash, createHmac, randomBytes } from 'crypto';
+import { configureDataStore, readDocument, writeDocument, upsertVirtualMachine } from '../lib/data_store.js';
 
 const REPO_ROOT = import.meta.dir + '/..';
 const DATA_DIR = join(REPO_ROOT, 'data');
@@ -22,12 +22,16 @@ const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const INVITE_CODES_FILE = join(DATA_DIR, 'invite_codes.json');
 const ADMINS_FILE = join(DATA_DIR, 'admins.json');
 
-if (!existsSync(ID_SECRET_FILE)) {
-  console.error('FATAL: id_secret.key not found at', ID_SECRET_FILE);
-  console.error('Run the server once to generate it, or restore from a backup.');
-  process.exit(1);
+let ID_SECRET;
+try {
+  ID_SECRET = readFileSync(ID_SECRET_FILE);
+} catch {
+  if (!existsSync(DATA_DIR)) {
+    mkdirSync(DATA_DIR, { recursive: true });
+  }
+  ID_SECRET = randomBytes(32);
+  writeFileSync(ID_SECRET_FILE, ID_SECRET);
 }
-const ID_SECRET = readFileSync(ID_SECRET_FILE);
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -56,9 +60,11 @@ function makeEmailId(email, gen = 0) {
 // Generate valid session tokens
 const adminEmail = 'admin@mitch.pro';
 const userEmail = 'test_normal_user@student.rjuhsd.us';
+const secondUserEmail = 'test_vm_owner_b@student.rjuhsd.us';
 
 const adminSid = makeEmailId(normalizeEmail(adminEmail), 0);
 const userSid = makeEmailId(normalizeEmail(userEmail), 0);
+const secondUserSid = makeEmailId(normalizeEmail(secondUserEmail), 0);
 
 console.log('Generated Admin SID:', adminSid);
 console.log('Generated User SID:', userSid);
@@ -67,6 +73,7 @@ console.log('Generated User SID:', userSid);
 const names = readDocument(NAMES_FILE, {});
 names[adminSid] = adminEmail;
 names[userSid] = userEmail;
+names[secondUserSid] = secondUserEmail;
 writeDocument(NAMES_FILE, names);
 
 // Generate and write temporary admin passphrase
@@ -90,7 +97,24 @@ writeDocument(ADMINS_FILE, adminsConfig);
 const passwords = readDocument(PASSWORDS_FILE, {});
 passwords[normalizeEmail(adminEmail)] = passHash;
 passwords[normalizeEmail(userEmail)] = passHash;
+passwords[normalizeEmail(secondUserEmail)] = passHash;
 writeDocument(PASSWORDS_FILE, passwords);
+
+upsertVirtualMachine({
+  id: 'vm-auth-user-b', ownerEmail: normalizeEmail(secondUserEmail), ownerUserId: secondUserSid,
+  vmid: 302, node: 'tartarus', guestType: 'qemu', friendlyName: 'User B Computer',
+  hostname: 'user-b-computer', operatingSystem: 'Linux Mint Cinnamon', templateVmid: 9000,
+  cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'assigned', createdAt: Date.now(),
+});
+
+for (const [id, vmid] of [['vm-auth-user-a', 303], ['vm-auth-stopped', 304], ['vm-auth-unreachable', 305]]) {
+  upsertVirtualMachine({
+    id, ownerEmail: normalizeEmail(userEmail), ownerUserId: userSid, vmid, node: 'tartarus',
+    guestType: 'qemu', friendlyName: 'Integration Computer', hostname: 'integration-computer',
+    operatingSystem: 'Ubuntu Desktop 24.04 LTS', templateVmid: 9010,
+    cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'assigned', createdAt: Date.now(),
+  });
+}
 
 // Inject referral invite code for the test user
 const inviteCodes = existsSync(INVITE_CODES_FILE) ? readDocument(INVITE_CODES_FILE, {}) : {};

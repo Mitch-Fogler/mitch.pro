@@ -16,14 +16,20 @@
       const exact = balance === null ? null : fullFormat.format(balance);
       amount.textContent = exact === null ? (status === 'guest' ? 'Sign in' : '—') : (balance >= 10000 ? compactFormat.format(balance) : exact);
       widget.dataset.state = status;
-      widget.href = status === 'guest' ? '/enroll/' : '/shop/';
-      widget.title = exact === null ? (status === 'guest' ? 'Sign in to view your MitchCoins' : 'MitchCoins balance unavailable') : exact + ' MitchCoins · Open shop';
+      widget.href = status === 'guest' ? '/enroll/' : '/coins/';
+      widget.title = exact === null ? (status === 'guest' ? 'Sign in to view your MitchCoins' : 'MitchCoins balance unavailable') : exact + ' MitchCoins · Open wallet';
       widget.setAttribute('aria-label', widget.title);
       widget.setAttribute('aria-busy', String(status === 'loading'));
     }
   }
 
   function accept(data) {
+    if (data?.authenticated === false) {
+      balance = null;
+      status = 'guest';
+      render();
+      return true;
+    }
     if (!data || !['number', 'string'].includes(typeof data.coins) || String(data.coins).trim() === '' || !Number.isFinite(Number(data.coins))) return false;
     balance = Math.max(0, Number(data.coins));
     status = 'ready';
@@ -35,14 +41,17 @@
     if (stopped || document.hidden || pending || (!force && Date.now() - lastRequest < 15000)) return pending;
     lastRequest = Date.now();
     controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
+    const timeout = setTimeout(() => controller.abort(), 4000);
     pending = (async function () {
       try {
         const response = await originalFetch.call(window, '/api/me/coins', { credentials: 'include', cache: 'no-store', signal: controller.signal });
         if (response.status === 401 || response.status === 403) {
+          try { await response.text(); } catch (_) {}
           balance = null; status = 'guest'; render(); return;
         }
-        if (!response.ok || !accept(await response.json())) throw new Error('Balance unavailable');
+        let data = null;
+        try { data = await response.json(); } catch (_) {}
+        if (!response.ok || !accept(data)) throw new Error('Balance unavailable');
       } catch (error) {
         if (!stopped) { balance = null; status = 'unavailable'; render(); }
       } finally { clearTimeout(timeout); pending = null; }
@@ -84,7 +93,7 @@
     if (!host || host.querySelector('.mitch-wallet')) return;
     const widget = document.createElement('a');
     widget.className = 'mitch-wallet' + (placement ? ' ' + placement : '');
-    widget.innerHTML = '<img class="mitch-coin-icon" src="' + icon + '" width="32" height="32" alt="" decoding="async"><span class="mitch-wallet-copy"><span class="mitch-wallet-label">MitchCoins</span><strong class="mitch-wallet-value">—</strong></span>';
+    widget.innerHTML = '<img class="mitch-coin-icon" src="' + icon + '" width="32" height="32" alt="" decoding="async" loading="lazy" fetchpriority="low"><span class="mitch-wallet-copy"><span class="mitch-wallet-label">MitchCoins</span><strong class="mitch-wallet-value">—</strong></span>';
     const account = host.querySelector('.app-account-link, .home-account-link, #nav-login');
     host.insertBefore(widget, account || null);
     host.classList.add('has-mitch-wallet');
@@ -96,7 +105,8 @@
     clearInterval(timer);
     timer = setInterval(() => refresh(false), 60000);
     if (window.fetch === originalFetch) window.fetch = watchFetch;
-    refresh(false);
+    if (document.readyState === 'complete') refresh(false);
+    else window.addEventListener('load', () => setTimeout(() => refresh(false), 50), { once: true });
   }
 
   function pause() {
@@ -109,7 +119,7 @@
   function init() {
     if (!document.querySelector('link[href^="/mitch-coins.css"]')) {
       const style = document.createElement('link');
-      style.rel = 'stylesheet'; style.href = '/mitch-coins.css?v=1';
+      style.rel = 'stylesheet'; style.href = '/mitch-coins.css?v=2';
       document.head.appendChild(style);
     }
     if (document.body.classList.contains('encrypt-page')) {

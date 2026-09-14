@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <title>Preferences — mitch.pro</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="/theme.js?v=11"></script>
+<script>if (/(^|\.)rjuhsd\.school$/.test(location.hostname) || /^\/rjuhsd(?:\/|$)/.test(location.pathname)) { document.documentElement.classList.add('school-preferences'); document.title = 'Preferences — rjuhsd.school'; }</script>
+<script src="/theme.js?v=14"></script>
 <script src="/vendor/simplewebauthn.browser.min.js?v=1" defer></script>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/site-galaxy.css?v=9">
-<link rel="stylesheet" href="/preferences-galaxy.css?v=9">
+<link rel="stylesheet" href="/preferences-galaxy.css?v=11">
 <script src="/api.js"></script>
 <script src="/app-shell.js" defer></script>
 <script src="/sync.js"></script>
@@ -303,6 +304,132 @@
     vertical-align: middle;
     margin-right: 0.35rem;
     display: inline-block;
+  }
+
+  .bg-chip-row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    gap: 10px !important;
+    padding: 4px 2px 10px !important;
+    margin: 6px 0 0 !important;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: var(--t-bd) transparent;
+  }
+  .bg-chip-row:empty {
+    display: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .bg-chip-row::-webkit-scrollbar { height: 6px; }
+  .bg-chip-row::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.04); border-radius: 999px; }
+  .bg-chip-row::-webkit-scrollbar-thumb { background: var(--t-bd); border-radius: 999px; }
+  .bg-chip-row::-webkit-scrollbar-thumb:hover { background: var(--t-bda); }
+  .bg-chip {
+    flex: 0 0 116px !important;
+    width: 116px !important;
+    height: 68px !important;
+    min-height: 68px !important;
+    max-height: 68px !important;
+    aspect-ratio: auto !important;
+    position: relative !important;
+    padding: 0 !important;
+    border: 1px solid var(--t-bd) !important;
+    border-radius: 12px !important;
+    background-color: var(--t-bg3);
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease !important;
+  }
+  .bg-chip:hover {
+    transform: translateY(-2px) !important;
+    border-color: var(--t-bda) !important;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2) !important;
+  }
+  .bg-chip.active {
+    border-color: var(--t-ac) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-ac) 55%, transparent), 0 8px 20px rgba(0, 0, 0, 0.2) !important;
+  }
+  .bg-chip.active::after {
+    content: "✓";
+    position: absolute;
+    right: 6px;
+    top: 5px;
+    width: 18px;
+    height: 18px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--t-ac);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 900;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    z-index: 4;
+  }
+  .bg-chip-del {
+    position: absolute;
+    left: 6px;
+    top: 5px;
+    width: 18px;
+    height: 18px;
+    display: none;
+    place-items: center;
+    border-radius: 50%;
+    background: rgba(10, 10, 14, 0.85);
+    color: #fff;
+    font-size: 12px;
+    line-height: 1;
+    z-index: 4;
+  }
+  .bg-chip:hover .bg-chip-del { display: grid; }
+  .bg-chip-del:hover { background: #e11d48; }
+
+  .bg-chip-alt {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--t-fg2);
+    text-align: center;
+    line-height: 1.25;
+    word-break: break-word;
+    pointer-events: none;
+    z-index: 1;
+    background: var(--t-bg3);
+    border-radius: inherit;
+    transition: opacity 0.22s ease;
+  }
+  .bg-chip.loaded .bg-chip-alt {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .bg-chip-media {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 0.22s ease;
+    z-index: 2;
+  }
+  .bg-chip.loaded .bg-chip-media {
+    opacity: 1;
+  }
+  .bg-chip-media.bg-chip-vid {
+    opacity: 1;
   }
 
   .sort-item {
@@ -746,12 +873,14 @@
     transition: none !important;
   }
 </style>
+<link rel="stylesheet" href="/preferences-school.css?v=4">
 </head>
 <body class="prefs-page">
 <main class="app-main prefs-shell">
   <header class="page-head">
+    <a class="school-prefs-back" href="/">← Schedule</a>
     <h1>Preferences</h1>
-    <p class="page-sub">Theme, account, privacy, and sync — tune how mitch.pro feels and behaves.</p>
+    <p class="page-sub"><span class="default-prefs-copy">Theme, account, privacy, and sync — tune how mitch.pro feels and behaves.</span><span class="school-prefs-copy">Make rjuhsd.school look and work the way you want.</span></p>
   </header>
 
   <div class="pref-summary" aria-label="Current preference snapshot">
@@ -768,6 +897,7 @@
   <section class="pref-section" id="appearance">
     <h2>Appearance</h2>
     <p class="section-sub">Control the theme, background, spacing, corners, fonts, and motion across the whole site.</p>
+    <div class="field"><label>Tab cloak</label><button type="button" class="soft-btn" data-open-cloak>Customize tab title &amp; icon</button><div class="field-hint">Presets, custom icons, automatic cloaking, and screen shield.</div></div>
 
     <div class="field">
       <label>Theme Preset</label>
@@ -787,8 +917,22 @@
         </div>
       </div>
 
+      <div class="field">
+        <label>Match Accent to Background</label>
+        <div class="inline-row">
+          <button class="soft-btn" type="button" id="adaptToggle">On</button>
+          <small style="color: var(--t-fg2); font-size: .78rem;">Dark mode only — tints the accent from the wallpaper</small>
+        </div>
+      </div>
+
       <div class="field" style="grid-column:1/-1">
-        <label>Official Backgrounds</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <label style="margin:0">Official Backgrounds</label>
+          <div class="bg-scroll-controls" style="display:inline-flex;gap:4px">
+            <button class="soft-btn" type="button" onclick="scrollBgRow('bgPresetGrid',-260)" title="Scroll left" aria-label="Scroll wallpapers left" style="min-height:28px;height:28px;width:28px;padding:0;font-size:14px;border-radius:8px">‹</button>
+            <button class="soft-btn" type="button" onclick="scrollBgRow('bgPresetGrid',260)" title="Scroll right" aria-label="Scroll wallpapers right" style="min-height:28px;height:28px;width:28px;padding:0;font-size:14px;border-radius:8px">›</button>
+          </div>
+        </div>
         <div class="chip-row bg-chip-row" id="bgPresetGrid"></div>
         <div class="chip-row bg-chip-row" id="myBgGrid" style="margin-top:8px"></div>
         <div class="inline-row" style="margin-top:10px">
@@ -798,19 +942,11 @@
         </div>
       </div>
 
-      <div class="field">
-        <label>Background Image</label>
+      <div class="field" style="grid-column:1/-1">
+        <label>Background Image URL</label>
         <div class="inline-row">
           <input id="bgImageInput" type="url" placeholder="https://example.com/background.jpg">
           <button class="soft-btn" type="button" id="bgImageClear">Clear</button>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Match Accent to Background</label>
-        <div class="inline-row">
-          <button class="soft-btn" type="button" id="adaptToggle">On</button>
-          <small style="color: var(--t-fg2); font-size: .78rem;">Dark mode only — tints the accent from the wallpaper</small>
         </div>
       </div>
     </div>
@@ -2040,51 +2176,126 @@ function applyAppearanceLive(statusText) {
 }
 
 function updateBgChipActive() {
-  var cur = getCookieValue('bgimg', '') || '/backgrounds/wallhaven-black-mountain.webp';
+  var cur = getCookieValue('bgimg', '') || (document.documentElement.classList.contains('school-preferences') ? '/backgrounds/wallhaven-ghost-of-tsushima.webp' : '/backgrounds/wallhaven-black-mountain.webp');
   document.querySelectorAll('.bg-chip-row .bg-chip').forEach(function(chip) {
     chip.classList.toggle('active', chip.getAttribute('data-url') === cur);
   });
 }
 
-function applyChipPreview(chip, url) {
+function scrollBgRow(id, amount) {
+  var el = document.getElementById(id);
+  if (el) el.scrollBy({ left: amount, behavior: 'smooth' });
+}
+
+function attachBgWheelScroll(el) {
+  if (!el || el._hasWheel) return;
+  el._hasWheel = true;
+  el.addEventListener('wheel', function(e) {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+}
+
+function applyChipPreview(chip, url, name, thumbUrl) {
   var background = window.__theme && window.__theme.getBackground && window.__theme.getBackground(url);
   if (background && background.preview) {
     chip.style.backgroundImage = background.preview;
     var label = document.createElement('span');
     label.textContent = background.name;
-    label.style.cssText = 'display:inline-block;margin-top:24px;padding:3px 7px;border-radius:6px;background:#050b1bcc;color:#eef2ff;font-size:11px;font-weight:700;';
+    label.style.cssText = 'position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:3px 6px;background:rgba(5,11,27,0.65);color:#eef2ff;font-size:11px;font-weight:700;letter-spacing:0.02em;text-align:center;pointer-events:none;z-index:2;';
     chip.appendChild(label);
+    chip.classList.add('loaded');
     return;
   }
-  if (/\.(webm|mp4)($|\?)/i.test(url)) {
-    var vid = document.createElement('video');
-    var srcUrl = url.includes('#') ? url : (url + '#t=0.1');
-    vid.src = srcUrl;
-    vid.preload = 'auto';
-    vid.muted = true;
-    vid.playsInline = true;
-    vid.currentTime = 0.1;
-    vid.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;pointer-events:none;border-radius:inherit;';
-    chip.style.position = 'relative';
-    chip.style.overflow = 'hidden';
-    chip.appendChild(vid);
-  } else {
-    chip.style.backgroundImage = 'url("' + url + '")';
+
+  var displayName = name || chip.title || (url.split('/').pop().replace(/\.(webp|webm|png|jpg|jpeg)$/i, '').replace(/^bg-/, '').replace(/-/g, ' '));
+  var isVid = /\.(webm|mp4)($|\?)/i.test(url);
+  var previewSrc = thumbUrl;
+  if (!previewSrc) {
+    if (url.startsWith('/backgrounds/')) {
+      var base = url.split('/').pop().replace(/\.(webp|webm|png|jpg|jpeg)$/i, '');
+      previewSrc = '/backgrounds/thumbs/' + base + '.webp';
+    } else if (url.startsWith('/api/bg/')) {
+      var match = url.match(/\/api\/bg\/([0-9a-f]{24})\./i);
+      previewSrc = match ? ('/api/bg/thumb/' + match[1] + '.webp') : url;
+    } else {
+      previewSrc = url;
+    }
+  }
+
+  // Alt / placeholder text displayed before image is fully loaded
+  var alt = document.createElement('span');
+  alt.className = 'bg-chip-alt';
+  alt.textContent = displayName;
+  alt.setAttribute('aria-hidden', 'true');
+  chip.appendChild(alt);
+
+  // Compressed preview image
+  var img = document.createElement('img');
+  img.className = 'bg-chip-media';
+  img.alt = displayName;
+  img.loading = 'lazy';
+  img.onload = function() {
+    if (img.naturalHeight > img.naturalWidth * 1.15) {
+      img.style.objectFit = 'contain';
+    }
+    chip.classList.add('loaded');
+  };
+  img.onerror = function() {
+    if (previewSrc !== url && !isVid) {
+      previewSrc = url;
+      img.src = url;
+    }
+  };
+  img.src = previewSrc;
+  if (img.complete && img.naturalWidth > 0) {
+    if (img.naturalHeight > img.naturalWidth * 1.15) {
+      img.style.objectFit = 'contain';
+    }
+    chip.classList.add('loaded');
+  }
+  chip.appendChild(img);
+
+  if (isVid) {
+    var vid = null;
+    chip.addEventListener('mouseenter', function() {
+      if (!vid) {
+        vid = document.createElement('video');
+        var srcUrl = url.includes('#') ? url : (url + '#t=0.1');
+        vid.src = srcUrl;
+        vid.muted = true;
+        vid.playsInline = true;
+        vid.loop = true;
+        vid.className = 'bg-chip-media bg-chip-vid';
+        vid.style.zIndex = '3';
+        chip.appendChild(vid);
+      }
+      vid.play().catch(function(){});
+    });
+    chip.addEventListener('mouseleave', function() {
+      if (vid) {
+        vid.pause();
+        try { vid.currentTime = 0.1; } catch(e){}
+      }
+    });
   }
 }
 
 function renderPresetBgChips(presetGrid, bgs, cur) {
   if (window.__theme && window.__theme.mergeBackgrounds) bgs = window.__theme.mergeBackgrounds(bgs);
   presetGrid.innerHTML = '';
-  var effective = cur || '/backgrounds/wallhaven-black-mountain.webp';
+  attachBgWheelScroll(presetGrid);
+  var effective = cur || (document.documentElement.classList.contains('school-preferences') ? '/backgrounds/wallhaven-ghost-of-tsushima.webp' : '/backgrounds/wallhaven-black-mountain.webp');
   bgs.forEach(function(b) {
     var chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'bg-chip' + (effective === b.url ? ' active' : '');
     chip.setAttribute('data-url', b.url);
-    applyChipPreview(chip, b.url);
     chip.title = b.name;
     chip.setAttribute('aria-label', 'Use ' + b.name + ' background');
+    applyChipPreview(chip, b.url, b.name, b.thumbUrl);
     chip.onclick = function() {
       setCookieValue('bgimg', b.url);
       document.getElementById('bgImageInput').value = b.url;
@@ -2094,12 +2305,18 @@ function renderPresetBgChips(presetGrid, bgs, cur) {
     };
     presetGrid.appendChild(chip);
   });
+  var active = presetGrid.querySelector('.bg-chip.active');
+  if (active && active.scrollIntoView) {
+    setTimeout(function() { active.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' }); }, 50);
+  }
 }
 
 function renderBgChips() {
   var presetGrid = document.getElementById('bgPresetGrid');
   var myBgGrid = document.getElementById('myBgGrid');
   if (!presetGrid || !myBgGrid) return;
+  attachBgWheelScroll(presetGrid);
+  attachBgWheelScroll(myBgGrid);
   var cur = getCookieValue('bgimg', '');
   // The server lists whatever .webp or .webm files sit in webserver/backgrounds/ — drop
   // one in (or .mp4/.gif which auto-convert to .webm) and it appears as a chip.
@@ -2118,8 +2335,10 @@ function renderBgChips() {
       chip.type = 'button';
       chip.className = 'bg-chip' + (cur === item.url ? ' active' : '');
       chip.setAttribute('data-url', item.url);
-      applyChipPreview(chip, item.url);
-      chip.title = item.name || 'Uploaded background';
+      var title = item.name || 'Uploaded background';
+      chip.title = title;
+      chip.setAttribute('aria-label', 'Use ' + title);
+      applyChipPreview(chip, item.url, title, item.thumbUrl);
       chip.onclick = function() {
         setCookieValue('bgimg', item.url);
         document.getElementById('bgImageInput').value = item.url;
@@ -2129,7 +2348,7 @@ function renderBgChips() {
       };
       var del = document.createElement('span');
       del.className = 'bg-chip-del';
-      del.style.zIndex = '2';
+      del.style.zIndex = '4';
       del.textContent = '×';
       del.title = 'Delete this background';
       del.onclick = function(ev) {
@@ -2312,6 +2531,32 @@ function setupAppearanceControls() {
 }
 
 function setupAccordions() {
+  if (document.documentElement.classList.contains('school-preferences')) {
+    var sections = Array.from(document.querySelectorAll('.pref-section'));
+    var links = Array.from(document.querySelectorAll('.prefs-jump-nav a'));
+    function showCategory(id) {
+      if (!sections.some(function(section) { return section.id === id; })) id = 'appearance';
+      sections.forEach(function(section) {
+        section.hidden = section.id !== id;
+        section.classList.add('open');
+      });
+      links.forEach(function(link) {
+        if (link.hash === '#' + id) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+      });
+      if (id === 'homepage' && typeof ensurePinnedGamesLoaded === 'function') ensurePinnedGamesLoaded();
+    }
+    links.forEach(function(link) {
+      link.addEventListener('click', function(event) {
+        event.preventDefault();
+        history.replaceState(null, '', link.hash);
+        showCategory(link.hash.slice(1));
+      });
+    });
+    window.addEventListener('hashchange', function() { showCategory(location.hash.slice(1)); });
+    showCategory(location.hash.slice(1));
+    return;
+  }
   document.querySelectorAll('.pref-section').forEach(function(section) {
     var heading = section.querySelector('h2');
     if (!heading) return;
@@ -2337,6 +2582,11 @@ function setupAccordions() {
     target.classList.add('open');
     var h = target.querySelector('h2');
     if (h) h.setAttribute('aria-expanded', 'true');
+  } else if (document.documentElement.classList.contains('school-preferences')) {
+    var appearance = document.getElementById('appearance');
+    var appearanceHeading = appearance && appearance.querySelector('h2');
+    if (appearance) appearance.classList.add('open');
+    if (appearanceHeading) appearanceHeading.setAttribute('aria-expanded', 'true');
   }
 }
 

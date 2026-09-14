@@ -49,19 +49,28 @@
     bgimg: '/backgrounds/wallhaven-black-mountain.webp',
     bgblur: '8', accent: '', adapt: 'on', dim: '0.50', bgmode: 'cover', bgpos: 'center'
   };
+  var SCHOOL_BACKGROUND_DEFAULT = '/backgrounds/wallhaven-ghost-of-tsushima.webp';
 
   function usesSchoolDefaults() {
     return /(^|\.)rjuhsd\.school$/.test(location.hostname) || /^\/rjuhsd(?:\/|$)/.test(location.pathname);
   }
   function applyBackgroundDefaults() {
-    if (usesSchoolDefaults() || getPref('backgroundDefaults', '') === BACKGROUND_DEFAULTS_VERSION) return;
+    if (usesSchoolDefaults()) {
+      if (!getPref('bgimg', '')) setBgImgCookie(SCHOOL_BACKGROUND_DEFAULT);
+      if (!getPref('bgblur', '')) setPref('bgblur', '8');
+      return;
+    }
+    if (getPref('backgroundDefaults', '') === BACKGROUND_DEFAULTS_VERSION) return;
     Object.keys(BACKGROUND_DEFAULTS).forEach(function (key) { setPref(key, BACKGROUND_DEFAULTS[key]); });
     setBgImgCookie(BACKGROUND_DEFAULTS.bgimg);
     setCookie('dark');
     setPref('backgroundDefaults', BACKGROUND_DEFAULTS_VERSION);
   }
   function preparePreferenceSnapshot(snapshot) {
-    if (usesSchoolDefaults()) return snapshot;
+    if (usesSchoolDefaults()) {
+      if (snapshot.theme_bgimg) return snapshot;
+      return Object.assign({}, snapshot, { theme_bgimg: SCHOOL_BACKGROUND_DEFAULT });
+    }
     var result = snapshot;
     if (snapshot.theme_vfxDefaults !== VFX_DEFAULTS_VERSION) {
       result = Object.assign({}, result, { _prefVFX: Object.assign({}, VFX_DEFAULTS), theme_vfxDefaults: VFX_DEFAULTS_VERSION });
@@ -228,13 +237,14 @@
   // this manifest is only the offline fallback.
   var THEME_BGS = [
     { id: 'starfield', name: 'Starfield', url: 'effect:starfield', effect: 'starfield', script: '/backgrounds/starfield.js?v=1', preview: 'radial-gradient(circle at 18% 28%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 72% 24%,#c5bcff 0 1.5px,transparent 3px),radial-gradient(circle at 43% 75%,#d8e8ff 0 1px,transparent 2px),radial-gradient(circle at 85% 68%,#d8e8ff 0 1px,transparent 2px),radial-gradient(ellipse at 65% 25%,#17213f,#030713)' },
-    { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp' },
-    { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp' },
-    { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp' },
-    { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp' },
-    { id: 'brine', name: 'Brine', url: '/backgrounds/bg-brine-deep.webp' },
-    { id: 'neon-grid', name: 'Neon Grid', url: '/backgrounds/bg-neon-grid.webp' },
-    { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp' }
+    { id: 'wallhaven-ghost-of-tsushima', name: 'Ghost of Tsushima', url: SCHOOL_BACKGROUND_DEFAULT, thumbUrl: '/backgrounds/thumbs/wallhaven-ghost-of-tsushima.webp' },
+    { id: 'wallhaven-black-mountain', name: 'Wallhaven Black Mountain', url: '/backgrounds/wallhaven-black-mountain.webp', thumbUrl: '/backgrounds/thumbs/wallhaven-black-mountain.webp' },
+    { id: 'burning-cherry', name: 'Burning Cherry', url: '/backgrounds/bg-burning-cherry.webp', thumbUrl: '/backgrounds/thumbs/bg-burning-cherry.webp' },
+    { id: 'aurora', name: 'Aurora', url: '/backgrounds/bg-aurora-mesh.webp', thumbUrl: '/backgrounds/thumbs/bg-aurora-mesh.webp' },
+    { id: 'dusk', name: 'Dusk', url: '/backgrounds/bg-dusk-mesh.webp', thumbUrl: '/backgrounds/thumbs/bg-dusk-mesh.webp' },
+    { id: 'brine', name: 'Brine', url: '/backgrounds/bg-brine-deep.webp', thumbUrl: '/backgrounds/thumbs/bg-brine-deep.webp' },
+    { id: 'neon-grid', name: 'Neon Grid', url: '/backgrounds/bg-neon-grid.webp', thumbUrl: '/backgrounds/thumbs/bg-neon-grid.webp' },
+    { id: 'paper', name: 'Paper', url: '/backgrounds/bg-paper-grain.webp', thumbUrl: '/backgrounds/thumbs/bg-paper-grain.webp' }
   ];
 
   function isHomePage() {
@@ -242,9 +252,8 @@
     return p === '/' || p === '/index.html';
   }
 
-  // School hubs keep their own identity: no default wallpaper, no adaptive
-  // accent sampling (the palette comes from reference-theme.css / the school
-  // brands). An explicit bgimg cookie is still honored.
+  // School hubs keep their own identity and use the school wallpaper when a
+  // visitor has not selected another background.
   function isSchoolHub() {
     return !!(document.body && document.body.classList.contains('school-hub'));
   }
@@ -252,9 +261,9 @@
   function getEffectiveBgImg() {
     var custom = getBgImgCookie();
     if (custom) return custom;
+    if (isSchoolHub()) return SCHOOL_BACKGROUND_DEFAULT;
     var isLight = document.documentElement.classList.contains('theme-light');
     if (isLight) return '';
-    if (isSchoolHub()) return '';
     return '/backgrounds/wallhaven-black-mountain.webp';
   }
 
@@ -466,6 +475,15 @@
     var cacheKey = mode + '|' + url;
 
     var cached = ADAPT_CACHE[cacheKey];
+    if (!cached) {
+      try {
+        var stored = sessionStorage.getItem('mitch_adapt_' + cacheKey);
+        if (stored) {
+          cached = JSON.parse(stored);
+          if (cached && cached.tokens) ADAPT_CACHE[cacheKey] = cached;
+        }
+      } catch (_) {}
+    }
     if (cached) {
       if (cached.failed) { clearAdaptive(); return; }
       writeAdaptiveTokens(cached.tokens);
@@ -487,6 +505,7 @@
       try {
         var tokens = sampleImagePalette(img);
         ADAPT_CACHE[cacheKey] = { tokens: tokens };
+        try { sessionStorage.setItem('mitch_adapt_' + cacheKey, JSON.stringify({ tokens: tokens })); } catch (_) {}
         writeAdaptiveTokens(tokens);
       } catch (_) {
         ADAPT_CACHE[cacheKey] = { failed: true };
@@ -708,7 +727,7 @@
     'html[data-bglayer]{background:var(--t-bg)!important}' +
     'html[data-bg-effect]{background:#050b1b!important}' +
     'html[data-bg-effect]::before{display:none!important}' +
-    'html[data-bg-effect].theme-light :is(.page-head,.page-header) :is(h1,p){color:#eef2ff!important}' +
+    'html[data-bg-effect].theme-light body:not(.prefs-page) :is(.page-head,.page-header) :is(h1,p){color:#eef2ff!important}' +
     'html[data-bglayer]::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;' +
       'opacity:var(--t-bg-layer-opacity,1);' +
       // Shorthand, not background-image: page-owned --t-bgr values carry their
@@ -757,8 +776,8 @@
     '.theme-light .sw-notif-item{background:rgba(0,0,0,0.025)!important;border:1px solid rgba(0,0,0,0.07)!important;}' +
     '.theme-light .sw-notif-empty{color:rgba(15,17,35,0.45)!important;}' +
     '.theme-light .sw-notif-head button,.theme-light .sw-notif-head a.sw-notif-settings,.theme-light .sw-notif-actions button,.theme-light .sw-notif-open{background:rgba(0,0,0,0.04)!important;border:1px solid rgba(0,0,0,0.1)!important;color:var(--t-ac)!important;}' +
-    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action){background:rgba(255,255,255,0.7)!important;border:1px solid rgba(0,0,0,0.12)!important;color:var(--t-ac)!important;}' +
-    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):hover{background:rgba(255,255,255,0.9)!important;box-shadow:0 4px 16px rgba(0,0,0,0.08)!important;}' +
+    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):not(.bg-chip):not(.bg-chip-del):not(.chip):not(.soft-btn):not(.weather-summary):not(.primary-button):not(.secondary-button):not([data-theme]){background:rgba(255,255,255,0.7)!important;border:1px solid rgba(0,0,0,0.12)!important;color:var(--t-ac)!important;}' +
+    '.theme-light button:not(#devtools-btn):not(#theme-btn):not(.tbg-btn):not(#sw-notif-btn):not(.btn-primary):not(.auth-tab-btn):not(.msg-more):not(.msg-action):not(.bg-chip):not(.bg-chip-del):not(.chip):not(.soft-btn):not(.weather-summary):not(.primary-button):not(.secondary-button):not([data-theme]):hover{background:rgba(255,255,255,0.9)!important;box-shadow:0 4px 16px rgba(0,0,0,0.08)!important;}' +
     '.theme-light input:not([type=range]):not([type=color]),.theme-light textarea,.theme-light select{background:rgba(255,255,255,0.7)!important;color:#0f1123!important;border:1px solid rgba(0,0,0,0.12)!important;}' +
     '.theme-light input::placeholder,.theme-light textarea::placeholder{color:rgba(15,17,35,0.4)!important;}' +
     '.theme-light .back-btn{color:var(--t-ac)!important;}' +
@@ -806,7 +825,7 @@
     // a dark amber and drop the glow so usernames stay legible.
     '.theme-light .name.gold_glow,.theme-light .entry-name.gold_glow,.theme-light .display-name.gold_glow,.theme-light .author.gold_glow{color:#b45309!important;text-shadow:none!important;}' +
     '.theme-light .badge-premium,.theme-light .badge-shop,.theme-light .premium-label{color:#b45309!important;}';
-  lightStyle.textContent = lightStyle.textContent.replaceAll('.theme-light button:not', '.theme-light body:not(.mitch-design) button:not');
+  lightStyle.textContent = lightStyle.textContent.replaceAll('.theme-light button:not', '.theme-light body:not(.mitch-design):not(.prefs-page):not(.school-hub) button:not');
   document.head.appendChild(lightStyle);
 
   function buildToggle() {
@@ -1015,18 +1034,21 @@
     window.addEventListener('resize', resize);
     resize();
 
-    var items = [];
+    var snowList = [];
+    var starList = [];
+    var rainList = [];
+    var partList = [];
     if (vfx.snow) {
-      for (var i=0; i<100; i++) items.push({ type:'snow', x:Math.random()*w, y:Math.random()*h, r:Math.random()*3+1, v:Math.random()*1+0.5 });
+      for (var i=0; i<80; i++) snowList.push({ x:Math.random()*w, y:Math.random()*h, r:Math.random()*2.5+1, v:Math.random()*0.8+0.4 });
     }
     if (vfx.stars) {
-      for (var i=0; i<150; i++) items.push({ type:'star', x:Math.random()*w, y:Math.random()*h, r:Math.random()*1.5, o:Math.random(), ov:Math.random()*0.02 });
+      for (var i=0; i<100; i++) starList.push({ x:Math.random()*w, y:Math.random()*h, r:Math.random()*1.5, o:Math.random(), ov:Math.random()*0.02 });
     }
     if (vfx.rain) {
-      for (var i=0; i<80; i++) items.push({ type:'rain', x:Math.random()*w, y:Math.random()*h, l:Math.random()*20+10, v:Math.random()*10+10 });
+      for (var i=0; i<50; i++) rainList.push({ x:Math.random()*w, y:Math.random()*h, l:Math.random()*18+8, v:Math.random()*8+8 });
     }
     if (vfx.particles) {
-      for (var i=0; i<50; i++) items.push({ type:'part', x:Math.random()*w, y:Math.random()*h, r:Math.random()*4+2, vx:(Math.random()-0.5)*0.5, vy:(Math.random()-0.5)*0.5 });
+      for (var i=0; i<35; i++) partList.push({ x:Math.random()*w, y:Math.random()*h, r:Math.random()*3+2, vx:(Math.random()-0.5)*0.4, vy:(Math.random()-0.5)*0.4 });
     }
 
     var cachedAccent = '#7c3aed';
@@ -1036,72 +1058,73 @@
     updateCachedAccent();
     window.addEventListener('themecustomize', updateCachedAccent);
 
-    function animate() {
+    var lastFrame = 0;
+    var FRAME_MIN_MS = 1000 / 30;
+    function animate(now) {
       if (!canvas.isConnected || document.hidden) return;
+      if (!motionQuery.matches && !document.documentElement.classList.contains('theme-no-motion')) {
+        frame = requestAnimationFrame(animate);
+      }
+      if (now && now - lastFrame < FRAME_MIN_MS) return;
+      lastFrame = now || performance.now();
+
       ctx.clearRect(0, 0, w, h);
 
       // 1. Batch Snow
-      var hasSnow = items.some(function(p) { return p.type === 'snow'; });
-      if (hasSnow) {
+      if (snowList.length) {
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        items.forEach(function(p) {
-          if (p.type === 'snow') {
-            ctx.moveTo(p.x + p.r, p.y);
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-            p.y += p.v; p.x += Math.sin(p.y/30)*0.5;
-            if (p.y > h) p.y = -10; if (p.x > w) p.x = 0; if (p.x < 0) p.x = w;
-          }
-        });
+        for (var i = 0; i < snowList.length; i++) {
+          var p = snowList[i];
+          ctx.moveTo(p.x + p.r, p.y);
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          p.y += p.v; p.x += Math.sin(p.y / 30) * 0.5;
+          if (p.y > h) p.y = -10; if (p.x > w) p.x = 0; if (p.x < 0) p.x = w;
+        }
         ctx.fill();
       }
 
-      // 2. Stars (using fast fillRect instead of arc)
-      items.forEach(function(p) {
-        if (p.type === 'star') {
+      // 2. Stars
+      if (starList.length) {
+        for (var i = 0; i < starList.length; i++) {
+          var p = starList[i];
           ctx.fillStyle = 'rgba(255,255,255,' + p.o + ')';
           ctx.fillRect(p.x - p.r, p.y - p.r, p.r * 2, p.r * 2);
           p.o += p.ov; if (p.o > 1 || p.o < 0) p.ov *= -1;
         }
-      });
+      }
 
       // 3. Batch Rain
-      var hasRain = items.some(function(p) { return p.type === 'rain'; });
-      if (hasRain) {
+      if (rainList.length) {
         ctx.strokeStyle = 'rgba(255,255,255,0.3)';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        items.forEach(function(p) {
-          if (p.type === 'rain') {
-            ctx.moveTo(p.x, p.y);
-            ctx.lineTo(p.x + p.v/4, p.y + p.l);
-            p.y += p.v; p.x += p.v/4;
-            if (p.y > h) { p.y = -20; p.x = Math.random()*w; }
-          }
-        });
+        for (var i = 0; i < rainList.length; i++) {
+          var p = rainList[i];
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(p.x + p.v / 4, p.y + p.l);
+          p.y += p.v; p.x += p.v / 4;
+          if (p.y > h) { p.y = -20; p.x = Math.random() * w; }
+        }
         ctx.stroke();
       }
 
       // 4. Batch Particles
-      var hasPart = items.some(function(p) { return p.type === 'part'; });
-      if (hasPart) {
+      if (partList.length) {
         ctx.fillStyle = cachedAccent;
         ctx.globalAlpha = 0.2;
         ctx.beginPath();
-        items.forEach(function(p) {
-          if (p.type === 'part') {
-            ctx.moveTo(p.x + p.r, p.y);
-            ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
-            p.x += p.vx; p.y += p.vy;
-            if (p.x < 0 || p.x > w) p.vx *= -1;
-            if (p.y < 0 || p.y > h) p.vy *= -1;
-          }
-        });
+        for (var i = 0; i < partList.length; i++) {
+          var p = partList[i];
+          ctx.moveTo(p.x + p.r, p.y);
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          p.x += p.vx; p.y += p.vy;
+          if (p.x < 0 || p.x > w) p.vx *= -1;
+          if (p.y < 0 || p.y > h) p.vy *= -1;
+        }
         ctx.fill();
         ctx.globalAlpha = 1.0;
       }
-
-      if (!motionQuery.matches && !document.documentElement.classList.contains('theme-no-motion')) frame = requestAnimationFrame(animate);
     }
     function resumeVFX() {
       cancelAnimationFrame(frame);

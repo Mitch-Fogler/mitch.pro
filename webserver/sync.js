@@ -49,6 +49,8 @@
         r.json().then(function(d) {
           if (window._syncOnQuotaExceeded) window._syncOnQuotaExceeded(d);
         }).catch(function(){});
+      } else {
+        r.text().catch(function(){});
       }
     }).catch(function () {});
   }
@@ -78,7 +80,10 @@
     _restoreChecked = true;
 
     fetch('/api/userdata', { credentials: 'include' })
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) {
+        if (!r.ok) { r.text().catch(function(){}); return null; }
+        return r.json();
+      })
       .then(function (data) {
         if (!data || !data._snapshot || !data._snapshot_ts) return;
         var localTs  = parseInt(localStorage.getItem(SYNC_TS_KEY) || '0', 10);

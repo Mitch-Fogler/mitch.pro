@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v35';
+const CACHE_NAME = 'mitch-pro-cache-v37';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -127,17 +127,20 @@ self.addEventListener('fetch', (e) => {
 });
 
 // Push notification listeners
-// True when a window client on /encrypt/ is actually on screen right now —
-// in that case the page shows its own in-app toast and a system
+// True when a window client on the active chat surface (/encrypt/ or /matrix/) is actually
+// on screen right now — in that case the page shows its own in-app view and a system
 // notification would be redundant (and annoying mid-conversation).
-async function isUserInEncryptChat() {
+async function isUserInActiveChat(targetUrl) {
   try {
     const cs = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const isMatrix = typeof targetUrl === 'string' && targetUrl.includes('/matrix');
     return cs.some(c => {
       try {
         if (!c.url || !c.url.startsWith(self.location.origin)) return false;
-        if (!new URL(c.url).pathname.startsWith('/encrypt')) return false;
-        return c.visibilityState === 'visible';
+        if (c.visibilityState !== 'visible') return false;
+        const p = new URL(c.url).pathname;
+        if (isMatrix) return p.startsWith('/matrix');
+        return p.startsWith('/encrypt');
       } catch { return false; }
     });
   } catch { return false; }
@@ -147,19 +150,29 @@ async function isUserInEncryptChat() {
 const notifyIcon = () => (self.location.hostname.endsWith('rjuhsd.school') ? '/rjuhsd-assets/icon-192.png' : '/icon-192.png');
 
 self.addEventListener('push', e => {
-  let data = { title: 'New message', body: '', url: '/encrypt/' };
+  let data = { title: 'New message', body: '', url: '/matrix/' };
   try { data = Object.assign(data, JSON.parse(e.data.text())); } catch {}
-  e.waitUntil(isUserInEncryptChat().then(inChat => {
-    // Already inside encrypted chat on this device — stay quiet.
-    if (inChat) return;
+  const isCall = (data.tag && data.tag.startsWith('matrix-call')) || data.type === 'call';
+
+  e.waitUntil(isUserInActiveChat(data.url).then(inChat => {
+    // Already inside active chat on this device — stay quiet, UNLESS it's an incoming call
+    if (inChat && !isCall) return;
+
     return self.registration.showNotification(data.title, {
       body: data.body,
       icon: notifyIcon(),
       badge: notifyIcon(),
       tag: data.tag || undefined,
       renotify: Boolean(data.tag),
-      vibrate: [90, 45, 90],
-      data: { url: data.url }
+      vibrate: isCall ? [300, 100, 300, 100, 300, 100, 600] : [90, 45, 90],
+      requireInteraction: isCall || Boolean(data.requireInteraction),
+      actions: isCall ? [
+        { action: 'answer', title: '📞 Join Call' },
+        { action: 'decline', title: 'Dismiss' }
+      ] : [
+        { action: 'open', title: 'Open Chat' }
+      ],
+      data: { url: data.url, type: data.type || (isCall ? 'call' : 'message') }
     });
   }));
 });
@@ -170,20 +183,22 @@ self.addEventListener('push', e => {
 // its path so we never navigate the rjuhsd.school PWA to a foreign origin
 // that would demand a fresh login.
 function notificationTargetUrl(raw) {
-  let u = String(raw || '/encrypt/');
+  let u = String(raw || '/matrix/');
   try {
     const resolved = new URL(u, self.registration.scope);
     if (resolved.origin !== self.location.origin) {
-      return resolved.pathname + resolved.search + resolved.hash || '/encrypt/';
+      return resolved.pathname + resolved.search + resolved.hash || '/matrix/';
     }
     return resolved.href;
   } catch {
-    return '/encrypt/';
+    return '/matrix/';
   }
 }
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
+  if (e.action === 'decline') return;
+
   const url = notificationTargetUrl(e.notification.data?.url);
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async cs => {
     // Hand the URL to an existing app window and let it present the target
@@ -192,8 +207,14 @@ self.addEventListener('notificationclick', e => {
     for (const c of cs) {
       if (!c.url.startsWith(self.location.origin) || !('focus' in c)) continue;
       try { await c.focus(); } catch {}
-      c.postMessage({ type: 'open-in-app-browser', url });
-      return c;
+      if (url.includes('/matrix')) {
+        if ('navigate' in c) {
+          try { await c.navigate(url); return c; } catch {}
+        }
+      } else {
+        c.postMessage({ type: 'open-in-app-browser', url });
+        return c;
+      }
     }
     return clients.openWindow(url);
   }));

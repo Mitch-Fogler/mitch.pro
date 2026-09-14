@@ -19,7 +19,7 @@ const server = Bun.serve({
     const embedded = pathname.startsWith('/games/') && !['/games/', '/games/index.html'].includes(pathname);
     if (!embedded && !pathname.startsWith('/rjuhsd/') && /<head[\s>]/i.test(html)) {
       let assets = '';
-      for (const href of ['/relaunch.css', '/site-galaxy.css', '/portal-redesign.css?v=12']) {
+      for (const href of ['/relaunch.css', '/site-galaxy.css', '/portal-redesign.css?v=16', '/community-refresh.css?v=2']) {
         if (!html.includes(href.split('?')[0])) assets += `<link rel="stylesheet" href="${href}">`;
       }
       if (!html.includes('/app-shell.js')) assets += '<script src="/app-shell.js" defer></script>';

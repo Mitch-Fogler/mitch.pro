@@ -555,9 +555,9 @@
   <main class="enroll-main">
     <header class="enroll-hero">
       <a class="enroll-brand" href="/" aria-label="mitch.pro home"><img src="/icon-192.png" alt="mitch.pro"></a>
-      <span class="auth-eyebrow">Woodcreek // private network</span>
-      <h1>The <span class="auth-gradient-text">ULTIMATE</span> game website.</h1>
-      <p>A members-only corner of the internet for games, campus tools, and the people you already know.</p>
+      <span class="auth-eyebrow">mitch.pro</span>
+      <h1>Welcome to <br>mitch.pro</h1>
+      <p>One free account. Games, friends, and Mitch Coins in one place.</p>
       <nav class="enroll-links" aria-label="Help links">
         <a href="/faq.html">FAQ</a>
         <a href="/use-agreement.html">Use Agreement</a>
@@ -1552,6 +1552,7 @@ async function claimToken(mode) {
 // Prefill code from URL parameter if present
 (function() {
   const params = new URLSearchParams(window.location.search);
+  if (params.get('mode') === 'signup') switchTab('invite');
   const code = params.get('code') || params.get('token') || params.get('claim') || params.get('reset') || '';
   if (code) {
     if (params.get('reset')) {

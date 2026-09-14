@@ -14,8 +14,10 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" media="print" onload="this.media='all'"><noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"></noscript>
 <link rel="stylesheet" href="/app.css">
 <link rel="stylesheet" href="/home.css?v=4">
-<link rel="stylesheet" href="/home-redesign.css?v=4">
+<link rel="stylesheet" href="/home-redesign.css?v=5">
+<link rel="stylesheet" href="/community-refresh.css?v=3">
 <script src="/app-shell.js" defer></script>
+<script src="/home-friends.js?v=2" defer></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -33,9 +35,9 @@
   })();
 </script>
 <script src="/theme.js?v=11"></script>
-<script src="/ssh/xterm.js"></script>
-<script src="/ssh/xterm-addon-fit.js"></script>
-<script src="/home-dayboard.js?v=1" defer></script>
+<script src="/ssh/xterm.js" defer></script>
+<script src="/ssh/xterm-addon-fit.js" defer></script>
+<script src="/home-dayboard.js?v=2" defer></script>
 <!-- AUTH_INJECT_START -->
 <style>
   #devtools-btn{position:fixed;right:12px;bottom:12px;z-index:999999;
@@ -51,14 +53,17 @@ async function loadSites() {
       headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
       body: JSON.stringify({})
     });
-    if (!request.ok) throw new Error('Network error');
+    if (!request.ok) {
+      try { await request.text(); } catch (_) {}
+      throw new Error('Network error');
+    }
     const data = await request.json();
     if (data && data.banned) {
       showBannedPopup(data.reason || 'This account is banned from the website.');
       return;
     }
     if (!data.success) {
-      document.getElementById('links').innerHTML = '<div style="padding:40px;text-align:center;color:var(--t-fg2);font-weight:700;">Authentication required.<br><a href="/enroll/" style="color:var(--t-ac);font-size:0.85rem;">Click here to sign up or log in.</a></div>';
+      document.getElementById('links').innerHTML = '<a class="home-schedule-button" href="/game-portal/">Play games <b aria-hidden="true">↗</b></a>';
       return;
     }
     parseSites(data.content || '');
@@ -305,6 +310,7 @@ function parseSites(text) {
     '/games/battleship/', '/games/battleship',
     '/casino/', '/casino',
     '/canvas/', '/canvas',
+    '/matrix/', '/matrix',
     '/encrypt/', '/encrypt',
     '/shop/', '/shop',
     '/public-chat/', '/public-chat',
@@ -667,6 +673,7 @@ function updatePopularLaunches() {
     '/games/battleship/', '/games/battleship',
     '/casino/', '/casino',
     '/canvas/', '/canvas',
+    '/matrix/', '/matrix',
     '/encrypt/', '/encrypt',
     '/shop/', '/shop',
     '/public-chat/', '/public-chat',
@@ -727,23 +734,28 @@ async function loadTopGames() {
     fetch('/api/games', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({hash, limit: 100})}).catch(()=>null),
     fetch('/api/game-stats').catch(()=>null),
   ]);
-  if (statsRes && statsRes.ok) _topStats = ((await statsRes.json().catch(()=>({}))).stats) || {};
-  if (gamesRes && gamesRes.ok) {
-    var gameData = await gamesRes.json().catch(()=>({}));
-    var text = gameData.content || '';
-    _topEntries = [];
-    text.split('\n').forEach(function(line) {
-      line = line.trim();
-      if (!line) return;
-      var parts = line.split(' ');
-      if (parts.length < 3) return;
-      var type = parts[0], href = parts[1];
-      var label = parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim();
-      if (!label || href === '/report-game.html') return;
-      _topEntries.push({type: type, href: _gameHref(href), label: label, isAdmin: false, category: 'MitchCoin Games'});
-    });
+  if (statsRes) {
+    if (statsRes.ok) _topStats = ((await statsRes.json().catch(()=>({}))).stats) || {};
+    else statsRes.text().catch(()=>{});
   }
-  updatePopularLaunches();
+  if (gamesRes) {
+    if (gamesRes.ok) {
+      var gameData = await gamesRes.json().catch(()=>({}));
+      var text = gameData.content || '';
+      _topEntries = [];
+      text.split('\n').forEach(function(line) {
+        line = line.trim();
+        if (!line) return;
+        var parts = line.split(' ');
+        if (parts.length < 3) return;
+        var type = parts[0], href = parts[1];
+        var label = parts.slice(2).join(' ').replace(/<[^>]*>/g, '').trim();
+        if (!label || href === '/report-game.html') return;
+        _topEntries.push({type: type, href: _gameHref(href), label: label, isAdmin: false, category: 'MitchCoin Games'});
+      });
+    }
+    updatePopularLaunches();
+  }
 }
 
 function _gameVisits(href) {
@@ -837,7 +849,7 @@ try { const _hp = JSON.parse(localStorage.getItem('_prefHomepage') || '{}'); if 
   /* TASK4 */ async function loadUserPersonalization() {
     try {
       const r = await fetch('/api/profile');
-      if (!r.ok) return;
+      if (!r.ok) { r.text().catch(()=>{}); return; }
       const d = await r.json();
       _userStats = d.stats || {};
       
@@ -1133,7 +1145,7 @@ function escText(t) {
       if (!r.ok) return;
       var me = await r.json();
     var modWrap = document.getElementById('moderator-action-wrap');
-    if (modWrap && (me.isModerator || me.isAdmin)) {
+    if (modWrap && (me.isModerator || me.isAdmin || me.isOwner || me.isCoOwner)) {
       document.body.classList.add('is-staff');
       modWrap.style.display = 'block';
       document.getElementById('moderator-action-btn').onclick = function() {
@@ -1141,8 +1153,11 @@ function escText(t) {
       };
     }
     var ownerWrap = document.getElementById('owner-action-wrap');
-    if (ownerWrap && me.isOwner) ownerWrap.style.display = 'block';
-    if (!me.isAdmin && !me.canGrantPremium) return;
+    if (ownerWrap && (me.isOwner || me.isCoOwner)) {
+      document.body.classList.add('is-staff');
+      ownerWrap.style.display = 'block';
+    }
+    if (!me.isAdmin && !me.canGrantPremium && !me.isOwner && !me.isCoOwner) return;
     document.body.classList.add('is-admin');
     var wrap = document.getElementById('admin-action-wrap');
     wrap.style.display = 'block';
@@ -1153,7 +1168,7 @@ function escText(t) {
     if (adminName) adminName.textContent = me.email || 'Admin access';
     if (adminCount) adminCount.textContent = me.isCoOwner ? 'Co-owner access' : (me.canGrantPremium ? 'Admin + premium grants' : 'Admin view');
     document.getElementById('admin-action-btn').onclick = function() {
-      window.location.href = '/admin/';
+      window.location.href = '/admin/#approval-tools';
     };
   } catch(e) {}
 }
@@ -1248,6 +1263,21 @@ function setupAdminNotificationMode() {
   sync();
 }
 
+document.addEventListener('error', function(event) {
+  var image = event.target;
+  if (!(image instanceof HTMLImageElement)) return;
+  if (image.classList.contains('collapsed-pfp-img')) {
+    image.remove();
+    return;
+  }
+  if (!image.classList.contains('member-presence-avatar')) return;
+  var fallback = document.createElement('span');
+  fallback.className = 'member-presence-avatar member-presence-initials';
+  fallback.setAttribute('aria-hidden', 'true');
+  fallback.textContent = image.dataset.initials || 'M';
+  image.replaceWith(fallback);
+}, true);
+
 function renderOnlineMembers(members) {
   var wrap = document.getElementById('online-members-wrap');
   var list = document.getElementById('online-members-list');
@@ -1256,7 +1286,7 @@ function renderOnlineMembers(members) {
   });
   var online = allMembers.filter(function(m) { return m.online; });
   var signature = JSON.stringify(allMembers.map(function(m) {
-    return [m.email || '', m.displayName || '', m.pfp || '', m.badge || '', m.color || '', !!m.online];
+    return [m.email || '', m.displayName || '', m.pfp || '', m.badge || '', m.color || '', !!m.online, m.playing || ''];
   }));
   if (signature === window._onlineMembersSignature) return;
   window._onlineMembersSignature = signature;
@@ -1277,7 +1307,7 @@ function renderOnlineMembers(members) {
   if (pfpsEl) {
     var withPfp = online.filter(function(m) { return !!m.pfp; }).slice(0, 3);
     pfpsEl.innerHTML = withPfp.map(function(m) {
-      return '<img src="' + escText(m.pfp) + '" class="collapsed-pfp-img" alt="' + escText(m.displayName || m.email) + '" title="' + escText(m.displayName || m.email) + '">';
+      return '<img src="' + escText(m.pfp) + '" class="collapsed-pfp-img" alt="' + escText(m.displayName || m.email) + '" title="' + escText(m.displayName || m.email) + '" referrerpolicy="no-referrer">';
     }).join('');
   }
 
@@ -1306,9 +1336,9 @@ function renderOnlineMembers(members) {
     }
     var initials = String(name).trim().split(/\s+/).slice(0, 2).map(function(part) { return part.charAt(0); }).join('').toUpperCase() || 'M';
     var avatar = m.pfp
-      ? '<img class="member-presence-avatar" src="' + escText(m.pfp) + '" alt="">'
+      ? '<img class="member-presence-avatar" src="' + escText(m.pfp) + '" alt="" data-initials="' + escText(initials) + '" referrerpolicy="no-referrer">'
       : '<span class="member-presence-avatar member-presence-initials" aria-hidden="true">' + escText(initials) + '</span>';
-    var statusText = m.online ? 'Online now' : 'Offline';
+    var statusText = m.online ? (m.playing || 'Online now') : 'Offline';
     var tooltip = email.includes('@') ? email : '';
     return '<a class="member-presence-card name ' + escText(colorClass) + (m.online ? ' is-online' : ' is-offline') + '" href="/profile/?u=' + encodeURIComponent(email) + '" title="' + escText(tooltip) + '">' +
       avatar + '<span class="member-presence-copy"><span class="member-presence-name">' + nameContent + badgeHtml + '</span><span class="member-presence-status"><span class="online-dot"></span>' + statusText + '</span></span></a>';
@@ -1325,6 +1355,7 @@ async function loadOnlineMembers() {
       cache: 'no-store'
     });
     if (!r.ok) {
+      r.text().catch(()=>{});
       window._onlineMembersSignature = '';
       list.innerHTML = '<span class="side-empty">Sign in to see online members</span>';
       wrap.style.display = '';
@@ -1350,11 +1381,11 @@ async function loadOnlineMembers() {
 // ── Friends and Presence Client Side Logic ──────────────────────────────────
 async function sendPresenceHeartbeat() {
   try {
-    await fetch('/api/presence/heartbeat', {
+    fetch('/api/presence/heartbeat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ playing: window.currentPlayingActivity || 'Dashboard' })
-    });
+    }).then(r => r.text()).catch(()=>{});
   } catch(e) {}
 }
 
@@ -1364,6 +1395,7 @@ async function loadFriends() {
   try {
     const r = await fetch('/api/friends/list?t=' + Date.now(), { credentials: 'include' });
     if (!r.ok) {
+      r.text().catch(()=>{});
       window._friendsSignature = '';
       friendsList.innerHTML = '<span class="side-empty">Log in to view friends</span>';
       return;
@@ -1462,7 +1494,7 @@ async function loadPendingFriendRequests() {
   if (!pendingList) return;
   try {
     const r = await fetch('/api/friends/requests/pending?t=' + Date.now(), { credentials: 'include' });
-    if (!r.ok) return;
+    if (!r.ok) { r.text().catch(()=>{}); return; }
     const d = await r.json();
     const incoming = d.incoming || [];
     const outgoing = d.outgoing || [];
@@ -1679,7 +1711,7 @@ function initFriendsSystem() {
 
 async function initHome() {
     /* TASK4 */ optimizeForDevice();
-    /* TASK4 */ await loadUserPersonalization();
+    /* TASK4 */ loadUserPersonalization();
   applyWidgetOrder();
   setupHomeSearch();
   setupAboutBlankToggle();
@@ -1713,6 +1745,7 @@ async function initVmWorkspaceDashboard() {
 async function pollVmStatus() {
   try {
     const res = await fetch('/api/vm/status');
+    if (!res.ok) { res.text().catch(()=>{}); return; }
     const data = await res.json();
     
     const panel = document.getElementById('vm-workspace-panel');
@@ -1886,9 +1919,7 @@ function connectVmSsh() {
 }
 
 function connectVmVnc() {
-  if (!currentVmIp) return;
-  const vncUrl = `/novnc/vnc_lite.html?path=vnc/ws?host=${currentVmIp}&port=5900`;
-  openVmConsole(vncUrl);
+  openVmConsole('/vms/');
 }
 
 function getCsrfToken() {
@@ -3353,7 +3384,7 @@ if (document.readyState === 'loading') {
 <body data-shell="off" class="home">
 <nav class="home-masthead" aria-label="Primary">
   <a class="home-wordmark" href="/" aria-label="mitch.pro home"><img class="site-logo" src="/icon-192.png" alt="" width="35" height="35">mitch<span>.pro</span></a>
-  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/encrypt/">Chat</a><a href="/game-portal/">Games</a><a href="https://woodcreek.site/">Blooket Bot</a><a href="/members/">People</a><a href="https://rjuhsd.school/">Schedule</a></div>
+  <div class="home-masthead-links"><a href="/" aria-current="page">Home</a><a href="/matrix/">Chat</a><a href="/game-portal/">Games</a><a href="https://woodcreek.site/">Blooket Bot</a><a href="/members/">People</a><a href="https://rjuhsd.school/">Schedule</a></div>
   <a class="home-account-link" href="/profile/">My account <span aria-hidden="true">↗</span></a>
 </nav>
 
@@ -3362,7 +3393,7 @@ if (document.readyState === 'loading') {
     <a class="staff-access-button staff-owner" href="/admin/#owner-tools" title="Owner tools"><span aria-hidden="true">&#9733;</span><span class="staff-access-copy"><b>Owner tools</b><small>Site operations</small></span></a>
   </div>
   <div id="admin-action-wrap">
-    <a id="admin-action-btn" class="staff-access-button staff-admin" href="/admin/" title="Admin tools"><span aria-hidden="true">&#9881;</span><span class="staff-access-copy"><b>Admin tools</b><small>Command center</small></span></a>
+    <a id="admin-action-btn" class="staff-access-button staff-admin" href="/admin/#approval-tools" title="Admin tools"><span aria-hidden="true">&#9881;</span><span class="staff-access-copy"><b>Admin tools</b><small>Command center</small></span></a>
   </div>
   <div id="moderator-action-wrap">
     <a id="moderator-action-btn" class="staff-access-button staff-moderator" href="/moderator/" title="Moderator tools"><span aria-hidden="true">&#10003;</span><span class="staff-access-copy"><b>Moderator tools</b><small>Safety workspace</small></span></a>
@@ -3463,16 +3494,16 @@ if (document.readyState === 'loading') {
           <span><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span>
           <b>Games</b>
         </a>
-        <a class="hud-main-link hud-main-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');">
+        <a class="hud-main-link hud-main-chat" href="/matrix/" onclick="openHomeHref(event, '/matrix/');">
           <span><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/></svg></span>
-          <b>Encrypted Chat</b>
+          <b>Matrix Chat</b>
         </a>
       </nav>
 
       <nav class="home-access-rail" aria-label="Quick access">
-        <a class="home-access-link home-access-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');" aria-label="Open encrypted chat">
+        <a class="home-access-link home-access-chat" href="/matrix/" onclick="openHomeHref(event, '/matrix/');" aria-label="Open Matrix chat">
           <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/><path d="M9 9h6M9 12h4"/><path d="M16 5V4a4 4 0 0 0-8 0v1"/></svg></span>
-          <span class="home-access-copy"><b>Encrypted</b><small>Chat</small></span>
+          <span class="home-access-copy"><b>Matrix</b><small>Chat</small></span>
         </a>
         <a class="home-access-link home-access-games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');" aria-label="Choose a games library">
           <span class="home-access-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 8h8c3 0 5 2.5 5 6s-2 6-4.5 6c-2 0-2.5-2.5-4.5-2.5S9.5 20 7.5 20C5 20 3 17.5 3 14s2-6 5-6Z"/><path d="M7 12v4m-2-2h4m7-1h.01m2 3h.01"/></svg></span>
@@ -3487,10 +3518,10 @@ if (document.readyState === 'loading') {
   </header>
 
   <section class="home-features" aria-label="Start here">
-    <a class="home-feature feature-chat" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');">
+    <a class="home-feature feature-chat" href="/matrix/" onclick="openHomeHref(event, '/matrix/');">
       <span class="feature-eyebrow">CHAT</span>
-      <h2>Encrypted chat</h2>
-      <span class="feature-bottom">Direct messages &amp; group conversations <b aria-hidden="true">↗</b></span>
+      <h2>Matrix chat</h2>
+      <span class="feature-bottom">Decentralized E2E channels &amp; direct messages <b aria-hidden="true">↗</b></span>
       <svg class="feature-chat-art" viewBox="0 0 200 160" fill="none" aria-hidden="true"><path d="M28 25h109a12 12 0 0 1 12 12v61a12 12 0 0 1-12 12H75l-28 22v-22H28a12 12 0 0 1-12-12V37a12 12 0 0 1 12-12Z"/><path d="M43 51h77M43 70h51"/><rect x="110" y="87" width="60" height="50" rx="9"/><path d="M129 88V77a13 13 0 0 1 26 0v11M142 107v12"/></svg>
     </a>
     <a class="home-feature feature-games" href="/game-portal/" onclick="openHomeHref(event, '/game-portal/');">
@@ -3502,7 +3533,7 @@ if (document.readyState === 'loading') {
   </section>
 
       <nav class="home-actions" aria-label="Quick actions">
-        <a class="hub-action hub-action-primary" href="/encrypt/" onclick="openHomeHref(event, '/encrypt/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M9 9h6M9 12h4"/></svg></span><span class="action-copy"><b>Encrypted Chat</b><small>Open secure messages</small></span></a>
+        <a class="hub-action hub-action-primary" href="/matrix/" onclick="openHomeHref(event, '/matrix/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4V5Z"/><path d="M9 9h6M9 12h4"/></svg></span><span class="action-copy"><b>Matrix Chat</b><small>Open secure messages</small></span></a>
         <button type="button" class="hub-action" id="hub-friends-btn" onclick="openMembersRail(event)"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3"/><circle cx="16.5" cy="10" r="2.3"/><path d="M3.5 19c.5-3.3 2.2-5 5.5-5s5 1.7 5.5 5M14 15c3.5-.5 5.5.8 6 3.5"/></svg></span><span class="action-copy"><b>People</b><small>See who's here</small></span></button>
         <a class="hub-action" href="/preferences/" onclick="openHomeHref(event, '/preferences/');"><span class="action-logo"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3"/><path d="M5 20c.6-4.2 2.9-6.3 7-6.3s6.4 2.1 7 6.3"/></svg></span><span class="action-copy"><b>Account</b><small>Profile and preferences</small></span></a>
         <a class="hub-action" href="/shop/" onclick="openHomeHref(event, '/shop/');"><span class="action-logo"><svg viewBox="0 0 24 24"><path d="m12 3 6 6-6 12L6 9z"/><path d="M6 9h12M9 9l3-6 3 6-3 12z"/></svg></span><span class="action-copy"><b>Market</b><small>Browse drops</small></span></a>
@@ -3550,23 +3581,7 @@ if (document.readyState === 'loading') {
         </div>
       </article>
 
-      <article class="home-day-card home-bell-card">
-        <header class="home-card-head">
-          <div><small>Woodcreek High School</small><h3>Today’s bell schedule</h3></div>
-          <a class="home-official-link" href="https://rjuhsd.school/">rjuhsd.school ↗</a>
-        </header>
-        <div class="home-bell-hero">
-          <div><span class="home-live-pill" id="home-bell-state"><i></i> CHECKING</span><strong id="home-bell-current">Checking today’s schedule</strong><small id="home-bell-countdown">Pacific time</small></div>
-          <div class="home-lunch-toggle" role="group" aria-label="Lunch schedule">
-            <button type="button" id="home-first-lunch">1st lunch</button>
-            <button type="button" id="home-second-lunch">2nd lunch</button>
-          </div>
-        </div>
-        <a class="home-bell-cta" href="https://rjuhsd.school/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.6V12l3 1.8"/></svg>Open the bell schedule</a>
-        <div class="home-schedule-heading"><button type="button" id="home-day-prev" aria-label="Previous day">‹</button><span><b id="home-schedule-label">Today</b><small id="home-bell-note">Loading schedule</small></span><button type="button" id="home-day-next" aria-label="Next day">›</button></div>
-        <ol class="home-periods" id="home-periods"></ol>
-        <footer><span id="home-bell-footer">Periods only — no personal class data</span></footer>
-      </article>
+      <a class="home-schedule-button" href="https://rjuhsd.school/?school=woodcreek">Newly Improved Bell Schedule <span>(Woodcreek High School)</span><b aria-hidden="true">↗</b></a>
     </div>
   </section>
 
@@ -3602,7 +3617,7 @@ if (document.readyState === 'loading') {
           <div class="vm-actions">
             <button id="vm-power-btn" onclick="controlVmPower()" class="btn-ghost" style="display:none;">Power On</button>
             <button id="vm-ssh-btn" onclick="connectVmSsh()" class="btn-primary" style="display:none;">Terminal Console</button>
-            <button id="vm-vnc-btn" onclick="connectVmVnc()" class="btn-primary" style="display:none;">VNC Desktop</button>
+            <button id="vm-vnc-btn" onclick="connectVmVnc()" class="btn-primary" style="display:none;">Open Desktop</button>
             <button id="vm-reset-btn" onclick="resetFreeVm()" class="btn-primary" style="display:none;">Reset Sandbox</button>
           </div>
         </div>
@@ -3799,7 +3814,9 @@ var origShow = showIframe;
   }
   (async function() {
     try {
-      const { members } = await (await fetch('/api/owner-members')).json();
+      const res = await fetch('/api/owner-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       renderMemberChips('owner-members-wrap', 'owner-members-list', members, {
         icon: '&#9733;',
         color: '#eab308',
@@ -3811,7 +3828,9 @@ var origShow = showIframe;
   })();
   (async function() {
     try {
-      const { members } = await (await fetch('/api/premium-members')).json();
+      const res = await fetch('/api/premium-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       const list = (members || []).slice();
       for (let i = list.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -3830,7 +3849,9 @@ var origShow = showIframe;
   })();
   (async function() {
     try {
-      const { members } = await (await fetch('/api/admin-members')).json();
+      const res = await fetch('/api/admin-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       renderMemberChips('admin-members-wrap', 'admin-members-list', members, {
         icon: '&#9873;',
         color: '#ef4444',
@@ -3841,7 +3862,9 @@ var origShow = showIframe;
   })();
   (async function() {
     try {
-      const { members } = await (await fetch('/api/moderator-members')).json();
+      const res = await fetch('/api/moderator-members');
+      if (!res.ok) { res.text().catch(()=>{}); return; }
+      const { members } = await res.json();
       renderMemberChips('moderator-members-wrap', 'moderator-members-list', members, {
         icon: '&#9873;',
         color: '#38bdf8',
@@ -3883,7 +3906,7 @@ goBack = function() {
     };
   })();
 </script>
-<script src="/broadcast.js?v=4"></script>
+<script src="/broadcast.js?v=5"></script>
 <script src="/sync.js?v=1779165304438"></script>
 <script src="/cookie-consent.js" defer></script>
 </body>

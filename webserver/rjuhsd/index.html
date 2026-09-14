@@ -3,14 +3,28 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
   <meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="RJUHSD Hub">
   <meta name="application-name" content="RJUHSD Hub">
-  <meta name="description" content="Live bell schedules, encrypted student chat, and district tools for Woodcreek, Roseville, Granite Bay, Antelope, West Park, and Oakmont."><title>School schedules &amp; Student Hub | rjuhsd.school</title>
+  <meta name="description" content="Live RJUHSD bell schedules, period countdowns, daily times, and calendars for Woodcreek High School, Roseville High School, Granite Bay High School, Antelope High School, West Park High School, and Oakmont High School.">
+  <meta name="keywords" content="RJUHSD bell schedule, Woodcreek bell schedule, Roseville High School bell schedule, Granite Bay High School bell schedule, Antelope High School bell schedule, West Park High School bell schedule, Oakmont High School bell schedule, Woodcreek High School schedule, Roseville Joint Union High School District, high school bell schedules">
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+  <link rel="canonical" href="https://rjuhsd.school/">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="RJUHSD School Hub">
+  <meta property="og:title" content="RJUHSD High School Bell Schedules | Live Period Countdowns">
+  <meta property="og:description" content="Live bell schedules, period clocks, and calendars for Woodcreek, Roseville, Granite Bay, Antelope, West Park, and Oakmont High Schools in RJUHSD.">
+  <meta property="og:url" content="https://rjuhsd.school/">
+  <meta property="og:image" content="https://rjuhsd.school/rjuhsd-assets/icon-512.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="RJUHSD High School Bell Schedules">
+  <meta name="twitter:description" content="Live bell schedules and period countdowns for Woodcreek, Roseville, Granite Bay, Antelope, West Park, and Oakmont.">
+  <meta name="twitter:image" content="https://rjuhsd.school/rjuhsd-assets/icon-512.png">
+  <title>RJUHSD Bell Schedules | Woodcreek, Roseville, Granite Bay, Antelope, West Park, Oakmont</title>
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'"><noscript><link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet"></noscript>
-  <link rel="icon" sizes="32x32" href="/rjuhsd-assets/favicon-32.png"><link rel="icon" sizes="192x192" href="/rjuhsd-assets/icon-192.png"><link rel="apple-touch-icon" href="/rjuhsd-assets/apple-touch-icon.png">
+  <link rel="icon" href="/favicon.ico"><link rel="icon" sizes="192x192" href="/icon-192.png"><link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0c0809">
-  <script src="/theme.js?v=12"></script>
+  <script src="/theme.js?v=13"></script>
   <script src="/popup.js?v=3" defer></script>
-  <link rel="stylesheet" href="/rjuhsd-assets/styles.css?v=5"><link rel="stylesheet" href="/rjuhsd-assets/reference-theme.css?v=7"><style>.countdown-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.countdown-details>span,.countdown-details small,.countdown-details strong{display:block;text-align:center}</style>
+  <link rel="stylesheet" href="/rjuhsd-assets/styles.css?v=5"><link rel="stylesheet" href="/rjuhsd-assets/reference-theme.css?v=10"><link rel="stylesheet" href="/rjuhsd-assets/redesign.css?v=2"><style>.countdown-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.countdown-details>span,.countdown-details small,.countdown-details strong{display:block;text-align:center}</style>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
@@ -20,16 +34,139 @@
       });
     }
   </script>
-  <script src="/bell/schedule.js?v=5" defer></script><script src="/rjuhsd-assets/calendar.js?v=2" defer></script><script src="/rjuhsd-assets/app.js?v=5" defer></script><script src="/pwa-install.js?v=4" defer></script>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://rjuhsd.school/#website",
+        "url": "https://rjuhsd.school/",
+        "name": "RJUHSD Bell Schedules & Student Hub",
+        "description": "Live bell schedules, period countdowns, lunch times, and school calendars for all Roseville Joint Union High School District campuses.",
+        "publisher": {
+          "@type": "EducationalOrganization",
+          "name": "Roseville Joint Union High School District (RJUHSD)",
+          "url": "https://www.rjuhsd.us"
+        }
+      },
+      {
+        "@type": "ItemList",
+        "name": "RJUHSD High School Bell Schedules",
+        "description": "Directory of daily bell schedules and live period timers for high schools in RJUHSD.",
+        "itemListElement": [
+          {
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Woodcreek High School Bell Schedule",
+            "url": "https://rjuhsd.school/?school=woodcreek"
+          },
+          {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Roseville High School Bell Schedule",
+            "url": "https://rjuhsd.school/?school=roseville"
+          },
+          {
+            "@type": "ListItem",
+            "position": 3,
+            "name": "Granite Bay High School Bell Schedule",
+            "url": "https://rjuhsd.school/?school=granitebay"
+          },
+          {
+            "@type": "ListItem",
+            "position": 4,
+            "name": "Antelope High School Bell Schedule",
+            "url": "https://rjuhsd.school/?school=antelope"
+          },
+          {
+            "@type": "ListItem",
+            "position": 5,
+            "name": "West Park High School Bell Schedule",
+            "url": "https://rjuhsd.school/?school=westpark"
+          },
+          {
+            "@type": "ListItem",
+            "position": 6,
+            "name": "Oakmont High School Bell Schedule",
+            "url": "https://rjuhsd.school/?school=oakmont"
+          }
+        ]
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": "What are the bell schedules for RJUHSD high schools?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Regular school days across RJUHSD high schools start at 8:30 AM and dismiss at 3:20 PM. Schools follow a 4-period block schedule with Lunch 1 and Lunch 2 divisions, plus advisory or intervention periods such as Pack (Woodcreek) and Roar (Roseville), and optional Period 0 at Granite Bay and West Park."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What time does Woodcreek High School start and dismiss?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Woodcreek High School begins at 8:30 AM (Period 1) and ends at 3:20 PM after the Pack advisory block. Period times include Period 1 (8:30–9:52 AM), Period 2 (10:00–11:22 AM), Lunch 1 (11:22–11:52 AM) or Lunch 2 (12:52–1:22 PM), Period 3 (12:00–1:22 PM or 11:30 AM–12:52 PM), Period 4 (1:30–2:52 PM), and Pack (2:52–3:20 PM)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the Roseville High School bell schedule?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Roseville High School runs from 8:30 AM to 3:20 PM on regular days. The schedule includes Period 1 (8:30–9:51 AM), Roar period (9:57–10:27 AM), Period 2 (10:33–11:56 AM), Lunch 1 (11:56 AM–12:26 PM) or Lunch 2 (1:23–1:53 PM), Period 3 (12:32–1:53 PM or 12:02–1:23 PM), and Period 4 (1:59–3:20 PM)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the Granite Bay High School bell schedule?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Granite Bay High School regular days start at 8:30 AM and end at 3:20 PM, with an optional Period 0 from 7:30–8:20 AM. The day consists of Period 1 (8:30–9:58 AM), Period 2 (10:06–11:38 AM), Lunch 1 (11:38 AM–12:08 PM) or Lunch 2 (1:14–1:44 PM), Period 3 (12:16–1:44 PM or 11:46 AM–1:14 PM), and Period 4 (1:52–3:20 PM)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the Antelope High School bell schedule?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Antelope High School regular days begin at 8:30 AM and dismiss at 3:20 PM. Classes include Period 1 (8:30–10:00 AM), Period 2 (10:06–11:36 AM), Lunch 1 (11:36 AM–12:06 PM) or Lunch 2 (1:13–1:43 PM), Period 3 (12:12–1:43 PM or 11:42 AM–1:13 PM), and Period 4 (1:49–3:20 PM)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the West Park High School bell schedule?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "West Park High School regular days start at 8:30 AM and end at 3:20 PM, with an optional Period 0 from 7:30–8:25 AM. Daily periods are Period 1 (8:30–9:59 AM), Period 2 (10:07–11:36 AM), Lunch 1 (11:36 AM–12:06 PM) or Lunch 2 (1:14–1:44 PM), Period 3 (12:14–1:43 PM or 11:44 AM–1:14 PM), and Period 4 (1:51–3:20 PM)."
+            }
+          },
+          {
+            "@type": "Question",
+            "name": "What is the Oakmont High School bell schedule?",
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": "Oakmont High School regular days run from 8:30 AM to 3:20 PM. The schedule includes Period 1 (8:30–10:00 AM), Period 2 (10:06–11:38 AM), Lunch 1 (11:38 AM–12:08 PM) or Lunch 2 (1:14–1:44 PM), Period 3 (12:14–1:44 PM or 11:44 AM–1:14 PM), and Period 4 (1:50–3:20 PM)."
+            }
+          }
+        ]
+      }
+    ]
+  }
+  </script>
+  <script src="/bell/schedule.js?v=5" defer></script><script src="/rjuhsd-assets/calendar.js?v=2" defer></script><script src="/rjuhsd-assets/app.js?v=6" defer></script><script src="/pwa-install.js?v=4" defer></script>
 </head><body data-shell="off" class="mitch-design school-hub">
   <a class="skip-link" href="#main">Skip to dashboard</a>
   <div class="announcement-bar"><div class="announcement-inner"><span class="pulse-dot"></span><strong>RJUHSD.SCHOOL</strong><span id="announcement-text">Loading today’s campus schedule…</span><button id="pwa-install-btn" class="pwa-install-btn" type="button" style="display:none;" aria-label="Install App"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg> Install App</button><span class="announcement-time" id="header-clock">--:-- --</span></div></div>
   <header class="site-header">
-    <a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img src="/rjuhsd-assets/woodcreek.png" alt=""></span><span class="brand-copy"><strong>Woodcreek High School</strong><small>woodcreek now</small></span></a>
-    <nav aria-label="Primary navigation"><a href="#today">Today</a><a href="#schedule-panel">Schedule</a><a href="#apps">Apps</a><a href="/encrypt/" class="nav-chat-link"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/></svg> Encrypted chat</a><a href="/public-chat/"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8m-8 4h5"/></svg> Public chat</a><a href="#events">Events</a><a href="#tools">Tools</a><a href="/preferences/"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> Themes</a><a href="/api/sso/bridge?back=%2F" class="nav-signin-link js-signin-link">Sign in with mitch.pro</a></nav>
+    <a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img class="site-logo" src="/icon-192.png" alt="mitch.pro" width="35" height="35"></span><span class="brand-copy"><strong>Woodcreek High School</strong><small>woodcreek now</small></span></a>
+    <nav aria-label="Primary navigation"><a href="#today">Today</a><a href="#schedule-panel">Schedule</a><a href="#schools">Schools</a><a href="/matrix/">Chat</a><a href="/preferences/">Preferences</a></nav>
     <div class="header-actions">
-      <a href="/api/sso/bridge?back=%2F" class="header-signin-btn js-signin-link">Sign in</a>
-      <a href="/encrypt/" class="header-chat-btn" title="Open End-to-End Encrypted Chat"><span class="chat-badge-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/></svg></span><strong>Chat</strong><small class="e2e-badge">E2E</small></a>
+      <a href="https://mitchdog.com/api/sso/bridge?back=https%3A%2F%2Frjuhsd.school%2F" class="header-signin-btn js-signin-link" hidden>Sign in with mitchdog.com</a>
+      <a href="/matrix/" class="header-chat-btn" title="Open Matrix Encrypted Chat"><span class="chat-badge-icon"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/></svg></span><strong>Chat</strong><small class="e2e-badge">Matrix</small></a>
       <label class="school-choice">School<select id="school-select" aria-label="Choose school"></select></label>
       <button class="lunch-status" id="change-lunch" type="button"><span>MY SCHEDULE</span><strong id="header-lunch">Lunch —</strong></button>
       <button class="icon-button" id="theme-btn" type="button" aria-label="Switch color theme"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.5 1.5m11.2 11.2 1.5 1.5M2 12h2m16 0h2M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/></svg></button>
@@ -38,10 +175,15 @@
   <main id="main">
     <section class="hero" id="today">
       <div class="hero-graphic" aria-hidden="true"><img src="/rjuhsd-assets/woodcreek.png" alt=""><i class="ring ring-one"></i><i class="ring ring-two"></i><i class="ring ring-three"></i></div>
-      <div class="hero-content"><time class="hero-date-panel" id="hero-date" datetime="2026-09-01"><span class="hero-weekday" id="hero-weekday">TUESDAY</span><span class="hero-date-main"><strong id="hero-date-day">01</strong><span><b id="hero-date-month">September</b><small id="hero-date-year">2026</small></span></span></time><p class="hero-overline" id="hero-overline">WOODCREEK HIGH SCHOOL</p><h1><span id="school-heading">Woodcreek</span><br><em>bell schedule</em></h1><p class="hero-summary" id="hero-summary">Loading today’s schedule.</p><div class="hero-actions"><a class="primary-button" href="#schedule-panel">View schedule <span>↓</span></a><a class="hero-chat-btn" href="/encrypt/" title="End-to-End Encrypted Chat"><span class="hero-btn-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/><path d="M10 8V6.5a2 2 0 0 1 4 0V8"/></svg></span> Encrypted Chat</a><a class="secondary-button" href="/public-chat/" title="Public Campus Chat"><span class="hero-btn-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8m-8 4h5"/></svg></span> Public Chat</a><button class="secondary-button" id="hero-change-lunch" type="button">Change lunch</button><a class="primary-button hero-signin-btn js-signin-link" href="/api/sso/bridge?back=%2F" hidden>Sign in with mitch.pro</a></div></div>
-      <article class="live-card" aria-live="polite"><img class="live-wolf" src="/rjuhsd-assets/woodcreek.png" alt=""><div class="live-card-top"><span><i></i><b id="live-mode">LIVE</b></span><time id="live-clock">--:-- --</time></div><div class="live-card-body"><div class="period-badge" id="period-badge">—</div><p id="current-eyebrow">CHECKING THE BELL</p><h2 id="current-period">Loading…</h2><span class="period-range" id="current-range">Woodcreek High School</span><div class="countdown-dial"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="dial-track" cx="60" cy="60" r="52"></circle><circle class="dial-value" id="countdown-ring" cx="60" cy="60" r="52"></circle></svg><div class="countdown-center"><div class="countdown" id="countdown">--:--</div><p class="countdown-copy" id="countdown-copy">until the next bell</p></div></div><div class="countdown-details"><span><small>ENDS AT</small><strong id="countdown-end">—</strong></span><span><small>COMPLETE</small><strong id="countdown-percent">0%</strong></span><span><small>STATUS</small><strong id="countdown-context">Loading</strong></span></div><div class="progress"><span id="live-progress"></span></div></div><div class="live-next"><span>UP NEXT</span><strong id="next-period">—</strong><time id="next-time">—</time></div></article>
+      <div class="hero-content"><time class="hero-date-panel" id="hero-date" datetime="2026-09-01"><span class="hero-weekday" id="hero-weekday">TUESDAY</span><span class="hero-date-main"><strong id="hero-date-day">01</strong><span><b id="hero-date-month">September</b><small id="hero-date-year">2026</small></span></span></time><p class="hero-overline" id="hero-overline">WOODCREEK HIGH SCHOOL</p><h1><span id="school-heading">Woodcreek</span><br><em>bell schedule</em></h1><p class="hero-summary" id="hero-summary">Loading today’s schedule.</p><div class="hero-actions"><a class="primary-button" href="#schedule-panel">View schedule <span>↓</span></a><a class="hero-chat-btn" href="/matrix/" title="Matrix End-to-End Encrypted Chat"><span class="hero-btn-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/><path d="M10 8V6.5a2 2 0 0 1 4 0V8"/></svg></span> Matrix Chat</a><a class="secondary-button" href="/public-chat/" title="Public Campus Chat"><span class="hero-btn-icon"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8m-8 4h5"/></svg></span> Public Chat</a><button class="secondary-button" id="hero-change-lunch" type="button">Change lunch</button></div></div>
+      <article class="live-card" aria-label="Current period and countdown"><img class="live-wolf" src="/rjuhsd-assets/woodcreek.png" alt=""><div class="live-card-top"><span><i></i><b id="live-mode">LIVE</b></span><time id="live-clock">--:-- --</time></div><div class="live-card-body"><div class="period-badge" id="period-badge">—</div><p id="current-eyebrow">CHECKING THE BELL</p><h2 id="current-period">Loading…</h2><span class="period-range" id="current-range">Woodcreek High School</span><div class="countdown-dial"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="dial-track" cx="60" cy="60" r="52"></circle><circle class="dial-value" id="countdown-ring" cx="60" cy="60" r="52"></circle></svg><div class="countdown-center"><div class="countdown" id="countdown">--:--</div><p class="countdown-copy" id="countdown-copy">until the next bell</p></div></div><div class="countdown-details"><span><small>ENDS AT</small><strong id="countdown-end">—</strong></span><span><small>COMPLETE</small><strong id="countdown-percent">0%</strong></span><span><small>STATUS</small><strong id="countdown-context">Loading</strong></span></div><div class="progress"><span id="live-progress"></span></div></div><div class="live-next"><span>UP NEXT</span><strong id="next-period">—</strong><time id="next-time">—</time></div></article>
     </section>
     <section class="snapshot" aria-label="Today at a glance"><article><span class="snapshot-icon wine">◷</span><div><small>FIRST BELL</small><strong id="snapshot-first">—</strong></div></article><article><span class="snapshot-icon amber">⌁</span><div><small>DISMISSAL</small><strong id="snapshot-last">—</strong></div></article><article><span class="snapshot-icon blue">✓</span><div><small>DAY PROGRESS</small><strong id="snapshot-progress">—</strong></div></article><article><span class="snapshot-icon green">✦</span><div><small>SCHEDULE</small><strong id="snapshot-type">Loading</strong></div></article></section>
+
+    <section class="dashboard-section schedule-zone" id="schedule-panel">
+      <div class="section-title-row"><div><p class="section-label">BELL SCHEDULE</p><h2>Today’s schedule</h2><p id="schedule-note">Times match your selected lunch.</p></div><div class="date-tile"><span id="date-month">SEP</span><strong id="date-day">01</strong><small id="date-year">2026</small></div></div>
+      <div class="schedule-controls"><label>Schedule <select id="schedule-mode" aria-label="Schedule type"><option value="auto">Automatic</option></select></label><label id="period0-label" hidden><input id="include-period0" type="checkbox"> Include optional Period 0</label><span id="source-status" role="status">Checking the official calendar…</span></div><div class="schedule-grid"><div class="timeline" id="timeline"><div class="skeleton tall"></div></div><aside class="day-brief"><div class="brief-heading"><span>DAY INFORMATION</span><b id="brief-lunch">LUNCH —</b></div><div class="brief-stat"><small>Time on campus</small><strong id="day-length">—</strong></div><div class="brief-stat"><small>Class periods</small><strong id="period-count">—</strong></div><div class="brief-stat"><small>Advisory / intervention</small><strong id="pack-placement">—</strong></div><div class="brief-message"><span>LUNCH SETTING</span><p id="brief-tip">Your lunch choice is saved on this device.</p></div><button id="brief-change-lunch" type="button">Change lunch <span>→</span></button></aside></div>
+    </section>
 
     <section class="dashboard-section apps-zone" id="apps">
       <div class="section-title-row compact">
@@ -52,17 +194,17 @@
         </div>
       </div>
       <div class="apps-grid">
-        <a href="/encrypt/" class="app-card highlight-app">
-          <span class="app-card-badge"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> END-TO-END ENCRYPTED</span>
+        <a href="/matrix/" class="app-card highlight-app">
+          <span class="app-card-badge"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> MATRIX E2E ENCRYPTED</span>
           <div class="app-card-head">
             <span class="app-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/><path d="M10 8V6.5a2 2 0 0 1 4 0V8"/></svg></span>
             <div>
-              <h3>Encrypted Chat</h3>
-              <small>Zero-knowledge DMs &amp; rooms</small>
+              <h3>Matrix Chat</h3>
+              <small>Decentralized DMs &amp; rooms</small>
             </div>
           </div>
-          <p>Private end-to-end encrypted messaging with keys saved locally in your browser. Send files and attachments up to 250MB that expire in 48 hours.</p>
-          <span class="app-card-cta">Open Encrypted Chat <span>→</span></span>
+          <p>Decentralized, end-to-end encrypted messaging with channels, direct messages, and real-time push notifications.</p>
+          <span class="app-card-cta">Open Matrix Chat <span>→</span></span>
         </a>
 
         <a href="/public-chat/" class="app-card">
@@ -119,9 +261,165 @@
       </div>
     </section>
 
-    <section class="dashboard-section schedule-zone" id="schedule-panel">
-      <div class="section-title-row"><div><p class="section-label">BELL SCHEDULE</p><h2>Today’s schedule</h2><p id="schedule-note">Times match your selected lunch.</p></div><div class="date-tile"><span id="date-month">SEP</span><strong id="date-day">01</strong><small id="date-year">2026</small></div></div>
-      <div class="schedule-controls"><label>Schedule <select id="schedule-mode" aria-label="Schedule type"><option value="auto">Automatic</option></select></label><label id="period0-label" hidden><input id="include-period0" type="checkbox"> Include optional Period 0</label><span id="source-status" role="status">Checking the official calendar…</span></div><div class="schedule-grid"><div class="timeline" id="timeline"><div class="skeleton tall"></div></div><aside class="day-brief"><div class="brief-heading"><span>DAY INFORMATION</span><b id="brief-lunch">LUNCH —</b></div><div class="brief-stat"><small>Time on campus</small><strong id="day-length">—</strong></div><div class="brief-stat"><small>Class periods</small><strong id="period-count">—</strong></div><div class="brief-stat"><small>Advisory / intervention</small><strong id="pack-placement">—</strong></div><div class="brief-message"><span>LUNCH SETTING</span><p id="brief-tip">Your lunch choice is saved on this device.</p></div><button id="brief-change-lunch" type="button">Change lunch <span>→</span></button></aside></div>
+
+
+    <section class="dashboard-section district-schools-zone" id="schools">
+      <div class="section-title-row">
+        <div>
+          <p class="section-label">ALL RJUHSD CAMPUSES</p>
+          <h2>District High School Bell Schedules</h2>
+          <p>Live countdowns, regular day schedules, collaboration times, and lunch periods for every high school in Roseville Joint Union High School District.</p>
+        </div>
+      </div>
+      <div class="district-schools-grid">
+        <article class="district-school-card current-school" data-school-card="woodcreek">
+          <div class="district-school-head">
+            <img class="district-school-logo" src="/rjuhsd-assets/woodcreek-logo.png" alt="Woodcreek High School logo" width="44" height="44">
+            <div>
+              <h3>Woodcreek High School Bell Schedule</h3>
+              <p class="school-mascot">Timberwolves · Roseville, CA</p>
+            </div>
+          </div>
+          <div class="school-schedule-body">
+            <div class="school-time-badge"><strong>8:30 AM – 3:20 PM</strong><span>Regular Day</span></div>
+            <ul class="school-periods-list">
+              <li><span>Period 1</span><time>8:30 – 9:52 AM</time></li>
+              <li><span>Period 2</span><time>10:00 – 11:22 AM</time></li>
+              <li><span>Lunch 1 / Lunch 2</span><time>11:22 AM / 12:52 PM</time></li>
+              <li><span>Period 3</span><time>12:00 – 1:22 PM</time></li>
+              <li><span>Period 4</span><time>1:30 – 2:52 PM</time></li>
+              <li><span>Pack Advisory</span><time>2:52 – 3:20 PM</time></li>
+            </ul>
+          </div>
+          <div class="school-card-actions">
+            <a href="/?school=woodcreek#schedule-panel" class="primary-button school-switch-btn" data-switch-school="woodcreek">View Woodcreek Schedule <span>→</span></a>
+            <a href="https://woodcreek.rjuhsd.us/about/bell-schedules" target="_blank" rel="noopener" class="outline-link">Official Woodcreek Bells ↗</a>
+          </div>
+        </article>
+
+        <article class="district-school-card" data-school-card="roseville">
+          <div class="district-school-head">
+            <img class="district-school-logo" src="/rjuhsd-assets/roseville-logo.png" alt="Roseville High School logo" width="44" height="44">
+            <div>
+              <h3>Roseville High School Bell Schedule</h3>
+              <p class="school-mascot">Tigers · Roseville, CA</p>
+            </div>
+          </div>
+          <div class="school-schedule-body">
+            <div class="school-time-badge"><strong>8:30 AM – 3:20 PM</strong><span>Regular Day</span></div>
+            <ul class="school-periods-list">
+              <li><span>Period 1</span><time>8:30 – 9:51 AM</time></li>
+              <li><span>Roar Advisory</span><time>9:57 – 10:27 AM</time></li>
+              <li><span>Period 2</span><time>10:33 – 11:56 AM</time></li>
+              <li><span>Lunch 1 / Lunch 2</span><time>11:56 AM / 1:23 PM</time></li>
+              <li><span>Period 3</span><time>12:32 – 1:53 PM</time></li>
+              <li><span>Period 4</span><time>1:59 – 3:20 PM</time></li>
+            </ul>
+          </div>
+          <div class="school-card-actions">
+            <a href="/?school=roseville#schedule-panel" class="primary-button school-switch-btn" data-switch-school="roseville">View Roseville Schedule <span>→</span></a>
+            <a href="https://roseville.rjuhsd.us/about/bell-schedules" target="_blank" rel="noopener" class="outline-link">Official Roseville Bells ↗</a>
+          </div>
+        </article>
+
+        <article class="district-school-card" data-school-card="granitebay">
+          <div class="district-school-head">
+            <img class="district-school-logo" src="/rjuhsd-assets/granitebay-logo.png" alt="Granite Bay High School logo" width="44" height="44">
+            <div>
+              <h3>Granite Bay High School Bell Schedule</h3>
+              <p class="school-mascot">Grizzlies · Granite Bay, CA</p>
+            </div>
+          </div>
+          <div class="school-schedule-body">
+            <div class="school-time-badge"><strong>8:30 AM – 3:20 PM</strong><span>Optional Period 0 at 7:30 AM</span></div>
+            <ul class="school-periods-list">
+              <li><span>Period 0 (Opt)</span><time>7:30 – 8:20 AM</time></li>
+              <li><span>Period 1</span><time>8:30 – 9:58 AM</time></li>
+              <li><span>Period 2</span><time>10:06 – 11:38 AM</time></li>
+              <li><span>Lunch 1 / Lunch 2</span><time>11:38 AM / 1:14 PM</time></li>
+              <li><span>Period 3</span><time>12:16 – 1:44 PM</time></li>
+              <li><span>Period 4</span><time>1:52 – 3:20 PM</time></li>
+            </ul>
+          </div>
+          <div class="school-card-actions">
+            <a href="/?school=granitebay#schedule-panel" class="primary-button school-switch-btn" data-switch-school="granitebay">View Granite Bay Schedule <span>→</span></a>
+            <a href="https://granitebay.rjuhsd.us/about/bell-schedules" target="_blank" rel="noopener" class="outline-link">Official Granite Bay Bells ↗</a>
+          </div>
+        </article>
+
+        <article class="district-school-card" data-school-card="antelope">
+          <div class="district-school-head">
+            <img class="district-school-logo" src="/rjuhsd-assets/antelope-logo.png" alt="Antelope High School logo" width="44" height="44">
+            <div>
+              <h3>Antelope High School Bell Schedule</h3>
+              <p class="school-mascot">Titans · Antelope, CA</p>
+            </div>
+          </div>
+          <div class="school-schedule-body">
+            <div class="school-time-badge"><strong>8:30 AM – 3:20 PM</strong><span>Regular Day</span></div>
+            <ul class="school-periods-list">
+              <li><span>Period 1</span><time>8:30 – 10:00 AM</time></li>
+              <li><span>Period 2</span><time>10:06 – 11:36 AM</time></li>
+              <li><span>Lunch 1 / Lunch 2</span><time>11:36 AM / 1:13 PM</time></li>
+              <li><span>Period 3</span><time>12:12 – 1:43 PM</time></li>
+              <li><span>Period 4</span><time>1:49 – 3:20 PM</time></li>
+            </ul>
+          </div>
+          <div class="school-card-actions">
+            <a href="/?school=antelope#schedule-panel" class="primary-button school-switch-btn" data-switch-school="antelope">View Antelope Schedule <span>→</span></a>
+            <a href="https://antelope.rjuhsd.us/about/bell-schedule" target="_blank" rel="noopener" class="outline-link">Official Antelope Bells ↗</a>
+          </div>
+        </article>
+
+        <article class="district-school-card" data-school-card="westpark">
+          <div class="district-school-head">
+            <img class="district-school-logo" src="/rjuhsd-assets/westpark-logo.png" alt="West Park High School logo" width="44" height="44">
+            <div>
+              <h3>West Park High School Bell Schedule</h3>
+              <p class="school-mascot">Panthers · Roseville, CA</p>
+            </div>
+          </div>
+          <div class="school-schedule-body">
+            <div class="school-time-badge"><strong>8:30 AM – 3:20 PM</strong><span>Optional Period 0 at 7:30 AM</span></div>
+            <ul class="school-periods-list">
+              <li><span>Period 0 (Opt)</span><time>7:30 – 8:25 AM</time></li>
+              <li><span>Period 1</span><time>8:30 – 9:59 AM</time></li>
+              <li><span>Period 2</span><time>10:07 – 11:36 AM</time></li>
+              <li><span>Lunch 1 / Lunch 2</span><time>11:36 AM / 1:14 PM</time></li>
+              <li><span>Period 3</span><time>12:14 – 1:43 PM</time></li>
+              <li><span>Period 4</span><time>1:51 – 3:20 PM</time></li>
+            </ul>
+          </div>
+          <div class="school-card-actions">
+            <a href="/?school=westpark#schedule-panel" class="primary-button school-switch-btn" data-switch-school="westpark">View West Park Schedule <span>→</span></a>
+            <a href="https://westpark.rjuhsd.us/about/bell-schedules" target="_blank" rel="noopener" class="outline-link">Official West Park Bells ↗</a>
+          </div>
+        </article>
+
+        <article class="district-school-card" data-school-card="oakmont">
+          <div class="district-school-head">
+            <img class="district-school-logo" src="/rjuhsd-assets/oakmont-logo.png" alt="Oakmont High School logo" width="44" height="44">
+            <div>
+              <h3>Oakmont High School Bell Schedule</h3>
+              <p class="school-mascot">Vikings · Roseville, CA</p>
+            </div>
+          </div>
+          <div class="school-schedule-body">
+            <div class="school-time-badge"><strong>8:30 AM – 3:20 PM</strong><span>Regular Day</span></div>
+            <ul class="school-periods-list">
+              <li><span>Period 1</span><time>8:30 – 10:00 AM</time></li>
+              <li><span>Period 2</span><time>10:06 – 11:38 AM</time></li>
+              <li><span>Lunch 1 / Lunch 2</span><time>11:38 AM / 1:14 PM</time></li>
+              <li><span>Period 3</span><time>12:14 – 1:44 PM</time></li>
+              <li><span>Period 4</span><time>1:50 – 3:20 PM</time></li>
+            </ul>
+          </div>
+          <div class="school-card-actions">
+            <a href="/?school=oakmont#schedule-panel" class="primary-button school-switch-btn" data-switch-school="oakmont">View Oakmont Schedule <span>→</span></a>
+            <a href="https://oakmont.rjuhsd.us/about/bell-schedules" target="_blank" rel="noopener" class="outline-link">Official Oakmont Bells ↗</a>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="dashboard-section week-zone" id="week"><div class="section-title-row compact"><div><p class="section-label">CALENDAR</p><h2>This week</h2></div><span class="timezone-chip">PACIFIC TIME</span></div><div class="week-grid" id="week-grid"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div></section>
@@ -129,13 +427,68 @@
     <section class="dashboard-section events-zone" id="events"><div class="section-title-row compact"><div><p class="section-label">OFFICIAL CALENDAR</p><h2>Upcoming events</h2><p>See the month and the next Woodcreek dates together.</p></div><a class="outline-link" href="https://woodcreek.rjuhsd.us/calendar" target="_blank" rel="noopener">Full calendar ↗</a></div><div class="woodcreek-calendar"><div class="calendar-main"><div class="calendar-toolbar"><div><small>WOODCREEK HIGH SCHOOL</small><h3 id="calendar-title">September 2026</h3></div><div class="calendar-nav"><button id="calendar-prev" type="button" aria-label="Previous month">‹</button><button id="calendar-today" type="button">Today</button><button id="calendar-next" type="button" aria-label="Next month">›</button></div></div><div class="calendar-weekdays" aria-hidden="true"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div class="calendar-days" id="calendar-days" aria-label="Month calendar"></div></div><aside class="calendar-agenda"><div class="agenda-heading"><span>UPCOMING AT WOODCREEK</span><b id="calendar-source"><i></i> OFFICIAL FEED</b></div><ol id="event-list"><li class="agenda-loading">Loading calendar…</li></ol><a href="https://woodcreek.rjuhsd.us/calendar" target="_blank" rel="noopener">View all school events <span>↗</span></a></aside></div></section>
 
     <section class="dashboard-section tools-zone" id="tools"><div class="tools-heading"><div><p class="section-label">SCHOOL LINKS &amp; APPS</p><h2>Student tools</h2><p>Frequently used school websites and campus tools.</p></div></div><div class="tool-grid">
-      <a href="/encrypt/"><i class="tool-logo tool-logo-encrypt" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/><path d="M10 8V6.5a2 2 0 0 1 4 0V8"/></svg></i><span><strong>Encrypted Chat</strong><small>Private E2E messenger</small></span><b>↗</b></a>
+      <a href="/matrix/"><i class="tool-logo tool-logo-encrypt" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/><path d="M10 8V6.5a2 2 0 0 1 4 0V8"/></svg></i><span><strong>Matrix Chat</strong><small>Decentralized E2E messenger</small></span><b>↗</b></a>
       <a href="/public-chat/"><i class="tool-logo tool-logo-public" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8m-8 4h5"/></svg></i><span><strong>Public Chat</strong><small>District chat room</small></span><b>↗</b></a>
       <a href="/preferences/"><i class="tool-logo tool-logo-theme" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></i><span><strong>Themes &amp; Wallpapers</strong><small>Dashboard preferences</small></span><b>↗</b></a>
       <a href="https://rjuhsd.instructure.com/" target="_blank" rel="noopener"><i class="tool-logo tool-logo-canvas" aria-hidden="true"><svg viewBox="0 0 32 32" width="24" height="24"><circle cx="16" cy="4.5" r="2.8" fill="#e02424"/><circle cx="24.1" cy="7.9" r="2.8" fill="#e02424"/><circle cx="27.5" cy="16" r="2.8" fill="#e02424"/><circle cx="24.1" cy="24.1" r="2.8" fill="#e02424"/><circle cx="16" cy="27.5" r="2.8" fill="#e02424"/><circle cx="7.9" cy="24.1" r="2.8" fill="#e02424"/><circle cx="4.5" cy="16" r="2.8" fill="#e02424"/><circle cx="7.9" cy="7.9" r="2.8" fill="#e02424"/></svg></i><span><strong>Canvas</strong><small>Classes and assignments</small></span><b>↗</b></a><a href="https://rosevillejuhsd.aeries.net/student/LoginParent.aspx" target="_blank" rel="noopener"><i class="tool-logo tool-logo-aeries" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#0072ce" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/><rect x="6" y="13" width="3" height="5" rx=".5" fill="#0072ce"/><rect x="11" y="9" width="3" height="9" rx=".5" fill="#0072ce"/><rect x="16" y="6" width="3" height="12" rx=".5" fill="#0072ce"/></svg></i><span><strong>Aeries</strong><small>Grades and attendance</small></span><b>↗</b></a><a href="https://mail.google.com/" target="_blank" rel="noopener"><i class="tool-logo tool-logo-mail" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none"><rect width="20" height="16" x="2" y="4" rx="2" stroke="#ea4335" stroke-width="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" stroke="#ea4335" stroke-width="2" stroke-linecap="round"/><path d="M2 7v11a2 2 0 0 0 2 2h2V10l-4-3Z" fill="#4285f4"/><path d="M22 7v11a2 2 0 0 1-2 2h-2V10l4-3Z" fill="#34a853"/></svg></i><span><strong>School email</strong><small>District inbox</small></span><b>↗</b></a><a href="https://drive.google.com/" target="_blank" rel="noopener"><i class="tool-logo tool-logo-drive" aria-hidden="true"><svg viewBox="0 0 87.3 78" width="22" height="20"><path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/><path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/><path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.5l5.85 10.15z" fill="#ea4335"/><path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.25z" fill="#00832d"/><path d="m59.8 53h27.5c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8z" fill="#ffba00"/><path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.1 27.9h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/></svg></i><span><strong>Google Drive</strong><small>Files and shared work</small></span><b>↗</b></a><a href="https://woodcreek.rjuhsd.us/" target="_blank" rel="noopener" data-school-link><i class="tool-logo tool-logo-school" aria-hidden="true"><img src="/rjuhsd-assets/woodcreek.png" alt="Woodcreek High School" width="28" height="28"></i><span><strong>Woodcreek website</strong><small>School news and resources</small></span><b>↗</b></a><a href="https://www.google.com/maps/search/?api=1&query=Woodcreek+High+School+Roseville" target="_blank" rel="noopener"><i class="tool-logo tool-logo-map" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#ea4335" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3" fill="#ea4335"/></svg></i><span><strong>Campus map</strong><small>Directions to Woodcreek</small></span><b>↗</b></a>
     </div></section>
+
+    <section class="dashboard-section faq-zone" id="faq">
+      <div class="section-title-row compact">
+        <div>
+          <p class="section-label">BELL SCHEDULE FAQ</p>
+          <h2>Frequently Asked Questions</h2>
+          <p>Answers to common questions about Roseville Joint Union High School District bell schedules.</p>
+        </div>
+      </div>
+      <div class="faq-list">
+        <details class="faq-item" open>
+          <summary><h3>What are the RJUHSD high school bell schedules?</h3></summary>
+          <p>All six comprehensive high schools in the Roseville Joint Union High School District (Woodcreek, Roseville, Granite Bay, Antelope, West Park, and Oakmont) follow a 4-period block schedule. Regular school days start at 8:30 AM and conclude at 3:20 PM, featuring Lunch 1 and Lunch 2 divisions along with student intervention periods like Pack (Woodcreek) and Roar (Roseville).</p>
+        </details>
+        <details class="faq-item">
+          <summary><h3>What time does Woodcreek High School start and dismiss?</h3></summary>
+          <p>Woodcreek High School starts at 8:30 AM (Period 1) and dismisses at 3:20 PM after Pack. Daily blocks include Period 1 (8:30–9:52 AM), Period 2 (10:00–11:22 AM), Lunch 1 (11:22–11:52 AM) or Lunch 2 (12:52–1:22 PM), Period 3 (12:00–1:22 PM or 11:30 AM–12:52 PM), Period 4 (1:30–2:52 PM), and Pack (2:52–3:20 PM).</p>
+        </details>
+        <details class="faq-item">
+          <summary><h3>What is the Roseville High School bell schedule?</h3></summary>
+          <p>Roseville High School regular days run from 8:30 AM to 3:20 PM. The day features Period 1 (8:30–9:51 AM), Roar period (9:57–10:27 AM), Period 2 (10:33–11:56 AM), Lunch 1 (11:56 AM–12:26 PM) or Lunch 2 (1:23–1:53 PM), Period 3 (12:32–1:53 PM or 12:02–1:23 PM), and Period 4 (1:59–3:20 PM).</p>
+        </details>
+        <details class="faq-item">
+          <summary><h3>What is the Granite Bay High School bell schedule?</h3></summary>
+          <p>Granite Bay High School regular days run from 8:30 AM to 3:20 PM, with an optional Period 0 from 7:30–8:20 AM. Core periods are Period 1 (8:30–9:58 AM), Period 2 (10:06–11:38 AM), Lunch 1 (11:38 AM–12:08 PM) or Lunch 2 (1:14–1:44 PM), Period 3 (12:16–1:44 PM or 11:46 AM–1:14 PM), and Period 4 (1:52–3:20 PM).</p>
+        </details>
+        <details class="faq-item">
+          <summary><h3>What is the Antelope High School bell schedule?</h3></summary>
+          <p>Antelope High School regular days begin at 8:30 AM and dismiss at 3:20 PM. The schedule is structured into Period 1 (8:30–10:00 AM), Period 2 (10:06–11:36 AM), Lunch 1 (11:36 AM–12:06 PM) or Lunch 2 (1:13–1:43 PM), Period 3 (12:12–1:43 PM or 11:42 AM–1:13 PM), and Period 4 (1:49–3:20 PM).</p>
+        </details>
+        <details class="faq-item">
+          <summary><h3>What is the West Park High School bell schedule?</h3></summary>
+          <p>West Park High School regular days run from 8:30 AM to 3:20 PM, with an optional early Period 0 from 7:30–8:25 AM. Daily blocks are Period 1 (8:30–9:59 AM), Period 2 (10:07–11:36 AM), Lunch 1 (11:36 AM–12:06 PM) or Lunch 2 (1:14–1:44 PM), Period 3 (12:14–1:43 PM or 11:44 AM–1:14 PM), and Period 4 (1:51–3:20 PM).</p>
+        </details>
+        <details class="faq-item">
+          <summary><h3>What is the Oakmont High School bell schedule?</h3></summary>
+          <p>Oakmont High School regular days start at 8:30 AM and conclude at 3:20 PM. The daily lineup consists of Period 1 (8:30–10:00 AM), Period 2 (10:06–11:38 AM), Lunch 1 (11:38 AM–12:08 PM) or Lunch 2 (1:14–1:44 PM), Period 3 (12:14–1:44 PM or 11:44 AM–1:14 PM), and Period 4 (1:50–3:20 PM).</p>
+        </details>
+        <details class="faq-item">
+          <summary><h3>How do Lunch 1 and Lunch 2 work at RJUHSD high schools?</h3></summary>
+          <p>RJUHSD high schools use a two-lunch schedule based on a student’s 3rd-period teacher or building. Lunch 1 students eat right after Period 2, then attend Period 3. Lunch 2 students attend Period 3 first, then eat lunch. Select your lunch in the hub topbar to customize countdown timers, period clocks, and timelines automatically.</p>
+        </details>
+      </div>
+    </section>
   </main>
-  <footer><div class="footer-bottom"><span>Unofficial student schedule · Powered by mitch.pro</span><a id="official-bells" href="https://woodcreek.rjuhsd.us/about/bell-schedule" target="_blank" rel="noopener">Official bell schedules ↗</a><span>Regular weekly times · Check school announcements for special days</span></div></footer>
+  <footer>
+    <div class="footer-schools">
+      <strong>RJUHSD Bell Schedules:</strong>
+      <a href="/?school=woodcreek" data-switch-school="woodcreek">Woodcreek High School</a>
+      <a href="/?school=roseville" data-switch-school="roseville">Roseville High School</a>
+      <a href="/?school=granitebay" data-switch-school="granitebay">Granite Bay High School</a>
+      <a href="/?school=antelope" data-switch-school="antelope">Antelope High School</a>
+      <a href="/?school=westpark" data-switch-school="westpark">West Park High School</a>
+      <a href="/?school=oakmont" data-switch-school="oakmont">Oakmont High School</a>
+    </div>
+    <div class="footer-bottom"><span>Unofficial student schedule · Powered by mitch.pro</span><a id="official-bells" href="https://woodcreek.rjuhsd.us/about/bell-schedule" target="_blank" rel="noopener">Official bell schedules ↗</a><span>Regular weekly times · Check school announcements for special days</span></div>
+  </footer>
 
   <nav class="mobile-nav-dock" aria-label="Mobile Navigation Dock">
     <a href="#today" class="dock-item active">
@@ -146,9 +499,9 @@
       <span class="dock-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="3" rx="1.5"/><rect width="7" height="7" x="14" y="14" rx="1.5"/><rect width="7" height="7" x="3" y="14" rx="1.5"/></svg></span>
       <span>Apps</span>
     </a>
-    <a href="/encrypt/" class="dock-item highlight-dock">
+    <a href="/matrix/" class="dock-item highlight-dock">
       <span class="dock-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><rect x="9" y="8" width="6" height="5" rx="1"/></svg></span>
-      <span>E2E Chat</span>
+      <span>Matrix</span>
     </a>
     <a href="/public-chat/" class="dock-item">
       <span class="dock-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8m-8 4h5"/></svg></span>

@@ -1,0 +1,517 @@
+/* Shared school surfaces and responsive layout. */
+* { box-sizing: border-box; }
+html { scroll-padding-top: 88px; }
+body.school-hub { background: transparent !important; }
+.school-hub .js-signin-link { display: none !important; }
+.school-hub.auth-guest .js-signin-link:not([hidden]) { display: inline-flex !important; }
+
+.announcement-bar {
+  position: relative;
+  z-index: 52;
+  border: 0;
+  background: color-mix(in srgb, var(--school-primary, #500000) 82%, #050505) !important;
+}
+.announcement-inner { max-width: 1240px; margin: auto; }
+.announcement-inner #announcement-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: 66px;
+  padding: 7px max(18px, calc((100vw - 1240px) / 2));
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card-solid) 84%, transparent) !important;
+  box-shadow: 0 12px 35px rgba(0,0,0,.12);
+  backdrop-filter: blur(18px) saturate(125%);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+}
+.brand-copy strong { font-family: var(--sans); font-size: 14px; letter-spacing: -.01em; }
+.brand-copy small { font-family: var(--sans); font-size: 9px; font-style: normal; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.site-header nav { gap: 4px; }
+.site-header nav a {
+  height: 36px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 10px;
+  letter-spacing: .055em;
+}
+.site-header nav a:hover { border: 0; background: var(--wine-soft); }
+.site-header nav a[href="#apps"],
+.site-header nav a[href="#events"],
+.site-header nav a[href="#faq"],
+.site-header nav a[href="#tools"],
+.site-header nav a[href="/public-chat/"] { display: none; }
+.header-actions { gap: 7px; }
+.header-signin-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid color-mix(in srgb, var(--wine) 45%, var(--line));
+  border-radius: 10px;
+  background: var(--wine);
+  color: #fff !important;
+  font: 700 11px/1 var(--sans);
+  letter-spacing: .02em;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,.14);
+  transition: transform .15s ease, background .15s ease, box-shadow .15s ease;
+}
+.header-signin-btn:hover {
+  background: color-mix(in srgb, var(--wine) 82%, #000);
+  color: #fff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.22);
+}
+.header-signin-btn:active {
+  transform: translateY(0);
+}
+.school-choice { height: 36px; border-radius: 10px; }
+.school-choice select { height: 36px; min-width: 132px; border-radius: 10px; }
+.lunch-status,.icon-button { min-height: 36px; border-radius: 10px; }
+.icon-button { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); }
+.header-chat-btn { display: none !important; }
+
+main#main { display: flex; flex-direction: column; gap: 0; }
+.hero { order: 0; }
+.snapshot { order: 1; }
+.schedule-zone { order: 2; }
+.week-zone { order: 3; }
+.district-schools-zone { order: 4; }
+.apps-zone { order: 5; }
+.events-zone { order: 6; }
+.tools-zone { order: 7; }
+.faq-zone { order: 8; }
+
+.hero {
+  width: min(1240px, calc(100% - 28px));
+  min-height: 510px;
+  margin: 18px auto 0;
+  padding: clamp(24px, 4vw, 52px);
+  grid-template-columns: minmax(390px, .95fr) minmax(340px, .75fr);
+  gap: clamp(28px, 5vw, 72px);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 28px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--school-primary, #500000) 74%, rgba(5,8,12,.76)), rgba(8,10,14,.76)) !important;
+  box-shadow: 0 28px 80px rgba(0,0,0,.28);
+  backdrop-filter: blur(7px) saturate(120%);
+  -webkit-backdrop-filter: blur(7px) saturate(120%);
+}
+.hero-graphic { right: 1%; top: 8%; opacity: .07; }
+.hero-content { order: 2; text-align: left; }
+.hero-date-panel { width: fit-content; margin: 0 0 22px; border-radius: 15px; background: rgba(255,255,255,.08); }
+.hero-overline { margin-top: 0; font-family: var(--sans); }
+.hero h1 { margin: 12px 0 14px; font-family: var(--sans); font-size: clamp(40px,5vw,63px); line-height: .98; letter-spacing: -.055em; }
+.hero h1 em { font-family: var(--sans); font-style: normal; font-weight: 500; opacity: .76; }
+.hero-summary { margin: 0; font-size: 14px; }
+.hero-actions { justify-content: flex-start; }
+.hero-actions .hero-chat-btn,.hero-actions a[href="/public-chat/"] { display: none !important; }
+.hero-actions .primary-button,.hero-actions .secondary-button {
+  min-height: 42px;
+  border-radius: 11px;
+  font-size: 10px;
+  letter-spacing: .04em;
+}
+
+.live-card {
+  order: 1;
+  overflow: hidden;
+  min-height: 420px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 24px;
+  background: rgba(3,5,8,.38) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.09), 0 24px 60px rgba(0,0,0,.26);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.live-card-top { height: 50px; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.12); }
+.live-card-top>span { display: flex; }
+.live-card-body { padding: 22px 30px 25px; }
+.live-card h2 { margin: 6px 0 3px; font: 750 22px/1.2 var(--sans); letter-spacing: -.02em; text-transform: none; }
+.countdown-dial { width: 196px; height: 196px; margin: 13px auto 10px; }
+.countdown-dial circle { stroke-width: 4; }
+.countdown-center .countdown { font: 750 44px/1 var(--sans); letter-spacing: -.045em; }
+.countdown-center .countdown-copy { font-size: 9px; }
+.dial-value { stroke: color-mix(in srgb, var(--school-primary, #fff) 30%, #fff); filter: drop-shadow(0 0 8px rgba(255,255,255,.35)); }
+.countdown-details { border-radius: 12px; background: rgba(255,255,255,.055); }
+.live-next { align-items: center; min-height: 56px; background: rgba(0,0,0,.18); }
+
+.snapshot {
+  width: min(1180px, calc(100% - 40px));
+  margin: 12px auto 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card-solid) 86%, transparent) !important;
+  box-shadow: 0 16px 45px rgba(0,0,0,.11);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.snapshot article { min-height: 78px; }
+.snapshot-icon { border-radius: 10px; }
+
+.dashboard-section {
+  width: min(1180px, calc(100% - 40px));
+  max-width: none;
+  margin-top: 14px;
+  padding: clamp(24px, 3vw, 38px);
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--card-solid) 88%, transparent) !important;
+  box-shadow: 0 18px 52px rgba(0,0,0,.12);
+  backdrop-filter: blur(18px) saturate(115%);
+  -webkit-backdrop-filter: blur(18px) saturate(115%);
+}
+.section-title-row { margin-bottom: 24px; padding-bottom: 15px; }
+.section-title-row h2,.tools-heading h2 { font-family: var(--sans); font-weight: 750; letter-spacing: -.035em; }
+.schedule-zone { border-top: 3px solid var(--wine); }
+.timeline-row,.day-brief,.day-card,.district-school-card,.app-card,.event-card,.menu-board,.nutrition-board { border-radius: 14px; }
+.apps-grid { grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+.app-card { min-height: 150px; padding: 18px; }
+.app-card>p { display: none; }
+.app-card-cta { margin-top: auto; }
+.tool-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
+
+@media (max-width: 950px) {
+  .site-header nav { display: none; }
+  .hero { grid-template-columns: minmax(330px,1fr) minmax(270px,.8fr); gap: 24px; }
+  .header-signin-btn { font-size: 0 !important; padding: 0 10px; height: 34px; min-height: 34px; max-width: none; }
+  .header-signin-btn::after { content: 'Sign in'; font-size: 11px; font-weight: 700; letter-spacing: .02em; color: #fff; }
+  .apps-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+}
+
+@media (max-width: 680px) {
+  html { scroll-padding-top: 65px; }
+  .announcement-bar { display: none; }
+  .site-header { width: 100%; height: 58px; padding: 6px 10px; }
+  .brand-copy strong { max-width: 115px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand-copy small { display: none; }
+  .school-choice select { min-width: 0; max-width: 116px; }
+  .lunch-status { display: none; }
+  .header-signin-btn { width: auto; min-width: 56px; height: 32px; min-height: 32px; padding: 0 9px; font-size: 0 !important; }
+  .header-signin-btn::after { content: 'Sign in'; font-size: 10.5px; font-weight: 700; color: #fff; }
+  .hero {
+    width: calc(100% - 16px);
+    min-height: 0;
+    display: flex;
+    margin-top: 8px;
+    padding: 12px;
+    border-radius: 20px;
+  }
+  .live-card { order: 0; width: 100%; min-height: 0; margin: 0; border: 1px solid rgba(255,255,255,.2); border-radius: 16px; }
+  .live-card-top { height: 42px; padding-inline: 18px; }
+  .live-card-body { padding: 17px 16px 18px; }
+  .countdown-dial { width: 174px; height: 174px; }
+  .countdown-center .countdown { font-size: 40px; }
+  .hero-content { order: 1; margin: 0; padding: 22px 8px 12px; text-align: left; }
+  .hero-date-panel { display: none; }
+  .hero-overline { margin: 0; }
+  .hero h1 { margin: 8px 0; font-size: 34px; letter-spacing: -.045em; }
+  .hero-summary { font-size: 12px; }
+  .hero-actions { display: flex; flex-direction: row; justify-content: flex-start; }
+  .hero-actions .primary-button,.hero-actions .secondary-button { width: auto; padding-inline: 12px; }
+  .snapshot { width: calc(100% - 16px); grid-template-columns: 1fr 1fr; border-radius: 15px; }
+  .snapshot article { min-height: 68px; padding: 11px; }
+  .snapshot-icon { display: none; }
+  .dashboard-section { width: calc(100% - 16px); margin-top: 8px; padding: 20px 16px; border-radius: 16px; }
+  .schedule-zone { order: 2; }
+  .section-title-row { margin-bottom: 18px; }
+  .section-title-row h2,.tools-heading h2 { font-size: 23px; }
+  .schedule-controls { align-items: stretch; }
+  .schedule-controls label { width: 100%; }
+  .schedule-controls select { width: 100%; }
+  .apps-grid { grid-template-columns: 1fr; }
+  .app-card { min-height: 120px; }
+  .district-schools-grid { grid-template-columns: 1fr; }
+  .tool-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* Compact landscape dashboard. */
+body.school-hub { --sans: 'Segoe UI', system-ui, sans-serif; --serif: var(--sans); }
+.school-hub .announcement-bar { display:none; }
+.school-hub .site-header { position:relative; top:auto; width:min(1180px,calc(100% - 40px)); height:auto; min-height:70px; margin:0 auto; padding:12px 0; background:transparent!important; border:0; box-shadow:none; backdrop-filter:none; }
+.school-hub .brand-copy strong { font-size:14px; }
+.school-hub .site-header nav { margin-left:auto; margin-right:16px; }
+.school-hub .site-header nav a { font-size:12px; text-transform:none; letter-spacing:0; color:var(--ink); }
+.school-hub .site-header nav a[href='#today'] { background:var(--wine-soft); color:var(--wine); }
+.school-hub .site-header nav a[href='/preferences/'] { display:inline-flex; }
+.school-hub .school-choice { border:0; font-size:0; }
+.school-hub .school-choice select { min-width:120px; max-width:150px; font-size:12px; background:var(--card); color:var(--ink); border:1px solid var(--line); }
+.school-hub .header-actions .lunch-status { display:none!important; }
+.school-hub main#main { width:min(1180px,calc(100% - 40px)); margin:auto; }
+.school-hub .hero {
+  width: 100%;
+  min-height: 320px;
+  margin: 8px 0 0;
+  padding: 28px;
+  grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr);
+  gap: 30px;
+  border-radius: 22px;
+  border: 1px solid var(--line) !important;
+  border-top: 4px solid var(--school-primary, #500000) !important;
+  background: color-mix(in srgb, var(--card-solid) 88%, transparent) !important;
+  box-shadow: 0 16px 45px rgba(0, 0, 0, .07) !important;
+  backdrop-filter: blur(18px) saturate(125%) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(125%) !important;
+  color: var(--ink) !important;
+  transition: background .22s ease, border-color .22s ease, box-shadow .22s ease, color .22s ease !important;
+}
+.school-hub .hero-graphic { display: none; }
+.school-hub .hero-content { order: 0; padding: 0; color: inherit !important; }
+.school-hub .hero-date-panel { display: flex; align-items: center; gap: 9px; width: auto; border: 1px solid var(--line) !important; border-radius: 12px !important; padding: 4px 10px !important; margin: 0 0 24px; background: var(--wine-soft) !important; box-shadow: none; color: var(--wine) !important; transition: all .2s ease; }
+.school-hub .hero-weekday { border: 0; padding: 0; font-size: 10px; letter-spacing: .12em; color: var(--wine) !important; font-weight: 700; }
+.school-hub .hero-date-main { padding: 0; gap: 5px; color: var(--ink) !important; }
+.school-hub .hero-date-main>strong { font: 600 12px/1 var(--sans); letter-spacing: 0; color: var(--ink) !important; }
+.school-hub .hero-date-main>span { min-width: 0; padding: 0; border: 0; color: var(--muted) !important; }
+.school-hub .hero-date-main b { font: 600 12px/1 var(--sans); color: var(--ink) !important; }
+.school-hub .hero-date-main small, .school-hub .hero-overline { display: none; }
+.school-hub .hero h1 { font-size: clamp(30px, 3.6vw, 45px); line-height: 1.05; letter-spacing: -.055em; margin: 0 0 12px; color: var(--ink) !important; }
+.school-hub .hero h1 em { font-size: .72em; opacity: 1; color: var(--wine) !important; }
+.school-hub .hero-summary { font-size: 12px; line-height: 1.6; color: var(--muted) !important; }
+.school-hub .hero-actions { gap: 8px; margin-top: 20px; }
+.school-hub .hero-actions .primary-button { min-height: 38px; padding: 0 14px; text-transform: none; font-size: 11px; letter-spacing: 0; background: var(--school-primary, #500000) !important; color: #fff !important; border-color: var(--school-primary, #500000) !important; }
+.school-hub .hero-actions .secondary-button { min-height: 38px; padding: 0 14px; text-transform: none; font-size: 11px; letter-spacing: 0; background: var(--card) !important; color: var(--ink) !important; border: 1px solid var(--line) !important; transition: all .15s ease; }
+.school-hub .hero-actions .secondary-button:hover { background: var(--wine-soft) !important; color: var(--wine) !important; border-color: var(--wine) !important; }
+.school-hub .live-card { min-height: 0; width: 100%; border: 0; border-left: 1px solid var(--line) !important; border-radius: 0; padding-left: 28px; background: transparent !important; box-shadow: none; backdrop-filter: none; color: var(--ink) !important; transition: border-color .2s ease; }
+.school-hub .live-card-top { padding: 0; height: 28px; border: 0; }
+.school-hub .live-card-top>span b { color: var(--wine) !important; }
+.school-hub .live-card-top>time { font-size: 11px; color: var(--muted) !important; }
+.school-hub .live-card-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; text-align: left; padding: 16px 0 12px; color: var(--ink) !important; }
+.school-hub .live-card-body>p:first-of-type { grid-column: 1; font-size: 9px; margin: 0; color: var(--wine) !important; font-weight: 700; letter-spacing: .08em; }
+.school-hub .period-badge { border: 1px solid var(--line) !important; background: var(--wine-soft) !important; color: var(--wine) !important; }
+.school-hub .live-card h2 { grid-column: 1; margin: 6px 0; font-size: 21px; color: var(--ink) !important; }
+.school-hub .period-range { grid-column: 1; font-size: 11px; color: var(--muted) !important; }
+.school-hub .countdown-dial { grid-column: 1/-1; width: 100%; height: auto; min-height: 94px; margin: 12px 0; justify-items: start; }
+.school-hub .countdown-dial>svg { display: none; }
+.school-hub .countdown-center { justify-items: start; }
+.school-hub .countdown-center .countdown { font-size: clamp(56px, 6.8vw, 88px); font-weight: 600; letter-spacing: -.065em; line-height: 1; color: var(--ink) !important; }
+.school-hub .countdown-center .countdown-copy { max-width: none; font-size: 10px; text-transform: none; letter-spacing: .02em; color: var(--muted) !important; }
+.school-hub .countdown-details { grid-column: 2; grid-row: 1/4; display: flex !important; align-items: center; margin: 0; padding-left: 18px; border: 0; border-left: 1px solid var(--line) !important; border-radius: 0; background: none; }
+.school-hub .countdown-details>span { border: 0; padding: 0; }
+.school-hub .countdown-details>span:not(:first-child) { display: none; }
+.school-hub .countdown-details small { color: var(--muted) !important; }
+.school-hub .countdown-details strong { font-size: 16px; margin-top: 7px; color: var(--ink) !important; }
+.school-hub .live-card-body>.progress { grid-column: 1/-1; width: 100%; max-width: none; height: 5px; background: var(--line) !important; }
+.school-hub .progress span { background: var(--wine) !important; }
+.school-hub .live-next { min-height: 34px; padding: 4px 0 0; justify-content: flex-start; gap: 12px; background: none; }
+.school-hub .live-next span { color: var(--muted) !important; }
+.school-hub .live-next strong { color: var(--ink) !important; }
+.school-hub .live-next time { margin-left: auto; color: var(--wine) !important; }
+
+/* Dark mode top card (hero HUD): rich dark glass with illuminated dials and white headings */
+body.dark .school-hub .hero {
+  border: 1px solid rgba(255, 255, 255, .16) !important;
+  border-top: 4px solid var(--school-primary, #500000) !important;
+  background: linear-gradient(110deg, color-mix(in srgb, var(--school-primary, #500000) 28%, rgba(13, 20, 24, .88)), rgba(13, 20, 24, .62)) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .hero-content { color: #fff !important; }
+body.dark .school-hub .hero-date-panel {
+  border-color: rgba(255, 255, 255, .16) !important;
+  background: rgba(255, 255, 255, .08) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .hero-weekday { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .hero-date-main { color: #fff !important; }
+body.dark .school-hub .hero-date-main>strong,
+body.dark .school-hub .hero-date-main b { color: #fff !important; }
+body.dark .school-hub .hero-date-main>span { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .hero h1 { color: #fff !important; }
+body.dark .school-hub .hero h1 em { color: rgba(255, 255, 255, .85) !important; }
+body.dark .school-hub .hero-summary { color: rgba(255, 255, 255, .82) !important; }
+body.dark .school-hub .hero-actions .secondary-button {
+  background: rgba(255, 255, 255, .12) !important;
+  border-color: rgba(255, 255, 255, .24) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .hero-actions .secondary-button:hover {
+  background: rgba(255, 255, 255, .22) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .live-card {
+  border-left-color: rgba(255, 255, 255, .18) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .live-card-top>span b { color: #fff !important; }
+body.dark .school-hub .live-card-top>time { color: rgba(255, 255, 255, .85) !important; }
+body.dark .school-hub .live-card-body { color: #fff !important; }
+body.dark .school-hub .live-card-body>p:first-of-type { color: rgba(255, 255, 255, .75) !important; }
+body.dark .school-hub .period-badge {
+  border-color: rgba(255, 255, 255, .25) !important;
+  background: rgba(255, 255, 255, .1) !important;
+  color: #fff !important;
+}
+body.dark .school-hub .live-card h2 { color: #fff !important; }
+body.dark .school-hub .period-range { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .countdown-center .countdown { color: #fff !important; }
+body.dark .school-hub .countdown-center .countdown-copy { color: rgba(255, 255, 255, .8) !important; }
+body.dark .school-hub .countdown-details { border-left-color: rgba(255, 255, 255, .15) !important; }
+body.dark .school-hub .countdown-details small { color: rgba(255, 255, 255, .7) !important; }
+body.dark .school-hub .countdown-details strong { color: #fff !important; }
+body.dark .school-hub .live-card-body>.progress { background: rgba(255, 255, 255, .18) !important; }
+body.dark .school-hub .progress span { background: #d2e1d6 !important; }
+body.dark .school-hub .live-next span { color: rgba(255, 255, 255, .7) !important; }
+body.dark .school-hub .live-next strong { color: #fff !important; }
+body.dark .school-hub .live-next time { color: rgba(255, 255, 255, .85) !important; }
+.school-hub .snapshot { width:100%; margin:12px 0 0; border-radius:14px; box-shadow:none; }
+.school-hub .snapshot article { min-height:65px; padding:12px 20px; }
+.school-hub .snapshot-icon { display:none; }
+.school-hub .snapshot strong { font-size:14px; }
+.school-hub .dashboard-section { width:100%; padding:24px; border-radius:16px; box-shadow:0 8px 26px #00000008; }
+.school-hub .section-label { font-size:9px; letter-spacing:.1em; }
+.school-hub .section-title-row h2,.school-hub .tools-heading h2 { font-size:24px; letter-spacing:-.035em; }
+.school-hub .section-title-row>div>p:last-child { font-size:12px; }
+.school-hub .schedule-grid { grid-template-columns:minmax(0,1fr) 240px; gap:28px; }
+.school-hub .day-brief { align-self:start; }
+.school-hub .timeline-row { min-height:58px; }
+.school-hub .date-tile { display:none; }
+.school-hub .day-card { min-height:115px; padding:14px; }
+.school-hub .day-card .day-date { margin-top:9px; }
+.school-hub .district-schools-grid { grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:0; }
+.school-hub .district-school-card { padding:16px; box-shadow:none; border-radius:12px; }
+.school-hub .district-school-card.current-school::before { display:none; }
+.school-hub .district-school-card p { display:none; }
+.school-hub .district-school-card h3 { font-size:15px; }
+.school-hub .district-school-card a { min-height:36px; }
+.school-hub .district-schools-zone .section-title-row p:last-child,.school-hub .apps-zone .section-title-row p:last-child { display:none; }
+.school-hub .app-card { min-height:105px; padding:14px; box-shadow:none; }
+.school-hub .app-card-badge,.school-hub .app-card-head small { display:none; }
+.school-hub .app-card-head h3 { font-size:14px; }
+.school-hub .tool-grid a { min-height:65px; border-radius:10px; background:var(--wine-soft); color:var(--ink); border-color:var(--line); }
+.school-hub .tool-grid small { color:var(--muted); }
+.school-hub footer { width:min(1180px,calc(100% - 40px)); margin:20px auto 0; padding:24px 0 90px; border-top:1px solid var(--line); background:transparent; }
+.school-hub .weather-widget {
+  position: fixed !important;
+  right: 20px !important;
+  bottom: 20px !important;
+  left: auto !important;
+  z-index: 90;
+  width: 260px !important;
+  max-width: calc(100vw - 28px);
+  overflow: hidden;
+  border: 1px solid var(--line) !important;
+  border-top: 3px solid var(--wine) !important;
+  border-radius: 16px !important;
+  background: color-mix(in srgb, var(--card) 92%, var(--paper)) !important;
+  backdrop-filter: blur(20px) saturate(130%) !important;
+  -webkit-backdrop-filter: blur(20px) saturate(130%) !important;
+  color: var(--ink) !important;
+  box-shadow: 0 16px 45px rgba(0,0,0,.2) !important;
+  opacity: 1 !important;
+  transition: width .22s cubic-bezier(0.2,0,0,1), box-shadow .2s ease, border-radius .2s ease !important;
+}
+.school-hub .weather-widget.expanded {
+  width: min(340px, calc(100vw - 28px)) !important;
+  box-shadow: 0 22px 60px rgba(0,0,0,.3) !important;
+}
+.school-hub .weather-summary {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 0 !important;
+  border-radius: 16px;
+  background: transparent !important;
+  color: var(--ink) !important;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+.school-hub .weather-summary:hover {
+  background: color-mix(in srgb, var(--card) 85%, var(--wine-soft)) !important;
+}
+.school-hub .weather-symbol {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px !important;
+  border: 1px solid var(--line) !important;
+  background: var(--wine-soft) !important;
+  color: var(--wine) !important;
+  font-size: 18px;
+}
+.school-hub .weather-place small { color: var(--wine); font-size: 7.5px; font-weight: 700; letter-spacing: .12em; }
+.school-hub .weather-place strong { font: 700 14px/1.2 var(--sans); color: var(--ink); }
+.school-hub .weather-place > span { overflow: hidden; color: var(--muted); font-size: 9.5px; white-space: nowrap; text-overflow: ellipsis; }
+.school-hub .weather-temperature { font: 700 24px/1 var(--sans); font-variant-numeric: tabular-nums; color: var(--ink); }
+.school-hub .weather-chevron { color: var(--wine); font-size: 14px; transition: transform .2s; }
+.school-hub .weather-widget.expanded .weather-chevron { transform: rotate(180deg); }
+.school-hub .weather-details { padding: 6px 12px 11px; border-top: 1px solid var(--line) !important; background: color-mix(in srgb, var(--card) 96%, transparent) !important; }
+.school-hub .weather-now-details { display: grid; grid-template-columns: repeat(3, 1fr); padding: 8px 0; border-bottom: 1px solid var(--line) !important; }
+.school-hub .weather-now-details > span { display: grid; text-align: center; border-right: 1px solid var(--line) !important; }
+.school-hub .weather-now-details > span:last-child { border-right: 0 !important; }
+.school-hub .weather-now-details small { color: var(--muted); font-size: 6.5px; font-weight: 700; letter-spacing: .08em; }
+.school-hub .weather-now-details strong { margin-top: 2px; font-size: 11px; color: var(--ink); }
+.school-hub .weather-forecast { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 8px 0 6px; }
+.school-hub .weather-forecast > div { min-width: 0; display: grid; place-items: center; gap: 2px; padding: 4px 1px; border-right: 1px solid var(--line) !important; }
+.school-hub .weather-forecast > div:last-child { border-right: 0 !important; }
+.school-hub .weather-forecast span { font-size: 7.5px; font-weight: 700; text-transform: uppercase; color: var(--muted); }
+.school-hub .weather-forecast i { font-size: 14px; font-style: normal; }
+.school-hub .weather-forecast strong { font-size: 9.5px; color: var(--ink); }
+.school-hub .weather-forecast small { color: var(--muted); font-size: 8.5px; }
+.school-hub .weather-details > p { margin: 0; padding-top: 6px; color: var(--muted); border-top: 1px solid var(--line) !important; font-size: 7.5px; text-align: center; }
+:where(.school-hub) :is(a,button,select):focus-visible { outline:2px solid var(--wine); outline-offset:4px; }
+@media(max-width:1000px) { .school-hub .site-header nav { display:none; } .school-hub .hero { gap:20px; padding:24px; } .school-hub .live-card { padding-left:20px; } }
+@media(max-width:720px) {
+  .school-hub .site-header,.school-hub main#main { width:calc(100% - 20px); }
+  .school-hub .site-header { min-height:60px; padding:8px 0; }
+  .school-hub .hero { display:flex; flex-direction:column; padding:20px; gap:18px; }
+  .school-hub .hero-content { width:100%; order:1; border-top:1px solid var(--line)!important; padding-top:18px; }
+  body.dark .school-hub .hero-content { border-top-color:rgba(255,255,255,.15)!important; }
+  .school-hub .hero-date-panel { margin-bottom:12px; }
+  .school-hub .hero h1 { font-size:28px; }
+  .school-hub .hero h1 br { display:none; }
+  .school-hub .hero h1 em { display:block; margin-top:3px; }
+  .school-hub .live-card { order:0; padding:0; border:0; }
+  .school-hub .countdown-center .countdown { font-size:76px; }
+  .school-hub .snapshot article { min-height:58px; padding:10px 14px; }
+  .school-hub .dashboard-section { padding:18px 14px; }
+  .school-hub .schedule-grid { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .school-hub .day-brief { order:1; width:100%; }
+  .school-hub .district-schools-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .school-hub .district-school-head { flex-wrap:wrap; }
+  .school-hub .district-school-card { padding:12px; }
+  .school-hub .district-school-card h3 { font-size:13px; }
+  .school-hub .weather-widget {
+    right: 12px !important;
+    left: auto !important;
+    bottom: calc(66px + max(8px, env(safe-area-inset-bottom, 0px))) !important;
+    width: min(220px, calc(100vw - 24px)) !important;
+    border-radius: 14px !important;
+    display: block !important;
+  }
+  .school-hub .weather-widget.expanded {
+    width: min(340px, calc(100vw - 24px)) !important;
+  }
+  .school-hub .weather-summary {
+    min-height: 44px !important;
+    padding: 6px 10px !important;
+    grid-template-columns: 30px minmax(0, 1fr) auto 16px !important;
+    gap: 8px !important;
+  }
+  .school-hub .weather-symbol {
+    width: 30px !important;
+    height: 30px !important;
+    font-size: 15px !important;
+  }
+  .school-hub .weather-place strong { font-size: 12px !important; }
+  .school-hub .weather-temperature { font-size: 19px !important; }
+  .school-hub .mobile-nav-dock { border-radius:18px 18px 0 0; background:color-mix(in srgb,var(--card-solid) 94%,transparent); }
+}

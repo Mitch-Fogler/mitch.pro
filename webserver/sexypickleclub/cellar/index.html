@@ -1020,6 +1020,7 @@ button {
 
 <script>
 let myEmail = null, myDisplayName = null, myNick = null, myKP = null, myLegacyKP = null;
+let myNormEmail = '', myRawEmail = '', myDisplayEmail = '', myUsername = '';
 // True when the user picked "Not now" and the chat is running on the old
 // server-derived key — surfaced in the header so it's never silent.
 let e2eUsingLegacyIdentity = false;
@@ -1174,6 +1175,93 @@ function normEmail(email) {
   return local + '@' + domain;
 }
 function sameEmail(a, b) { return normEmail(a) && normEmail(a) === normEmail(b); }
+function isMe(ref) {
+  if (!ref) return false;
+  const q = String(ref).trim().toLowerCase();
+  if (myEmail && q === myEmail) return true;
+  if (myNormEmail && q === myNormEmail) return true;
+  if (myRawEmail && q === myRawEmail) return true;
+  if (myDisplayEmail && q === myDisplayEmail) return true;
+  if (myUsername && q === myUsername) return true;
+  const n = normEmail(q);
+  if (myNormEmail && n === myNormEmail) return true;
+  if (myEmail && n === normEmail(myEmail)) return true;
+  if (myDisplayEmail && n === normEmail(myDisplayEmail)) return true;
+  if (myUsername && !q.includes('@') && q === myUsername) return true;
+  return false;
+}
+function memberFor(ref) {
+  if (!ref) return null;
+  const q = String(ref).trim().toLowerCase();
+  if (!q) return null;
+  if (isMe(q)) {
+    return {
+      email: myEmail,
+      handle: myUsername || (myEmail && myEmail.includes('@') ? myEmail.split('@')[0] : (myEmail || '')),
+      displayName: myDisplayName || myUsername || myEmail,
+      pubKey: myNickPubKey || null,
+      e2eReady: !!myKP
+    };
+  }
+  let found = members.find(x =>
+    (x.email && String(x.email).toLowerCase() === q) ||
+    (x.handle && String(x.handle).toLowerCase() === q) ||
+    sameEmail(x.email, q)
+  );
+  if (found) return found;
+
+  if (q.includes('@')) {
+    const local = q.split('@')[0].split('+')[0].replace(/\./g, '');
+    found = members.find(x =>
+      (x.handle && String(x.handle).toLowerCase() === local) ||
+      (x.email && String(x.email).toLowerCase() === local)
+    );
+    if (found) return found;
+  }
+
+  if (!q.includes('@')) {
+    found = members.find(x => {
+      if (x.email && x.email.includes('@')) {
+        const local = x.email.split('@')[0].split('+')[0].replace(/\./g, '').toLowerCase();
+        return local === q;
+      }
+      return false;
+    });
+    if (found) return found;
+  }
+
+  return null;
+}
+function sameUser(a, b) {
+  if (!a || !b) return false;
+  const qa = String(a).trim().toLowerCase();
+  const qb = String(b).trim().toLowerCase();
+  if (qa === qb) return true;
+  if (isMe(qa) && isMe(qb)) return true;
+  if (sameEmail(qa, qb)) return true;
+
+  const memA = memberFor(qa);
+  const memB = memberFor(qb);
+  if (memA && memB) {
+    if (memA === memB) return true;
+    if (memA.handle && memB.handle && memA.handle.toLowerCase() === memB.handle.toLowerCase()) return true;
+    if (memA.email && memB.email && sameEmail(memA.email, memB.email)) return true;
+  }
+  if (memA) {
+    if (memA.handle && memA.handle.toLowerCase() === qb) return true;
+    if (memA.email && (sameEmail(memA.email, qb) || String(memA.email).toLowerCase() === qb)) return true;
+  }
+  if (memB) {
+    if (memB.handle && memB.handle.toLowerCase() === qa) return true;
+    if (memB.email && (sameEmail(memB.email, qa) || String(memB.email).toLowerCase() === qa)) return true;
+  }
+
+  const localA = qa.includes('@') ? qa.split('@')[0].split('+')[0].replace(/\./g, '') : qa;
+  const localB = qb.includes('@') ? qb.split('@')[0].split('+')[0].replace(/\./g, '') : qb;
+  if (localA && localB && localA === localB) return true;
+
+  return false;
+}
 function e2eStorageKey(name) {
   return `_e2e_${name}_v3:${encodeURIComponent(normEmail(myEmail))}`;
 }
@@ -1191,10 +1279,10 @@ function toast(text) {
   toast.timer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
-function displayNameFor(email) {
-  if (sameEmail(email, myEmail)) return myDisplayName || myEmail;
-  const m = members.find(x => sameEmail(x.email, email));
-  return (m && m.displayName) || String(email || '').split('@')[0] || 'member';
+function displayNameFor(ref) {
+  if (isMe(ref)) return myDisplayName || myUsername || myEmail;
+  const m = memberFor(ref);
+  return (m && (m.displayName || (m.handle ? '@' + m.handle : m.email))) || String(ref || '').split('@')[0] || 'member';
 }
 
 function initialsFor(value) {
@@ -1202,30 +1290,19 @@ function initialsFor(value) {
   return (words.slice(0, 2).map(word => word[0]).join('') || '?').toUpperCase();
 }
 
-function memberFor(email) {
-  const m = members.find(x => sameEmail(x.email, email));
-  if (m) return m;
-  // Group member refs are public usernames; match the handle when the email
-  // form does not line up (admins see masked emails in the members list).
-  const q = String(email || '').toLowerCase().trim();
-  if (q && !q.includes('@')) {
-    const byHandle = members.find(x => String(x.handle || '').toLowerCase() === q);
-    if (byHandle) return byHandle;
-  }
-  if (sameEmail(email, myEmail) && myNickPubKey) return { email: myEmail, pubKey: myNickPubKey };
-  return null;
-}
-
 // The keys this device's own messages are encrypted under: our public
 // username first (what group payload maps use), then our masked email as a
 // legacy fallback for older stored messages.
 function myPayloadKeys() {
   const keys = [];
+  if (myUsername && !keys.includes(myUsername)) keys.push(myUsername);
   const me = memberFor(myEmail);
   const h = me && me.handle ? normEmail(me.handle) : '';
   if (h && !keys.includes(h)) keys.push(h);
+  if (myNormEmail && !keys.includes(myNormEmail)) keys.push(myNormEmail);
   const e = normEmail(myEmail);
   if (e && !keys.includes(e)) keys.push(e);
+  if (myDisplayEmail && !keys.includes(normEmail(myDisplayEmail))) keys.push(normEmail(myDisplayEmail));
   return keys;
 }
 
@@ -1315,21 +1392,34 @@ function renderGroupProfile(group) {
   panel.innerHTML = `<div class="chat-group-panel"><span class="chat-profile-kicker">Group conversation</span><h2>${esc(group.name || 'Group chat')}</h2><p>${(group.members || []).length} members</p><div class="chat-group-list">${groupMembers}</div></div>`;
 }
 
-function directKey(email) { return normEmail(email); }
+function directKey(ref) {
+  const mem = memberFor(ref);
+  if (mem && (mem.email || mem.handle)) return normEmail(mem.email || mem.handle);
+  return normEmail(ref);
+}
 function isDirectBetween(m, email) {
-  return (m.kind || 'dm') !== 'group' &&
-    ((sameEmail(m.from, myEmail) && sameEmail(m.to, email)) ||
-     (sameEmail(m.from, email) && sameEmail(m.to, myEmail)));
+  if (!m || (m.kind || 'dm') === 'group') return false;
+  const fromMe = isMe(m.from);
+  const toMe = isMe(m.to);
+  const fromPeer = sameUser(m.from, email);
+  const toPeer = sameUser(m.to, email);
+  return (fromMe && toPeer) || (fromPeer && toMe);
 }
 function sameChat(a, b) {
-  return Boolean(a && b && a.type === b.type && String(a.id) === String(b.id));
+  if (!a || !b || a.type !== b.type) return false;
+  if (a.type === 'dm') return sameUser(a.id, b.id);
+  return String(a.id) === String(b.id);
 }
 function isMessageForChat(m, chat) {
-  if (!chat) return false;
+  if (!chat || !m) return false;
   if (chat.type === 'group') return m.kind === 'group' && String(m.groupId) === String(chat.id);
-  return (m.kind || 'dm') !== 'group' &&
-    ((sameEmail(m.from, myEmail) && sameEmail(m.to, chat.id)) ||
-     (sameEmail(m.from, chat.id) && sameEmail(m.to, myEmail)));
+  if (chat.type === 'report') return false;
+  if ((m.kind || 'dm') === 'group') return false;
+  const fromMe = isMe(m.from);
+  const toMe = isMe(m.to);
+  const fromPeer = sameUser(m.from, chat.id);
+  const toPeer = sameUser(m.to, chat.id);
+  return (fromMe && toPeer) || (fromPeer && toMe);
 }
 function isActiveMessage(m) {
   return isMessageForChat(m, activeChat);
@@ -1529,21 +1619,31 @@ async function decryptMessageContent(m) {
   if (!m.rawText) {
     m.rawText = m.text;
   }
+  let payload = null;
   try {
-    const payload = JSON.parse(m.rawText);
-    if (payload && payload.e2e) {
-      if (!myKP && !myLegacyKP) {
-        m.text = "[Decryption Error: Keys not ready]";
-        return m;
-      }
-      
-      const sentByMe = sameEmail(m.from, myEmail);
-      const peerEmail = payload.group ? m.from : (sentByMe ? m.to : m.from);
-      const peer = memberFor(peerEmail);
-      if (!peer && !payload.senderPubKey && !payload.recipientPubKey) {
-        m.text = "[Decryption Error: Peer not found]";
-        return m;
-      }
+    payload = JSON.parse(m.rawText);
+  } catch {
+    // legacy message or parse error (already plain text)
+    m.decrypted = true;
+    return m;
+  }
+  if (!payload || !payload.e2e) {
+    m.decrypted = true;
+    return m;
+  }
+  try {
+    if (!myKP && !myLegacyKP) {
+      m.text = "[Decryption Error: Keys not ready]";
+      return m;
+    }
+    
+    const sentByMe = isMe(m.from);
+    const peerEmail = payload.group ? m.from : (sentByMe ? m.to : m.from);
+    const peer = memberFor(peerEmail);
+    if (!peer && !payload.senderPubKey && !payload.recipientPubKey) {
+      m.text = "[Decryption Error: Peer not found]";
+      return m;
+    }
       
       // Gather all possible public keys of the peer
       const peerPubKeys = [];
@@ -1640,11 +1740,10 @@ async function decryptMessageContent(m) {
           m.decryptFailed = true;
         }
       }
+    } catch (e) {
+      // legacy message or parse error (already plain text)
+      m.decrypted = true;
     }
-  } catch (e) {
-    // legacy message or parse error (already plain text)
-    m.decrypted = true;
-  }
   return m;
 }
 
@@ -1659,6 +1758,11 @@ async function init() {
     const r = await fetch('/api/me', { credentials:'include', cache:'no-store' });
     fetchedData = await r.json();
     myEmail = (fetchedData.email || '').toLowerCase();
+    myNormEmail = (fetchedData.normEmail || normEmail(fetchedData.rawEmail || myEmail)).toLowerCase();
+    myRawEmail = (fetchedData.rawEmail || '').toLowerCase();
+    myDisplayEmail = (fetchedData.displayEmail || normEmail(myNormEmail)).toLowerCase();
+    myUsername = (fetchedData.username || (myEmail && !myEmail.includes('@') ? myEmail : '')).toLowerCase();
+    if (fetchedData.displayName) myDisplayName = fetchedData.displayName;
     isFullAdmin = !!fetchedData.isAdmin;
     if (fetchedData.isAdmin || fetchedData.isModerator) {
       document.getElementById('reports-tab').style.display = 'block';
@@ -2190,7 +2294,7 @@ async function loadMembers() {
   try {
     const r = await fetch('/api/members', { credentials:'include' });
     const d = await r.json();
-    const fetchedMembers = (d.members || []).filter(m => !sameEmail(m.email, myEmail));
+    const fetchedMembers = (d.members || []).filter(m => !isMe(m.email) && !isMe(m.handle));
     
     // Decrypt lastMessage for all members
     await Promise.all(fetchedMembers.map(async m => {
@@ -2207,6 +2311,7 @@ async function loadMembers() {
     members.forEach(m => {
       if (m.unread) {
         unreadDm[directKey(m.email)] = m.unread;
+        if (m.handle) unreadDm[directKey(m.handle)] = m.unread;
       }
     });
     
@@ -2269,14 +2374,14 @@ function maybeOpenPendingDm() {
   }
   if (!pendingDmTarget) return;
   const target = pendingDmTarget.toLowerCase();
-  const member = members.find(m =>
-    sameEmail(m.email, target) ||
+  const member = memberFor(target) || members.find(m =>
+    sameUser(m.email, target) ||
     String(m.handle || '').toLowerCase() === target ||
     String(m.email || '').toLowerCase() === target
   );
   if (!member) return;
   pendingDmTarget = '';
-  selectDm(member.email);
+  selectDm(member.email || member.handle || target);
 }
 
 function renderList() {
@@ -2349,21 +2454,21 @@ function renderList() {
   const isSearching = !!q;
   const filtered = members
     .filter(m => {
-      if (sameEmail(m.email, myEmail)) return false;
-      const actTs = getConversationActivity('dm', m.email);
+      if (isMe(m.email) || isMe(m.handle)) return false;
+      const actTs = Math.max(getConversationActivity('dm', m.email) || 0, getConversationActivity('dm', m.handle) || 0);
       const hasHistory = actTs > 0 || (m.lastMessage && m.lastMessage.ts > 0);
-      const isActive = activeChat && activeChat.type === 'dm' && sameEmail(activeChat.id, m.email);
+      const isActive = activeChat && activeChat.type === 'dm' && sameUser(activeChat.id, m.email);
       if (!isSearching && !hasHistory && !isActive) return false;
       const hay = [m.email, m.displayName, m.role, m.handle].join(' ').toLowerCase();
       return !q || hay.includes(q);
     })
     .sort((a, b) => {
-      const timeA = Math.max(a.lastMessage ? (a.lastMessage.ts || 0) : 0, getConversationActivity('dm', a.email) || 0);
-      const timeB = Math.max(b.lastMessage ? (b.lastMessage.ts || 0) : 0, getConversationActivity('dm', b.email) || 0);
+      const timeA = Math.max(a.lastMessage ? (a.lastMessage.ts || 0) : 0, getConversationActivity('dm', m.email) || 0, getConversationActivity('dm', m.handle) || 0);
+      const timeB = Math.max(b.lastMessage ? (b.lastMessage.ts || 0) : 0, getConversationActivity('dm', m.email) || 0, getConversationActivity('dm', m.handle) || 0);
       if (timeA !== timeB) return timeB - timeA;
       return roleRank(b.role) - roleRank(a.role) ||
         Number(b.online) - Number(a.online) ||
-        a.email.localeCompare(b.email);
+        (a.handle || a.email).localeCompare(b.handle || b.email);
     });
   if (!filtered.length) {
     if (isSearching) {
@@ -2385,13 +2490,13 @@ function renderList() {
   };
   list.innerHTML = filtered.map(m => {
     const last = m.lastMessage;
-    const unread = unreadDm[directKey(m.email)] || 0;
+    const unread = unreadDm[directKey(m.email)] || (m.handle ? unreadDm[directKey(m.handle)] : 0) || 0;
     const role = roleInfo(m.role);
-    const name = m.displayName || m.email.split('@')[0];
+    const name = m.displayName || (m.handle ? '@' + m.handle : m.email.split('@')[0]);
     const colorClass = m.color ? esc(m.color) : '';
     const badge = badgeLabels[m.badge] || '';
-    const sub = last ? (sameEmail(last.from, myEmail) ? 'You: ' : '') + (last.text || (last.image ? 'Sent an image' : '')) : m.email;
-    return `<button class="user-entry ${activeChat && activeChat.type === 'dm' && sameEmail(activeChat.id, m.email) ? 'active' : ''}" data-email="${esc(m.email)}">
+    const sub = last ? (isMe(last.from) ? 'You: ' : '') + (last.text || (last.image ? 'Sent an image' : '')) : (m.handle ? '@' + m.handle : m.email);
+    return `<button class="user-entry ${activeChat && activeChat.type === 'dm' && sameUser(activeChat.id, m.email) ? 'active' : ''}" data-email="${esc(m.email)}">
       <span class="user-avatar ${m.online ? 'on' : ''}">${memberAvatar(m, name, 'user-avatar-image')}</span>
       <span class="entry-main">
         <span class="entry-name ${colorClass}">${esc(name)}${badge ? ' <span style="font-size:.62rem;opacity:.55">' + esc(badge) + '</span>' : ''}</span>
@@ -2407,10 +2512,12 @@ async function selectDm(email) {
   const member = memberFor(email);
   activeChat = { type:'dm', id: email };
   unreadDm[directKey(email)] = 0;
-  const isMe = sameEmail(email, myEmail);
+  if (member && member.email) unreadDm[directKey(member.email)] = 0;
+  if (member && member.handle) unreadDm[directKey(member.handle)] = 0;
+  const isSelf = isMe(email);
   const titleName = displayNameFor(email);
-  document.getElementById('chat-title').innerHTML = isMe ? titleName : esc(titleName);
-  document.getElementById('chat-subtitle').textContent = (member && member.online ? 'online' : 'offline') + ' - ' + email;
+  document.getElementById('chat-title').innerHTML = isSelf ? titleName : esc(titleName);
+  document.getElementById('chat-subtitle').textContent = (member && member.online ? 'online' : 'offline') + ' - ' + (member && member.handle ? '@' + member.handle : email);
   document.getElementById('leave-group-btn').style.display = 'none';
   renderConversationProfile(member);
   showChatShell();
@@ -2740,7 +2847,7 @@ function loadConvActivity() {
 
 function recordConversationActivity(type, id, ts) {
   if (!id) return;
-  const key = (type === 'group' ? 'group:' : 'dm:') + (type === 'group' ? String(id) : normEmail(id));
+  const key = (type === 'group' ? 'group:' : 'dm:') + (type === 'group' ? String(id) : directKey(id));
   const act = loadConvActivity();
   const currentTs = Number(act[key] || 0);
   const newTs = ts ? Number(ts) : Date.now();
@@ -2754,7 +2861,7 @@ function recordConversationActivity(type, id, ts) {
 
 function getConversationActivity(type, id) {
   if (!id) return 0;
-  const key = (type === 'group' ? 'group:' : 'dm:') + (type === 'group' ? String(id) : normEmail(id));
+  const key = (type === 'group' ? 'group:' : 'dm:') + (type === 'group' ? String(id) : directKey(id));
   const act = loadConvActivity();
   return Number(act[key] || 0);
 }
@@ -2774,8 +2881,8 @@ async function fetchConversation(chat, limit = 20) {
     messages.forEach(m => {
       if (m.kind === 'group') recordConversationActivity('group', m.groupId, m.ts);
       else {
-        const peer = sameEmail(m.from, myEmail) ? m.to : m.from;
-        if (peer) recordConversationActivity('dm', peer, m.ts);
+        const peer = isMe(m.from) ? m.to : m.from;
+        if (peer) recordConversationActivity('dm', directKey(peer), m.ts);
       }
     });
     conversationCache.set(key, messages);
@@ -2897,7 +3004,7 @@ function renderMessages() {
   if (msgExpiry > 0) {
     currentMessages = currentMessages.filter(m => {
       if (m.isPending) return true;
-      const isRead = m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, m.from)));
+      const isRead = m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameUser(person, m.from)));
       if (!isRead) return true; // Keep unread messages!
       if (now - (m.ts || 0) >= 3600000) return false; // 1 hour old and read -> delete!
       if (now - (m.ts || 0) >= msgExpiry) return false;
@@ -2923,7 +3030,7 @@ function renderMessages() {
 }
 
 function messageHtml(m) {
-  const mine = sameEmail(m.from, myEmail);
+  const mine = isMe(m.from);
   const name = mine ? (myDisplayName || 'You') : displayNameFor(m.from);
   const text = String(m.text || '');
   const id = esc(msgId(m));
@@ -2983,8 +3090,8 @@ function messageHtml(m) {
     ? `<div class="reply-box">${esc(displayNameFor(m.replyTo.from || ''))}: ${esc(m.replyTo.text || '')}</div>`
     : '';
   const bodyText = esc(text || (m.image ? (m.image.name || 'attachment') : ''));
-  const seen = mine && !m.isPending && (m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, myEmail))));
-  const isRead = m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameEmail(person, m.from)));
+  const seen = mine && !m.isPending && (m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !isMe(person))));
+  const isRead = m.read === true || (Array.isArray(m.readBy) && m.readBy.some(person => !sameUser(person, m.from)));
   let expireTs = m.expiresAt || 0;
   if (!expireTs && msgExpiry > 0 && isRead) {
     expireTs = Math.min((m.readAt || m.ts) + msgExpiry, (m.ts || Date.now()) + 3600000);
@@ -3063,16 +3170,22 @@ async function send() {
   } else if (chatAtSend.type === 'group') {
     const group = groups.find(g => String(g.id) === String(chatAtSend.id));
     const allMembers = group && group.members ? [...group.members] : [];
-    if (!allMembers.some(m => sameEmail(m, myEmail) || sameEmail((memberFor(m) || {}).email, myEmail))) {
+    if (!allMembers.some(m => isMe(m) || isMe((memberFor(m) || {}).email))) {
       allMembers.push(myEmail);
     }
     fallbackMode = allMembers.some(m => {
-      if (sameEmail(m, myEmail)) return false;
+      if (isMe(m)) return false;
       const mem = memberFor(m);
       return !mem || !mem.e2eReady;
     });
   } else {
-    const peer = memberFor(chatAtSend.id);
+    let peer = memberFor(chatAtSend.id);
+    if (!peer || !peer.e2eReady) {
+      try {
+        await loadMembers();
+        peer = memberFor(chatAtSend.id);
+      } catch {}
+    }
     fallbackMode = !peer || !peer.pubKey || !peer.e2eReady;
   }
 
@@ -3252,14 +3365,14 @@ async function send() {
         const allMembers = [...group.members];
         // Member refs are public usernames; add our own masked email only if
         // the list doesn't already identify us (by email or via the handle).
-        if (!allMembers.some(m => sameEmail(m, myEmail) || sameEmail((memberFor(m) || {}).email, myEmail))) {
+        if (!allMembers.some(m => isMe(m) || isMe((memberFor(m) || {}).email))) {
           allMembers.push(myEmail);
         }
 
         const senderPubKey = await exportPub(myKP);
         const encodedContent = new TextEncoder().encode(secureContent);
         await Promise.all(allMembers.map(async memberEmail => {
-          let member = sameEmail(memberEmail, myEmail)
+          let member = isMe(memberEmail)
             ? { pubKey: senderPubKey }
             : memberFor(memberEmail);
 
@@ -3272,11 +3385,14 @@ async function send() {
                 sharedSecret,
                 encodedContent
               );
-              payloads[normEmail(memberEmail)] = {
+              const payloadEntry = {
                 recipientPubKey: member.pubKey,
                 iv: b2h(iv),
                 ciphertext: b2h(ciphertext)
               };
+              payloads[normEmail(memberEmail)] = payloadEntry;
+              if (member.handle) payloads[normEmail(member.handle)] = payloadEntry;
+              if (member.email) payloads[normEmail(member.email)] = payloadEntry;
             } catch (err) {
               console.error("Error encrypting for group member:", memberEmail, err);
             }
@@ -3402,8 +3518,8 @@ async function send() {
       }
     } else {
       const peerEmail = chatAtSend.id;
-      recordConversationActivity('dm', peerEmail, msg.ts);
-      const member = members.find(x => sameEmail(x.email, peerEmail));
+      recordConversationActivity('dm', directKey(peerEmail), msg.ts);
+      const member = memberFor(peerEmail);
       if (member) {
         member.lastMessage = msg;
       }
@@ -3444,14 +3560,14 @@ async function pollNewDMs() {
       if (m.kind === 'group') {
         recordConversationActivity('group', m.groupId, m.ts);
       } else {
-        const peer = sameEmail(m.from, myEmail) ? m.to : m.from;
-        if (peer) recordConversationActivity('dm', peer, m.ts);
+        const peer = isMe(m.from) ? m.to : m.from;
+        if (peer) recordConversationActivity('dm', directKey(peer), m.ts);
       }
       if ((m.ts || 0) <= dmSince) continue;
       dmSince = Math.max(dmSince, m.ts || 0);
       if (allMessages.some(existing => msgId(existing) === msgId(m))) continue;
       allMessages.push(m);
-      if (sameEmail(m.from, myEmail)) {
+      if (isMe(m.from)) {
         if (m.kind === 'group') {
           const g = groups.find(x => String(x.id) === String(m.groupId));
           if (g) {
@@ -3461,7 +3577,7 @@ async function pollNewDMs() {
           }
         } else {
           const peerEmail = m.to;
-          const member = members.find(x => sameEmail(x.email, peerEmail));
+          const member = memberFor(peerEmail);
           if (member) {
             member.lastMessage = m;
           }
@@ -3494,7 +3610,7 @@ async function pollNewDMs() {
           unreadDm[k] = (unreadDm[k] || 0) + 1;
         }
         showNotif(displayNameFor(m.from), m.text || (m.image ? 'Sent an image' : 'New message'));
-        const member = members.find(x => sameEmail(x.email, m.from));
+        const member = memberFor(m.from);
         if (member) {
           member.lastMessage = m;
         }
@@ -4192,7 +4308,7 @@ window.addEventListener('ws-broadcast-message', async function(e) {
     const exp = Number(data.expiry) || 0;
     const isForActive = activeChat && (data.groupId
       ? (activeChat.type === 'group' && String(activeChat.id) === String(data.groupId))
-      : (activeChat.type === 'dm' && data.with && sameEmail(activeChat.id, data.with)));
+      : (activeChat.type === 'dm' && data.with && sameUser(activeChat.id, data.with)));
     if (isForActive) {
       msgExpiry = exp;
       convExpiry.set(chatCacheKey(activeChat), exp);
@@ -4241,9 +4357,9 @@ window.addEventListener('ws-broadcast-message', async function(e) {
         g.lastTs = m.ts;
       }
     } else {
-      const peerEmail = sameEmail(m.from, myEmail) ? m.to : m.from;
-      if (peerEmail) recordConversationActivity('dm', peerEmail, m.ts);
-      const member = members.find(x => sameEmail(x.email, peerEmail));
+      const peerEmail = isMe(m.from) ? m.to : m.from;
+      if (peerEmail) recordConversationActivity('dm', directKey(peerEmail), m.ts);
+      const member = memberFor(peerEmail);
       if (member) {
         member.lastMessage = m;
       }
@@ -4254,6 +4370,7 @@ window.addEventListener('ws-broadcast-message', async function(e) {
       if (currentIndex >= 0) currentMessages[currentIndex] = m;
       else currentMessages.push(m);
       currentMessages.sort((a,b) => (a.ts || 0) - (b.ts || 0));
+      cacheConversationMessages();
       
       const el = document.getElementById('msgs');
       const isScrolledToBottom = el && (el.scrollHeight - el.clientHeight - el.scrollTop < 100);
@@ -4266,12 +4383,12 @@ window.addEventListener('ws-broadcast-message', async function(e) {
       
       // Mark read if active
       markActiveRead();
-    } else {
+    } else if (!isMe(m.from)) {
       // Increment unread count
       if (m.kind === 'group') {
         unreadGroup[m.groupId] = (unreadGroup[m.groupId] || 0) + 1;
       } else {
-        const peerEmail = sameEmail(m.from, myEmail) ? m.to : m.from;
+        const peerEmail = isMe(m.from) ? m.to : m.from;
         unreadDm[directKey(peerEmail)] = (unreadDm[directKey(peerEmail)] || 0) + 1;
       }
     }

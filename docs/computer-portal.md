@@ -1,0 +1,100 @@
+# Graphical computer portal
+
+The customer entry point is `/vms/`; `/vms/desktop/?id=<application-record-id>` opens the real VM display. Owners, co-owners, and administrators manage computers at `/admin/vms/`. Moderators do not have infrastructure administration access.
+
+## Architecture and data
+
+The portal extends the existing Bun server, static HTML/CSS/JavaScript frontend, and website sessions. It uses the bundled noVNC client. There is no additional authentication service, ORM, frontend framework, or separately exposed console server.
+
+`lib/proxmox_desktop.js` owns REST calls, guest-agent status, console sessions, and provisioning. `lib/vm_security.js` contains ownership/session policy. `lib/data_store.js` creates additive `virtual_machines` and `vm_audit_logs` tables in the existing `data/mitchpro.db` SQLite database. Existing account and customization data remain in the same datastore. Approved legacy VM assignments migrate on startup; repeated starts do not create duplicate VM rows.
+
+VM operations resolve the application record first, then authorize the signed-in owner or administrator. Proxmox node, numeric VM ID, host, port, and upstream WebSocket URL come only from trusted server state. The normal-user API omits hypervisor connection details.
+
+An authenticated console request obtains a short-lived Proxmox VNC ticket and creates a single-use, 75-second application connection handle. The browser connects to the website's `/api/vm/desktop/ws` endpoint; Bun connects to the Proxmox `vncwebsocket` endpoint using its server-side API token. The temporary VNC password needed by the RFB protocol may be delivered to the authenticated noVNC client; it is not an API token, not a persistent login credential, and must never be cached or logged. Application restart discards pending connection handles; reconnect creates a fresh one.
+
+Back up the SQLite database using SQLite's backup mechanism or a stopped application, together with the existing session key and data files. VM disks require separate Proxmox backups. Unassigning a computer removes customer access; it does not erase its guest disk or delete the VM.
+
+## Server configuration
+
+Use deployment secrets or the private server `.env`, never files below `webserver/`:
+
+```dotenv
+PROXMOX_HOST=192.168.100.1
+PROXMOX_PORT=8006
+PROXMOX_NODE=tartarus
+PROXMOX_TOKEN_ID=portal@pve!customer-portal
+PROXMOX_TOKEN_SECRET=<secret supplied outside source control>
+PROXMOX_VERIFY_TLS=true
+PROXMOX_TLS_SERVERNAME=mitch.pro
+PROXMOX_DESKTOP_TEMPLATES=9010
+HIDE_VM_FEATURES=0
+```
+
+`PROXMOX_TLS_SERVERNAME` validates the host's certificate for `mitch.pro` while the connection uses the private address. Install a trusted CA on the application host if replacing the existing publicly trusted certificate. Do not disable certificate validation to hide a hostname mismatch. The legacy server-side `PVE_*` settings remain supported for older VM features; a complete new token configuration takes precedence for the graphical portal.
+
+Grant a dedicated, privilege-separated Proxmox API token only the permissions needed for the customer pool, permitted templates, target storage/network, and node status. Both the token and its parent user must have the required ACLs. Do not give it root's unrestricted role. Check effective permissions with `pveum user token permissions` after configuring ACLs. The portal needs guest audit/console/power/configuration/clone permissions, pool membership, storage allocation for cloning/resizing, permitted network attachment, and node audit for capacity. Existing unrelated VMs must remain outside that scope.
+
+Keep port 8006 private. Customers only need the website's HTTPS/WSS endpoint. The existing outer nginx proxy must forward `Upgrade` and `Connection` for WebSockets; Caddy's `reverse_proxy` handles the upgrade automatically. Do not add VNC port forwarding, expose guest port 5900, or iframe the Proxmox administrative UI.
+
+## Linux desktop templates
+
+### Ubuntu fallback used for automation
+
+The previously named `linux-template-vnc` (9000) was inspected and booted to a Debian terminal, so its name alone is not evidence of a desktop. It must not be offered as a ready graphical Linux Mint computer.
+
+Template 9010 is the Ubuntu 24.04 LTS desktop fallback. Build it from a verified [Ubuntu cloud image](https://cloud-images.ubuntu.com/noble/current/), then install the desktop and guest-agent packages before converting it to a template:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y ubuntu-desktop-minimal qemu-guest-agent
+sudo systemctl enable qemu-guest-agent
+sudo systemctl set-default graphical.target
+```
+
+Verify a browser, file manager, settings, application menu, terminal, graphical login, and normal keyboard/mouse input before sealing the template. Ubuntu's desktop package supplies the desktop session; a server cloud image by itself does not. Keep a real virtual VGA display (`std` or a tested QXL configuration); a serial-only display will produce a terminal in noVNC.
+
+Use a VirtIO network adapter, the selected customer bridge, a cloud-init drive, and a SCSI system disk. Enable the QEMU Guest Agent in both the guest and VM options. Clean cloud-init instance state and machine identity immediately before shutdown so clones receive distinct identities and their own first-boot configuration. Do not preserve a template operator's password, SSH keys, browser profile, or history in customer clones. Convert the powered-off, validated guest to a template and add its ID to `PROXMOX_DESKTOP_TEMPLATES`.
+
+The admin workflow clones this template, applies CPU/RAM/disk settings, prepares supported cloud-init user/network settings, starts the guest, and stores website ownership. Use 4 vCPU, 4 GB RAM, and 40 GB disk initially. Guest-agent IP discovery may remain blank while the guest boots. A Proxmox disk expansion also requires a guest filesystem capable of growing into the new space; verify `cloud-init`/`growpart` behavior when changing the base image.
+
+### Preferred Linux Mint Cinnamon workflow
+
+Linux Mint's supported starting point is its verified installation ISO. Follow the [official installation guide](https://linuxmint-installation-guide.readthedocs.io/en/latest/) and its [OEM installation workflow](https://linuxmint-installation-guide.readthedocs.io/en/latest/oem.html) for a reusable installation that lets each recipient create their own desktop account.
+
+1. Create a new, unused QEMU VM with 4 vCPU, 4 GB RAM, a 40 GB SCSI disk, VirtIO network, and a graphical VGA display. Attach the verified Cinnamon ISO and perform an OEM installation through the Proxmox console.
+2. Install updates, `qemu-guest-agent`, and the desired browser/utilities. Enable the agent and confirm a normal graphical login and Cinnamon session through the website console.
+3. Prepare the OEM installation for the next user using Mint's supported preparation step. Remove the installation ISO, power off, and convert the VM to a template.
+4. Make an isolated clone and complete the recipient's first-run account setup. Confirm unique hostname/machine identity, networking, display, input, and guest-agent status before advertising the template to customers.
+5. Register the validated template ID in the server allowlist. Use the manual first-run OEM setup for Mint unless cloud-init user/network provisioning has separately been installed and tested in the guest. Adding a cloud-init drive alone does not make a Mint ISO installation cloud-init aware.
+
+Do not add an untested distribution conversion script to the automatic provisioning path. Ubuntu remains the automated fallback until a Mint template passes this workflow.
+
+## Deployment and verification
+
+The existing `master` push workflow runs unit tests and triggers `/usr/local/bin/deploy.sh` on the application server. That script builds the inactive Docker slot, checks its HTTP startup, switches Caddy, and stops the old slot. Both blue and green containers must receive the portal's environment settings. A deployment or application restart disconnects an active desktop transport; the VM continues running and the frontend can reconnect.
+
+Before deploying:
+
+```sh
+bun install --frozen-lockfile
+bun run test:unit
+bun run test:integration
+node --check server.js
+node --check lib/proxmox_desktop.js
+node --check lib/vm_security.js
+```
+
+This repository is plain JavaScript with static frontend files. It does not currently define TypeScript, lint, or frontend production-build scripts. The production build is the Docker image build; validate it through the existing deployment or `docker compose build` on a machine with Docker. Do not claim nonexistent checks passed.
+
+Run integration tests only in a local/test checkout. Its harness backs up and restores that checkout's data directory and uses `NODE_ENV=test`; it must not point at production data or a production `BASE_URL`. Unit tests mock upstream failures, stopped guests, authorization policy, and temporary sessions. HTTP tests require exact 403 responses for User A attempting to view, start, stop, restart, shut down, or open a console for User B, and deny normal-user access to every VM admin route.
+
+After deployment, use an assigned test desktop to verify the customer and administrator pages, graphical login, keyboard typing, mouse clicks, scaling/fullscreen, reconnect after application restart, power transitions, guest IP reporting, and ownership isolation. Check the browser's served JavaScript and console-session response for persistent secrets; no API token, Proxmox cookie, or upstream destination may appear. An opaque application connection handle and temporary RFB credential are expected only in an authenticated, non-cacheable console response.
+
+## Operational notes
+
+- An offline computer must be started before opening its desktop. A browser reconnect does not start or reboot a guest.
+- Normal shutdown requests guest cooperation. Force Stop is disruptive and can lose unsaved data; its interface requires confirmation.
+- Slow boot can temporarily show an unknown IP or connection failure. Confirm guest-agent service status and graphical display configuration before changing the web proxy.
+- `VM_CREATED`, `VM_ASSIGNED`, `VM_UNASSIGNED`, power actions, and `DESKTOP_OPENED` are recorded with actor, VM, timestamp, and success/failure. Never add credentials or full upstream URLs to audit details.
+- Treat reassignment as handing an existing computer and its files to a different person. Create a fresh clone for a new customer when prior guest data should not be shared.
+- Keep template updates separate from active customer machines. Validate a fresh clone before changing the template allowlist.

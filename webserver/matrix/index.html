@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>Matrix Chat — mitch.pro</title>
+    <meta name="name" content="Mitch.pro Matrix" />
+    <meta name="author" content="Mitch.pro" />
+    <meta
+      name="description"
+      content="Official decentralized, end-to-end encrypted Matrix chat on mitch.pro."
+    />
+    <meta
+      name="keywords"
+      content="mitch.pro, matrix, chat, e2ee, conduit, secure chat"
+    />
+
+    <meta property="og:title" content="Matrix Chat — mitch.pro" />
+    <meta property="og:url" content="https://mitch.pro/matrix/" />
+    <meta property="og:image" content="/icon-192.png" />
+    <meta
+      property="og:description"
+      content="Official decentralized, end-to-end encrypted Matrix chat on mitch.pro."
+    />
+    <meta name="theme-color" content="#070510" />
+
+    <link id="favicon" rel="shortcut icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Mitch.pro Matrix" />
+    <meta name="apple-mobile-web-app-title" content="Mitch.pro Matrix" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <!-- Mitch.pro Global Theme Engine -->
+    <script src="/theme.js?v=13"></script>
+
+    <!-- UI hygiene: hide floating theme button & prevent rogue root scrollbars -->
+    <style>
+      #theme-btn {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        position: absolute !important;
+        top: -9999px !important;
+        left: -9999px !important;
+      }
+      html, body, #root {
+        overflow: hidden !important;
+        scrollbar-width: none !important;
+      }
+      html::-webkit-scrollbar,
+      body::-webkit-scrollbar,
+      #root::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+      }
+    </style>
+
+    <!-- Cinny Stylesheet & Cosmic Mitch.pro Overrides -->
+    <link rel="stylesheet" crossorigin href="/matrix/assets/index-DmaX6Xe5.css" />
+    <link rel="stylesheet" href="/matrix/matrix-galaxy.css" />
+  </head>
+  <body id="appBody">
+    <!-- Mitch.pro SSO Connect Banner (only shown if guest/logged out) -->
+    <div id="mitch-sso-banner">
+      <span id="mitch-sso-msg">✨ Connect your account for instant single sign-on</span>
+      <a id="mitch-sso-btn" href="/api/sso/bridge?back=/matrix/">Log In</a>
+    </div>
+
+    <!-- Mitch.pro Push Notification Opt-in Prompt -->
+    <div id="mitch-push-banner" role="dialog" aria-label="Enable notifications">
+      <div class="mitch-push-header">
+        <span class="mitch-push-icon" aria-hidden="true">🔔</span>
+        <span>Enable Call & Chat Notifications</span>
+      </div>
+      <div class="mitch-push-desc">
+        Never miss an incoming voice/video call or message when you're away or your device is locked.
+      </div>
+      <div class="mitch-push-actions">
+        <button id="mitch-push-later" class="mitch-push-btn-later" type="button">Remind later</button>
+        <button id="mitch-push-enable" class="mitch-push-btn-enable" type="button">Turn On</button>
+      </div>
+    </div>
+
+    <script>
+      window.global ||= window;
+
+      // ── Ensure Sun/Theme Button is Never Rendered in Matrix UI ──
+      (function() {
+        function removeSun() {
+          const btn = document.getElementById('theme-btn');
+          if (btn) btn.remove();
+        }
+        removeSun();
+        if (window.MutationObserver) {
+          const obs = new MutationObserver(function(mutations) {
+            for (let i = 0; i < mutations.length; i++) {
+              for (let j = 0; j < mutations[i].addedNodes.length; j++) {
+                const node = mutations[i].addedNodes[j];
+                if (node && (node.id === 'theme-btn' || (node.querySelector && node.querySelector('#theme-btn')))) {
+                  removeSun();
+                }
+              }
+            }
+          });
+          obs.observe(document.documentElement, { childList: true, subtree: true });
+        }
+        document.addEventListener('DOMContentLoaded', removeSun);
+        window.addEventListener('load', removeSun);
+      })();
+
+      // ── Synchronize Cinny Dark/Light Mode & Colors with theme.js ────────
+      (function() {
+        function getSiteThemeMode() {
+          try {
+            const m = document.cookie.match(/(?:^|; )theme=([^;]+)/);
+            if (m) {
+              const v = decodeURIComponent(m[1]).toLowerCase();
+              if (v === 'light' || v === 'daylight' || v === 'paper' || v === 'arctic' || v === 'blossom') return 'light';
+              return 'dark';
+            }
+          } catch (_) {}
+          if (window.__theme && typeof window.__theme.get === 'function') {
+            return window.__theme.get() === 'light' ? 'light' : 'dark';
+          }
+          return document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
+        }
+
+        function primeCinnySettings(mode) {
+          try {
+            const raw = localStorage.getItem('settings');
+            const settings = raw ? JSON.parse(raw) : {};
+            const targetThemeId = mode === 'light' ? 'light-theme' : 'dark-theme';
+            if (settings.themeId !== targetThemeId || settings.useSystemTheme !== false) {
+              settings.themeId = targetThemeId;
+              settings.useSystemTheme = false;
+              if (mode === 'light') settings.lightThemeId = 'light-theme';
+              else settings.darkThemeId = 'dark-theme';
+              localStorage.setItem('settings', JSON.stringify(settings));
+            }
+          } catch (_) {}
+        }
+
+        function applyModeToDom(mode) {
+          const isLight = mode === 'light';
+          document.documentElement.classList.toggle('theme-light', isLight);
+          document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
+          if (document.body) {
+            if (isLight) {
+              document.body.classList.remove('dark-theme', '_15q3ngn1', '_18gnz541', 'prism-dark');
+              document.body.classList.add('light-theme', 'oq6d071w', '_18gnz540', 'prism-light');
+            } else {
+              document.body.classList.remove('light-theme', 'oq6d071w', '_18gnz540', 'prism-light');
+              document.body.classList.add('dark-theme', '_15q3ngn1', '_18gnz541', 'prism-dark');
+            }
+          }
+          const metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) metaTheme.setAttribute('content', isLight ? '#eef1f9' : '#070510');
+        }
+
+        // Prime Cinny settings IMMEDIATELY before React boots
+        const initialMode = getSiteThemeMode();
+        primeCinnySettings(initialMode);
+        applyModeToDom(initialMode);
+
+        // React to theme.js changes (e.g. user taps #theme-btn or calls __theme.apply)
+        window.addEventListener('themechange', function(e) {
+          const detail = e && e.detail ? String(e.detail).toLowerCase() : '';
+          const nextMode = (detail === 'light') ? 'light' : (detail === 'dark' ? 'dark' : getSiteThemeMode());
+          primeCinnySettings(nextMode);
+          applyModeToDom(nextMode);
+        });
+
+        // Listen for storage changes across tabs
+        window.addEventListener('storage', function(e) {
+          if (e.key === 'theme' || e.key === 'theme_mode') {
+            const nextMode = getSiteThemeMode();
+            primeCinnySettings(nextMode);
+            applyModeToDom(nextMode);
+          }
+        });
+
+        // Two-way sync: if the user explicitly switches themes in Cinny's Settings UI
+        let isSyncing = false;
+        const themeObserver = new MutationObserver(function() {
+          if (isSyncing || !document.body) return;
+          const cls = document.body.className || '';
+          const isLightCinny = cls.includes('light-theme') || cls.includes('silver-theme') || cls.includes('oq6d071w') || cls.includes('prism-light');
+          const siteMode = getSiteThemeMode();
+          const siteIsLight = siteMode === 'light';
+          if (isLightCinny !== siteIsLight) {
+            isSyncing = true;
+            const next = isLightCinny ? 'light' : 'dark';
+            primeCinnySettings(next);
+            if (window.__theme && typeof window.__theme.apply === 'function') {
+              window.__theme.apply(next);
+            }
+            applyModeToDom(next);
+            isSyncing = false;
+          }
+        });
+
+        function initThemeSync() {
+          if (document.body) {
+            themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+            applyModeToDom(getSiteThemeMode());
+          } else {
+            document.addEventListener('DOMContentLoaded', function() {
+              if (document.body) {
+                themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+                applyModeToDom(getSiteThemeMode());
+              }
+            });
+          }
+        }
+        initThemeSync();
+      })();
+
+      // ── Rebranding & Document Title Guardian ────────────────────
+      (function() {
+        const host = window.location.hostname || '';
+        const isPickle = /(^|\.)sexypickleclub\.com$/.test(host);
+        const brandName = isPickle ? 'Sexy Pickle Club' : 'mitch.pro';
+        const matrixLabel = isPickle ? 'Pickle Matrix' : 'Mitch.pro Matrix';
+        const defaultTitle = `Matrix Chat — ${brandName}`;
+
+        const ssoMsg = document.getElementById('mitch-sso-msg');
+        const ssoBtn = document.getElementById('mitch-sso-btn');
+        if (ssoMsg) {
+          ssoMsg.textContent = isPickle
+            ? '✨ Connect your Sexy Pickle Club account for instant single sign-on'
+            : '✨ Connect your Mitch.pro account for instant single sign-on';
+        }
+        if (ssoBtn) {
+          ssoBtn.textContent = isPickle ? 'Log In' : 'Log In with Mitch.pro';
+        }
+
+        const origTitleSetter = Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.set;
+        if (origTitleSetter) {
+          Object.defineProperty(document, 'title', {
+            configurable: true,
+            enumerable: true,
+            set: function(val) {
+              if (typeof val === 'string') {
+                let clean = val.replace(/\bCinny\b/gi, matrixLabel);
+                if (!clean.toLowerCase().includes(brandName.toLowerCase())) {
+                  clean = clean ? `${clean} — ${brandName}` : defaultTitle;
+                }
+                origTitleSetter.call(document, clean);
+              } else {
+                origTitleSetter.call(document, val);
+              }
+            },
+            get: function() {
+              return Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.get?.call(document) || defaultTitle;
+            }
+          });
+        }
+        document.title = defaultTitle;
+
+        function sanitizeCinnyBranding(rootNode) {
+          if (!rootNode) return;
+          if (rootNode.nodeType === Node.TEXT_NODE) {
+            if (rootNode.nodeValue && rootNode.nodeValue.includes('Cinny')) {
+              rootNode.nodeValue = rootNode.nodeValue
+                .replace(/Welcome to Cinny/g, `Welcome to ${matrixLabel}`)
+                .replace(/Cinny Web/g, matrixLabel)
+                .replace(/Cinny/g, matrixLabel);
+            }
+            return;
+          }
+          const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, null, false);
+          let node;
+          while ((node = walker.nextNode())) {
+            if (node.nodeValue && node.nodeValue.includes('Cinny')) {
+              node.nodeValue = node.nodeValue
+                .replace(/Welcome to Cinny/g, `Welcome to ${matrixLabel}`)
+                .replace(/Cinny Web/g, matrixLabel)
+                .replace(/Cinny/g, matrixLabel);
+            }
+          }
+          if (rootNode.querySelectorAll) {
+            const logos = rootNode.querySelectorAll('img[alt*="Cinny" i]');
+            logos.forEach(img => {
+              img.src = '/icon-192.png';
+              img.alt = `${brandName} Logo`;
+              img.style.borderRadius = '14px';
+              img.style.boxShadow = '0 8px 24px rgba(184, 108, 255, 0.35)';
+            });
+          }
+        }
+
+        const observer = new MutationObserver(mutations => {
+          for (const mutation of mutations) {
+            if (mutation.type === 'childList') {
+              mutation.addedNodes.forEach(n => {
+                if (n.nodeType === Node.ELEMENT_NODE || n.nodeType === Node.TEXT_NODE) {
+                  sanitizeCinnyBranding(n);
+                }
+              });
+            }
+          }
+        });
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+      })();
+
+      // ── Single Sign-On (SSO) & Bootstrapping ──────────────────────
+      // Stay on the host that opened Matrix (e.g. rjuhsd.school/matrix/).
+      // Unsigned users hit /api/sso/bridge?back=/matrix/, which hops through
+      // the identity host (mitchdog.com) and returns here after exchange.
+      (function() {
+        const banner = document.getElementById("mitch-sso-banner");
+
+        function bootCinny() {
+          if (window.__cinnyLoaded) return;
+          window.__cinnyLoaded = true;
+          const script = document.createElement("script");
+          script.type = "module";
+          script.crossOrigin = "anonymous";
+          script.src = "/matrix/assets/index-BVlPv2dR.js";
+          document.head.appendChild(script);
+        }
+
+        function readStoredSession() {
+          return {
+            token: localStorage.getItem("cinny_access_token") || '',
+            userId: localStorage.getItem("cinny_user_id") || ''
+          };
+        }
+
+        async function storedSessionIsValid(token, expectedUserId) {
+          if (!token || !expectedUserId) return false;
+          try {
+            const response = await fetch('/_matrix/client/v3/account/whoami', {
+              headers: { Authorization: `Bearer ${token}` },
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
+            if (!response.ok) return false;
+            const data = await response.json();
+            return data.user_id === expectedUserId;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        function saveSession(data) {
+          localStorage.setItem("cinny_access_token", data.access_token);
+          localStorage.setItem("cinny_device_id", data.device_id);
+          localStorage.setItem("cinny_user_id", data.user_id);
+          localStorage.setItem("cinny_hs_base_url", data.base_url);
+        }
+
+        async function initMitchSSO() {
+          try {
+            const statusRes = await fetch('/api/matrix/sso-status', {
+              credentials: 'same-origin',
+              cache: 'no-store'
+            });
+            const status = statusRes.ok ? await statusRes.json() : { authenticated: false };
+            const stored = readStoredSession();
+
+            // Reuse this browser's existing Matrix device. Logging in again on
+            // every page load creates abandoned devices and destabilizes E2EE.
+            if (stored.token && stored.userId &&
+                (!status.authenticated || stored.userId === status.user_id) &&
+                await storedSessionIsValid(stored.token, stored.userId)) {
+              if (banner) banner.style.display = 'none';
+              bootCinny();
+              return;
+            }
+
+            if (!status.authenticated) {
+              if (banner) banner.style.display = 'flex';
+              bootCinny();
+              return;
+            }
+
+            const res = await fetch("/api/matrix/sso-login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Mitch-Requested-With": "1" },
+              credentials: "same-origin"
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data && data.access_token && data.user_id) {
+                saveSession(data);
+                if (banner) banner.style.display = "none";
+              }
+            } else if (banner) {
+              banner.style.display = "flex";
+            }
+          } catch (e) {
+            console.warn("[Mitch Matrix SSO]", e);
+            if (!readStoredSession().token && banner) banner.style.display = "flex";
+          } finally {
+            bootCinny();
+          }
+        }
+
+        if (navigator.locks && typeof navigator.locks.request === 'function') {
+          navigator.locks.request('mitch-matrix-session', initMitchSSO);
+        } else {
+          initMitchSSO();
+        }
+      })();
+
+      // ── Mitch.pro Push Notification Integration ───────────────────
+      (function() {
+        function b64ToUint8(b64) {
+          const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+          const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+          return Uint8Array.from(Array.prototype.map.call(raw, c => c.charCodeAt(0)));
+        }
+
+        async function syncMitchPushSubscription(askPermission = false) {
+          if (!window.isSecureContext || !('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+            return false;
+          }
+          let permission = Notification.permission;
+          if (permission === 'default' && askPermission) {
+            permission = await Notification.requestPermission();
+          }
+          if (permission !== 'granted') return false;
+
+          try {
+            const keyRes = await fetch('/api/push/vapid-key', { credentials: 'same-origin', cache: 'no-store' });
+            if (!keyRes.ok) return false;
+            const keyData = await keyRes.json();
+            if (!keyData.publicKey) return false;
+
+            let reg = await navigator.serviceWorker.getRegistration('/');
+            if (!reg) {
+              reg = await navigator.serviceWorker.register('/sw.js?v=36', { scope: '/', updateViaCache: 'none' });
+            }
+            await navigator.serviceWorker.ready;
+
+            let sub = await reg.pushManager.getSubscription();
+            if (!sub) {
+              sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: b64ToUint8(keyData.publicKey)
+              });
+            }
+            const saveRes = await fetch('/api/push/subscribe', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+              body: JSON.stringify(sub)
+            });
+            return saveRes.ok;
+          } catch (err) {
+            console.warn('[Mitch Matrix Push] Failed to sync push subscription:', err);
+            return false;
+          }
+        }
+
+        // Hook Notification.requestPermission so Cinny settings/prompts also register with mitch.pro
+        if ('Notification' in window) {
+          const origRequestPermission = Notification.requestPermission.bind(Notification);
+          Notification.requestPermission = async function(callback) {
+            const res = await origRequestPermission(callback);
+            if (res === 'granted') {
+              syncMitchPushSubscription(false).catch(() => {});
+              const banner = document.getElementById('mitch-push-banner');
+              if (banner) banner.classList.remove('show');
+            }
+            return res;
+          };
+        }
+
+        // Register Service Worker on / scope
+        if ('serviceWorker' in navigator && window.isSecureContext) {
+          navigator.serviceWorker.register('/sw.js?v=36', { scope: '/', updateViaCache: 'none' }).catch(() => {});
+        }
+
+        // Auto-sync if notification permission is already granted
+        if (window.Notification && Notification.permission === 'granted') {
+          syncMitchPushSubscription(false).catch(() => {});
+        }
+
+        // Banner prompt handlers
+        function setupBanner() {
+          const banner = document.getElementById('mitch-push-banner');
+          const btnLater = document.getElementById('mitch-push-later');
+          const btnEnable = document.getElementById('mitch-push-enable');
+          if (!banner || !btnLater || !btnEnable) return;
+
+          btnLater.addEventListener('click', () => {
+            localStorage.setItem('mitch_matrix_push_dismissed', String(Date.now()));
+            banner.classList.remove('show');
+          });
+
+          btnEnable.addEventListener('click', async () => {
+            const ok = await syncMitchPushSubscription(true);
+            if (ok || Notification.permission !== 'default') {
+              banner.classList.remove('show');
+            }
+          });
+
+          // Check if banner should be displayed (snooze 5 minutes)
+          if (window.Notification && Notification.permission === 'default') {
+            const dismissed = localStorage.getItem('mitch_matrix_push_dismissed');
+            if (!dismissed || (Date.now() - parseInt(dismissed, 10) > 5 * 60 * 1000)) {
+              setTimeout(() => {
+                if (Notification.permission === 'default') {
+                  banner.classList.add('show');
+                }
+              }, 800);
+            }
+          }
+        }
+
+        // Synchronize Matrix room reads to Mitch.pro notification bell
+        function markCurrentRoomRead() {
+          const m = location.hash.match(/#\/room\/([^/?]+)/);
+          if (m && m[1]) {
+            const roomId = decodeURIComponent(m[1]);
+            fetch('/api/matrix/notifications/read', {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
+              body: JSON.stringify({ roomId })
+            }).catch(() => {});
+          }
+        }
+        window.addEventListener('hashchange', markCurrentRoomRead);
+        document.addEventListener('click', () => setTimeout(markCurrentRoomRead, 300));
+        setTimeout(markCurrentRoomRead, 1500);
+        setInterval(markCurrentRoomRead, 12000);
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', setupBanner);
+        } else {
+          setupBanner();
+        }
+      })();
+    </script>
+    <div id="root"></div>
+    <div id="portalContainer"></div>
+  </body>
+</html>

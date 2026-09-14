@@ -7,6 +7,9 @@ const REPO_ROOT = import.meta.dir + '/..';
 configureDataStore({ baseDir: REPO_ROOT, dataDir: join(REPO_ROOT, 'data') });
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:6800';
+if (!['localhost', '127.0.0.1', '[::1]'].includes(new URL(BASE_URL).hostname)) {
+  throw new Error('Integration endpoint tests must target a local test server.');
+}
 
 const ID_SECRET = readFileSync(join(REPO_ROOT, 'data', 'id_secret.key'));
 
@@ -41,6 +44,91 @@ function normalizeEmail(email) {
 const dynamicEmail = `test_premium_${Date.now()}@student.rjuhsd.us`;
 
 const tests = [
+  {
+    name: 'Public top-bar wallet has a clean signed-out state',
+    path: '/api/me/coins', method: 'GET', token: null, expectedStatus: 200,
+    verify: data => data.authenticated === false && data.coins === null
+  },
+  // --- VM ownership isolation ---
+  {
+    name: "User A cannot view User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b', method: 'GET', token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot start User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'start' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot stop User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'force-stop' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot restart User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'restart' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot shut down User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/power', method: 'POST', body: { action: 'shutdown' }, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: "User A cannot create a console for User B's computer",
+    path: '/api/vm/computers/vm-auth-user-b/desktop-session', method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: 'Nonexistent computer returns 404',
+    path: '/api/vm/computers/vm-does-not-exist', method: 'GET', token: USER_TOKEN, expectedStatus: 404
+  },
+  {
+    name: 'Malformed computer ID is rejected',
+    path: '/api/vm/computers/not%21a%21record', method: 'GET', token: USER_TOKEN, expectedStatus: 400
+  },
+  {
+    name: 'Normal user cannot view desktop administration',
+    path: '/api/admin/vms/overview', method: 'GET', token: USER_TOKEN, expectedStatus: 403
+  },
+  ...['assign', 'unassign', 'create'].map(operation => ({
+    name: `Normal user cannot ${operation} computers`,
+    path: `/api/admin/vms/${operation}`, method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 403
+  })),
+  {
+    name: 'Normal user cannot open desktop admin page',
+    path: '/admin/vms/', method: 'GET', token: USER_TOKEN, expectedStatus: 403
+  },
+  {
+    name: 'Desktop WebSocket requires authentication',
+    path: '/api/vm/desktop/ws?session=missing', method: 'GET', token: null, expectedStatus: 403,
+    headers: { Upgrade: 'websocket', Origin: BASE_URL }
+  },
+  {
+    name: 'Expired desktop WebSocket session is rejected',
+    path: '/api/vm/desktop/ws?session=expired-session', method: 'GET', token: USER_TOKEN, expectedStatus: 401,
+    headers: { Upgrade: 'websocket', Origin: BASE_URL }
+  },
+  {
+    name: 'Cross-origin desktop WebSocket is rejected',
+    path: '/api/vm/desktop/ws?session=missing', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    headers: { Upgrade: 'websocket', Origin: 'https://untrusted.example' }
+  },
+  {
+    name: 'Owner can view their running computer',
+    path: '/api/vm/computers/vm-auth-user-a', method: 'GET', token: USER_TOKEN, expectedStatus: 200,
+    verify: data => data.computer?.status === 'running' && data.computer?.ipAddress === '10.0.0.23'
+  },
+  {
+    name: 'Stopped computer cannot create desktop session',
+    path: '/api/vm/computers/vm-auth-stopped/desktop-session', method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 409,
+    verify: data => data.code === 'computer_offline'
+  },
+  {
+    name: 'Upstream failure returns friendly computer error',
+    path: '/api/vm/computers/vm-auth-unreachable', method: 'GET', token: USER_TOKEN, expectedStatus: 502,
+    verify: data => data.code === 'computer_unreachable' && data.error === 'Your computer could not be reached.'
+  },
+  {
+    name: 'Owner can create an opaque desktop session',
+    path: '/api/vm/computers/vm-auth-user-a/desktop-session', method: 'POST', body: {}, token: USER_TOKEN, expectedStatus: 201,
+    verify: data => data.socketPath?.startsWith('/api/vm/desktop/ws?session=') && data.expiresIn > 0 && !JSON.stringify(data).includes('integration-api-secret-do-not-expose') && !JSON.stringify(data).includes('127.0.0.1')
+  },
   // --- Admin Endpoints ---
   {
     name: 'GET /api/admin/moderators (Admin)',
@@ -112,6 +200,70 @@ const tests = [
     body: { targetEmail: 'test123@example.com', amount: 10, reason: 'Test admin gift' },
     token: ADMIN_TOKEN,
     expectedStatus: 200
+  },
+  {
+    name: 'Fund casino integration account',
+    path: '/api/admin/gift-coins', method: 'POST', token: ADMIN_TOKEN, expectedStatus: 200,
+    body: { targetEmail: 'test_normal_user@student.rjuhsd.us', amount: 1000, reason: 'Casino integration tests' }
+  },
+  {
+    name: 'POST /api/casino/rock-paper-scissors',
+    path: '/api/casino/rock-paper-scissors', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10, choice: 'rock' }, verify: data => ['rock', 'paper', 'scissors'].includes(data.computer) && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/lucky-seven',
+    path: '/api/casino/lucky-seven', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10 }, verify: data => Array.isArray(data.dice) && data.dice.length === 2 && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/color-card',
+    path: '/api/casino/color-card', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10, choice: 'red' }, verify: data => ['red', 'black'].includes(data.color) && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/triple-dice',
+    path: '/api/casino/triple-dice', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10, pick: 3 }, verify: data => Array.isArray(data.dice) && data.dice.length === 3 && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'POST /api/casino/plinko',
+    path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10 }, verify: data => typeof data.slot === 'string' && Number.isFinite(data.newBalance)
+  },
+  {
+    name: 'Casino rejects GET power-like game actions',
+    path: '/api/casino/blackjack/hit', method: 'GET', token: USER_TOKEN, expectedStatus: 405
+  },
+  {
+    name: 'Casino rejects invalid negative wagers',
+    path: '/api/casino/lucky-seven', method: 'POST', token: USER_TOKEN, expectedStatus: 400,
+    body: { amount: -1 }
+  },
+  {
+    name: 'Blackjack deals a hand',
+    path: '/api/casino/blackjack/start', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: { amount: 10 }
+  },
+  {
+    name: 'Blackjack rejects duplicate deal without consuming another wager',
+    path: '/api/casino/blackjack/start', method: 'POST', token: USER_TOKEN, expectedStatus: 409,
+    body: { amount: 10 }
+  },
+  {
+    name: 'Blackjack hand restores without revealing hidden dealer card',
+    path: '/api/casino/blackjack/state', method: 'GET', token: USER_TOKEN, expectedStatus: 200,
+    verify: data => data.active && data.bet === 10 && data.playerHand.length === 2 && !data.dealerHand && !data.deck
+  },
+  {
+    name: 'Blackjack settles the hand',
+    path: '/api/casino/blackjack/stand', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
+    body: {}, verify: data => data.gameOver && Number.isFinite(data.winAmt)
+  },
+  {
+    name: 'Blackjack clears settled hand',
+    path: '/api/casino/blackjack/state', method: 'GET', token: USER_TOKEN, expectedStatus: 200,
+    verify: data => data.active === false
   },
   {
     name: 'POST /api/admin/gift-coins (Non-Admin)',
@@ -286,7 +438,7 @@ const tests = [
     path: '/larp/',
     method: 'GET',
     token: null,
-    expectedStatus: 302
+    expectedStatus: 200
   },
   {
     name: 'GET /larp/rezero (Anonymous)',
@@ -300,7 +452,7 @@ const tests = [
     path: '/larp/rezero/',
     method: 'GET',
     token: null,
-    expectedStatus: 302
+    expectedStatus: 200
   },
   {
     name: 'GET /ssh/ (Authenticated)',
@@ -372,8 +524,12 @@ async function run() {
   for (const t of tests) {
     const url = `${BASE_URL}${t.path}`;
     const headers = {
-      'CF-Connecting-IP': '66.60.183.124'
+      'CF-Connecting-IP': '66.60.183.124',
+      ...t.headers
     };
+    if (t.method === 'POST' && (t.path.startsWith('/api/vm/') || t.path.startsWith('/api/admin/vms/')) && !headers.Origin) {
+      headers.Origin = BASE_URL;
+    }
     if (t.token) {
       headers['Cookie'] = `studentId=${t.token}`;
     }
@@ -396,10 +552,12 @@ async function run() {
       const response = await fetch(url, options);
       const status = response.status;
       
-      const statusMatches = (status === t.expectedStatus) || 
-                            (t.expectedStatus === 403 && (status === 401 || status === 403));
+      const strictAuthorization = t.path.startsWith('/api/vm/') || t.path.startsWith('/api/admin/vms/') || t.path.startsWith('/admin/vms/');
+      const statusMatches = status === t.expectedStatus ||
+                            (!strictAuthorization && t.expectedStatus === 403 && status === 401);
                             
-      if (statusMatches) {
+      const payloadMatches = !t.verify || t.verify(await response.clone().json());
+      if (statusMatches && payloadMatches) {
         console.log(`✅ [PASS] ${t.name} -> Status: ${status}`);
         passedCount++;
       } else {
@@ -413,6 +571,10 @@ async function run() {
       failedCount++;
     }
   }
+
+  const vmPowerResults = await runVmPowerVerification();
+  passedCount += vmPowerResults.passedCount;
+  failedCount += vmPowerResults.failedCount;
   
   // --- Sequential Auth Flow verification ---
   const authResults = await runCrazyAuthVerification();
@@ -445,6 +607,23 @@ async function fetchWithBypass(url, options = {}) {
   options.headers = options.headers || {};
   options.headers['CF-Connecting-IP'] = '66.60.183.124';
   return fetch(url, options);
+}
+
+async function runVmPowerVerification() {
+  const requestPower = () => fetchWithBypass(`${BASE_URL}/api/vm/computers/vm-auth-user-a/power`, {
+    method: 'POST', headers: { Cookie: `studentId=${USER_TOKEN}`, 'Content-Type': 'application/json', Origin: BASE_URL },
+    body: JSON.stringify({ action: 'restart' })
+  });
+  try {
+    const responses = await Promise.all([requestPower(), requestPower()]);
+    const statuses = responses.map(response => response.status).sort();
+    if (statuses[0] !== 202 || statuses[1] !== 409) throw new Error(`Expected one 202 and one 409, got ${statuses.join(', ')}`);
+    console.log('PASS: Concurrent power requests accept one operation and reject the duplicate.');
+    return { passedCount: 1, failedCount: 0 };
+  } catch (error) {
+    console.error('FAIL: Concurrent power request isolation:', error.message);
+    return { passedCount: 0, failedCount: 1 };
+  }
 }
 
 async function runCrazyAuthVerification() {

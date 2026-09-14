@@ -115,7 +115,7 @@
         // iOS / unsupported: send the user to the encrypt page where the
         // install flow matters most, and remember they engaged with it.
         close(true);
-        window.location.href = '/encrypt/';
+        window.location.href = '/matrix/';
       }
     };
   }

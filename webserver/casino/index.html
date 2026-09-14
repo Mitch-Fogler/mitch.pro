@@ -217,6 +217,10 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px;
   }
+  .casino-filterbar { display: flex; gap: 7px; overflow-x: auto; margin: 0 0 14px; padding: 4px; scrollbar-width: thin; }
+  .casino-filter { flex: 0 0 auto; min-height: 34px; padding: 6px 11px; border: 1px solid var(--t-bd); border-radius: 10px; background: color-mix(in srgb, var(--t-bg2) 86%, transparent); color: var(--t-fg2); font-size: .77rem; font-weight: 750; cursor: pointer; }
+  .casino-filter.active { color: var(--t-bg); border-color: var(--t-ac); background: var(--t-ac); }
+  .card.is-filtered { display: none; }
   .card {
     min-height: 245px;
     padding: 16px;
@@ -498,6 +502,15 @@
     .layout { grid-template-columns: 1fr; }
     .side { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
+  @media (min-width: 761px) and (max-height: 800px) {
+    .casino-page .app-main { padding-top: .8rem !important; }
+    .casino-page .page-head { margin-bottom: .6rem; }
+    .casino-page .page-head h1 { font-size: 1.7rem !important; }
+    .casino-page .hero { padding: 16px; margin-bottom: 8px; }
+    .casino-page .hero-copy p { margin: .4rem 0; }
+    .casino-page .betbox { padding: 11px; gap: 7px; }
+    .casino-page .card { min-height: 205px; padding: 13px; }
+  }
   @media (max-width: 780px) {
     .page-head, .hero { grid-template-columns: 1fr; }
     .wallet { justify-content: space-between; width: 100%; }
@@ -583,6 +596,13 @@
     border-color: var(--t-bd);
     box-shadow: 0 18px 50px rgba(0,0,0,.15);
   }
+  .casino-page .toast { z-index: 20000; }
+  @media (min-width: 761px) and (max-width: 1500px) and (max-height: 820px) {
+    body.casino-page .hero { padding: 16px; }
+    body.casino-page .hero-copy h2 { font-size: 26px; }
+    body.casino-page .games { gap: 12px; }
+    body.casino-page .card { padding: 14px; }
+  }
 </style>
 </head>
 <body class="casino-page">
@@ -620,9 +640,17 @@
     </aside>
   </section>
 
+  <nav class="casino-filterbar" aria-label="Filter casino games">
+    <button class="casino-filter active" type="button" data-filter="all">All games</button>
+    <button class="casino-filter" type="button" data-filter="quick">Quick</button>
+    <button class="casino-filter" type="button" data-filter="cards">Cards</button>
+    <button class="casino-filter" type="button" data-filter="table">Table</button>
+    <button class="casino-filter" type="button" data-filter="numbers">Numbers</button>
+  </nav>
+
   <section class="layout">
     <div class="games">
-      <article class="card wide" id="card-slots">
+      <article class="card wide" id="card-slots" data-category="quick">
         <div class="card-head"><div><div class="kicker">Reels</div><h2>Slots</h2></div><div class="card-options"><a href="/casino-guide.html#slots" class="opt-btn help" title="How to play">?</a><div class="icon">777</div></div></div>
         <p>Classic reels with doubles, triples, sevens, bells, and diamond jackpots.</p>
         <div class="controls">
@@ -634,7 +662,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-roulette">
+      <article class="card" id="card-roulette" data-category="table numbers">
         <div class="card-head"><div><div class="kicker">Table</div><h2>Roulette</h2></div><div class="card-options"><a href="/casino-guide.html#roulette" class="opt-btn help" title="How to play">?</a><div class="icon">36</div></div></div>
         <p>Bet red, black, green, or a single number from 0 to 36.</p>
         <div class="controls">
@@ -649,7 +677,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-blackjack">
+      <article class="card" id="card-blackjack" data-category="cards table">
         <div class="card-head"><div><div class="kicker">Cards</div><h2>Blackjack</h2></div><div class="card-options"><a href="/casino-guide.html#blackjack" class="opt-btn help" title="How to play">?</a><div class="icon">21</div></div></div>
         <p>Beat the dealer without going over 21.</p>
         <div class="controls">
@@ -664,7 +692,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-poker">
+      <article class="card" id="card-poker" data-category="cards">
         <div class="card-head"><div><div class="kicker">Cards</div><h2>Five Card Poker</h2></div><div class="card-options"><a href="/casino-guide.html#poker" class="opt-btn help" title="How to play">?</a><div class="icon">A K</div></div></div>
         <p>Draw one hand and get paid for jacks or better and rare hands.</p>
         <div class="controls">
@@ -673,7 +701,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-coinflip">
+      <article class="card" id="card-coinflip" data-category="quick">
         <div class="card-head"><div><div class="kicker">Quick</div><h2>Coin Flip</h2></div><div class="card-options"><a href="/casino-guide.html#coinflip" class="opt-btn help" title="How to play">?</a><div class="icon">H/T</div></div></div>
         <p>Pick heads or tails and flip.</p>
         <div class="controls">
@@ -685,7 +713,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-dice">
+      <article class="card" id="card-dice" data-category="quick numbers">
         <div class="card-head"><div><div class="kicker">Dice</div><h2>Dice Duel</h2></div><div class="card-options"><a href="/casino-guide.html#dice" class="opt-btn help" title="How to play">?</a><div class="icon">1-100</div></div></div>
         <p>Roll a 100-sided die and predict under or over.</p>
         <div class="controls">
@@ -697,7 +725,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-crash">
+      <article class="card" id="card-crash" data-category="quick">
         <div class="card-head"><div><div class="kicker">Multiplier</div><h2>Crash</h2></div><div class="card-options"><a href="/casino-guide.html#crash" class="opt-btn help" title="How to play">?</a><div class="icon">x</div></div></div>
         <p>Pick a cashout target and don't bust.</p>
         <div class="controls">
@@ -709,7 +737,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-wheel">
+      <article class="card" id="card-wheel" data-category="quick">
         <div class="card-head"><div><div class="kicker">Wheel</div><h2>Prize Wheel</h2></div><div class="card-options"><a href="/casino-guide.html#wheel" class="opt-btn help" title="How to play">?</a><div class="icon">20x</div></div></div>
         <p>Most spaces are modest. A rare jackpot wedge pays hard.</p>
         <div class="controls">
@@ -718,7 +746,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-scratch">
+      <article class="card" id="card-scratch" data-category="quick">
         <div class="card-head"><div><div class="kicker">Instant</div><h2>Scratch Card</h2></div><div class="card-options"><a href="/casino-guide.html#scratch" class="opt-btn help" title="How to play">?</a><div class="icon">9</div></div></div>
         <p>Reveal a 3 by 3 card and hunt for matches.</p>
         <div class="controls">
@@ -727,7 +755,7 @@
         </div>
       </article>
 
-      <article class="card" id="card-high-low">
+      <article class="card" id="card-high-low" data-category="cards">
         <div class="card-head"><div><div class="kicker">Cards</div><h2>High / Low</h2></div><div class="card-options"><div class="icon">7?</div></div></div>
         <p>Predict whether the next card lands above or below seven. Seven pushes; ace plays low.</p>
         <div class="controls">
@@ -739,7 +767,40 @@
         </div>
       </article>
 
-      <article class="card wide" id="card-keno">
+      <article class="card" id="card-rps" data-category="quick">
+        <div class="card-head"><div><div class="kicker">Quick</div><h2>Rock Paper Scissors</h2></div><div class="icon">RPS</div></div>
+        <p>Choose your move and face the house.</p>
+        <div class="controls">
+          <button class="btn primary" onclick="goFullscreen('card-rps')" type="button">Play RPS</button>
+          <div style="display:none;"><div class="choice-row" data-group="rps"><button class="choice active" data-rps="rock" type="button">Rock</button><button class="choice" data-rps="paper" type="button">Paper</button><button class="choice" data-rps="scissors" type="button">Scissors</button></div><button class="btn primary" id="rps" type="button">Play Hand</button></div>
+        </div>
+      </article>
+
+      <article class="card" id="card-lucky-seven" data-category="quick numbers">
+        <div class="card-head"><div><div class="kicker">Dice</div><h2>Lucky Seven</h2></div><div class="icon">7</div></div>
+        <p>Roll two dice. A total of seven pays 4.8x.</p>
+        <div class="controls"><button class="btn primary" onclick="goFullscreen('card-lucky-seven')" type="button">Play Lucky Seven</button><div style="display:none;"><button class="btn primary" id="lucky-seven" type="button">Roll Dice</button></div></div>
+      </article>
+
+      <article class="card" id="card-color-card" data-category="cards quick">
+        <div class="card-head"><div><div class="kicker">Cards</div><h2>Color Card</h2></div><div class="icon">R/B</div></div>
+        <p>Predict whether the next card is red or black.</p>
+        <div class="controls"><button class="btn primary" onclick="goFullscreen('card-color-card')" type="button">Play Color Card</button><div style="display:none;"><div class="choice-row" data-group="colorcard"><button class="choice active" data-colorcard="red" type="button">Red</button><button class="choice" data-colorcard="black" type="button">Black</button></div><button class="btn primary" id="color-card" type="button">Draw Card</button></div></div>
+      </article>
+
+      <article class="card" id="card-triple-dice" data-category="numbers">
+        <div class="card-head"><div><div class="kicker">Dice</div><h2>Triple Dice</h2></div><div class="icon">3D</div></div>
+        <p>Pick a face. More matching dice means a bigger payout.</p>
+        <div class="controls"><button class="btn primary" onclick="goFullscreen('card-triple-dice')" type="button">Play Triple Dice</button><div style="display:none;"><label for="triple-pick">Pick 1 to 6</label><input id="triple-pick" type="number" min="1" max="6" value="3"><button class="btn primary" id="triple-dice" type="button">Roll Three Dice</button></div></div>
+      </article>
+
+      <article class="card" id="card-plinko" data-category="quick">
+        <div class="card-head"><div><div class="kicker">Drop</div><h2>Plinko</h2></div><div class="icon">8x</div></div>
+        <p>Drop a chip and land on a multiplier.</p>
+        <div class="controls"><button class="btn primary" onclick="goFullscreen('card-plinko')" type="button">Play Plinko</button><div style="display:none;"><button class="btn primary" id="plinko" type="button">Drop Chip</button></div></div>
+      </article>
+
+      <article class="card wide" id="card-keno" data-category="numbers">
         <div class="card-head"><div><div class="kicker">Numbers</div><h2>Keno Rush</h2></div><div class="card-options"><a href="/casino-guide.html#keno" class="opt-btn help" title="How to play">?</a><div class="icon">40</div></div></div>
         <p>Pick 3 to 10 numbers and watch the draw.</p>
         <div class="controls">
@@ -773,7 +834,7 @@
 
 <script>
 (function () {
-  var state = { coinSide: "heads", diceSide: "under", highLow: "higher", keno: new Set(), bjBet: 0, busy: false };
+  var state = { coinSide: "heads", diceSide: "under", highLow: "higher", rps: "rock", cardColor: "red", keno: new Set(), bjBet: 0, busy: false };
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.from((root || document).querySelectorAll(sel)); };
 
@@ -912,6 +973,18 @@
         $$('[data-group="highlow"] .choice').forEach(function (b) { b.classList.toggle("active", b === btn); });
       };
     });
+    $$('[data-group="rps"] .choice').forEach(function (btn) {
+      btn.onclick = function () {
+        state.rps = btn.dataset.rps;
+        $$('[data-group="rps"] .choice').forEach(function (b) { b.classList.toggle("active", b === btn); });
+      };
+    });
+    $$('[data-group="colorcard"] .choice').forEach(function (btn) {
+      btn.onclick = function () {
+        state.cardColor = btn.dataset.colorcard;
+        $$('[data-group="colorcard"] .choice').forEach(function (b) { b.classList.toggle("active", b === btn); });
+      };
+    });
   }
   function buildKeno() {
     var board = $("#keno-board");
@@ -960,12 +1033,30 @@
     $("#blackjack-hit").disabled = true;
     $("#blackjack-stand").disabled = true;
   }
+  fetch('/api/casino/blackjack/state', { credentials: 'include', cache: 'no-store' })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(d) {
+      if (!d || !d.active) return;
+      state.bjBet = d.bet;
+      renderBj(d, 'Your hand is ready. Hit or stand.');
+      $("#blackjack-hit").disabled = false;
+      $("#blackjack-stand").disabled = false;
+    }).catch(function() {});
 
   $$("[data-bet]").forEach(function (btn) {
     btn.onclick = function () { $("#bet").value = btn.dataset.bet; };
   });
   bindChoices();
   buildKeno();
+  $$('.casino-filter').forEach(function (button) {
+    button.onclick = function () {
+      var filter = button.dataset.filter;
+      $$('.casino-filter').forEach(function (item) { item.classList.toggle('active', item === button); });
+      $$('.games > .card').forEach(function (card) {
+        card.classList.toggle('is-filtered', filter !== 'all' && !String(card.dataset.category || '').split(/\s+/).includes(filter));
+      });
+    };
+  });
 
   $("#slots").onclick = function () { play(async function () {
     var d = await post("/api/casino/slots", { amount: bet() });
@@ -1013,6 +1104,26 @@
     var d = await post("/api/casino/high-low", { amount: bet(), choice: state.highLow });
     result(d.push ? "High / Low: Push" : (d.won ? "High / Low: Win" : "High / Low: Miss"), "You called " + esc(state.highLow) + ". The card was " + esc(d.card) + ".", d.net, itemRow([d.card], "carditem"));
   }); };
+  $("#rps").onclick = function () { play(async function () {
+    var d = await post("/api/casino/rock-paper-scissors", { amount: bet(), choice: state.rps });
+    result(d.tie ? "RPS: Tie" : d.won ? "RPS: Win" : "RPS: Lose", "You chose " + esc(d.choice) + ". House chose " + esc(d.computer) + ".", d.net, itemRow([d.choice, d.computer]));
+  }); };
+  $("#lucky-seven").onclick = function () { play(async function () {
+    var d = await post("/api/casino/lucky-seven", { amount: bet() });
+    result(d.won ? "Lucky Seven: Hit" : "Lucky Seven: Miss", "Rolled " + d.total + ".", d.net, itemRow(d.dice));
+  }); };
+  $("#color-card").onclick = function () { play(async function () {
+    var d = await post("/api/casino/color-card", { amount: bet(), choice: state.cardColor });
+    result(d.won ? "Color Card: Win" : "Color Card: Lose", "You chose " + esc(d.choice) + ". Drew " + esc(d.card) + " of " + esc(d.suit) + ".", d.net, cardRow([{ v: d.card, s: d.color === "red" ? "♥" : "♠" }]));
+  }); };
+  $("#triple-dice").onclick = function () { play(async function () {
+    var d = await post("/api/casino/triple-dice", { amount: bet(), pick: Number($("#triple-pick").value) });
+    result(d.matches ? "Triple Dice: " + d.matches + " Match" + (d.matches === 1 ? "" : "es") : "Triple Dice: No Match", "Picked " + d.pick + ". Multiplier " + coins(d.mult) + "x.", d.net, itemRow(d.dice));
+  }); };
+  $("#plinko").onclick = function () { play(async function () {
+    var d = await post("/api/casino/plinko", { amount: bet() });
+    result("Plinko: " + esc(d.slot), "The chip landed on " + esc(d.slot) + ".", d.net, itemRow([d.slot]));
+  }); };
   $("#keno").onclick = function () { play(async function () {
     var picks = Array.from(state.keno).sort(function (a, b) { return a - b; });
     var d = await post("/api/casino/keno", { amount: bet(), picks: picks });
@@ -1024,8 +1135,9 @@
     $("#keno-count").textContent = "0 / 10";
   };
   $("#blackjack-start").onclick = function () { play(async function () {
-    state.bjBet = bet();
-    var d = await post("/api/casino/blackjack/start", { amount: state.bjBet });
+    var wager = bet();
+    var d = await post("/api/casino/blackjack/start", { amount: wager });
+    state.bjBet = wager;
     renderBj(d, "Hand started. Hit or stand.");
     $("#blackjack-hit").disabled = false;
     $("#blackjack-stand").disabled = false;

@@ -1,0 +1,56 @@
+#cloak-dialog{width:min(580px,calc(100% - 24px));max-height:calc(100dvh - 24px);box-sizing:border-box;overflow:auto;padding:24px;border:1px solid var(--t-bd,#574065);border-radius:22px;background:var(--t-bg2,#181122);color:var(--t-fg,#fff);font:14px/1.5 system-ui;box-shadow:0 30px 100px #0008}
+#cloak-dialog::backdrop{background:#05020bc2;backdrop-filter:blur(6px)}
+#cloak-dialog header,#cloak-dialog footer{display:flex;align-items:center;justify-content:space-between;gap:12px}#cloak-dialog h2{margin:0;font-size:28px;letter-spacing:-.04em}#cloak-dialog p{color:var(--t-fg2,#c1b5cc)}
+#cloak-dialog button,#cloak-launcher{cursor:pointer;border:1px solid var(--t-bd,#574065);border-radius:10px;padding:10px 14px;background:var(--t-bg3,#30203d);color:var(--t-fg,#fff);font:inherit;min-height:42px}#cloak-launcher{font:700 12px system-ui;flex-shrink:0}
+#cloak-dialog button:hover,#cloak-dialog button[aria-pressed=true]{border-color:var(--t-ac,#b785f9);background:color-mix(in srgb,var(--t-ac,#b785f9) 20%,var(--t-bg2,#181122))}#cloak-dialog :focus-visible,#cloak-launcher:focus-visible{outline:2px solid var(--t-ac,#b785f9);outline-offset:3px}
+#cloak-preview{display:flex;align-items:center;gap:10px;padding:14px;margin:16px 0;border:1px solid var(--t-bd);border-radius:12px;background:var(--t-bg);overflow-wrap:anywhere}#cloak-preview img{width:20px;height:20px;object-fit:contain}
+.cloak-presets{display:grid;grid-template-columns:1fr 1fr;gap:10px}.cloak-presets button{display:flex;align-items:center;gap:12px;text-align:left}.cloak-presets img{width:28px;height:28px;object-fit:contain}
+#cloak-custom{display:grid;gap:12px;margin:22px 0;padding-top:18px;border-top:1px solid var(--t-bd)}#cloak-custom label{display:grid;gap:5px}#cloak-custom input{box-sizing:border-box;width:100%;min-width:0;padding:10px;background:var(--t-bg);color:var(--t-fg);border:1px solid var(--t-bd);border-radius:8px;font:inherit}.cloak-options{display:grid;gap:12px}.cloak-options input{accent-color:var(--t-ac)}.cloak-note{font-size:12px}#cloak-status{min-height:20px}
+#cloak-shield{position:fixed;inset:0;width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;border:0;padding:0;background:#090b10;color:white}#cloak-shield::backdrop{background:#090b10}#cloak-shield button{position:absolute;bottom:30px;left:50%;transform:translateX(-50%);padding:14px 22px;border:1px solid #555;border-radius:12px;background:#181c24;color:white;cursor:pointer}
+@media(max-width:600px){#cloak-dialog{padding:18px}.cloak-presets{grid-template-columns:1fr}#cloak-launcher{padding:8px;font-size:11px}#cloak-dialog footer{flex-wrap:wrap}}
+
+/* Quiet surfaces pick up only a small amount of the wallpaper-derived accent. */
+#cloak-dialog {
+  --cloak-surface: color-mix(in srgb, var(--t-ac, #92979d) 3%, var(--t-bg, #151719));
+  --cloak-control: color-mix(in srgb, var(--t-fg, #eee) 5%, var(--cloak-surface));
+  --cloak-border: color-mix(in srgb, var(--t-fg, #eee) 17%, var(--cloak-surface));
+  width: min(650px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 18px 22px;
+  border-color: var(--cloak-border);
+  border-radius: 16px;
+  background: var(--cloak-surface);
+  font-size: 13px;
+  box-shadow: 0 20px 70px #0006;
+}
+#cloak-dialog::backdrop { background: #0009; backdrop-filter: blur(4px); }
+#cloak-dialog h2 { font-size: 23px; }
+#cloak-dialog header p { margin: 3px 0 0; }
+#cloak-dialog button { background: var(--cloak-control); border-color: var(--cloak-border); padding: 8px 12px; min-height: 38px; }
+#cloak-dialog button:hover,#cloak-dialog button[aria-pressed=true] { background: color-mix(in srgb,var(--t-fg,#eee) 10%,var(--cloak-surface)); border-color: color-mix(in srgb,var(--t-fg,#eee) 45%,var(--cloak-surface)); }
+#cloak-dialog button[aria-pressed=true] { box-shadow: inset 3px 0 var(--t-fg2,#aaa); }
+#cloak-dialog :focus-visible { outline-color: var(--t-fg2,#aaa); }
+#cloak-preview { margin: 12px 0; padding: 10px 12px; background: var(--cloak-control); border-color: var(--cloak-border); }
+#cloak-dialog .cloak-presets { gap: 8px; grid-template-columns: 1fr 1fr; }
+#cloak-dialog .cloak-presets button { gap: 9px; }
+#cloak-dialog .cloak-presets img { width: 22px; height: 22px; filter: saturate(.15); }
+#cloak-custom { grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; padding-top: 14px; border-color: var(--cloak-border); }
+#cloak-custom label { min-width: 0; }
+#cloak-custom input { background: var(--cloak-control); border-color: var(--cloak-border); min-height: 38px; padding: 8px; }
+#cloak-custom button { grid-column: 1 / -1; }
+#cloak-dialog .cloak-options { gap: 8px; }
+#cloak-dialog .cloak-options input { accent-color: var(--t-fg2,#aaa); }
+#cloak-dialog .cloak-note { margin: 10px 0 6px; font-size: 11px; }
+#cloak-status { min-height: 0; margin: 6px 0; }
+#cloak-status:empty { display: none; }
+#cloak-launcher { background: color-mix(in srgb,var(--t-fg,#eee) 5%,var(--t-bg,#151719)); border-color: color-mix(in srgb,var(--t-fg,#eee) 18%,var(--t-bg,#151719)); min-height: 34px; padding: 6px 10px; }
+@media(max-height:650px) and (min-width:601px) {
+  #cloak-dialog { padding: 14px 18px; max-height: calc(100dvh - 20px); }
+  #cloak-custom { margin: 10px 0; padding-top: 10px; }
+  #cloak-dialog .cloak-options { gap: 5px; }
+}
+@media(max-width:480px) {
+  #cloak-dialog { width: calc(100vw - 20px); padding: 16px; }
+  #cloak-custom { grid-template-columns: 1fr; }
+  #cloak-dialog .cloak-presets button { font-size: 12px; padding: 8px; }
+}

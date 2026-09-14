@@ -220,18 +220,19 @@
 
   function showPushPrompt() {
     if (document.getElementById('sw-push-prompt')) return;
+    if (window.Notification && Notification.permission !== 'default') return;
     var prompt = document.createElement('div');
     prompt.id = 'sw-push-prompt';
     prompt.setAttribute('role', 'dialog');
     prompt.setAttribute('aria-label', 'Enable Mitch.pro notifications');
     prompt.innerHTML =
       '<span class="sw-push-mark" aria-hidden="true">&#128276;</span>' +
-      '<span class="sw-push-copy"><b>Stay in the loop</b><span>Enable alerts for encrypted messages, friends, rewards, and site updates.</span></span>' +
-      '<span class="sw-push-actions"><button id="sw-push-later" type="button">Not now</button><button id="sw-push-enable" type="button">Enable alerts</button></span>';
+      '<span class="sw-push-copy"><b>Never miss a call or message</b><span>Enable push alerts for incoming voice/video calls, Matrix chat, and important updates.</span></span>' +
+      '<span class="sw-push-actions"><button id="sw-push-later" type="button">Remind later</button><button id="sw-push-enable" type="button">Enable alerts</button></span>';
     document.body.appendChild(prompt);
     requestAnimationFrame(function() { prompt.classList.add('show'); });
     document.getElementById('sw-push-later').onclick = function() {
-      try { sessionStorage.setItem('_mitchPushPromptLater', '1'); } catch(e) {}
+      try { sessionStorage.setItem('_mitchPushPromptSnooze', String(Date.now() + 180000)); } catch(e) {}
       removePushPrompt();
     };
     document.getElementById('sw-push-enable').onclick = async function() {
@@ -240,8 +241,11 @@
       button.textContent = 'Enabling...';
       try {
         var enabled = await ensurePushSubscription(true);
-        if (enabled) removePushPrompt();
-        else {
+        if (enabled) {
+          removePushPrompt();
+          refreshAlertsButton();
+          if (typeof refreshPushUpsell === 'function') refreshPushUpsell();
+        } else {
           button.textContent = Notification.permission === 'denied' ? 'Blocked in browser' : 'Try again';
           button.disabled = Notification.permission === 'denied';
         }
@@ -264,12 +268,18 @@
       return;
     }
     if (Notification.permission !== 'default') return;
-    try { if (sessionStorage.getItem('_mitchPushPromptLater') === '1') return; } catch(e) {}
-    setTimeout(showPushPrompt, 900);
+    try {
+      var snooze = parseInt(sessionStorage.getItem('_mitchPushPromptSnooze') || '0', 10);
+      if (Date.now() < snooze) {
+        setTimeout(setupPushEnrollment, Math.max(1000, snooze - Date.now()));
+        return;
+      }
+    } catch(e) {}
+    setTimeout(showPushPrompt, 800);
   }
 
   function showMessageToast(message) {
-    if (!message || location.pathname.startsWith('/encrypt')) return;
+    if (!message || location.pathname.startsWith('/encrypt') || location.pathname.startsWith('/matrix')) return;
     removePushPrompt();
     var stack = document.getElementById('sw-message-toasts');
     if (!stack) {
@@ -286,7 +296,7 @@
     toast.className = 'sw-message-toast';
     toast.innerHTML = '<span class="sw-message-toast-icon" aria-hidden="true"><img src="/icon-192.png" alt=""></span>' +
       '<span class="sw-message-toast-copy"><b>' + escText(title) + '</b><span>New encrypted message</span></span>' +
-      '<a href="/encrypt/">Open</a>';
+      '<a href="/matrix/">Open</a>';
     stack.prepend(toast);
     while (stack.children.length > 3) stack.lastElementChild.remove();
     setTimeout(function() { if (toast.parentNode) toast.remove(); }, 9000);
@@ -409,8 +419,34 @@
       '.sw-message-toast-copy { min-width:0; } .sw-message-toast-copy b,.sw-message-toast-copy span { display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }' +
       '.sw-message-toast-copy b { font:800 .8rem/1.2 system-ui,sans-serif; } .sw-message-toast-copy span { margin-top:3px;color:rgba(237,225,255,.68);font:500 .71rem/1.2 system-ui,sans-serif; }' +
       '.sw-message-toast a { padding:8px 10px;border-radius:10px;color:#fff;background:rgba(170,91,255,.18);border:1px solid rgba(210,157,255,.22);text-decoration:none;font:750 .68rem/1 system-ui,sans-serif; }' +
+      '#sw-notif-btn { background:color-mix(in srgb,var(--t-ac) 15%,var(--t-bg2)) !important;color:var(--t-ac) !important;border-color:color-mix(in srgb,var(--t-ac) 38%,var(--t-bd)) !important;box-shadow:inset 0 1px #ffffff12 !important; }' +
+      '#sw-notif-btn[aria-expanded="true"] { background:var(--t-ac) !important;color:var(--t-bg) !important; }' +
+      '#sw-notif-panel { width:min(410px,calc(100vw - 20px));background:color-mix(in srgb,var(--t-bg) 96%,transparent) !important;border-color:var(--t-bd) !important;border-radius:16px !important;box-shadow:0 24px 70px #0008,inset 0 1px #ffffff12 !important;color:var(--t-fg) !important; }' +
+      '.sw-notif-head { min-height:56px;padding:9px 10px !important;border-color:var(--t-bd) !important;color:var(--t-fg) !important; }' +
+      '.sw-notif-head>span { font-size:.92rem; }' +
+      '.sw-notif-head button,.sw-notif-head a.sw-notif-settings { min-height:30px;padding:5px 8px !important;border-color:var(--t-bd) !important;border-radius:8px !important;color:var(--t-fg2) !important;background:color-mix(in srgb,var(--t-bg3) 55%,transparent) !important; }' +
+      '#sw-notif-list { max-height:min(430px,calc(100dvh - 140px));padding:8px !important; }' +
+      '.sw-notif-empty { min-height:150px;display:grid;place-items:center;color:var(--t-fg2) !important;font-size:.85rem !important; }' +
+      '.sw-notif-item { display:grid;grid-template-columns:38px minmax(0,1fr);column-gap:10px;padding:10px !important;border-color:var(--t-bd) !important;border-radius:13px !important;background:color-mix(in srgb,var(--t-bg2) 85%,transparent) !important; }' +
+      '.sw-notif-type { grid-row:1/5;width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:color-mix(in srgb,var(--t-ac) 16%,var(--t-bg3));color:var(--t-ac);font-size:16px; }' +
+      '.sw-notif-title { color:var(--t-fg) !important;font-size:.84rem !important; }' +
+      '.sw-notif-body { color:var(--t-fg2) !important;font-size:.76rem !important; }' +
+      '.sw-notif-detail { color:var(--t-fg2) !important;font-size:.72rem !important; }' +
+      '.sw-notif-age { margin-left:6px;color:var(--t-fg2);font-size:.66rem;font-weight:600;white-space:nowrap; }' +
+      '.sw-notif-actions { grid-column:2; }' +
+      '.sw-notif-actions button,.sw-notif-open { min-height:31px;border-color:var(--t-bd) !important;border-radius:8px !important;background:color-mix(in srgb,var(--t-bg3) 62%,transparent) !important;color:var(--t-fg) !important;font-weight:700; }' +
+      '.sw-notif-open { background:var(--t-ac) !important;color:var(--t-bg) !important;border-color:var(--t-ac) !important; }' +
+      '.sw-message-toast { border-color:var(--t-bd) !important;background:color-mix(in srgb,var(--t-bg) 95%,transparent) !important;color:var(--t-fg) !important; }' +
+      '.sw-message-toast-icon { background:color-mix(in srgb,var(--t-ac) 20%,var(--t-bg3)) !important; }' +
+      '.sw-push-upsell { margin:8px 8px 4px 8px; }' +
+      '.sw-upsell-box { display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; background:linear-gradient(135deg,rgba(168,85,247,.22),rgba(99,102,241,.18)); border:1px solid rgba(192,132,252,.35); font-size:.78rem; color:var(--t-fg,#fff); }' +
+      '.sw-upsell-box.is-denied { background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.3); }' +
+      '.sw-upsell-text { flex:1; min-width:0; }' +
+      '.sw-upsell-text strong { display:block; font-size:.82rem; margin-bottom:2px; }' +
+      '.sw-upsell-text span { display:block; font-size:.72rem; opacity:.85; line-height:1.3; }' +
+      '#sw-upsell-btn { background:linear-gradient(135deg,#a855f7,#6366f1) !important; color:#fff !important; border:none !important; border-radius:8px !important; padding:6px 12px !important; font-weight:700 !important; font-size:.75rem !important; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(168,85,247,.35); }' +
       '@keyframes swToastIn { from { opacity:0; transform:translateY(10px); } }' +
-      '@media(max-width:620px){#sw-push-prompt{grid-template-columns:38px minmax(0,1fr);padding:12px;gap:9px}.sw-push-mark{width:38px;height:38px}.sw-push-actions{grid-column:1/-1}.sw-push-actions button{flex:1}#sw-message-toasts{left:10px;right:10px;bottom:10px;width:auto}.sw-message-toast{grid-template-columns:36px minmax(0,1fr) auto}}' +
+      '@media(max-width:620px){#sw-notif-panel{position:fixed!important;top:64px!important;left:10px!important;right:10px!important;width:auto!important;max-height:calc(100dvh - 84px)!important}.sw-notif-head{flex-wrap:wrap}.sw-notif-head>span{flex-basis:100%}#sw-push-prompt{grid-template-columns:38px minmax(0,1fr);padding:12px;gap:9px}.sw-push-mark{width:38px;height:38px}.sw-push-actions{grid-column:1/-1}.sw-push-actions button{flex:1}#sw-message-toasts{left:10px;right:10px;bottom:10px;width:auto}.sw-message-toast{grid-template-columns:36px minmax(0,1fr) auto}}' +
       '@media(prefers-reduced-motion:reduce){#sw-push-prompt,.sw-message-toast{transition:none;animation:none}}';
     document.head.appendChild(s);
   }
@@ -433,7 +469,7 @@
     var wrap = document.createElement('div');
     wrap.id = 'sw-notif-wrap';
     wrap.innerHTML = 
-      '<button id="sw-notif-btn" type="button" title="Notifications">&#128276;<span id="sw-notif-count">0</span></button>' +
+      '<button id="sw-notif-btn" type="button" title="Notifications" aria-label="Notifications" aria-expanded="false" aria-controls="sw-notif-panel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4M12 1v1"/></svg><span id="sw-notif-count">0</span></button>' +
       '<div id="sw-notif-panel">' +
       '  <div class="sw-notif-head">' +
       '    <span>Notifications</span>' +
@@ -442,9 +478,43 @@
       '    <button id="sw-notif-read-all" type="button">Read all</button>' +
       '    <button id="sw-notif-close" type="button">Close</button>' +
       '  </div>' +
+      '  <div id="sw-push-upsell"></div>' +
       '  <div id="sw-notif-list"><div class="sw-notif-empty">No unread notifications</div></div>' +
       '</div>';
     topbar.appendChild(wrap);
+  }
+
+  function refreshPushUpsell() {
+    var upsell = document.getElementById('sw-push-upsell');
+    if (!upsell) return;
+    if (!('Notification' in window) || !window.isSecureContext) {
+      upsell.innerHTML = '';
+      return;
+    }
+    if (Notification.permission === 'default') {
+      upsell.innerHTML =
+        '<div class="sw-upsell-box">' +
+        '  <span class="sw-upsell-text"><strong>🔔 Turn on push alerts</strong><span>Never miss incoming calls or messages when away.</span></span>' +
+        '  <button id="sw-upsell-btn" type="button">Turn on</button>' +
+        '</div>';
+      var btn = document.getElementById('sw-upsell-btn');
+      if (btn) {
+        btn.onclick = async function() {
+          btn.disabled = true;
+          btn.textContent = 'Enabling...';
+          await window.__enableSiteNotifications();
+          refreshPushUpsell();
+          refreshAlertsButton();
+        };
+      }
+    } else if (Notification.permission === 'denied') {
+      upsell.innerHTML =
+        '<div class="sw-upsell-box is-denied">' +
+        '  <span class="sw-upsell-text"><strong style="color:#f87171;">⚠️ Alerts Blocked</strong><span>Allow notifications in site settings to receive call rings.</span></span>' +
+        '</div>';
+    } else {
+      upsell.innerHTML = '';
+    }
   }
 
   async function loadNotifications() {
@@ -464,18 +534,42 @@
     if (!badge || !list) return;
     badge.textContent = count > 99 ? '99+' : String(count);
     badge.classList.toggle('is-visible', count > 0);
+    var readAll = document.getElementById('sw-notif-read-all');
+    if (readAll) readAll.disabled = count === 0;
+    refreshPushUpsell();
     if (!count) {
       list.innerHTML = '<div class="sw-notif-empty">No unread notifications</div>';
       return;
     }
+    function age(ts) {
+      var seconds = Math.max(0, Math.floor((Date.now() - Number(ts || 0)) / 1000));
+      if (seconds < 60) return 'now';
+      if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+      if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+      return Math.floor(seconds / 86400) + 'd';
+    }
+    var icons = {
+      dm: '&#9993;',
+      group_dm: '&#9783;',
+      coin_gift: '&#9733;',
+      admin_notice: '&#9888;',
+      matrix: '&#128172;',
+      matrix_call: '&#128222;',
+      matrix_invite: '&#128233;'
+    };
     list.innerHTML = _notifications.map(function(n, i) {
-      var url = n.url || '';
-      if (url.startsWith('https://mitchdog.com/')) {
-        url = url.replace('https://mitchdog.com', '');
-      }
-      var open = url ? '<a class="sw-notif-open" href="' + escText(url) + '">Open</a>' : '';
+      var url = '';
+      try {
+        if (!String(n.url || '').trim()) throw new Error('No destination');
+        var candidate = new URL(String(n.url), location.origin);
+        if (candidate.origin === location.origin || candidate.origin === 'https://mitch.pro' || candidate.origin === 'https://mitchdog.com') {
+          url = candidate.pathname + candidate.search + candidate.hash;
+        }
+      } catch (_) {}
+      var open = url ? '<a class="sw-notif-open" data-open="' + i + '" href="' + escText(url) + '">Open</a>' : '';
       return '<div class="sw-notif-item">' +
-        '<div class="sw-notif-title">' + escText(n.title) + '</div>' +
+        '<span class="sw-notif-type" aria-hidden="true">' + (icons[n.type] || '&#128276;') + '</span>' +
+        '<div class="sw-notif-title">' + escText(n.title) + '<span class="sw-notif-age">' + age(n.ts) + '</span></div>' +
         '<div class="sw-notif-body">' + escText(n.body) + '</div>' +
         (n.detail ? '<div class="sw-notif-detail">' + escText(n.detail) + '</div>' : '') +
         '<div class="sw-notif-actions">' + open + '<button type="button" data-i="' + i + '">Mark read</button></div>' +
@@ -484,9 +578,12 @@
     list.querySelectorAll('button[data-i]').forEach(function(btn) {
       btn.onclick = function() { markNotificationRead(_notifications[Number(btn.dataset.i)]); };
     });
+    list.querySelectorAll('a[data-open]').forEach(function(link) {
+      link.onclick = function() { markNotificationRead(_notifications[Number(link.dataset.open)], true); };
+    });
   }
 
-  async function markNotificationRead(n) {
+  async function markNotificationRead(n, navigating) {
     if (!n) return;
     var body = (n.type === 'coin_gift' || n.type === 'admin_notice')
       ? { coinGiftIds: [n.id] }
@@ -494,12 +591,15 @@
         ? { groupIds: [n.groupId] }
       : n.type === 'dm'
         ? { dmFroms: [n.from] }
+      : (n.type === 'matrix' || n.type === 'matrix_call' || n.type === 'matrix_invite')
+        ? { matrixIds: [n.id], matrixRoomIds: [n.matrixRoomId] }
         : {};
     _notifications = _notifications.filter(function(item) { return item !== n; });
     renderNotifications();
     await fetch('/api/me/notifications/read', {
       method: 'POST',
       credentials: 'include',
+      keepalive: !!navigating,
       headers: { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' },
       body: JSON.stringify(body),
     }).catch(function(){});
@@ -594,6 +694,8 @@
 
     document.getElementById('sw-notif-close').onclick = function() {
       panel.classList.remove('show');
+      btn.setAttribute('aria-expanded', 'false');
+      btn.focus();
     };
     document.getElementById('sw-notif-manage').onclick = toggleAlerts;
     refreshAlertsButton();
@@ -601,10 +703,18 @@
     btn.onclick = function(e) {
       e.stopPropagation();
       panel.classList.toggle('show');
+      btn.setAttribute('aria-expanded', String(panel.classList.contains('show')));
       if (panel.classList.contains('show')) { loadNotifications(); refreshAlertsButton(); }
     };
     panel.onclick = function(e) { e.stopPropagation(); };
-    document.addEventListener('click', function() { panel.classList.remove('show'); });
+    document.addEventListener('click', function() { panel.classList.remove('show'); btn.setAttribute('aria-expanded', 'false'); });
+    document.addEventListener('keydown', function(event) {
+      if (event.key === 'Escape' && panel.classList.contains('show')) {
+        panel.classList.remove('show');
+        btn.setAttribute('aria-expanded', 'false');
+        btn.focus();
+      }
+    });
     loadNotifications();
     setupPushEnrollment();
     window.__refreshNotifications = loadNotifications;

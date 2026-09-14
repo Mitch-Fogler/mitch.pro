@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#0e1116">
+  <title>Computer Admin · mitch.pro</title>
+  <link rel="icon" href="/favicon.ico">
+  <link rel="stylesheet" href="/admin/vms/admin-vms.css?v=2">
+</head>
+<body class="computer-admin">
+  <main class="admin-shell">
+    <header class="admin-header">
+      <div><a href="/admin/" class="back">← Admin tools</a><p class="eyebrow">Infrastructure</p><h1>Computer Admin</h1><p>Create and assign graphical Linux computers without opening Proxmox.</p></div>
+      <div class="service-state" id="service-state"><i></i><span>Checking service</span></div>
+    </header>
+
+    <!-- Admin Passphrase Verification Required -->
+    <div id="passphrase-lock-box" class="panel" style="display: none; margin-bottom: 17px; border: 1px dashed rgba(255,255,255,.2); background: rgba(23, 27, 34, 0.96);">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 250px;">
+          <h2 style="margin: 0 0 6px 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+            <span>🔒</span> <span id="lock-box-headline">Passphrase Verification Required</span>
+          </h2>
+          <p id="lock-box-desc" style="color: var(--muted); font-size: 0.85rem; margin: 0;">
+            Administrative endpoints are protected. Enter your admin passphrase to unlock computer management.
+          </p>
+        </div>
+        <form id="passphrase-form" style="display: flex !important; flex-wrap: wrap !important; align-items: center !important; gap: 8px !important; margin: 0;">
+          <input type="password" id="admin-passphrase-input" placeholder="Admin passphrase..." style="width: auto !important; min-width: 220px !important; margin: 0 !important;" autocomplete="current-password" required>
+          <button type="submit" id="admin-passphrase-btn" class="primary" style="width: auto !important; margin: 0 !important;">Unlock</button>
+        </form>
+      </div>
+      <p class="form-status" id="passphrase-status" role="status" style="margin-top: 10px;"></p>
+    </div>
+
+    <section class="capacity-grid" id="capacity-grid" aria-label="Node capacity">
+      <article><span>Processor</span><strong id="cpu-capacity">—</strong><div><i id="cpu-bar"></i></div></article>
+      <article><span>Memory</span><strong id="memory-capacity">—</strong><div><i id="memory-bar"></i></div></article>
+      <article><span>Host storage</span><strong id="storage-capacity">—</strong><div><i id="storage-bar"></i></div></article>
+      <article><span>Assigned</span><strong id="assigned-capacity">—</strong><small>customer computers</small></article>
+    </section>
+
+    <section class="admin-grid">
+      <article class="panel create-panel">
+        <div class="panel-head"><div><p class="eyebrow">Provision</p><h2>Create a computer</h2></div><span class="badge">Linux desktop</span></div>
+        <form id="create-form">
+          <label>User<select id="create-user" required></select></label>
+          <label>Computer name<input id="create-name" value="My Computer" maxlength="60" required></label>
+          <label>Hostname<input id="create-hostname" placeholder="computer-name" maxlength="48" pattern="[a-zA-Z0-9\-]+" required></label>
+          <label>Desktop<select id="create-template" required></select></label>
+          <label>Desktop username<input id="create-username" value="desktop" minlength="2" maxlength="32" pattern="[a-z][a-z0-9_\-]{1,31}" autocomplete="off" required></label>
+          <label>Desktop password<input id="create-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+          <p class="login-note">Give these login details to the user securely. The password is sent to the new computer once and is not saved in this portal.</p>
+          <div class="resource-row"><label>CPU cores<select id="create-cpu"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></label><label>Memory<select id="create-memory"><option value="2048">2 GB</option><option value="4096" selected>4 GB</option><option value="8192">8 GB</option><option value="16384">16 GB</option></select></label><label>Disk<select id="create-disk"><option value="40" selected>40 GB</option><option value="64">64 GB</option><option value="80">80 GB</option><option value="128">128 GB</option></select></label></div>
+          <button class="primary" type="submit" id="create-button">Create & start computer</button>
+          <p class="form-status" id="create-status" role="status"></p>
+        </form>
+      </article>
+
+      <article class="panel assign-panel">
+        <div class="panel-head"><div><p class="eyebrow">Existing machines</p><h2>Assign a computer</h2></div></div>
+        <form id="assign-form"><label>Available computer<select id="assign-vm" required></select></label><label>User<select id="assign-user" required></select></label><label>Friendly name<input id="assign-name" value="My Computer" maxlength="60"></label><label>Installed desktop<select id="assign-os"><option>Ubuntu Desktop 24.04 LTS</option><option>Linux Mint Cinnamon</option><option>Linux desktop</option></select></label><button id="assign-button" type="submit">Assign computer</button><p class="form-status" id="assign-status" role="status"></p></form>
+      </article>
+    </section>
+
+    <section class="panel fleet-panel">
+      <div class="panel-head"><div><p class="eyebrow">Customers</p><h2>Assigned computers</h2></div><button id="refresh-button">Refresh</button></div>
+      <div class="fleet-list" id="fleet-list"><p class="empty">Loading computers…</p></div>
+      <p class="form-status" id="fleet-status" role="status"></p>
+    </section>
+
+    <section class="panel audit-panel">
+      <div class="panel-head"><div><p class="eyebrow">Security history</p><h2>Recent activity</h2></div></div>
+      <div class="audit-list" id="audit-list"><p class="empty">No activity yet.</p></div>
+    </section>
+  </main>
+  <script src="/admin/vms/admin-vms.js?v=2" defer></script>
+</body>
+</html>

@@ -11,15 +11,39 @@ import https from 'https';
 import { Client as SSHClient } from 'ssh2';
 import {
   configureDataStore,
+  getDataStore,
   appendAppLog,
   queryAppLogs,
   readDocument,
   writeDocument,
   rebuildCoreTablesFromDocuments,
+  getVirtualMachinesForOwner,
+  getVirtualMachineById,
+  getVirtualMachineByVmid,
+  listVirtualMachines,
+  reserveVirtualMachine,
+  upsertVirtualMachine,
+  unassignVirtualMachine,
+  deleteVirtualMachine,
+  updateVirtualMachineRuntime,
+  appendVmAuditLog,
+  listVmAuditLogs,
 } from './lib/data_store.js';
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
 import { RJUHSD_ORIGIN, bellScheduleRedirect, blooketBotRedirect } from './lib/site_redirects.js';
+import { ProxmoxDesktopService, ProxmoxServiceError } from './lib/proxmox_desktop.js';
+import { canAccessVmRecord, validateDesktopSession, VmOperationGate } from './lib/vm_security.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
+import { matrixMessageBlocked } from './lib/matrix_word_filter.js';
+import { guestPreview } from './lib/guest_preview.js';
+import { planOwnerAction } from './lib/owner_account_tools.js';
+import {
+  GAME_PORTAL_REWARD_PER_MINUTE,
+  GAME_PORTAL_DAILY_CAP,
+  gamePortalDayKey,
+  normalizeGamePortalTitle,
+  settleGamePortalHeartbeat,
+} from './lib/game_portal_rewards.js';
 import {
   generateAuthenticationOptions,
   generateRegistrationOptions,
@@ -175,6 +199,7 @@ const GAMES_EXTERNAL_FILE    = join(DATA_DIR, 'games_external');
 const GAME_CATEGORIES_FILE   = join(DATA_DIR, 'game_categories.json');
 const GAME_CATEGORIES_LOCAL  = join(DATA_DIR, 'game_categories_local.json');
 const GAME_CATEGORIES_EXTERNAL = join(DATA_DIR, 'game_categories_external.json');
+const GAME_ICONS_DIR          = join(DATA_DIR, 'game_icons');
 const REVOKED_FILE           = join(DATA_DIR, 'revoked.json');
 const APPEALS_FILE           = join(DATA_DIR, 'appeals.json');
 const APPLICATIONS_FILE      = join(DATA_DIR, 'applications.json');
@@ -196,6 +221,8 @@ const CANVAS_HISTORY_FILE    = join(DATA_DIR, 'canvas_history.jsonl');
 const UNLOCKED_AI_FILE       = join(DATA_DIR, 'unlocked_ai.json');
 const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
+const MATRIX_USERS_FILE      = join(DATA_DIR, 'matrix_users.json');
+const MATRIX_NOTIFICATIONS_FILE = join(DATA_DIR, 'matrix_notifications.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
 const MODERATOR_PANEL_FILE   = join(DATA_DIR, 'moderator_panel.json');
@@ -463,6 +490,7 @@ function dmContentOf(msg) {
 const sessionLastSeen  = {};
 const lastLoggedPing   = new Map(); // id -> { page, ts }
 const userPlaytime     = new Map(); // id -> accumulated_ms
+const gamePortalSessions = new Map(); // normalized email -> active reward heartbeat
 const ADRIAN_TECH = {
   desk_1: { name: "Reinforced Desk", cost: 100, icon: "🪑", target: "desk", mult: 2, unlock: { id: "desk", n: 1 } },
   desk_2: { name: "Ergonomic Chair", cost: 500, icon: "💺", target: "desk", mult: 2, unlock: { id: "desk", n: 10 } },
@@ -1357,6 +1385,74 @@ function maskEmail(email) {
 // Reverse lookup for internal identity keys: normalizeEmail() folds
 // "alice.fogler@mitch.pro" into "alicefogler@student.rjuhsd.us", which is
 // right for storage but wrong to show anyone — the dot is part of the actual
+function canonicalDeliveryEmail(to) {
+  let raw = String(to || '').trim();
+  if (!raw) return '';
+  if (!raw.includes('@')) {
+    const fromSid = emailFromSid(raw);
+    if (fromSid) {
+      raw = fromSid;
+    } else {
+      try {
+        const names = getCachedNames();
+        if (names[raw] && typeof names[raw] === 'string' && names[raw].includes('@')) {
+          raw = names[raw];
+        }
+      } catch (_) {}
+      if (!raw.includes('@')) return raw;
+    }
+  }
+  const norm = normalizeEmail(raw);
+
+  // 1. Check names.json (primary ground truth for student enrollment emails)
+  try {
+    const names = getCachedNames();
+    for (const email of Object.values(names)) {
+      if (typeof email === 'string' && email.includes('@') && normalizeEmail(email) === norm) {
+        if (email.split('@')[0].includes('.') || email !== norm) {
+          return email.toLowerCase().trim();
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 2. Check profiles.json (user customized profile email)
+  try {
+    const p = loadJson(PROFILES_FILE, {})[norm];
+    if (p && typeof p.email === 'string' && p.email.includes('@') && normalizeEmail(p.email) === norm) {
+      if (p.email.split('@')[0].includes('.') || p.email !== norm) {
+        return p.email.toLowerCase().trim();
+      }
+    }
+  } catch (_) {}
+
+  // 3. Check tokens.json (enrollment tokens)
+  try {
+    for (const data of Object.values(loadTokens())) {
+      const e = data && data.email;
+      if (typeof e === 'string' && e.includes('@') && normalizeEmail(e) === norm) {
+        if (e.split('@')[0].includes('.') || e !== norm) {
+          return e.toLowerCase().trim();
+        }
+      }
+    }
+  } catch (_) {}
+
+  // 4. Any match in names.json
+  try {
+    const names = getCachedNames();
+    for (const email of Object.values(names)) {
+      if (typeof email === 'string' && normalizeEmail(email) === norm) {
+        return email.toLowerCase().trim();
+      }
+    }
+  } catch (_) {}
+
+  return raw;
+}
+
+// ── Profile display email ───────────────────────────────────────────────────
+// Most UI surfaces want the user's real email address rather than normalized account
 // address. Map a normalized key back to the real address from the profile
 // store, falling back to whatever was passed in.
 let _displayEmailProfiles = null;
@@ -1375,8 +1471,12 @@ function displayEmail(normOrEmail) {
       _displayEmailProfilesTs = now;
     }
     const p = _displayEmailProfiles[norm];
-    if (p && p.email) return p.email;
+    if (p && p.email && p.email.split('@')[0].includes('.')) return p.email;
   } catch {}
+  const canonical = canonicalDeliveryEmail(raw);
+  if (canonical && canonical.split('@')[0].includes('.')) {
+    return canonical.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro');
+  }
   // No profile entry: keep the display-domain convention (normalized storage
   // keys use @student.rjuhsd.us, but the pretty address is @student.mitch.pro).
   return raw.replace(/@student\.rjuhsd\.us$/i, '@student.mitch.pro');
@@ -1390,6 +1490,7 @@ const NEWSLETTER_BAN_THRESH   = 10;
 const NEWSLETTER_BAN_DURATION = 7 * 24 * 3600;
 
 const RATE_LIMITS = {
+  '/api/admin/owner-accounts': [10, 60],
   '/api/webauthn/login/options':   [10,  60],
   '/api/webauthn/login/verify':    [10,  60],
   '/api/webauthn/register/options': [20,  60],
@@ -1408,6 +1509,8 @@ const RATE_LIMITS = {
   '/api/script':               [600, 60],
   '/api/admin/js':             [5,   60],
   '/api/admin/trigger-daily-summary': [10, 60],
+  '/api/cache/refresh':        [60,  60],
+  '/api/admin/cache/refresh':  [60,  60],
   '/api/admin/gift-coins':     [10,  60],
   '/api/admin/grant-premium':  [10,  60],
   '/api/admin/revoke-premium': [10,  60],
@@ -1446,8 +1549,14 @@ const RATE_LIMITS = {
   '/api/friends/request/respond':  [15,  60],
   '/api/friends/remove':           [10,  60],
   '/api/profile/report':           [5,   300],
+  '/api/vm/computers':             [60,  60],
+  '/api/vm/power':                 [6,   60],
+  '/api/vm/desktop-session':       [12,  60],
+  '/api/admin/vms':                [30,  60],
   '/api/admin/profile-reports/resolve': [20, 60],
   '/api/presence/heartbeat':       [60,  60],
+  '/api/game-portal/status':       [30,  60],
+  '/api/game-portal/heartbeat':    [10,  60],
   '/api/premium-chat/history': [60,  60],
   '/api/premium-chat/send':    [3,   10],
   '/api/public-chat/history':  [60,  60],
@@ -1650,16 +1759,22 @@ function htmlBaseTemplate(email, subject, contentHtml, footerHtml = '') {
   `.trim();
 }
 
-function makeVerificationCodeHtml(email, label, code, expiryMinutes) {
+// Callers pass (label, code, expiryMinutes[, email]). email is optional and only
+// used for the unsubscribe footer when it's a real address.
+function makeVerificationCodeHtml(label, code, expiryMinutes, email = '') {
+  const safeLabel = String(label || 'this action');
+  const safeCode = String(code || '').trim();
+  const mins = Number(expiryMinutes);
+  const safeMins = Number.isFinite(mins) && mins > 0 ? mins : 10;
   const content = `
     <h2 style="margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #f4f4f5;">Verification Code</h2>
-    <p style="margin: 0 0 24px;">Please use the following verification code to confirm <strong>${label}</strong> on your account:</p>
+    <p style="margin: 0 0 24px;">Please use the following verification code to confirm <strong>${safeLabel}</strong> on your account:</p>
     <div style="background-color: rgba(168, 85, 247, 0.1); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
-      <span style="font-family: monospace; font-size: 36px; font-weight: 800; letter-spacing: 0.25em; color: #c084fc; padding-left: 0.25em;">${code}</span>
+      <span style="font-family: monospace; font-size: 36px; font-weight: 800; letter-spacing: 0.25em; color: #c084fc; padding-left: 0.25em;">${safeCode}</span>
     </div>
-    <p style="margin: 0; font-size: 13px; color: #f87171;">⚠️ This verification code is active and valid for <strong>${expiryMinutes} minutes</strong>. If you did not request this action, please secure your account.</p>
+    <p style="margin: 0; font-size: 13px; color: #f87171;">⚠️ This verification code is active and valid for <strong>${safeMins} minutes</strong>. If you did not request this action, please secure your account.</p>
   `;
-  return htmlBaseTemplate(email, `Confirm ${label} - mitch.pro`, content);
+  return htmlBaseTemplate(email, `Confirm ${safeLabel} - mitch.pro`, content);
 }
 
 function makeWeeklyDigestHtml(email, totalVisits, topGame, eloData, cookies) {
@@ -1967,10 +2082,7 @@ function sanitizeProfileImageUrl(value, opts = {}) {
   try {
     const u = new URL(raw);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
-    const pathname = u.pathname.toLowerCase();
-    if (!/\.(png|jpe?g|gif|webp|svg|avif|ico)$/i.test(pathname)) {
-      return '';
-    }
+    if (!u.hostname || u.username || u.password) return '';
     return u.href;
   } catch {
     return '';
@@ -2009,32 +2121,6 @@ async function isSecurePassword(password) {
   } catch {}
   if (badPasswords.map(p => p.toLowerCase()).includes(password.toLowerCase())) {
     return { valid: false, error: 'Password is too common and insecure.' };
-  }
-
-  try {
-    const crypto = require('crypto');
-    const hash = crypto.createHash('sha1').update(password).digest('hex').toUpperCase();
-    const prefix = hash.slice(0, 5);
-    const suffix = hash.slice(5);
-    
-    const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
-      headers: { 'User-Agent': 'mitch.pro-password-validator' }
-    });
-    if (res.ok) {
-      const text = await res.text();
-      const lines = text.split('\n');
-      for (const line of lines) {
-        const [partsuff, countStr] = line.trim().split(':');
-        if (partsuff === suffix) {
-          const count = parseInt(countStr || '0', 10);
-          if (count > 0) {
-            return { valid: false, error: 'This password has been leaked in a data breach ' + count + ' times and is unsafe to use.' };
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.error('[hibp] API check failed:', e);
   }
 
   return { valid: true };
@@ -2277,6 +2363,7 @@ function dmAddressIndex() {
     const norm = normalizeEmail(rawLower);
     if (!norm.includes('@') || emails.has(norm)) return;
     emails.add(norm);
+    addUsername(defaultUsernameForEmail(norm), norm);
     const putMask = (key, val) => {
       key = normalizeEmail(String(key || '').toLowerCase());
       if (key && !byMask.has(key)) byMask.set(key, val);
@@ -2311,7 +2398,12 @@ function resolveMemberRef(raw) {
   if (q.includes('@')) {
     const norm = normalizeEmail(q);
     if (idx.emails.has(norm)) return norm;
-    return idx.byMask.get(normalizeEmail(q)) || '';
+    const byM = idx.byMask.get(norm);
+    if (byM) return byM;
+    const local = norm.split('@')[0].split('+')[0].replace(/\./g, '');
+    const byU = idx.byUsername.get(normalizeUsername(local));
+    if (byU) return byU;
+    return norm;
   }
   return idx.byUsername.get(normalizeUsername(q)) || '';
 }
@@ -2328,7 +2420,7 @@ function ensureProfileDefaults(normEmail, originalEmail = normEmail, patch = {})
   const now = Date.now();
   profiles[normEmail] = {
     ...existing,
-    email: existing.email || originalEmail || normEmail,
+    email: canonicalDeliveryEmail(existing.email || originalEmail || normEmail),
     username,
     nickname: String(patch.nickname ?? existing.nickname ?? existing.displayName ?? '').trim().slice(0, 40),
     displayName: String(patch.displayName ?? existing.displayName ?? patch.nickname ?? existing.nickname ?? '').trim().slice(0, 40),
@@ -2392,7 +2484,8 @@ function sendSecurityActionCode(normEmail, action) {
     attempts: 0,
     expires: Date.now() + 10 * 60 * 1000,
   });
-  sendEmailBg(normEmail, `Confirm ${label} - mitch.pro`, makeVerificationCodeHtml(label, code, 10));
+  const targetEmail = canonicalDeliveryEmail(normEmail);
+  sendEmailBg(targetEmail, `Confirm ${label} - mitch.pro`, makeVerificationCodeHtml(label, code, 10, targetEmail));
   return { ok: true };
 }
 
@@ -2690,7 +2783,9 @@ function devTestRequestAllowed(req) {
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1' || isPrivateIp(hostname);
   } catch { return false; }
 }
+const ownerAccountActionTimes = new Map();
 const PUBLIC_API_PATHS = new Set([
+  '/api/guest-session',
   '/api/webauthn/login/options',
   '/api/webauthn/login/verify',
   '/api/signup',
@@ -2712,12 +2807,17 @@ const PUBLIC_API_PATHS = new Set([
   '/api/stats',
   '/api/next',
   '/api/sso/bridge',
+  '/api/sso/bridge/handoff',
   '/api/sso/exchange',
   '/api/weather',
   '/api/school-calendar',
   '/api/school-info',
   '/api/site-info',
+  '/api/verify-open',
+  '/verify-open.json',
   '/api/backgrounds/list',
+  '/api/matrix/sso-login',
+  '/api/matrix/sso-status',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -3194,12 +3294,16 @@ function buildAdvancedAdminData() {
     .slice(-150)
     .reverse()
     .map(report => ({
+      id: report.id || '',
       type: 'chat',
       ts: report.ts || 0,
       reportedBy: report.reportedBy || report.reporter || '',
       reason: report.reason || 'Chat report',
       context: report.context || [],
       status: report.status || 'Needs review',
+      matrixRoomId: report.matrixRoomId || '',
+      matrixEventId: report.matrixEventId || '',
+      matrixSender: report.matrixSender || '',
     }));
   const profileReports = publicProfileReports(250);
 
@@ -3449,23 +3553,7 @@ function emailScript(to) {
 }
 
 function deliveryEmailFor(to) {
-  const raw = String(to || '');
-  if (!raw.includes('@')) return raw;
-  const norm = normalizeEmail(raw);
-  try {
-    const p = loadJson(PROFILES_FILE, {})[norm];
-    // Only rewrite when the stored address maps back to the same account, so
-    // external recipients (invites, moderators) always pass through untouched.
-    if (p && p.email && normalizeEmail(p.email) === norm) return p.email;
-  } catch {}
-  // Profiles only exist for users who hit a page that created one; enrollment
-  // tokens keep the address exactly as the account was claimed.
-  try {
-    for (const data of Object.values(loadTokens())) {
-      if (data && data.email && normalizeEmail(data.email) === norm) return data.email;
-    }
-  } catch {}
-  return raw;
+  return canonicalDeliveryEmail(to);
 }
 
 function sendEmailBg(to, subject, body) {
@@ -4061,12 +4149,13 @@ async function premiumMaintenanceWorker() {
         } else if (inactiveFor >= WARN_MS) {
           const lastWarn = stats[norm]?.last_premium_warn || 0;
           if (now - lastWarn > 86400 * 1000) { // Warn at most once per 24h
-             console.log(`[premium] warning ${email} about inactivity (5d)`);
+             const targetEmail = canonicalDeliveryEmail(app.email || email || norm);
+             console.log(`[premium] warning ${targetEmail} about inactivity (5d)`);
              const subject = "Urgent: Your mitch.pro Premium is about to expire";
-             const html = makePremiumAlertHtml(email, subject, "Our records show you haven't logged in to mitch.pro for 5 days. If you do not log on in the next 2 days, your Premium status will be automatically revoked. Simply visit mitch.pro and log in to keep your perks!", siteUrl(email), "Login to mitch.pro");
+             const html = makePremiumAlertHtml(targetEmail, subject, "Our records show you haven't logged in to mitch.pro for 5 days. If you do not log on in the next 2 days, your Premium status will be automatically revoked. Simply visit mitch.pro and log in to keep your perks!", siteUrl(targetEmail), "Login to mitch.pro");
              // sendEmailBg routes school addresses through the Gmail script —
              // support@mitch.pro via Hostinger SMTP bounces at rjuhsd.us.
-             sendEmailBg(email, subject, html);
+             sendEmailBg(targetEmail, subject, html);
              if (!stats[norm]) stats[norm] = {};
              stats[norm].last_premium_warn = now;
              statsChanged = true;
@@ -4111,12 +4200,7 @@ async function premiumMaintenanceWorker() {
 }
 
 function sendPremiumEmailOffer(targetEmail) {
-  let toEmail = String(targetEmail || '').toLowerCase().trim();
-  const endsWithStudent = toEmail.endsWith('@student.rjuhsd.us') || toEmail.endsWith('@student.mitch.pro');
-  if (endsWithStudent) {
-    toEmail = 'mitchell.fogler@student.rjuhsd.us';
-  }
-  
+  const toEmail = canonicalDeliveryEmail(targetEmail);
   const base = siteUrl(toEmail);
   const subject = "Eligible for a Free @mitch.pro Email Address!";
   const html = makePremiumAlertHtml(toEmail, subject, "Congratulations on getting Premium! As a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address! Claim yours now by submitting your application.", base + "/premium-email", "Claim Email Address");
@@ -4125,7 +4209,7 @@ function sendPremiumEmailOffer(targetEmail) {
     // Same deliverability rule as the expiry warning: school addresses must
     // ride the Gmail script (sendEmailBg), not support@mitch.pro SMTP.
     sendEmailBg(toEmail, subject, html);
-    console.log(`[premium] Sent premium email offer to ${toEmail} (original target: ${targetEmail})`);
+    console.log(`[premium] Sent premium email offer to ${toEmail}`);
   } catch (e) {
     console.error(`[premium] Failed to send email offer to ${toEmail}: ${e.message}`);
   }
@@ -4817,9 +4901,10 @@ async function weeklyDigestWorker() {
       if (cookies > 0) body += `🍪 Cookies: ${Math.floor(cookies).toLocaleString()}\n`;
       body += `\nSee you next week — ${siteUrl(email)}`;
 
-      sendEmailBg(email, 'Your mitch.pro week in review', makeWeeklyDigestHtml(email, totalVisits, topGame, eloData, cookies));
+      const targetEmail = canonicalDeliveryEmail(email);
+      sendEmailBg(targetEmail, 'Your mitch.pro week in review', makeWeeklyDigestHtml(targetEmail, totalVisits, topGame, eloData, cookies));
       log[email] = { ...ulog, weekly_digest: weekKey };
-      console.log(`[weekly] sent to ${email}`);
+      console.log(`[weekly] sent to ${targetEmail}`);
     }
     saveEmailLog(log);
   } catch (e) { console.log(`[weekly] error: ${e}`); }
@@ -4850,8 +4935,9 @@ async function dailyPuzzleWorker() {
         const p = pool[Math.floor(Math.random() * pool.length)];
         const turn   = p[0].split(' ')[1] === 'w' ? 'White' : 'Black';
         const themes = String(p[3] || '').split(/\s+/).filter(Boolean).slice(0, 3).join(', ');
-        sendEmailBg(email, "Today's chess puzzle — mitch.pro", makeChessPuzzleHtml(email, turn, p[2], p[0], themes));
-        console.log(`[puzzle] sent to ${email}`);
+        const targetEmail = canonicalDeliveryEmail(email);
+        sendEmailBg(targetEmail, "Today's chess puzzle — mitch.pro", makeChessPuzzleHtml(targetEmail, turn, p[2], p[0], themes));
+        console.log(`[puzzle] sent to ${targetEmail}`);
       }
     }
     if (changed) saveEmailLog(log);
@@ -4877,9 +4963,10 @@ async function clockWarnWorker() {
         if (remaining < h * 3600_000 && remaining > 0 && !warned.has(h)) {
           const opp = g.turn === 'w' ? g.black : g.white;
           const oppName = (opp || '').split('@')[0];
-          sendEmailBg(turnEmail, `⏰ ${h}h left to move — mitch.pro chess`, makeChessClockWarningHtml(turnEmail, h, oppName));
+          const targetEmail = canonicalDeliveryEmail(turnEmail);
+          sendEmailBg(targetEmail, `⏰ ${h}h left to move — mitch.pro chess`, makeChessClockWarningHtml(targetEmail, h, oppName));
           warned.add(h); newWarn = true;
-          console.log(`[clock-warn] ${h}h → ${turnEmail} game ${gameId}`);
+          console.log(`[clock-warn] ${h}h → ${targetEmail} game ${gameId}`);
         }
       }
       if (newWarn) {
@@ -4919,13 +5006,54 @@ async function dmDigestWorker() {
       // skip if no new messages since last digest
       if (ulog.dm_digest_ts && latestTs <= ulog.dm_digest_ts) continue;
       const total = Object.values(senders).reduce((a, b) => a + b, 0);
-      // Sender keys are normalized (dots stripped); show the real addresses.
-      const names = Object.keys(senders).map(e => displayEmail(e).split('@')[0]).join(', ');
-      sendEmailBg(recip, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, makeUnreadMessagesHtml(recip, total, names));
+      const targetEmail = canonicalDeliveryEmail(recip);
+      const names = Object.keys(senders).map(e => {
+        const prof = (loadJson(PROFILES_FILE, {})[normalizeEmail(e)] || {});
+        return prof.displayName || prof.nickname || prof.username || canonicalDeliveryEmail(e).split('@')[0];
+      }).join(', ');
+      sendEmailBg(targetEmail, `💬 ${total} unread message${total !== 1 ? 's' : ''} on mitch.pro`, makeUnreadMessagesHtml(targetEmail, total, names));
       log[recip] = { ...ulog, dm_digest_ts: latestTs };
       changed = true;
-      console.log(`[dm-digest] ${total} msgs from ${Object.keys(senders).length} senders → ${recip}`);
+      console.log(`[dm-digest] ${total} msgs from ${Object.keys(senders).length} senders → ${targetEmail}`);
     }
+
+    // Matrix Chat Unread Messages Digest
+    try {
+      const allMatrix = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+      for (const [recip, notifs] of Object.entries(allMatrix)) {
+        if (!Array.isArray(notifs)) continue;
+        const unreadList = notifs.filter(n => !n.read && n.ts <= msgAge);
+        if (unreadList.length === 0) continue;
+        const isOnline = (Date.now() - (matrixUserLastSeen.get(recip) || 0) < offlineCutoff);
+        if (isOnline) continue;
+        if (!notifAllowed(recip, 'digest')) continue;
+        const ulog = log[recip] || {};
+        const latestMatrixTs = Math.max(...unreadList.map(n => n.ts || 0));
+        if (ulog.matrix_digest_ts && latestMatrixTs <= ulog.matrix_digest_ts) continue;
+        const total = unreadList.reduce((acc, n) => acc + (n.count || 1), 0);
+        const senders = Array.from(new Set(unreadList.map(n => n.sender).filter(Boolean)));
+        const senderNames = senders.length > 0 ? senders.join(', ') : 'Matrix users';
+        const targetEmail = canonicalDeliveryEmail(recip);
+        if (targetEmail && targetEmail.includes('@')) {
+          const html = makeMatrixNotificationEmailHtml(targetEmail, {
+            title: `💬 You have ${total} unread Matrix message${total !== 1 ? 's' : ''}`,
+            senderName: senderNames,
+            roomTitle: unreadList[0]?.roomTitle || '',
+            previewText: unreadList[0]?.detail || 'You have unread chat messages waiting on Mitch.pro.',
+            isCall: false,
+            isInvite: false,
+            roomUrl: `/matrix/`
+          });
+          sendEmailBg(targetEmail, `💬 ${total} unread Matrix message${total !== 1 ? 's' : ''} on mitch.pro`, html);
+          log[recip] = { ...ulog, matrix_digest_ts: latestMatrixTs };
+          changed = true;
+          console.log(`[matrix-digest] ${total} msgs → ${targetEmail}`);
+        }
+      }
+    } catch (mErr) {
+      console.warn('[matrix-digest] error:', mErr);
+    }
+
     if (changed) saveEmailLog(log);
   } catch (e) { console.log(`[dm-digest] error: ${e}`); }
 }
@@ -5056,14 +5184,15 @@ function errResp(code, message, explain) {
     { status: code, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 }
 
-function jsonResp(code, obj) {
+function jsonResp(code, obj, extraHeaders = {}) {
   return new Response(JSON.stringify(obj),
     { status: code, headers: {
       'Content-Type': 'application/json',
       'Cache-Control': 'private, no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
       'Vary': 'Cookie',
-      'X-Content-Type-Options': 'nosniff'
+      'X-Content-Type-Options': 'nosniff',
+      ...extraHeaders
     } });
 }
 
@@ -5421,8 +5550,15 @@ function passkeysForEmail(passkeys, normEmail, rpId = null) {
 function ssoBackAllowed(rawBack, req) {
   let back;
   try { back = new URL(String(rawBack || ''), 'https://' + (requestHost(req) || RJUHSD_DOMAIN)); } catch { return null; }
-  if (back.protocol !== 'https:') return null;
+  const reqHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+  const isLocalReq = reqHost === 'localhost' || reqHost === '127.0.0.1';
+  if (isLocalReq || process.env.NODE_ENV === 'test') {
+    if (back.protocol !== 'https:' && back.protocol !== 'http:') return null;
+  } else {
+    if (back.protocol !== 'https:') return null;
+  }
   const h = back.hostname.toLowerCase();
+  if ((h === 'localhost' || h === '127.0.0.1') && (isLocalReq || process.env.NODE_ENV === 'test')) return back;
   if (h === RJUHSD_DOMAIN || h.endsWith('.' + RJUHSD_DOMAIN)) return back;
   if (h === PICKLE_DOMAIN || h.endsWith('.' + PICKLE_DOMAIN)) return back;
   if (isMitchSsoHost(h)) return back;
@@ -5448,7 +5584,7 @@ const SSO_BRIDGE_TTL_MS = 90 * 1000;
 
 function createSsoBridgeToken(normEmail) {
   const token = randomBytes(24).toString('base64url');
-  SSO_BRIDGE_TOKENS.set(token, { email: normalizeEmail(normEmail), expires: Date.now() + SSO_BRIDGE_TTL_MS });
+  SSO_BRIDGE_TOKENS.set(token, { email: normalizeEmail(normEmail), expires: Date.now() + SSO_BRIDGE_TTL_MS, e2ePrivateJwk: null });
   if (SSO_BRIDGE_TOKENS.size > 500) {
     const now = Date.now();
     for (const [t, rec] of SSO_BRIDGE_TOKENS) {
@@ -5466,6 +5602,20 @@ function consumeSsoBridgeToken(token) {
   return rec;
 }
 
+// Validate a Secure Chat private JWK carried across the SSO hop. Returns a
+// stripped JWK object or null.
+function parseSsoE2ePrivateJwk(raw) {
+  const rawJwk = String(raw || '').slice(0, 8192);
+  if (!rawJwk) return null;
+  try {
+    const cand = JSON.parse(rawJwk);
+    if (cand && cand.kty === 'EC' && cand.crv === 'P-256' && cand.x && cand.y && cand.d) {
+      return { kty: cand.kty, crv: cand.crv, x: cand.x, y: cand.y, d: cand.d, ext: true };
+    }
+  } catch {}
+  return null;
+}
+
 function sameOriginRequest(req) {
   const host = requestHost(req);
   if (!host) return false;
@@ -5474,29 +5624,49 @@ function sameOriginRequest(req) {
   if (origin) {
     try {
       const u = new URL(origin);
-      if (u.hostname.toLowerCase() === hostName) return true;
+      const originHost = u.hostname.toLowerCase();
+      if (originHost === hostName) return true;
+      if (isMitchSsoHost(hostName) && isMitchSsoHost(originHost)) return true;
     } catch { return false; }
   }
   const referer = req.headers.get('Referer');
   if (referer) {
     try {
       const u = new URL(referer);
-      if (u.hostname.toLowerCase() === hostName) return true;
+      const refererHost = u.hostname.toLowerCase();
+      if (refererHost === hostName) return true;
+      if (isMitchSsoHost(hostName) && isMitchSsoHost(refererHost)) return true;
     } catch { return false; }
   }
   return false;
 }
 
-// Endpoints exempt from the same-origin CSRF check. /api/sso/exchange is the
-// cross-domain hop target of the SSO bridge: the bridge page form-POSTs from
-// another origin (mitch.pro → rjuhsd.school / sexypickleclub.com) with no
-// custom headers, so the header check would always block it. It doesn't need
-// CSRF protection anyway — the single-use, 90-second token minted server-side
-// for an authenticated session IS the authorization.
+// Endpoints exempt from the same-origin CSRF check.
+// /api/sso/bridge/handoff is a same-origin form POST from the SSO hop page
+// (no custom headers). It attaches an optional E2E JWK to the single-use
+// bridge token, then 302s to the destination /api/sso/exchange — avoiding a
+// cross-origin form POST that Caddy's form-action 'self' CSP would block.
+// /api/sso/exchange remains exempt for direct GET/POST handoffs (Matrix) and
+// legacy clients; the single-use, 90-second token IS the authorization.
 // /api/dm/attachment/upload is session-authenticated with strict MIME & quota checks.
 const CSRF_EXEMPT_PATHS = new Set([
   '/api/sso/exchange',
+  '/api/sso/bridge/handoff',
   '/api/dm/attachment/upload',
+  '/api/games',
+  '/api/premium/email/register',
+  '/api/verify-open',
+  '/verify-open.json',
+  '/api/cache/refresh',
+  '/api/admin/cache/refresh',
+  '/api/refresh-cache',
+  '/api/matrix/sso-login',
+  '/api/matrix/sso-status',
+  '/api/matrix/moderation/overview',
+  '/api/matrix/moderation/set-role',
+  '/api/matrix/moderation/kick',
+  '/api/matrix/moderation/ban',
+  '/api/matrix/moderation/redact',
 ]);
 
 function csrfFailureIfUnsafe(req, path, method) {
@@ -5504,6 +5674,10 @@ function csrfFailureIfUnsafe(req, path, method) {
   if (!path.startsWith('/api/')) return null;
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return null;
   if (CSRF_EXEMPT_PATHS.has(path)) return null;
+  if (path === '/api/admin/passphrase-status') {
+    if (!sameOriginRequest(req)) return jsonResp(403, { error: 'csrf_blocked' });
+    return null;
+  }
   // Fail closed: require same-origin Origin/Referer plus a custom header simple forms cannot set.
   const requestedWith = (req.headers.get('X-Mitch-Requested-With') || '').trim();
   if (requestedWith !== '1') return jsonResp(403, { error: 'csrf_blocked' });
@@ -5869,6 +6043,14 @@ function emailFromSid(sid) {
 function getUidForEmail(email) {
   if (!email) return null;
   const norm = normalizeEmail(email);
+  try {
+    const names = getCachedNames();
+    for (const [sid, e] of Object.entries(names)) {
+      if (typeof e === 'string' && normalizeEmail(e) === norm) {
+        return sid;
+      }
+    }
+  } catch (_) {}
   const gens = loadGenerations();
   const currentGenRec = gens[norm] || {};
   const currentGen = (currentGenRec && typeof currentGenRec === 'object') ? (currentGenRec.gen || 0) : (currentGenRec || 0);
@@ -7337,7 +7519,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=4" defer></script>';
+  const tag = '<script src="/broadcast.js?v=5" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -7445,6 +7627,49 @@ function prewarmStaticCache() {
 }
 prewarmStaticCache();
 
+function clearStaticCache(specificFiles = []) {
+  if (Array.isArray(specificFiles) && specificFiles.length > 0) {
+    let evicted = 0;
+    let reloaded = 0;
+    for (const item of specificFiles) {
+      if (typeof item !== 'string' || !item.trim()) continue;
+      const clean = item.trim().replace(/^\/+/, '');
+      const candidates = [
+        safeWebrootPath('/' + clean),
+        join(WEBROOT, clean),
+        join(BASE, clean),
+      ].filter(Boolean);
+
+      for (const p of candidates) {
+        if (staticCache.has(p)) {
+          const old = staticCache.get(p);
+          staticCacheBytes -= old?.size || 0;
+          staticCache.delete(p);
+          evicted++;
+        }
+        if (existsSync(p)) {
+          try {
+            if (statSync(p).isFile()) {
+              staticCacheLoad(p);
+              reloaded++;
+            }
+          } catch {}
+        }
+      }
+    }
+    console.log(`[static-cache] Selective refresh: evicted ${evicted}, reloaded ${reloaded} entries.`);
+    return { evicted, reloaded, full: false };
+  }
+
+  const count = staticCache.size;
+  const bytes = staticCacheBytes;
+  staticCache.clear();
+  staticCacheBytes = 0;
+  console.log(`[static-cache] Full cache refresh triggered. Cleared ${count} files (~${(bytes / 1024 / 1024).toFixed(1)} MB). Prewarming...`);
+  prewarmStaticCache();
+  return { evicted: count, reloaded: 0, full: true };
+}
+
 async function serveStatic(urlPath, req = null) {
   // Normalise path
   let filePath = safeWebrootPath(urlPath);
@@ -7467,58 +7692,70 @@ async function serveStatic(urlPath, req = null) {
     }
   } catch {}
 
-  const cached = staticCacheGet(filePath);
+  const isHashedAsset = urlPath.startsWith('/matrix/assets/') || urlPath.startsWith('/matrix/public/element-call/assets/') || /-[a-zA-Z0-9_-]{8,}\.(?:js|css|wasm|woff2?|ttf|png|svg)$/i.test(urlPath);
+  const ext = filePath.split('.').pop().toLowerCase();
+  const acceptsGzip = Boolean(req && req.headers && req.headers.get && req.headers.get('accept-encoding')?.includes('gzip'));
+  const canServeGzip = acceptsGzip && ext !== 'html' && ext !== 'htm' && existsSync(filePath + '.gz');
+  const targetFilePath = canServeGzip ? filePath + '.gz' : filePath;
+
+  const mimeTypes = {
+    'js': 'application/javascript; charset=utf-8',
+    'css': 'text/css; charset=utf-8',
+    'html': 'text/html; charset=utf-8',
+    'htm': 'text/html; charset=utf-8',
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'gif': 'image/gif',
+    'svg': 'image/svg+xml',
+    'webp': 'image/webp',
+    'avif': 'image/avif',
+    'ico': 'image/x-icon',
+    'json': 'application/json; charset=utf-8',
+    'txt': 'text/plain; charset=utf-8',
+    'xml': 'application/xml; charset=utf-8',
+    'pdf': 'application/pdf',
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mp3': 'audio/mpeg',
+    'wav': 'audio/wav',
+    'woff': 'font/woff',
+    'woff2': 'font/woff2',
+    'ttf': 'font/ttf',
+    'otf': 'font/otf',
+    'wasm': 'application/wasm'
+  };
+  const contentType = mimeTypes[ext] || Bun.file(filePath).type || 'application/octet-stream';
+  const headers = { 'Content-Type': contentType };
+
+  if (canServeGzip) {
+    headers['Content-Encoding'] = 'gzip';
+    headers['Vary'] = 'Accept-Encoding';
+  }
+
+  const isCode = ['html', 'htm', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
+  if (isHashedAsset) {
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  } else if (isCode) {
+    headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
+    headers['Pragma'] = 'no-cache';
+    headers['Expires'] = '0';
+  } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf', 'wasm'].includes(ext)) {
+    // Immutable media: browsers can keep these forever (bump the filename
+    // when the content actually changes).
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  } else {
+    headers['Cache-Control'] = 'public, max-age=2592000';
+  }
+
+  if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
+    headers['Cross-Origin-Opener-Policy'] = 'same-origin';
+    headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
+    headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
+  }
+
+  const cached = staticCacheGet(targetFilePath);
   if (cached) {
-    const ext = filePath.split('.').pop().toLowerCase();
-    const mimeTypes = {
-      'js': 'application/javascript; charset=utf-8',
-      'css': 'text/css; charset=utf-8',
-      'html': 'text/html; charset=utf-8',
-      'htm': 'text/html; charset=utf-8',
-      'png': 'image/png',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml',
-      'webp': 'image/webp',
-      'avif': 'image/avif',
-      'ico': 'image/x-icon',
-      'json': 'application/json; charset=utf-8',
-      'txt': 'text/plain; charset=utf-8',
-      'xml': 'application/xml; charset=utf-8',
-      'pdf': 'application/pdf',
-      'mp4': 'video/mp4',
-      'webm': 'video/webm',
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'woff': 'font/woff',
-      'woff2': 'font/woff2',
-      'ttf': 'font/ttf',
-      'otf': 'font/otf',
-      'wasm': 'application/wasm'
-    };
-    const contentType = mimeTypes[ext] || Bun.file(filePath).type || 'application/octet-stream';
-    const headers = { 'Content-Type': contentType };
-
-    const isCode = ['html', 'htm', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
-    if (isCode) {
-      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-      headers['Pragma'] = 'no-cache';
-      headers['Expires'] = '0';
-    } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf'].includes(ext)) {
-      // Immutable media: browsers can keep these forever (bump the filename
-      // when the content actually changes).
-      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-    } else {
-      headers['Cache-Control'] = 'public, max-age=2592000';
-    }
-
-    if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
-      headers['Cross-Origin-Opener-Policy'] = 'same-origin';
-      headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
-      headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
-    }
-
     if (contentType.includes('text/html')) {
       let html = injectReadability(cached.data.toString('utf8'), urlPath);
       if (req) {
@@ -7536,45 +7773,8 @@ async function serveStatic(urlPath, req = null) {
     return new Response(cached.data, { headers });
   }
 
-  const file = Bun.file(filePath);
+  const file = Bun.file(targetFilePath);
   if (await file.exists()) {
-    const ext = filePath.split('.').pop().toLowerCase();
-    const mimeTypes = {
-      'js': 'application/javascript; charset=utf-8',
-      'css': 'text/css; charset=utf-8',
-      'html': 'text/html; charset=utf-8',
-      'png': 'image/png',
-      'jpg': 'image/jpeg',
-      'jpeg': 'image/jpeg',
-      'webp': 'image/webp',
-      'avif': 'image/avif',
-      'gif': 'image/gif',
-      'svg': 'image/svg+xml',
-      'ico': 'image/x-icon',
-      'json': 'application/json; charset=utf-8'
-    };
-    const contentType = mimeTypes[ext] || file.type;
-    const headers = { 'Content-Type': contentType };
-
-    const isCode = ['html', 'js', 'css'].includes(ext) || contentType.includes('text/html') || contentType.includes('javascript') || contentType.includes('css');
-    if (isCode) {
-      headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
-      headers['Pragma'] = 'no-cache';
-      headers['Expires'] = '0';
-    } else if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'svg', 'ico', 'mp4', 'webm', 'mp3', 'wav', 'woff', 'woff2', 'ttf', 'otf'].includes(ext)) {
-      // Immutable media: browsers can keep these forever (bump the filename
-      // when the content actually changes).
-      headers['Cache-Control'] = 'public, max-age=31536000, immutable';
-    } else {
-      headers['Cache-Control'] = 'public, max-age=2592000';
-    }
-
-    if (urlPath === '/' || urlPath === '/index.html' || urlPath.startsWith('/webvm/') || urlPath === '/webvm') {
-      headers['Cross-Origin-Opener-Policy'] = 'same-origin';
-      headers['Cross-Origin-Embedder-Policy'] = 'credentialless';
-      headers['Cross-Origin-Resource-Policy'] = 'cross-origin';
-    }
-
     if (contentType.includes('text/html')) {
       const text = await file.text();
       let html = injectReadability(text, urlPath);
@@ -7600,6 +7800,1249 @@ function rewriteHtml(html, _targetUrl) {
   return html;
 }
 
+let gamesCache = null;
+let gameCategoriesCache = null;
+function getGameCategories() {
+  if (gameCategoriesCache) return gameCategoriesCache;
+  const cats = loadJson(GAME_CATEGORIES_FILE, {});
+  Object.assign(cats, loadJson(GAME_CATEGORIES_LOCAL, {}));
+  Object.assign(cats, loadJson(GAME_CATEGORIES_EXTERNAL, {}));
+  gameCategoriesCache = cats;
+  return gameCategoriesCache;
+}
+function loadAllGamesList() {
+  if (gamesCache) return gamesCache;
+  const list = [];
+  const seen = new Set();
+  const files = [GAMES_FILE, GAMES_LOCAL_FILE, GAMES_EXTERNAL_FILE];
+  for (const f of files) {
+    try {
+      if (!existsSync(f)) continue;
+      const text = readFileSync(f, 'utf8');
+      text.split('\n').forEach(line => {
+        line = line.trim();
+        if (!line) return;
+        const parts = line.split(' ');
+        if (parts.length < 3) return;
+        const href = parts[1];
+        if (seen.has(href)) return;
+        seen.add(href);
+        list.push({ type: parts[0], href, label: parts.slice(2).join(' ') });
+      });
+    } catch {}
+  }
+  gamesCache = list;
+  return list;
+}
+
+// ── Matrix Conduit & Mitch.pro SSO Integration ────────────────────────────────
+async function callConduit(subpath, options = {}) {
+  const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'conduit' : '127.0.0.1');
+  const conduitPort = process.env.CONDUIT_PORT || '6167';
+  const candidateHosts = Array.from(new Set([conduitHost, conduitHost === '127.0.0.1' ? 'conduit' : '127.0.0.1', 'mitch-matrix-conduit']));
+  const headers = new Headers(options.headers || {});
+  headers.set('host', 'mitch.pro');
+  let lastErr = null;
+  for (const hostCandidate of candidateHosts) {
+    try {
+      const url = `http://${hostCandidate}:${conduitPort}${subpath}`;
+      const res = await fetch(url, {
+        ...options,
+        headers
+      });
+      return res;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Failed to reach Conduit');
+}
+
+function getMatrixPasswordForUid(uid) {
+  const secret = ID_SECRET || 'mitch-matrix-secret-salt-2026';
+  return createHmac('sha256', secret).update('matrix-account:' + uid).digest('hex');
+}
+
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'mitchlivekit';
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || (ID_SECRET ? createHmac('sha256', ID_SECRET).update('livekit-secret').digest('hex') : 'mitch-secret-livekit-matrix-key-2026');
+
+function generateLiveKitToken({ identity, name, roomName }) {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const now = Math.floor(Date.now() / 1000);
+  const payload = Buffer.from(JSON.stringify({
+    iss: LIVEKIT_API_KEY,
+    sub: identity || 'anonymous',
+    name: name || identity || 'Anonymous',
+    iat: now,
+    exp: now + 86400,
+    nbf: now - 10,
+    video: {
+      room: roomName || 'default',
+      roomJoin: true,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true
+    }
+  })).toString('base64url');
+
+  const sig = createHmac('sha256', LIVEKIT_API_SECRET).update(`${header}.${payload}`).digest('base64url');
+  return `${header}.${payload}.${sig}`;
+}
+
+
+function matrixSsoTargetOrigin() {
+  const s = site();
+  const alt = (s && s.alternate) ? String(s.alternate).trim() : '';
+  if (alt) {
+    try {
+      const u = new URL(alt);
+      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
+    } catch {}
+  }
+  const prim = (s && s.primary) ? String(s.primary).trim() : '';
+  if (prim) {
+    try {
+      const u = new URL(prim);
+      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
+    } catch {}
+  }
+  return 'https://mitchdog.com';
+}
+
+function matrixSsoTargetHost() {
+  try {
+    return new URL(matrixSsoTargetOrigin()).host.toLowerCase();
+  } catch {
+    return 'mitchdog.com';
+  }
+}
+
+function getMatrixPowerLevelForSid(sid) {
+  if (!sid) return 0;
+  const email = emailFromSid(sid);
+  if (email && isOwnerEmail(email)) return 100;
+  if (isAdminId(sid)) return 100;
+  if (isModeratorId(sid)) return 50;
+  return 0;
+}
+
+let systemAdminMatrixToken = null;
+let officialGeneralRoomId = null;
+const matrixTokenToAccount = new Map();
+
+async function getSystemAdminMatrixToken() {
+  if (systemAdminMatrixToken) return systemAdminMatrixToken;
+  const adminUsername = 'mitch_admin';
+  const secret = ID_SECRET || 'mitch-matrix-secret-salt-2026';
+  const adminPassword = createHmac('sha256', secret).update('matrix-sysadmin-2026').digest('hex');
+
+  // 1. Try login
+  let loginRes;
+  try {
+    loginRes = await callConduit('/_matrix/client/v3/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: adminUsername },
+        password: adminPassword,
+        initial_device_display_name: 'Mitch.pro System Core'
+      })
+    });
+  } catch (err) {
+    throw new Error('Conduit unreachable for system admin: ' + (err?.message || err));
+  }
+
+  let data = await loginRes.json();
+  if (!loginRes.ok || !data.access_token) {
+    // 2. Register system admin
+    const regRes = await callConduit('/_matrix/client/v3/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: adminUsername,
+        password: adminPassword,
+        auth: { type: 'm.login.dummy' }
+      })
+    });
+    const regData = await regRes.json();
+    if (regRes.ok && regData.access_token) {
+      data = regData;
+    } else {
+      throw new Error(regData?.error || 'Failed to initialize Matrix system admin');
+    }
+  }
+
+  systemAdminMatrixToken = data.access_token;
+
+  // Set display name
+  try {
+    await callConduit(`/_matrix/client/v3/profile/${encodeURIComponent(data.user_id)}/displayname`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${systemAdminMatrixToken}`
+      },
+      body: JSON.stringify({ displayname: 'Mitch.pro System' })
+    });
+  } catch (_) {}
+
+  return systemAdminMatrixToken;
+}
+
+async function ensureOfficialGeneralRoom() {
+  if (officialGeneralRoomId) return officialGeneralRoomId;
+
+  // 1. Check if directory alias exists
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialGeneralRoomId = dirData.room_id;
+        return officialGeneralRoomId;
+      }
+    }
+  } catch (_) {}
+
+  // 2. Create room with version 10 (allows power levels modification)
+  const adminToken = await getSystemAdminMatrixToken();
+  const createRes = await callConduit('/_matrix/client/v3/createRoom', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${adminToken}`
+    },
+    body: JSON.stringify({
+      room_version: '10',
+      name: 'General',
+      topic: 'Welcome to Mitch.pro Official Matrix Chat!',
+      room_alias_name: 'general',
+      visibility: 'public',
+      preset: 'public_chat',
+      initial_state: [
+        {
+          type: 'm.room.history_visibility',
+          state_key: '',
+          content: { history_visibility: 'world_readable' }
+        },
+        {
+          type: 'm.room.guest_access',
+          state_key: '',
+          content: { guest_access: 'can_join' }
+        }
+      ]
+    })
+  });
+  const createData = await createRes.json();
+  if (createRes.ok && createData.room_id) {
+    officialGeneralRoomId = createData.room_id;
+    return officialGeneralRoomId;
+  }
+
+  // If alias was already taken, re-query directory
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialGeneralRoomId = dirData.room_id;
+        return officialGeneralRoomId;
+      }
+    }
+  } catch (_) {}
+
+  throw new Error('Failed to ensure official general room: ' + (createData?.error || createRes.statusText));
+}
+
+async function syncMatrixUserToOfficialRooms(userId, userToken, targetPowerLevel) {
+  const roomId = await ensureOfficialGeneralRoom();
+
+  // 1. Join user to official room
+  if (userToken) {
+    try {
+      await callConduit(`/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${userToken}`
+        },
+        body: '{}'
+      });
+    } catch (joinErr) {
+      console.warn(`[matrix-sync] User join ${roomId} warning:`, joinErr?.message || joinErr);
+    }
+  }
+
+  // 2. Fetch current power levels
+  const adminToken = await getSystemAdminMatrixToken();
+  const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${adminToken}` }
+  });
+  if (plRes.ok) {
+    const plData = await plRes.json();
+    plData.users = plData.users || {};
+    const currentPL = plData.users[userId] !== undefined ? plData.users[userId] : 0;
+    if (currentPL !== targetPowerLevel) {
+      if (targetPowerLevel > 0) {
+        plData.users[userId] = targetPowerLevel;
+      } else {
+        delete plData.users[userId];
+      }
+      const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${adminToken}`
+        },
+        body: JSON.stringify(plData)
+      });
+      if (!putRes.ok) {
+        const putErr = await putRes.json().catch(() => ({}));
+        console.warn(`[matrix-sync] Power level update for ${userId} failed:`, putErr);
+      } else {
+        console.log(`[matrix-sync] Set power level for ${userId} to ${targetPowerLevel} in ${roomId}`);
+      }
+    }
+  }
+}
+
+async function loginOrRegisterMatrixUser(uid, desiredUsername, displayName) {
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  let assignedUser = matrixUsers[uid];
+  if (!assignedUser) {
+    assignedUser = normalizeUsername(desiredUsername);
+    if (!assignedUser || assignedUser.length < 2) assignedUser = 'user_' + uid.slice(0, 6);
+  }
+
+  const password = getMatrixPasswordForUid(uid);
+
+  // 1. Try login first
+  let loginRes;
+  try {
+    loginRes = await callConduit('/_matrix/client/v3/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'm.login.password',
+        identifier: { type: 'm.id.user', user: assignedUser },
+        password,
+        initial_device_display_name: 'Mitch.pro Web'
+      })
+    });
+  } catch (err) {
+    throw new Error('Conduit homeserver unreachable: ' + (err?.message || err));
+  }
+
+  let loginData = await loginRes.json();
+
+  // 2. If login failed (e.g. user does not exist yet), register user
+  if (!loginRes.ok || loginData.errcode === 'M_FORBIDDEN' || loginData.errcode === 'M_USER_DEACTIVATED') {
+    let candidateName = assignedUser;
+    let registered = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const regRes = await callConduit('/_matrix/client/v3/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: candidateName,
+          password,
+          auth: { type: 'm.login.dummy' }
+        })
+      });
+      const regData = await regRes.json();
+      if (regRes.ok && regData.access_token) {
+        loginData = regData;
+        assignedUser = candidateName;
+        registered = true;
+        break;
+      } else if (regData.errcode === 'M_USER_IN_USE') {
+        candidateName = `${assignedUser}-${attempt + 2}`;
+      } else {
+        throw new Error(regData.error || 'Failed to register Matrix account');
+      }
+    }
+    if (!registered && !loginData.access_token) {
+      throw new Error('Failed to create unique Matrix account name');
+    }
+  }
+
+  // Persist mapping
+  if (matrixUsers[uid] !== assignedUser) {
+    matrixUsers[uid] = assignedUser;
+    saveJsonSync(MATRIX_USERS_FILE, matrixUsers);
+  }
+
+  // 3. Update display name on Conduit if token is present
+  if (loginData.access_token && displayName) {
+    try {
+      await callConduit(`/_matrix/client/v3/profile/${encodeURIComponent(loginData.user_id)}/displayname`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginData.access_token}`
+        },
+        body: JSON.stringify({ displayname: displayName })
+      });
+    } catch (_) {}
+  }
+
+  return { ...loginData, username: assignedUser };
+}
+
+async function resolveMatrixAccount(req, parsedBody = null) {
+  const userCandidates = [];
+  if (parsedBody && typeof parsedBody === 'object') {
+    if (parsedBody.auth && typeof parsedBody.auth === 'object') {
+      if (parsedBody.auth.identifier && typeof parsedBody.auth.identifier === 'object') {
+        if (parsedBody.auth.identifier.user) userCandidates.push(parsedBody.auth.identifier.user);
+        if (parsedBody.auth.identifier.address) userCandidates.push(parsedBody.auth.identifier.address);
+      }
+      if (parsedBody.auth.user) userCandidates.push(parsedBody.auth.user);
+    }
+    if (parsedBody.identifier && typeof parsedBody.identifier === 'object') {
+      if (parsedBody.identifier.user) userCandidates.push(parsedBody.identifier.user);
+      if (parsedBody.identifier.address) userCandidates.push(parsedBody.identifier.address);
+    }
+    if (parsedBody.user) userCandidates.push(parsedBody.user);
+  }
+
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+
+  for (const cand of userCandidates) {
+    const raw = String(cand || '').trim();
+    if (!raw) continue;
+    const localPart = raw.startsWith('@') ? raw.slice(1).split(':')[0] : raw;
+
+    // 1. Try resolving identifier as mitch.pro username or email
+    const norm = resolveLoginIdentifier(localPart) || resolveLoginIdentifier(raw);
+    if (norm) {
+      const uid = getUidForEmail(norm);
+      if (uid) return { uid, normEmail: norm };
+    }
+
+    // 2. Try looking up assigned matrix username in MATRIX_USERS_FILE
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === raw.toLowerCase()) {
+        const email = emailFromSid(u);
+        const normEmail = email ? normalizeEmail(email) : '';
+        if (normEmail) return { uid: u, normEmail };
+      }
+    }
+
+    // 3. Try looking up in PROFILES_FILE
+    const profiles = loadJson(PROFILES_FILE, {});
+    for (const [normEmail, p] of Object.entries(profiles)) {
+      if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+        const uid = getUidForEmail(normEmail);
+        if (uid) return { uid, normEmail };
+      }
+    }
+  }
+
+  // 2. Check Authorization: Bearer <token>
+  const authHeader = req.headers.get('authorization') || '';
+  if (authHeader.toLowerCase().startsWith('bearer ')) {
+    const token = authHeader.slice(7).trim();
+    if (matrixTokenToAccount.has(token)) {
+      return matrixTokenToAccount.get(token);
+    }
+    try {
+      const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+        headers: { 'Authorization': authHeader }
+      });
+      if (whoRes.ok) {
+        const whoData = await whoRes.json();
+        const matrixUserId = whoData.user_id || '';
+        const uname = matrixUserId ? matrixUserId.replace(/^@/, '').split(':')[0] : '';
+        let matchedUid = null;
+        for (const [u, name] of Object.entries(matrixUsers)) {
+          if (name.toLowerCase() === uname.toLowerCase() || `@${name}:mitch.pro` === matrixUserId.toLowerCase()) {
+            matchedUid = u;
+            break;
+          }
+        }
+        let norm = '';
+        if (matchedUid) {
+          const email = emailFromSid(matchedUid);
+          if (email) norm = normalizeEmail(email);
+        }
+        if (!norm && uname) {
+          norm = resolveLoginIdentifier(uname) || '';
+          if (!matchedUid && norm) matchedUid = getUidForEmail(norm);
+        }
+        if (matchedUid && norm) {
+          const account = { uid: matchedUid, normEmail: norm, userId: matrixUserId };
+          matrixTokenToAccount.set(token, account);
+          if (matrixTokenToAccount.size > 5000) {
+            const firstKey = matrixTokenToAccount.keys().next().value;
+            matrixTokenToAccount.delete(firstKey);
+          }
+          return account;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Check session cookie
+  const cookies = getCookies(req);
+  const sid = cookies['studentId'] || cookies['id'] || '';
+  if (validId(sid)) {
+    const email = emailFromSid(sid);
+    if (email) {
+      const normEmail = normalizeEmail(email);
+      return { uid: sid, normEmail };
+    }
+  }
+
+  return null;
+}
+
+async function translateMatrixPasswordInRequestBody(req, path, bodyText) {
+  if (!bodyText || typeof bodyText !== 'string' || !bodyText.includes('password')) {
+    return { modified: false, bodyText };
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(bodyText);
+  } catch {
+    return { modified: false, bodyText };
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    return { modified: false, bodyText };
+  }
+
+  const hasAuthPassword = parsed.auth && (parsed.auth.type === 'm.login.password' || typeof parsed.auth.password === 'string') && parsed.auth.password;
+  const hasRootPassword = (parsed.type === 'm.login.password' || typeof parsed.password === 'string') && parsed.password;
+
+  if (!hasAuthPassword && !hasRootPassword) {
+    return { modified: false, bodyText };
+  }
+
+  const account = await resolveMatrixAccount(req, parsed);
+  if (!account || !account.uid || !account.normEmail) {
+    return { modified: false, bodyText };
+  }
+
+  const passwords = loadPasswords();
+  const storedHash = passwords[account.normEmail];
+  const conduitPass = getMatrixPasswordForUid(account.uid);
+  let changed = false;
+
+  if (hasAuthPassword) {
+    const entered = String(parsed.auth.password);
+    if (entered === conduitPass) {
+      // Already internal conduit password
+    } else if (storedHash) {
+      let valid = false;
+      try { valid = await Bun.password.verify(entered, storedHash); } catch {}
+      if (valid) {
+        parsed.auth.password = conduitPass;
+        changed = true;
+        if (path.match(/^\/_matrix\/client\/(?:v3|r0)\/account\/password/) && parsed.new_password) {
+          try {
+            const newHash = await Bun.password.hash(String(parsed.new_password));
+            passwords[account.normEmail] = newHash;
+            savePasswords(passwords);
+            parsed.new_password = conduitPass;
+            changed = true;
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  if (hasRootPassword) {
+    const entered = String(parsed.password);
+    if (entered === conduitPass) {
+      // Already internal conduit password
+    } else if (storedHash) {
+      let valid = false;
+      try { valid = await Bun.password.verify(entered, storedHash); } catch {}
+      if (valid) {
+        parsed.password = conduitPass;
+        const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+        let assigned = matrixUsers[account.uid];
+        if (!assigned) {
+          const profiles = loadJson(PROFILES_FILE, {});
+          const prof = profiles[account.normEmail] || {};
+          const desired = prof.username || account.normEmail.split('@')[0];
+          try {
+            const res = await loginOrRegisterMatrixUser(account.uid, desired, prof.displayName || desired);
+            assigned = res.username;
+          } catch (_) {}
+        }
+        if (assigned) {
+          if (parsed.identifier && parsed.identifier.type === 'm.id.user') {
+            parsed.identifier.user = assigned;
+          }
+          if (parsed.user) {
+            parsed.user = assigned;
+          }
+        }
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    return { modified: true, bodyText: JSON.stringify(parsed), account };
+  }
+  return { modified: false, bodyText };
+}
+
+// ── Matrix Outbound Push Notification System ──────────────────────────────────
+const matrixRoomInfoCache = new Map();
+
+async function getMatrixRoomInfoForNotifications(roomId, token) {
+  const cached = matrixRoomInfoCache.get(roomId);
+  const now = Date.now();
+  if (cached && (now - cached.ts < 30000) && Array.isArray(cached.members) && cached.members.length > 0) {
+    return cached;
+  }
+
+  let members = [];
+  let name = '';
+
+  const headers = {};
+  if (token) headers['Authorization'] = token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
+
+  try {
+    const memRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`, { headers });
+    if (memRes.ok) {
+      const memData = await memRes.json();
+      members = Object.keys(memData.joined || {});
+    }
+  } catch (err) {
+    console.warn('[matrix-notif] Failed to fetch joined members:', err?.message || err);
+  }
+
+  try {
+    const nameRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.name`, { headers });
+    if (nameRes.ok) {
+      const nameData = await nameRes.json();
+      if (nameData.name) name = nameData.name;
+    }
+    if (!name) {
+      const aliasRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.canonical_alias`, { headers });
+      if (aliasRes.ok) {
+        const aliasData = await aliasRes.json();
+        if (aliasData.alias) name = aliasData.alias;
+      }
+    }
+  } catch (_) {}
+
+  const result = { members, name, ts: now };
+  if (members.length > 0) {
+    matrixRoomInfoCache.set(roomId, result);
+  }
+  return result;
+}
+
+const matrixUserLastSeen = new Map();
+const matrixPendingEmailAlerts = new Map();
+const matrixLastEmailSent = new Map();
+
+function addMatrixNotification(targetNorm, notif) {
+  if (!targetNorm) return null;
+  const all = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+  if (!Array.isArray(all[targetNorm])) all[targetNorm] = [];
+  const list = all[targetNorm];
+
+  const existingIdx = list.findIndex(n => !n.read && n.roomId === notif.roomId && n.type === notif.type);
+  if (existingIdx !== -1) {
+    const existing = list[existingIdx];
+    existing.count = (existing.count || 1) + 1;
+    existing.ts = notif.ts || Date.now();
+    existing.detail = notif.detail || existing.detail;
+    if (notif.type === 'matrix_call') {
+      existing.title = `📞 Active call from ${notif.sender || 'Someone'}`;
+    } else if (notif.type === 'matrix_invite') {
+      existing.title = notif.title;
+    } else {
+      existing.title = notif.isDirect
+        ? `${existing.count} messages from ${notif.sender || 'Someone'}`
+        : `${existing.count} new messages in ${notif.roomTitle || 'Chat'}`;
+    }
+    list.splice(existingIdx, 1);
+    list.unshift(existing);
+  } else {
+    const item = {
+      id: notif.id || `matrix:${notif.roomId}:${Date.now()}`,
+      type: notif.type || 'matrix',
+      roomId: notif.roomId,
+      title: notif.title,
+      body: notif.body || 'Matrix Chat',
+      detail: notif.detail || '',
+      sender: notif.sender || '',
+      roomTitle: notif.roomTitle || '',
+      isDirect: !!notif.isDirect,
+      count: 1,
+      ts: notif.ts || Date.now(),
+      url: notif.url || `/matrix/#/room/${encodeURIComponent(notif.roomId)}`,
+      read: false,
+    };
+    list.unshift(item);
+  }
+
+  if (list.length > 50) list.splice(50);
+  all[targetNorm] = list;
+  saveJson(MATRIX_NOTIFICATIONS_FILE, all);
+  triggerNotificationRefresh();
+  return list[0];
+}
+
+function cancelPendingMatrixEmailAlert(memberNorm, roomId) {
+  if (!memberNorm) return;
+  const norm = normalizeEmail(memberNorm);
+  if (roomId) {
+    const key = `${norm}:${roomId}`;
+    const pending = matrixPendingEmailAlerts.get(key);
+    if (pending) {
+      if (pending.timer) clearTimeout(pending.timer);
+      matrixPendingEmailAlerts.delete(key);
+    }
+  } else {
+    for (const [k, pending] of matrixPendingEmailAlerts.entries()) {
+      if (k.startsWith(`${norm}:`)) {
+        if (pending.timer) clearTimeout(pending.timer);
+        matrixPendingEmailAlerts.delete(k);
+      }
+    }
+  }
+}
+
+function makeMatrixNotificationEmailHtml(email, { title, senderName, roomTitle, previewText, isCall, isInvite, roomUrl }) {
+  const s = site();
+  const destUrl = roomUrl.startsWith('http') ? roomUrl : `${siteUrl(email)}${roomUrl}`;
+  const accentColor = isCall ? '#10b981' : (isInvite ? '#3b82f6' : '#a855f7');
+  const iconEmoji = isCall ? '📞' : (isInvite ? '📨' : '💬');
+  const actionText = isCall ? 'Join Voice/Video Call' : (isInvite ? 'Accept Invite & Join' : 'Open Matrix Chat');
+
+  const content = `
+    <div style="text-align: center; margin-bottom: 20px;">
+      <div style="display: inline-block; width: 56px; height: 56px; line-height: 56px; border-radius: 16px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); font-size: 28px;">
+        ${iconEmoji}
+      </div>
+      <h2 style="margin: 14px 0 6px; font-size: 22px; font-weight: 800; color: #f4f4f5;">${title}</h2>
+      <p style="margin: 0; color: #94a3b8; font-size: 14px;">Mitch.pro Decentralized Matrix Chat</p>
+    </div>
+
+    <div style="background-color: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 14px; padding: 18px 20px; margin-bottom: 24px;">
+      <div style="display: flex; align-items: center; margin-bottom: 10px;">
+        <strong style="color: #f4f4f5; font-size: 15px;">${senderName}</strong>
+        ${roomTitle ? `<span style="color: #64748b; margin-left: 8px; font-size: 13px;">in ${roomTitle}</span>` : ''}
+      </div>
+      <div style="color: #e2e8f0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; background: rgba(0, 0, 0, 0.25); padding: 12px 14px; border-radius: 8px; border-left: 3px solid ${accentColor};">
+        ${previewText ? String(previewText).replace(/</g, '&lt;').replace(/>/g, '&gt;') : (isCall ? 'Voice/video call in progress' : 'New chat activity')}
+      </div>
+    </div>
+
+    <div style="text-align: center; margin-bottom: 12px;">
+      <a href="${destUrl}" style="display: inline-block; background: linear-gradient(135deg, ${accentColor}, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 12px; font-weight: 700; font-size: 15px; box-shadow: 0 10px 24px rgba(99, 102, 241, 0.35);">
+        ${actionText}
+      </a>
+    </div>
+    <p style="text-align: center; margin: 0; font-size: 12px; color: #64748b;">
+      Tip: Turn on web push notifications on your device to receive instant incoming rings and chat alerts!
+    </p>
+  `;
+
+  return htmlBaseTemplate(email, title, content);
+}
+
+function sendMatrixEmailAlert(memberNorm, { title, senderName, roomTitle, previewText, isCall, isInvite, roomId }) {
+  if (!notifAllowed(memberNorm, 'digest')) return;
+  const targetEmail = canonicalDeliveryEmail(memberNorm);
+  if (!targetEmail || !targetEmail.includes('@')) return;
+
+  const roomUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+  const html = makeMatrixNotificationEmailHtml(targetEmail, {
+    title,
+    senderName,
+    roomTitle,
+    previewText,
+    isCall,
+    isInvite,
+    roomUrl
+  });
+
+  sendEmailBg(targetEmail, title, html);
+  matrixLastEmailSent.set(`${memberNorm}:${roomId}`, Date.now());
+  console.log(`[matrix-email-alert] Sent "${title}" to ${targetEmail}`);
+}
+
+function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, previewText, roomId, isCall, isInvite, notifTitle }) {
+  if (!notifAllowed(memberNorm, 'digest')) return;
+  const key = `${memberNorm}:${roomId}`;
+  const now = Date.now();
+  const lastSent = matrixLastEmailSent.get(key) || 0;
+
+  if (isCall || isInvite) {
+    if (now - lastSent < 300_000) return;
+    sendMatrixEmailAlert(memberNorm, {
+      title: notifTitle,
+      senderName: senderDisplayName,
+      roomTitle,
+      previewText,
+      isCall,
+      isInvite,
+      roomId
+    });
+    return;
+  }
+
+  if (now - lastSent < 15 * 60 * 1000) return;
+
+  if (matrixPendingEmailAlerts.has(key)) {
+    const item = matrixPendingEmailAlerts.get(key);
+    item.previewText = previewText;
+    item.senderName = senderDisplayName;
+    item.count = (item.count || 1) + 1;
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    matrixPendingEmailAlerts.delete(key);
+    const all = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+    const list = Array.isArray(all[memberNorm]) ? all[memberNorm] : [];
+    const hasUnread = list.some(n => !n.read && n.roomId === roomId);
+    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    if (hasUnread && (Date.now() - lastSeen > 60_000)) {
+      sendMatrixEmailAlert(memberNorm, {
+        title: notifTitle,
+        senderName: senderDisplayName,
+        roomTitle,
+        previewText,
+        isCall: false,
+        isInvite: false,
+        roomId
+      });
+    }
+  }, 120_000);
+
+  matrixPendingEmailAlerts.set(key, {
+    timer,
+    senderName: senderDisplayName,
+    roomTitle,
+    previewText,
+    roomId,
+    firstTs: now,
+    count: 1
+  });
+}
+
+async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, req) {
+  if (eventType !== 'm.room.message' && eventType !== 'm.room.encrypted') return;
+
+  let parsed = {};
+  try { parsed = JSON.parse(bodyText); } catch {}
+
+  let previewText = 'New message';
+  if (eventType === 'm.room.encrypted') {
+    previewText = '🔒 Encrypted message';
+  } else if (parsed.msgtype === 'm.image') {
+    previewText = '📷 Sent an image';
+  } else if (parsed.msgtype === 'm.file') {
+    previewText = '📎 Sent an attachment';
+  } else if (typeof parsed.body === 'string' && parsed.body.trim()) {
+    previewText = parsed.body.replace(/<[^>]*>/g, '').trim().slice(0, 120);
+  }
+
+  // Identify sender
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  let senderUserId = '';
+  let senderDisplayName = 'Someone';
+  let senderNormEmail = '';
+
+  const senderAcc = await resolveMatrixAccount(req, parsed);
+  if (senderAcc) {
+    senderNormEmail = senderAcc.normEmail || '';
+    if (senderAcc.userId) senderUserId = senderAcc.userId;
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = profiles[senderNormEmail] || {};
+    const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+    senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+  }
+
+  if (!senderUserId && token) {
+    const cachedAcc = matrixTokenToAccount.get(token);
+    if (cachedAcc && cachedAcc.userId) {
+      senderUserId = cachedAcc.userId;
+      if (!senderNormEmail && cachedAcc.normEmail) senderNormEmail = cachedAcc.normEmail;
+    }
+    if (!senderUserId) {
+      try {
+        const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+          headers: { 'Authorization': authHeader }
+        });
+        if (whoRes.ok) {
+          const whoData = await whoRes.json();
+          if (whoData.user_id) senderUserId = whoData.user_id;
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (!senderNormEmail && senderUserId) {
+    const localPart = senderUserId.replace(/^@/, '').split(':')[0];
+    const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === senderUserId.toLowerCase()) {
+        const email = emailFromSid(u);
+        if (email) senderNormEmail = normalizeEmail(email);
+        break;
+      }
+    }
+    if (!senderNormEmail) senderNormEmail = resolveLoginIdentifier(localPart) || '';
+  }
+
+  if (senderDisplayName === 'Someone') {
+    if (senderNormEmail) {
+      const profiles = loadJson(PROFILES_FILE, {});
+      const prof = profiles[senderNormEmail] || {};
+      const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+      senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+    } else if (senderUserId) {
+      senderDisplayName = senderUserId.replace(/^@/, '').split(':')[0];
+    }
+  }
+
+  // Retrieve room members using sender token or system admin token
+  let roomInfo = await getMatrixRoomInfoForNotifications(roomId, token);
+  if (!roomInfo.members || roomInfo.members.length === 0) {
+    try {
+      const adminToken = await getSystemAdminMatrixToken();
+      if (adminToken && adminToken !== token) {
+        roomInfo = await getMatrixRoomInfoForNotifications(roomId, adminToken);
+      }
+    } catch (_) {}
+  }
+
+  if (!roomInfo.members || roomInfo.members.length === 0) return;
+
+  const isDirect = roomInfo.members.length <= 2;
+  const roomTitle = roomInfo.name || (isDirect ? '' : 'General');
+  const notifTitle = isDirect
+    ? `Message from ${senderDisplayName}`
+    : (roomTitle ? `${senderDisplayName} in ${roomTitle}` : `Message from ${senderDisplayName}`);
+
+  const subs = loadPushSubscriptions();
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+
+  for (const memberId of roomInfo.members) {
+    if (senderUserId && memberId.toLowerCase() === senderUserId.toLowerCase()) continue;
+
+    let memberNorm = '';
+    const localPart = memberId.replace(/^@/, '').split(':')[0];
+
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === memberId.toLowerCase()) {
+        const email = emailFromSid(u);
+        if (email) memberNorm = normalizeEmail(email);
+        break;
+      }
+    }
+    if (!memberNorm) {
+      memberNorm = resolveLoginIdentifier(localPart) || '';
+    }
+    if (!memberNorm) {
+      for (const [key, p] of Object.entries(profiles)) {
+        if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+          memberNorm = key;
+          break;
+        }
+      }
+    }
+
+    if (!memberNorm || memberNorm === senderNormEmail) continue;
+
+    const notifKey = isDirect ? 'dm' : 'group';
+    if (!notifAllowed(memberNorm, notifKey)) continue;
+
+    const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+
+    // 1. Add to Mitch.pro Notification Bell
+    addMatrixNotification(memberNorm, {
+      roomId,
+      type: 'matrix',
+      title: notifTitle,
+      body: isDirect ? 'Matrix Direct Message' : (roomTitle ? `Matrix • ${roomTitle}` : 'Matrix Group Message'),
+      detail: previewText,
+      sender: senderDisplayName,
+      roomTitle,
+      isDirect,
+      url: notifUrl
+    });
+
+    // 2. Web Push & ntfy
+    if (VAPID_PUBLIC && subs[memberNorm]) {
+      await sendWebPushClean(subs, memberNorm, {
+        title: notifTitle,
+        body: previewText,
+        url: notificationUrl(notifUrl),
+        tag: `matrix-${roomId}`,
+      });
+    }
+
+    ntfyNotify(memberNorm, notifTitle, previewText, notificationUrl(notifUrl));
+
+    // 3. Queue unread email alert for offline users
+    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    if (Date.now() - lastSeen > 60_000) {
+      queueMatrixUnreadEmail(memberNorm, {
+        senderDisplayName,
+        roomTitle,
+        previewText,
+        roomId,
+        isCall: false,
+        isInvite: false,
+        notifTitle: isDirect ? `💬 Message from ${senderDisplayName}` : `💬 ${senderDisplayName} in ${roomTitle || 'chat'}`
+      });
+    }
+  }
+}
+
+async function dispatchMatrixCallNotifications(roomId, eventType, bodyText, req) {
+  let parsed = {};
+  try { parsed = JSON.parse(bodyText); } catch {}
+
+  // For MSC3401/MatrixRTC, if memberships is an empty array or user left, don't alert
+  if (Array.isArray(parsed.memberships) && parsed.memberships.length === 0) return;
+
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  let senderUserId = '';
+  let senderDisplayName = 'Someone';
+  let senderNormEmail = '';
+
+  const senderAcc = await resolveMatrixAccount(req, parsed);
+  if (senderAcc) {
+    senderNormEmail = senderAcc.normEmail || '';
+    if (senderAcc.userId) senderUserId = senderAcc.userId;
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = profiles[senderNormEmail] || {};
+    const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+    senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+  }
+
+  if (!senderUserId && token) {
+    const cachedAcc = matrixTokenToAccount.get(token);
+    if (cachedAcc && cachedAcc.userId) {
+      senderUserId = cachedAcc.userId;
+      if (!senderNormEmail && cachedAcc.normEmail) senderNormEmail = cachedAcc.normEmail;
+    }
+  }
+
+  if (senderDisplayName === 'Someone') {
+    if (senderNormEmail) {
+      const profiles = loadJson(PROFILES_FILE, {});
+      const prof = profiles[senderNormEmail] || {};
+      const senderCanonical = canonicalDeliveryEmail(senderNormEmail);
+      senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+    } else if (senderUserId) {
+      senderDisplayName = senderUserId.replace(/^@/, '').split(':')[0];
+    }
+  }
+
+  let roomInfo = await getMatrixRoomInfoForNotifications(roomId, token);
+  if (!roomInfo.members || roomInfo.members.length === 0) {
+    try {
+      const adminToken = await getSystemAdminMatrixToken();
+      if (adminToken && adminToken !== token) {
+        roomInfo = await getMatrixRoomInfoForNotifications(roomId, adminToken);
+      }
+    } catch (_) {}
+  }
+
+  if (!roomInfo.members || roomInfo.members.length === 0) return;
+
+  const isDirect = roomInfo.members.length <= 2;
+  const roomTitle = roomInfo.name || (isDirect ? '' : 'General');
+  const notifTitle = isDirect
+    ? `📞 Incoming Call from ${senderDisplayName}`
+    : (roomTitle ? `📞 Call in ${roomTitle}` : `📞 Group call from ${senderDisplayName}`);
+  const notifBody = roomTitle
+    ? `Incoming voice/video call in ${roomTitle}. Tap to join!`
+    : `${senderDisplayName} is calling you. Tap to answer!`;
+
+  const subs = loadPushSubscriptions();
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+
+  for (const memberId of roomInfo.members) {
+    if (senderUserId && memberId.toLowerCase() === senderUserId.toLowerCase()) continue;
+
+    let memberNorm = '';
+    const localPart = memberId.replace(/^@/, '').split(':')[0];
+
+    for (const [u, name] of Object.entries(matrixUsers)) {
+      if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === memberId.toLowerCase()) {
+        const email = emailFromSid(u);
+        if (email) memberNorm = normalizeEmail(email);
+        break;
+      }
+    }
+    if (!memberNorm) memberNorm = resolveLoginIdentifier(localPart) || '';
+    if (!memberNorm) {
+      for (const [key, p] of Object.entries(profiles)) {
+        if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+          memberNorm = key;
+          break;
+        }
+      }
+    }
+
+    if (!memberNorm || memberNorm === senderNormEmail) continue;
+    if (!notifAllowed(memberNorm, isDirect ? 'dm' : 'group')) continue;
+
+    const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+
+    // 1. Add to Mitch.pro Notification Bell
+    addMatrixNotification(memberNorm, {
+      roomId,
+      type: 'matrix_call',
+      title: notifTitle,
+      body: isDirect ? 'Matrix Voice/Video Call' : `Group Call in ${roomTitle || 'Chat'}`,
+      detail: `${senderDisplayName} started a call. Click to join.`,
+      sender: senderDisplayName,
+      roomTitle,
+      isDirect,
+      url: notifUrl
+    });
+
+    // 2. Send High-Priority Call Web Push
+    if (VAPID_PUBLIC && subs[memberNorm]) {
+      await sendWebPushClean(subs, memberNorm, {
+        title: notifTitle,
+        body: notifBody,
+        url: notificationUrl(notifUrl),
+        tag: `matrix-call-${roomId}`,
+        requireInteraction: true,
+        vibrate: [300, 100, 300, 100, 300, 100, 600],
+        type: 'call'
+      });
+    }
+
+    ntfyNotify(memberNorm, notifTitle, notifBody, notificationUrl(notifUrl));
+
+    // 3. Send Call Email Alert if User Is Inactive/Offline
+    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    if (Date.now() - lastSeen > 60_000) {
+      queueMatrixUnreadEmail(memberNorm, {
+        senderDisplayName,
+        roomTitle,
+        previewText: `${senderDisplayName} started a voice/video call.`,
+        roomId,
+        isCall: true,
+        isInvite: false,
+        notifTitle
+      });
+    }
+  }
+}
+
+async function dispatchMatrixInviteNotifications(roomId, bodyText, req) {
+  let parsed = {};
+  try { parsed = JSON.parse(bodyText); } catch {}
+  const targetUserId = parsed.user_id || '';
+  if (!targetUserId) return;
+
+  const authHeader = req.headers.get('authorization') || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '');
+  let senderDisplayName = 'Someone';
+
+  const senderAcc = await resolveMatrixAccount(req, parsed);
+  if (senderAcc && senderAcc.normEmail) {
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = profiles[senderAcc.normEmail] || {};
+    const senderCanonical = canonicalDeliveryEmail(senderAcc.normEmail);
+    senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+  } else if (token) {
+    const cachedAcc = matrixTokenToAccount.get(token);
+    if (cachedAcc && cachedAcc.normEmail) {
+      const profiles = loadJson(PROFILES_FILE, {});
+      const prof = profiles[cachedAcc.normEmail] || {};
+      const senderCanonical = canonicalDeliveryEmail(cachedAcc.normEmail);
+      senderDisplayName = prof.displayName || prof.nickname || prof.username || senderCanonical.split('@')[0];
+    }
+  }
+
+  const roomInfo = await getMatrixRoomInfoForNotifications(roomId, token);
+  const roomTitle = roomInfo.name || 'a chat room';
+
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+  let memberNorm = '';
+  const localPart = targetUserId.replace(/^@/, '').split(':')[0];
+
+  for (const [u, name] of Object.entries(matrixUsers)) {
+    if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === targetUserId.toLowerCase()) {
+      const email = emailFromSid(u);
+      if (email) memberNorm = normalizeEmail(email);
+      break;
+    }
+  }
+  if (!memberNorm) memberNorm = resolveLoginIdentifier(localPart) || '';
+  if (!memberNorm) {
+    for (const [key, p] of Object.entries(profiles)) {
+      if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
+        memberNorm = key;
+        break;
+      }
+    }
+  }
+  if (!memberNorm) return;
+
+  if (!notifAllowed(memberNorm, 'dm')) return;
+
+  const notifTitle = 'Chat Room Invite';
+  const notifBody = `${senderDisplayName} invited you to join ${roomTitle}`;
+  const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
+  const subs = loadPushSubscriptions();
+
+  // 1. Add to Mitch.pro Notification Bell
+  addMatrixNotification(memberNorm, {
+    roomId,
+    type: 'matrix_invite',
+    title: notifTitle,
+    body: `${senderDisplayName} invited you`,
+    detail: `Invited you to join room "${roomTitle}"`,
+    sender: senderDisplayName,
+    roomTitle,
+    url: notifUrl
+  });
+
+  // 2. Web Push & ntfy
+  if (VAPID_PUBLIC && subs[memberNorm]) {
+    await sendWebPushClean(subs, memberNorm, {
+      title: notifTitle,
+      body: notifBody,
+      url: notificationUrl(notifUrl),
+      tag: `matrix-invite-${roomId}`,
+    });
+  }
+  ntfyNotify(memberNorm, notifTitle, notifBody, notificationUrl(notifUrl));
+
+  // 3. Send Invite Email if offline
+  const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+  if (Date.now() - lastSeen > 60_000) {
+    queueMatrixUnreadEmail(memberNorm, {
+      senderDisplayName,
+      roomTitle,
+      previewText: `${senderDisplayName} invited you to join "${roomTitle}" on Mitch.pro Matrix.`,
+      roomId,
+      isCall: false,
+      isInvite: true,
+      notifTitle: `📨 ${senderDisplayName} invited you to join "${roomTitle}"`
+    });
+  }
+}
+
 // ── Main fetch handler ────────────────────────────────────────────────────────
 
 const banOpenPaths = new Set([
@@ -7620,6 +9063,18 @@ async function handleRequest(req, server) {
   const botRedirect = blooketBotRedirect(url, method);
   if (botRedirect) return Response.redirect(botRedirect, 302);
 
+  if (method === 'GET' && /^\/game-portal(?:\/|\/index\.html)?$/.test(path)) {
+    const currentHost = requestHost(req).split(':')[0].toLowerCase();
+    const configuredSite = site();
+    let primaryHost = '';
+    try { primaryHost = new URL(configuredSite.primary).hostname.toLowerCase(); } catch {}
+    if (currentHost && currentHost === primaryHost && configuredSite.alternate && checkPasswordCookie(req)) {
+      const destination = configuredSite.alternate.replace(/\/+$/, '') + '/game-portal/' + url.search;
+      const bridge = configuredSite.primary.replace(/\/+$/, '') + '/api/sso/bridge?back=' + encodeURIComponent(destination);
+      return Response.redirect(bridge, 302);
+    }
+  }
+
   const csrfFailure = csrfFailureIfUnsafe(req, path, method);
   if (csrfFailure) return csrfFailure;
 
@@ -7629,20 +9084,38 @@ async function handleRequest(req, server) {
   // id; the path is always rebuilt from the stored metadata record, never
   // from user input.
   {
-    const bgMatch = method === 'GET' && /^\/api\/bg\/([0-9a-f]{24})\.(png|jpg|webp|webm)$/.exec(path);
+    const bgMatch = method === 'GET' && /^\/api\/bg\/(?:(thumb)\/)?([0-9a-f]{24})\.(png|jpg|webp|webm)$/.exec(path);
     if (bgMatch) {
+      const isThumb = bgMatch[1] === 'thumb';
+      const fileId = bgMatch[2];
+      const reqExt = bgMatch[3];
       const lib = bgLibrary();
       let rec = null;
       let ownerNorm = '';
       for (const [norm, items] of Object.entries(lib)) {
-        const hit = (Array.isArray(items) ? items : []).find(item => item.id === bgMatch[1]);
+        const hit = (Array.isArray(items) ? items : []).find(item => item.id === fileId);
         if (hit) { rec = hit; ownerNorm = norm; break; }
       }
-      const ext = rec ? bgMimeExt(rec.mime) : '';
-      if (!rec || ext !== bgMatch[2] || !/^[0-9a-f]{24}\.[a-z0-9]+$/.test(rec.file)) {
+      if (!rec) return new Response(null, { status: 404 });
+      const dir = join(BG_UPLOAD_DIR, createHash('sha256').update(ownerNorm).digest('hex').slice(0, 32));
+      if (isThumb) {
+        const thumbPath = join(dir, `${fileId}_thumb.webp`);
+        if (existsSync(thumbPath)) {
+          return new Response(Bun.file(thumbPath), {
+            headers: {
+              'Content-Type': 'image/webp',
+              'Cache-Control': 'public, max-age=31536000, immutable',
+              'Access-Control-Allow-Origin': PICKLE_ORIGIN,
+              'Vary': 'Origin',
+              'Cross-Origin-Resource-Policy': 'cross-origin'
+            }
+          });
+        }
+      }
+      const ext = bgMimeExt(rec.mime);
+      if (ext !== reqExt || !/^[0-9a-f]{24}\.[a-z0-9]+$/.test(rec.file)) {
         return new Response(null, { status: 404 });
       }
-      const dir = join(BG_UPLOAD_DIR, createHash('sha256').update(ownerNorm).digest('hex').slice(0, 32));
       return new Response(Bun.file(join(dir, rec.file)), {
         headers: {
           'Content-Type': rec.mime,
@@ -7679,6 +9152,543 @@ async function handleRequest(req, server) {
     return bannedResponse({
       reason: ipBan.reason || 'This IP address is banned from the website.',
       by: ipBan.by || 'site admin'
+    });
+  }
+
+  // Matrix client-server API & discovery reverse proxy to Conduit homeserver
+  if (path.startsWith('/_matrix/') || path.startsWith('/.well-known/matrix/')) {
+    if (method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+          'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+
+    if (path === '/.well-known/matrix/client' && method === 'GET') {
+      const host = requestHost(req) || 'mitch.pro';
+      const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
+      return jsonResp(200, {
+        'm.homeserver': {
+          base_url: `${proto}${host}`
+        },
+        'org.matrix.msc4143.rtc_foci': [
+          {
+            type: 'livekit',
+            livekit_service_url: `${proto}${host}/livekit`
+          }
+        ]
+      }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+
+    // Matrix Client-Server VoIP STUN/TURN Discovery for WebRTC peer connections
+    if (method === 'GET' && path.match(/^\/_matrix\/client\/(?:v3|r0)\/voip\/turnServer/)) {
+      return jsonResp(200, {
+        uris: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+          'stun:stun.matrix.org:3478'
+        ],
+        ttl: 86400
+      }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
+    // Conduit does not implement Matrix CS /notifications. Return empty list for compliant client rendering.
+    if (method === 'GET' && path.match(/^\/_matrix\/client\/(?:v3|r0)\/notifications/)) {
+      return jsonResp(200, { notifications: [] }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
+    // Read body text for POST/PUT requests (excluding binary media uploads)
+    let capturedBodyText = null;
+    const isMediaUpload = path.startsWith('/_matrix/media/');
+    if ((method === 'POST' || method === 'PUT') && !isMediaUpload) {
+      try {
+        capturedBodyText = await req.text();
+      } catch (_) {}
+    }
+
+    const sendMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/send\/([^/]+)(?:\/([^/]+))?$/);
+    const stateMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/state\/([^/]+)(?:\/([^/]+))?$/);
+    const inviteMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/invite$/);
+
+    // Enforce readable-message policy before forwarding to the homeserver.
+    // This includes replacements (edits), captions, and formatted text, for all roles.
+    const policySend = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0|v1|unstable)\/rooms\/[^/]+\/send\/([^/]+)(?:\/[^/]+)?$/);
+    if (policySend && decodeURIComponent(policySend[1]) === 'm.room.message' && capturedBodyText !== null) {
+      let content;
+      try { content = JSON.parse(capturedBodyText); }
+      catch { return jsonResp(400, { errcode: 'M_BAD_JSON', error: 'Invalid message content.' }); }
+      if (matrixMessageBlocked(content)) {
+        return jsonResp(403, { errcode: 'M_FORBIDDEN', error: 'Your message contains a word or phrase that is not allowed in this chat. Please edit it and try again.' });
+      }
+    }
+
+    // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
+    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
+    if (reportMatch && capturedBodyText !== null) {
+      try {
+        const roomId = decodeURIComponent(reportMatch[1]);
+        const eventId = decodeURIComponent(reportMatch[2]);
+        let parsed = {};
+        try { parsed = JSON.parse(capturedBodyText); } catch {}
+        const reason = parsed.reason || 'Reported message';
+
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        let reporter = sid ? (emailFromSid(sid) || sid) : '';
+
+        let eventSender = 'unknown';
+        let eventBody = `Reported message event ${eventId}`;
+        let eventTs = Date.now();
+        const authHeader = req.headers.get('authorization') || '';
+
+        try {
+          const eventRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`, {
+            headers: authHeader ? { 'Authorization': authHeader } : {}
+          });
+          if (eventRes.ok) {
+            const ev = await eventRes.json();
+            if (ev.sender) eventSender = ev.sender;
+            if (ev.origin_server_ts) eventTs = ev.origin_server_ts;
+            if (ev.content && typeof ev.content.body === 'string') {
+              eventBody = ev.content.body;
+            } else if (ev.content) {
+              eventBody = JSON.stringify(ev.content);
+            }
+          }
+        } catch (_) {}
+
+        if (!reporter && authHeader) {
+          try {
+            const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+              headers: { 'Authorization': authHeader }
+            });
+            if (whoRes.ok) {
+              const whoData = await whoRes.json();
+              if (whoData.user_id) reporter = whoData.user_id;
+            }
+          } catch (_) {}
+        }
+        if (!reporter) reporter = 'matrix-user';
+
+        const reports = loadJson(CHAT_REPORTS_FILE, []);
+        const cleanId = (eventId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+        const reportEntry = {
+          id: 'matrix-' + cleanId,
+          reason: `[Matrix Room ${roomId}] ${reason}`.slice(0, 500),
+          reportedBy: reporter,
+          ts: Date.now(),
+          status: 'Needs review',
+          matrixRoomId: roomId,
+          matrixEventId: eventId,
+          matrixSender: eventSender,
+          context: [
+            {
+              from: eventSender,
+              to: roomId,
+              text: String(eventBody).slice(0, 2000),
+              ts: eventTs,
+              reported: true
+            }
+          ]
+        };
+        reports.push(reportEntry);
+        if (reports.length > 5000) reports.splice(0, reports.length - 5000);
+        saveJson(CHAT_REPORTS_FILE, reports);
+
+        try {
+          ntfy(`[Matrix Report] ${reporter} reported message from ${eventSender} in ${roomId}: ${reason}`, { title: 'Chat Safety' });
+        } catch (_) {}
+      } catch (err) {
+        console.warn('[matrix-report] Error intercepting report:', err?.message || err);
+      }
+    }
+
+    // Intercept and translate Mitch.pro user password in Matrix requests (UIA and login)
+    let translatedAccount = null;
+    if (capturedBodyText && capturedBodyText.includes('password')) {
+      try {
+        const translation = await translateMatrixPasswordInRequestBody(req, path, capturedBodyText);
+        if (translation.modified) {
+          capturedBodyText = translation.bodyText;
+          translatedAccount = translation.account;
+        }
+      } catch (trErr) {
+        console.warn('[matrix-proxy] Password translation error:', trErr?.message || trErr);
+      }
+    }
+
+    const conduitHost = process.env.CONDUIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'conduit' : '127.0.0.1');
+    const conduitPort = process.env.CONDUIT_PORT || '6167';
+    const upstreamHeaders = new Headers(req.headers);
+    upstreamHeaders.delete('host');
+    upstreamHeaders.set('host', 'mitch.pro');
+    if (capturedBodyText !== null) {
+      upstreamHeaders.delete('content-length');
+    }
+    if (ip) {
+      upstreamHeaders.set('x-forwarded-for', ip);
+      upstreamHeaders.set('x-real-ip', ip);
+    }
+    const candidateHosts = Array.from(new Set([conduitHost, conduitHost === '127.0.0.1' ? 'conduit' : '127.0.0.1', 'mitch-matrix-conduit']));
+    let upstreamRes = null;
+    let lastErr = null;
+    for (const hostCandidate of candidateHosts) {
+      try {
+        const candidateUrl = new URL(url.pathname + url.search, `http://${hostCandidate}:${conduitPort}`);
+        upstreamRes = await fetch(candidateUrl, {
+          method: req.method,
+          headers: upstreamHeaders,
+          body: capturedBodyText !== null ? capturedBodyText : (req.method !== 'GET' && req.method !== 'HEAD' ? req.body : undefined),
+          redirect: 'manual'
+        });
+        if (upstreamRes) break;
+      } catch (err) {
+        lastErr = err;
+      }
+    }
+    if (!upstreamRes) {
+      console.error('[matrix-proxy] Failed to reach Conduit on candidates:', candidateHosts.join(', '), lastErr?.message || lastErr);
+      return jsonResp(502, { error: 'Matrix chat backend unavailable' });
+    }
+
+    // If upstream returns 404 for notifications endpoint, return 200 with empty list
+    if (upstreamRes.status === 404 && path.match(/^\/_matrix\/client\/(?:v3|r0)\/notifications/)) {
+      return jsonResp(200, { notifications: [] }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
+    // If upstream returns 404 or 501 for turnServer endpoint, return 200 with STUN servers
+    if ((upstreamRes.status === 404 || upstreamRes.status === 501) && path.match(/^\/_matrix\/client\/(?:v3|r0)\/voip\/turnServer/)) {
+      return jsonResp(200, {
+        uris: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+          'stun:stun.matrix.org:3478'
+        ],
+        ttl: 86400
+      }, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
+    // Cache access token from successful login responses
+    if (upstreamRes.ok && path.match(/^\/_matrix\/client\/(?:v3|r0)\/login/) && method === 'POST') {
+      try {
+        const clone = upstreamRes.clone();
+        const loginData = await clone.json();
+        if (loginData.access_token && (translatedAccount || loginData.user_id)) {
+          const acc = translatedAccount || {
+            userId: loginData.user_id,
+            uid: getUidForEmail(loginData.user_id.replace(/^@/, '').split(':')[0]),
+            normEmail: resolveLoginIdentifier(loginData.user_id.replace(/^@/, '').split(':')[0]) || ''
+          };
+          matrixTokenToAccount.set(loginData.access_token, acc);
+        }
+      } catch (_) {}
+    }
+
+    // Track active user in Matrix for presence / email alert gating
+    try {
+      const authHeader = req.headers.get('authorization') || '';
+      if (authHeader) {
+        const tok = authHeader.replace(/^Bearer\s+/i, '');
+        const acc = matrixTokenToAccount.get(tok);
+        if (acc && acc.normEmail) matrixUserLastSeen.set(acc.normEmail, Date.now());
+      }
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (sid) {
+        const email = emailFromSid(sid);
+        if (email) matrixUserLastSeen.set(normalizeEmail(email), Date.now());
+      }
+    } catch (_) {}
+
+    // Trigger Mitch.pro notifications for Matrix messages, calls & room invites
+    if (upstreamRes.ok) {
+      if (sendMatch && capturedBodyText) {
+        const roomId = decodeURIComponent(sendMatch[1]);
+        const eventType = decodeURIComponent(sendMatch[2]);
+        if (eventType === 'm.call.invite') {
+          dispatchMatrixCallNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
+            console.warn('[matrix-call-push] Dispatch error:', e?.message || e);
+          });
+        } else {
+          dispatchMatrixMessageNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
+            console.warn('[matrix-push] Dispatch error:', e?.message || e);
+          });
+        }
+      } else if (stateMatch && capturedBodyText) {
+        const roomId = decodeURIComponent(stateMatch[1]);
+        const eventType = decodeURIComponent(stateMatch[2]);
+        if (eventType === 'm.call.member' || eventType === 'org.matrix.msc3401.call.member') {
+          dispatchMatrixCallNotifications(roomId, eventType, capturedBodyText, req).catch(e => {
+            console.warn('[matrix-call-push] Dispatch error:', e?.message || e);
+          });
+        }
+      } else if (inviteMatch && capturedBodyText) {
+        const roomId = decodeURIComponent(inviteMatch[1]);
+        dispatchMatrixInviteNotifications(roomId, capturedBodyText, req).catch(e => {
+          console.warn('[matrix-invite-push] Dispatch error:', e?.message || e);
+        });
+      }
+    }
+
+    const resHeaders = new Headers(upstreamRes.headers);
+    resHeaders.set('Access-Control-Allow-Origin', '*');
+    resHeaders.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    resHeaders.set('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    return new Response(upstreamRes.body, {
+      status: upstreamRes.status,
+      statusText: upstreamRes.statusText,
+      headers: resHeaders
+    });
+  }
+
+  // Dynamic Cinny client configuration for Mitch.pro
+  if (path === '/matrix/config.json' && method === 'GET') {
+    const host = requestHost(req) || 'mitch.pro';
+    const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
+    const serverEntry = (host.split(':')[0] === 'localhost' || host.split(':')[0] === '127.0.0.1') ? `${proto}${host}` : host;
+    const targetHost = matrixSsoTargetHost();
+    const serverList = Array.from(new Set([serverEntry, targetHost, 'mitch.pro'])).filter(Boolean);
+    return jsonResp(200, {
+      defaultHomeserver: 0,
+      homeserverList: serverList,
+      allowCustomHomeservers: true,
+      featuredCommunities: {
+        openAsDefault: true,
+        servers: ['mitch.pro'],
+        rooms: ['#general:mitch.pro'],
+        spaces: []
+      },
+      hashRouter: {
+        enabled: false,
+        basename: '/matrix'
+      }
+    }, {
+      'Access-Control-Allow-Origin': '*'
+    });
+  }
+
+  // Mitch.pro Matrix Single Sign-On (SSO) Login
+  if (path === '/api/matrix/sso-login' && method === 'POST') {
+    const cookies = getCookies(req);
+    const uid = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(uid)) {
+      return jsonResp(401, { ok: false, error: 'Not authenticated on Mitch.pro' }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+    const ban = bannedInfoForSid(uid);
+    if (ban) {
+      return jsonResp(403, { ok: false, error: 'Account is banned', banned: true }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+    const email = emailFromSid(uid);
+    const norm = email ? normalizeEmail(email) : '';
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = norm ? (profiles[norm] || {}) : {};
+    const username = normalizeUsername(prof.username || (email ? defaultUsernameForEmail(norm) : 'user_' + uid.slice(0, 6)));
+    const displayName = prof.displayName || prof.nickname || username;
+
+    try {
+      const authResult = await loginOrRegisterMatrixUser(uid, username, displayName);
+      if (authResult.access_token) {
+        matrixTokenToAccount.set(authResult.access_token, {
+          uid,
+          normEmail: norm,
+          userId: authResult.user_id
+        });
+      }
+      const host = requestHost(req) || 'mitch.pro';
+      const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
+      const baseUrl = `${proto}${host}`;
+
+      const targetPowerLevel = getMatrixPowerLevelForSid(uid);
+      const role = targetPowerLevel === 100 ? 'admin' : (targetPowerLevel === 50 ? 'moderator' : 'member');
+      try {
+        await syncMatrixUserToOfficialRooms(authResult.user_id, authResult.access_token, targetPowerLevel);
+      } catch (syncErr) {
+        console.warn('[matrix-sso] Warning: Failed to sync official room roles:', syncErr?.message || syncErr);
+      }
+
+      return jsonResp(200, {
+        ok: true,
+        user_id: authResult.user_id,
+        access_token: authResult.access_token,
+        device_id: authResult.device_id,
+        home_server: authResult.home_server || 'mitch.pro',
+        base_url: baseUrl,
+        username: authResult.username,
+        displayName,
+        role,
+        powerLevel: targetPowerLevel,
+        officialRoom: '#general:mitch.pro'
+      }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    } catch (err) {
+      console.error('[matrix-sso] Login error:', err?.message || err);
+      return jsonResp(500, { ok: false, error: 'Matrix SSO authentication failed', details: err?.message }, {
+        'Access-Control-Allow-Origin': '*'
+      });
+    }
+  }
+
+  // Mitch.pro Matrix SSO Status
+  if (path === '/api/matrix/sso-status' && method === 'GET') {
+    const cookies = getCookies(req);
+    const uid = cookies['studentId'] || cookies['id'] || '';
+    if (!validId(uid) || bannedInfoForSid(uid)) {
+      return jsonResp(200, { authenticated: false }, { 'Access-Control-Allow-Origin': '*' });
+    }
+    const email = emailFromSid(uid);
+    const norm = email ? normalizeEmail(email) : '';
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = norm ? (profiles[norm] || {}) : {};
+    const username = normalizeUsername(prof.username || (email ? defaultUsernameForEmail(norm) : 'user_' + uid.slice(0, 6)));
+    const assignedUsername = loadJson(MATRIX_USERS_FILE, {})[uid] || username;
+    const displayName = prof.displayName || prof.nickname || username;
+    return jsonResp(200, {
+      authenticated: true,
+      username,
+      user_id: `@${assignedUsername}:mitch.pro`,
+      displayName
+    }, {
+      'Access-Control-Allow-Origin': '*'
+    });
+  }
+
+  // Mitch.pro Matrix Notifications Read Sync
+  if (path === '/api/matrix/notifications/read' && method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  }
+  if (path === '/api/matrix/notifications/read' && method === 'POST') {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    let norm = '';
+    if (validId(sid)) {
+      const email = emailFromSid(sid);
+      if (email) norm = normalizeEmail(email);
+    }
+    if (!norm) {
+      const authHeader = req.headers.get('authorization') || '';
+      const tok = authHeader.replace(/^Bearer\s+/i, '');
+      const acc = matrixTokenToAccount.get(tok);
+      if (acc && acc.normEmail) norm = acc.normEmail;
+    }
+    if (!norm) return jsonResp(401, { error: 'unauthorized' }, { 'Access-Control-Allow-Origin': '*' });
+
+    let bodyObj = {};
+    try { bodyObj = await req.json(); } catch {}
+    const roomId = bodyObj.roomId ? String(bodyObj.roomId) : '';
+    const allNotifs = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+    const list = Array.isArray(allNotifs[norm]) ? allNotifs[norm] : [];
+    let changed = false;
+    for (const n of list) {
+      if (!roomId || n.roomId === roomId) {
+        if (!n.read) changed = true;
+        n.read = true;
+      }
+    }
+    if (changed) {
+      allNotifs[norm] = list;
+      saveJson(MATRIX_NOTIFICATIONS_FILE, allNotifs);
+      triggerNotificationRefresh();
+      cancelPendingMatrixEmailAlert(norm, roomId);
+    }
+    return jsonResp(200, { ok: true }, { 'Access-Control-Allow-Origin': '*' });
+  }
+
+  // ── Matrix VoIP & LiveKit SFU Service for Voice/Video Calls ──────────────────
+  if (path.startsWith('/livekit') && method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+        'Access-Control-Max-Age': '86400'
+      }
+    });
+  }
+
+  // LiveKit SFU Token Generation (MSC3401 / MSC4143 MatrixRTC / Element Call)
+  if ((path === '/livekit/sfu/get' || path === '/livekit/get_token') && (method === 'POST' || method === 'GET')) {
+    let body = {};
+    if (method === 'POST') {
+      try {
+        const text = await req.text();
+        body = JSON.parse(text);
+      } catch (_) {}
+    } else {
+      for (const [k, v] of url.searchParams.entries()) body[k] = v;
+    }
+
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    const cookieEmail = sid ? (emailFromSid(sid) || '') : '';
+    const normEmail = cookieEmail ? normalizeEmail(cookieEmail) : '';
+    const profiles = loadJson(PROFILES_FILE, {});
+    const prof = normEmail ? (profiles[normEmail] || {}) : {};
+
+    const room = body.room || body.room_id || 'default';
+    let rawUserId = body.member?.claimed_user_id || body.user_id || '';
+    if (!rawUserId && normEmail) {
+      const username = prof.username || defaultUsernameForEmail(normEmail);
+      rawUserId = `@${username}:mitch.pro`;
+    }
+    if (!rawUserId) rawUserId = `@user_${Math.random().toString(36).slice(2, 8)}:mitch.pro`;
+
+    const identity = rawUserId.startsWith('@') ? rawUserId : `@${rawUserId.replace(/[^a-zA-Z0-9._=-]/g, '')}:mitch.pro`;
+    const displayName = body.name || prof.displayName || identity.split(':')[0].replace(/^@/, '');
+
+    const jwt = generateLiveKitToken({ identity, name: displayName, roomName: room });
+    const host = requestHost(req) || 'mitch.pro';
+    const isWss = !host.startsWith('localhost') && !host.startsWith('127.0.0.1');
+    const wsProto = isWss ? 'wss://' : 'ws://';
+    const wsUrl = `${wsProto}${host}/livekit/rtc`;
+
+    return jsonResp(200, {
+      url: wsUrl,
+      jwt: jwt
+    }, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
     });
   }
 
@@ -7907,6 +9917,40 @@ async function handleRequest(req, server) {
     }
   }
 
+  // Open verification endpoint for cross-domain reachability checks (e.g. from rjuhsd.school)
+  if (path === '/verify-open.json' || path === '/api/verify-open') {
+    if (method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+      });
+    }
+    if (method === 'GET' || method === 'HEAD') {
+      const payload = {
+        status: 'open',
+        domain: 'mitch.pro',
+        verified: true,
+        token: 'mitch-open-verified-2026',
+      };
+      return new Response(method === 'HEAD' ? null : JSON.stringify(payload), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
+      });
+    }
+  }
+
   // Public site identity (from data/site.json) so the rjuhsd hub and other
   // pages can link to the right primary/alternate origins.
   if (path === '/api/site-info' && method === 'GET') {
@@ -7941,6 +9985,79 @@ async function handleRequest(req, server) {
     return errResp(405, null, null);
   }
 
+  if (path === '/api/guest-session' && method === 'GET') {
+    const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    if (checkPasswordCookie(req)) return new Response(JSON.stringify({ authenticated: true }), { headers });
+    const state = guestPreview(getCookies(req)['mitch_guest'], createHmac('sha256', ID_SECRET).update('guest-preview-v1').digest());
+    headers.append('Set-Cookie', setCookieHeader('mitch_guest', state.token, req, 31536000, true));
+    return new Response(JSON.stringify({ authenticated: false, expiresAt: state.expiresAt, serverNow: state.serverNow }), { headers });
+  }
+
+  function isAuthorizedCacheRefresh(request, clientIp) {
+    if (process.env.NODE_ENV === 'test') return true;
+    const configuredSecret = (process.env.DEPLOY_SECRET || process.env.SECRET_KEY || '').trim();
+    const authHeader = (request.headers.get('Authorization') || '').trim();
+    const bearerToken = authHeader.toLowerCase().startsWith('bearer ') ? authHeader.slice(7).trim() : '';
+    const tokenHeader = (request.headers.get('X-Deploy-Token') || '').trim();
+    const token = bearerToken || tokenHeader;
+
+    if (configuredSecret && token && token === configuredSecret) {
+      return true;
+    }
+
+    const rawMitch = (request.headers.get('X-Mitch-Client-IP') || '').trim();
+    const rawReal = (request.headers.get('X-Real-IP') || '').trim();
+    const xff = (request.headers.get('X-Forwarded-For') || '').trim();
+    const isDirectLoopback = !rawMitch && !rawReal && !xff && (clientIp === '127.0.0.1' || clientIp === '::1');
+    if (isDirectLoopback && request.headers.get('X-Internal-Refresh') === '1') {
+      return true;
+    }
+
+    try {
+      const cookies = getCookies(request);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (validId(sid) && isAnyAdminId(sid)) {
+        return true;
+      }
+    } catch {}
+
+    return false;
+  }
+
+  // Static cache refresh endpoint (used by CI/CD and deployment hooks)
+  if (path === '/api/cache/refresh' || path === '/api/admin/cache/refresh' || path === '/api/refresh-cache') {
+    if (method === 'GET') {
+      return jsonResp(200, {
+        cacheSize: staticCache.size,
+        cacheBytes: staticCacheBytes,
+        maxBytes: STATIC_CACHE_MAX_BYTES,
+      });
+    }
+    if (method !== 'POST') return errResp(405, 'method not allowed');
+    if (!isAuthorizedCacheRefresh(req, ip)) {
+      return jsonResp(401, { error: 'unauthorized', message: 'Valid deploy token or secret key required' });
+    }
+
+    let filesToRefresh = [];
+    try {
+      const body = await req.json().catch(() => null);
+      if (body && Array.isArray(body.files)) {
+        filesToRefresh = body.files.filter(f => typeof f === 'string' && f.trim());
+      }
+    } catch {}
+
+    const result = clearStaticCache(filesToRefresh);
+    return jsonResp(200, {
+      success: true,
+      message: 'Static cache refreshed',
+      evicted: result.evicted,
+      reloaded: result.reloaded,
+      full: result.full,
+      selective: !result.full,
+      timestamp: Date.now(),
+    });
+  }
+
   // Enforce admin passphrase for all administrative API actions
   if (path.startsWith('/api/admin/') && path !== '/api/admin/passphrase-status') {
     try {
@@ -7972,8 +10089,81 @@ async function handleRequest(req, server) {
     }
   }
 
+  if (path === '/api/admin/owner-accounts') {
+    const cookies = getCookies(req);
+    const sid = cookies.studentId || cookies.id || '';
+    const actor = normalizeEmail(emailFromSid(sid) || '');
+    if (!checkPasswordCookie(req, sid) || !isOwnerEmail(actor)) return jsonResp(403, { error: 'Owner access required.' });
+    if (method !== 'POST') return jsonResp(405, { error: 'Use POST.' });
+    const origin = req.headers.get('origin');
+    try { if (!origin || new URL(origin).host !== requestHost(req)) return jsonResp(403, { error: 'Open this tool from the owner panel.' }); }
+    catch { return jsonResp(403, { error: 'Invalid origin.' }); }
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    try {
+      const input = await req.json();
+      const passwords = structuredClone(loadPasswords());
+      if (input.action === 'list') return jsonResp(200, { accounts: Object.keys(passwords).sort().map(email => ({ email, protected: isOwnerEmail(email) || email === actor })), coinAccounts: Object.keys(loadCoins()).length });
+      const plan = planOwnerAction({ ...input, actor, owner: true, passwords, coins: loadCoins(), protectedEmail: isOwnerEmail });
+      if (Date.now() - (ownerAccountActionTimes.get(actor) || 0) < 60000) return jsonResp(429, { error: 'Wait one minute between bulk account changes.' });
+      const before = {};
+      const after = {};
+      const stage = (file, data) => { before[file] = structuredClone(data); after[file] = structuredClone(data); return after[file]; };
+      if (plan.action === 'reset-coins') { stage(COINS_FILE, loadCoins()); after[COINS_FILE] = plan.nextCoins; }
+      else {
+        const selected = new Set(plan.targets);
+        const matches = email => selected.has(normalizeEmail(email || ''));
+        const nextPasswords = stage(PASSWORDS_FILE, passwords);
+        const passkeys = stage(PASSKEYS_FILE, loadPasskeys());
+        const codes = stage(SIGNUP_CODES_FILE, loadJson(SIGNUP_CODES_FILE, {}));
+        const tokens = stage(TOKENS_FILE, loadTokens());
+        const names = stage(NAMES_FILE, loadJson(NAMES_FILE, {}));
+        const sessions = stage(AUTH_SESSIONS_FILE, loadAuthSessions());
+        const generations = stage(GENERATIONS_FILE, loadGenerations());
+        for (const email of plan.targets) {
+          delete nextPasswords[email]; delete passkeys[email]; delete codes[email];
+          generations[email] = { gen: currentSessionGeneration(email) + 1, last_registered: Date.now() / 1000 };
+        }
+        for (const [key, record] of Object.entries(tokens)) if (matches(record.norm_email || record.email)) delete tokens[key];
+        for (const [key, email] of Object.entries(names)) if (matches(email)) delete names[key];
+        for (const [key, record] of Object.entries(sessions)) if (matches(record.normEmail || record.email)) delete sessions[key];
+      }
+      const backupDir = join(DATA_DIR, 'owner-action-backups');
+      mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+      const nonce = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', createHmac('sha256', ID_SECRET).update('owner-backup-v1').digest(), nonce);
+      const encrypted = Buffer.concat([cipher.update(JSON.stringify({ action: plan.action, at: Date.now(), before }), 'utf8'), cipher.final()]);
+      writeFileSync(join(backupDir, `${Date.now()}-${randomBytes(8).toString('hex')}.enc`), Buffer.concat([nonce, cipher.getAuthTag(), encrypted]), { mode: 0o600, flag: 'wx' });
+      getDataStore().transaction(() => { for (const [file, data] of Object.entries(after)) writeDocument(file, data); })();
+      ownerAccountActionTimes.set(actor, Date.now());
+      if (plan.action === 'reset-coins') coinsCache = after[COINS_FILE];
+      else {
+        passwordsCache = after[PASSWORDS_FILE]; tokensCache = after[TOKENS_FILE];
+        const selected = new Set(plan.targets);
+        for (const [key, record] of pendingTwoFactor) if (selected.has(normalizeEmail(record.normEmail || ''))) pendingTwoFactor.delete(key);
+      }
+      logAdminAction(actor, plan.action === 'reset-coins' ? 'COINS_RESET_ALL' : 'REGISTRATIONS_REMOVED', { count: plan.targets.length, targets: plan.action === 'reset-coins' ? undefined : plan.targets, success: true });
+      return jsonResp(200, { ok: true, count: plan.targets.length });
+    } catch (error) {
+      if (error.status) return jsonResp(error.status, { error: error.message });
+      logAdminAction(actor, 'OWNER_ACCOUNT_ACTION_FAILED', { success: false });
+      return jsonResp(500, { error: 'The change could not be saved. Reload the account list before trying again.' });
+    }
+  }
+
   // ── Open general proxy removed (arbitrary-site proxying is not allowed) ──
   if (path === '/prox' || path.startsWith('/prox/')) {
+    const gmMatch = path.match(/^\/prox\/(?:https?:\/?\/?|https?\/)?(?:html5\.)?gamemonetize(?:\.(?:co|com))?\/(.*)$/i);
+    if (gmMatch) {
+      return Response.redirect(`/proxy/gamemonetize/${gmMatch[1]}${url.search}`, 302);
+    }
+    const lumaMatch = path.match(/^\/prox\/(?:https?:\/?\/?|https?\/)?lumassets\.pages\.dev\/(.*)$/i);
+    if (lumaMatch) {
+      return Response.redirect(`/proxy/luma/${lumaMatch[1]}${url.search}`, 302);
+    }
+    const calcMatch = path.match(/^\/prox\/(?:https?:\/?\/?|https?\/)?calculated2\.github\.io\/(.*)$/i);
+    if (calcMatch) {
+      return Response.redirect(`/proxy/calculated2/${calcMatch[1]}${url.search}`, 302);
+    }
     return jsonResp(410, { error: 'gone', message: 'Open proxy access has been removed. Game-specific proxies remain available.' });
   }
 
@@ -7989,7 +10179,9 @@ async function handleRequest(req, server) {
     try {
       const headers = new Headers();
       for (const [k, v] of req.headers.entries()) {
-        if (!['host', 'cookie', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
+        const lk = k.toLowerCase();
+        if (!['host', 'cookie', 'referer', 'origin', 'accept-encoding', 'x-mitch-client-ip', 'cdn-loop'].includes(lk) &&
+            !lk.startsWith('cf-') && !lk.startsWith('x-forwarded-') && !lk.startsWith('x-real-')) {
           headers.set(k, v);
         }
       }
@@ -8020,38 +10212,114 @@ async function handleRequest(req, server) {
     }
   }
 
-  // ── GameMonetize Transparent Reverse Proxy ──
-  if (path.startsWith('/proxy/gamemonetize/')) {
-    const targetPath = path.slice('/proxy/gamemonetize/'.length);
-    const targetUrl = `https://html5.gamemonetize.co/${targetPath}${url.search}`;
+  // ── GameMonetize Image/Thumbnail Cache Proxy ──
+  if (path.startsWith('/proxy/gm-icon/')) {
+    const subPath = path.slice('/proxy/gm-icon/'.length);
+    if (!/^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+$/.test(subPath)) {
+      return errResp(400, 'invalid image path');
+    }
+    const localFile = join(GAME_ICONS_DIR, subPath.replace('/', '_'));
+    if (existsSync(localFile)) {
+      const bytes = readFileSync(localFile);
+      const ext = localFile.split('.').pop().toLowerCase();
+      const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+      return new Response(bytes, {
+        headers: {
+          'Content-Type': mime,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    }
+    try {
+      const upstreamRes = await fetchWithTimeout(`https://img.gamemonetize.com/${subPath}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      });
+      if (!upstreamRes.ok) return errResp(404, 'image not found');
+      const buf = await upstreamRes.arrayBuffer();
+      if (!existsSync(GAME_ICONS_DIR)) mkdirSync(GAME_ICONS_DIR, { recursive: true });
+      writeFileSync(localFile, Buffer.from(buf));
+      return new Response(buf, {
+        headers: {
+          'Content-Type': upstreamRes.headers.get('content-type') || 'image/jpeg',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+    } catch {
+      return errResp(502, 'image fetch failed');
+    }
+  }
+
+  // Fixed-origin game proxy. This keeps the integrated player same-origin,
+  // strips user credentials, and never accepts a browser-supplied destination.
+  const gameProxyOrigins = {
+    '/proxy/luma/': 'https://lumassets.pages.dev',
+    '/proxy/calculated2/': 'https://calculated2.github.io',
+    '/proxy/gamemonetize/': 'https://html5.gamemonetize.co',
+  };
+  let gameProxyPrefix = Object.keys(gameProxyOrigins).find(prefix => path.startsWith(prefix));
+  let gameProxyPath = '';
+  if (gameProxyPrefix) {
+    gameProxyPath = '/' + path.slice(gameProxyPrefix.length);
+  } else {
+    try {
+      const refPath = new URL(req.headers.get('referer') || '').pathname;
+      gameProxyPrefix = Object.keys(gameProxyOrigins).find(prefix => refPath.startsWith(prefix));
+      if (gameProxyPrefix) gameProxyPath = path;
+    } catch {}
+  }
+  if (gameProxyPrefix) {
+    if (method !== 'GET' && method !== 'HEAD') return errResp(405, 'method not allowed');
+    const targetOrigin = gameProxyOrigins[gameProxyPrefix];
+    const targetUrl = targetOrigin + gameProxyPath + url.search;
     try {
       const headers = new Headers();
-      for (const [k, v] of req.headers.entries()) {
-        if (!['host', 'cookie', 'authorization', 'referer', 'origin', 'x-mitch-client-ip'].includes(k.toLowerCase())) {
-          headers.set(k, v);
+      for (const [key, value] of req.headers.entries()) {
+        if (['accept', 'accept-language', 'range', 'user-agent'].includes(key.toLowerCase())) {
+          headers.set(key, value);
         }
       }
-      
-      const upstreamRes = await fetchWithTimeout(targetUrl, {
-        method: req.method,
-        headers: headers,
-        body: req.method !== 'GET' && req.method !== 'HEAD' ? req.body : null
-      });
-      
+      if (!headers.get('user-agent')) {
+        headers.set('user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+      }
+      const upstreamRes = await fetchWithTimeout(targetUrl, { method, headers, redirect: 'follow' });
       const resHeaders = new Headers(upstreamRes.headers);
-      resHeaders.set('Access-Control-Allow-Origin', '*');
+      resHeaders.delete('set-cookie');
       resHeaders.delete('content-security-policy');
+      resHeaders.delete('content-security-policy-report-only');
       resHeaders.delete('x-frame-options');
+      resHeaders.delete('cross-origin-opener-policy');
+      resHeaders.delete('cross-origin-embedder-policy');
       resHeaders.delete('content-encoding');
       resHeaders.delete('content-length');
-      
-      return new Response(upstreamRes.body, {
-        status: upstreamRes.status,
-        headers: resHeaders
-      });
-    } catch (e) {
-      console.error('[proxy] GameMonetize fetch failed:', e?.message || e);
-      return jsonResp(502, { error: 'Bad Gateway', message: 'Failed to proxy GameMonetize game.' });
+      resHeaders.set('Access-Control-Allow-Origin', '*');
+      resHeaders.set('Cache-Control', 'public, max-age=3600');
+
+      const contentType = String(resHeaders.get('content-type') || '').toLowerCase();
+      const isText = contentType.includes('text/html') || contentType.includes('text/css') || contentType.includes('javascript');
+      if (!isText || method === 'HEAD') {
+        return new Response(method === 'HEAD' ? null : upstreamRes.body, { status: upstreamRes.status, headers: resHeaders });
+      }
+
+      let content = await upstreamRes.text();
+      content = content.split(targetOrigin + '/').join(gameProxyPrefix);
+      content = content.replace(/(\b(?:src|href|action|poster)\s*=\s*["'])\/(?!\/)/gi, `$1${gameProxyPrefix}`);
+      content = content.replace(/url\(\s*(["']?)\/(?!\/)/gi, `url($1${gameProxyPrefix}`);
+      if (contentType.includes('text/html') && !/<base\b/i.test(content)) {
+        let finalPath = gameProxyPath;
+        try { finalPath = new URL(upstreamRes.url).pathname; } catch {}
+        if (!finalPath.endsWith('/') && !/\.[a-z0-9]+$/i.test(finalPath)) finalPath += '/';
+        const directory = finalPath.endsWith('/') ? finalPath : finalPath.replace(/[^/]*$/, '');
+        const base = `<base href="${gameProxyPrefix}${directory.replace(/^\/+/, '')}">`;
+        content = /<head\b[^>]*>/i.test(content) ? content.replace(/<head\b[^>]*>/i, match => match + base) : base + content;
+      }
+      return new Response(content, { status: upstreamRes.status, headers: resHeaders });
+    } catch (error) {
+      console.error('[game-portal-proxy] Upstream request failed:', error?.message || error);
+      return new Response('This game could not be reached.', { status: 502, headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
     }
   }
 
@@ -8273,6 +10541,7 @@ async function handleRequest(req, server) {
   // ── Password Enforcement (Unified) ──────────────────────────────────────────
   const cleanPath = (path.endsWith('/') && path !== '/') ? path.slice(0, -1) : path;
   const isExempt = cleanPath === '/enroll' ||
+                   cleanPath === '/api/me/coins' ||
                    cleanPath === '/larp' ||
                    cleanPath === '/larp/rezero' ||
                    cleanPath === '/bell' ||
@@ -8282,6 +10551,15 @@ async function handleRequest(req, server) {
                    cleanPath === '/unsubscribe' ||
                    path.startsWith('/unsubscribe/') ||
                    PUBLIC_API_PATHS.has(cleanPath) ||
+                   cleanPath.startsWith('/games') ||
+                   cleanPath === '/matrix' ||
+                   cleanPath.startsWith('/matrix/') ||
+                   cleanPath.startsWith('/game-portal') ||
+                   cleanPath.startsWith('/msn-games') ||
+                   cleanPath === '/rjuhsd' ||
+                   cleanPath.startsWith('/rjuhsd/') ||
+                   cleanPath === '/sexypickleclub' ||
+                   cleanPath.startsWith('/sexypickleclub/') ||
                    path.startsWith('/api/puzzle/') ||
                    path === '/api/sms-reply' ||
                    path.startsWith('/admin') || 
@@ -8294,6 +10572,104 @@ async function handleRequest(req, server) {
       return jsonResp(403, { error: 'password required', message: 'Please set a password at /enroll/ to continue.' });
     }
     return Response.redirect('/enroll/', 302);
+  }
+
+  // /api/games (public game list, supports GET and POST)
+  if (path === '/api/games') {
+    const rl = checkRateLimit(req, path); if (rl) return rl;
+    try {
+      if (method === 'POST') {
+        await tryParseJson();
+      }
+      const qs = url.searchParams;
+      // If body or query contains reload:true, clear cache
+      const reload = body.reload || qs.get('reload') === '1' || qs.get('reload') === 'true';
+      if (reload) {
+        gamesCache = null;
+        gameCategoriesCache = null;
+      }
+
+      const all = loadAllGamesList();
+      const query = String(body.q !== undefined ? body.q : (qs.get('q') || '')).trim().toLowerCase();
+      const category = String(body.cat !== undefined ? body.cat : (qs.get('cat') || '')).trim().toLowerCase();
+      const offset = parseInt(body.offset !== undefined ? body.offset : qs.get('offset')) || 0;
+      const limit = parseInt(body.limit !== undefined ? body.limit : qs.get('limit')) || 50;
+
+      let filtered = all;
+      
+      // 1. Filter by Category
+      if (category && category !== 'all') {
+        const cats = getGameCategories();
+        filtered = filtered.filter(g => {
+          const c = cats[g.href] || cats[g.href.replace(/^\/games\//, '')] || 'other';
+          return c.toLowerCase() === category;
+        });
+      }
+
+      // 2. Filter by Search Query
+      if (query) {
+        filtered = filtered.filter(g => g.label.toLowerCase().includes(query));
+      }
+
+      const total = filtered.length;
+      const chunk = filtered.slice(offset, offset + limit);
+      
+      let featured = '';
+      if (offset === 0 && !query && (category === 'all' || !category)) {
+        featured = all.slice()
+          .sort((a,b) => {
+            const va = globalGameStats[a.href] || globalGameStats[a.href.replace(/^\/games\//, '')] || 0;
+            const vb = globalGameStats[b.href] || globalGameStats[b.href.replace(/^\/games\//, '')] || 0;
+            return vb - va;
+          })
+          .slice(0, 8)
+          .map(g => {
+            let href = g.href;
+            if (href.startsWith('https://html5.gamemonetize.co/')) {
+              href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
+            } else if (href.startsWith('https://html5.gamemonetize.com/')) {
+              href = href.replace('https://html5.gamemonetize.com/', '/proxy/gamemonetize/');
+            }
+            return `${g.type} ${href} ${g.label}`;
+          }).join('\n');
+      }
+
+      // Convert back to text format for frontend compatibility
+      const content = chunk.map(g => {
+        let href = g.href;
+        if (href.startsWith('https://html5.gamemonetize.co/')) {
+          href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
+        } else if (href.startsWith('https://html5.gamemonetize.com/')) {
+          href = href.replace('https://html5.gamemonetize.com/', '/proxy/gamemonetize/');
+        }
+        return `${g.type} ${href} ${g.label}`;
+      }).join('\n');
+
+      const allCats = getGameCategories();
+      const categories = {};
+      for (const g of chunk) {
+        categories[g.href] = allCats[g.href] || allCats[g.href.replace(/^\/games\//, '')] || 'other';
+      }
+      if (featured) {
+        for (const line of featured.split('\n')) {
+          const parts = line.split(' ');
+          if (parts[1]) {
+            categories[parts[1]] = allCats[parts[1]] || allCats[parts[1].replace(/^\/games\//, '')] || 'other';
+          }
+        }
+      }
+
+      return jsonResp(200, { 
+        success: true, 
+        content: content, 
+        featured: featured,
+        categories: categories,
+        total: total,
+        offset: offset,
+        limit: limit,
+        hasMore: (offset + limit) < total
+      });
+    } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
   }
 
   function authedEmailForRequest() {
@@ -8436,6 +10812,46 @@ async function handleRequest(req, server) {
     }
   }
 
+  const thumbConverting = new Set();
+
+  function generateBackgroundThumbs(dir) {
+    try {
+      if (!existsSync(dir)) return;
+      const thumbsDir = join(dir, 'thumbs');
+      if (!existsSync(thumbsDir)) {
+        try { mkdirSync(thumbsDir, { recursive: true }); } catch {}
+      }
+      const files = readdirSync(dir);
+      for (const f of files) {
+        if (f === 'thumbs') continue;
+        const ext = extname(f).toLowerCase();
+        if (ext !== '.webp' && ext !== '.webm' && ext !== '.png' && ext !== '.jpg' && ext !== '.jpeg') continue;
+        const inputPath = join(dir, f);
+        try {
+          if (statSync(inputPath).isDirectory()) continue;
+        } catch { continue; }
+        const base = basename(f, ext);
+        const thumbFile = join(thumbsDir, `${base}.webp`);
+        if (existsSync(thumbFile) && statSync(thumbFile).size > 0) continue;
+        if (thumbConverting.has(inputPath)) continue;
+        thumbConverting.add(inputPath);
+        const isVideo = ext === '.webm' || ext === '.mp4';
+        const ffmpegArgs = isVideo
+          ? ['-y', '-ss', '00:00:01', '-i', inputPath, '-vframes', '1', '-vf', 'scale=240:-1', '-q:v', '75', thumbFile]
+          : ['-y', '-i', inputPath, '-vf', 'scale=240:-1', '-q:v', '75', thumbFile];
+        const proc = spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
+        proc.on('exit', (code) => {
+          thumbConverting.delete(inputPath);
+          if (code === 0 && existsSync(thumbFile) && statSync(thumbFile).size > 0) {
+            bgListCacheMtime = -1;
+          }
+        });
+      }
+    } catch (err) {
+      console.error('[backgrounds] thumb generation error:', err?.message || err);
+    }
+  }
+
   function bgLibrary() { return loadJson(BACKGROUNDS_FILE, {}); }
 
   /* GET /api/backgrounds/list — the official wallpaper chips. Reads
@@ -8449,18 +10865,26 @@ async function handleRequest(req, server) {
     try {
       const dir = join(WEBROOT, 'backgrounds');
       convertBackgroundsToWebm(dir);
+      generateBackgroundThumbs(dir);
       const mtime = statSync(dir).mtimeMs;
       if (!bgListCache || mtime !== bgListCacheMtime) {
+        const thumbsDir = join(dir, 'thumbs');
         bgListCache = readdirSync(dir)
-          .filter(f => f.endsWith('.webp') || f.endsWith('.webm'))
+          .filter(f => (f.endsWith('.webp') || f.endsWith('.webm')) && !statSync(join(dir, f)).isDirectory())
           .sort()
-          .map(f => ({
-            id: f.replace(/\.(webp|webm)$/, '').replace(/^bg-/, ''),
-            name: f.replace(/\.(webp|webm)$/, '').replace(/^bg-/, '').replace(/-/g, ' ')
-                   .replace(/\b\w/g, c => c.toUpperCase()),
-            url: `/backgrounds/${f}`,
-            type: f.endsWith('.webm') ? 'video' : 'image'
-          }));
+          .map(f => {
+            const base = f.replace(/\.(webp|webm)$/, '');
+            const thumbName = `${base}.webp`;
+            const hasThumb = existsSync(join(thumbsDir, thumbName));
+            return {
+              id: base.replace(/^bg-/, ''),
+              name: base.replace(/^bg-/, '').replace(/-/g, ' ')
+                     .replace(/\b\w/g, c => c.toUpperCase()),
+              url: `/backgrounds/${f}`,
+              thumbUrl: hasThumb ? `/backgrounds/thumbs/${thumbName}` : `/backgrounds/${f}`,
+              type: f.endsWith('.webm') ? 'video' : 'image'
+            };
+          });
         bgListCacheMtime = mtime;
       }
       return jsonResp(200, { ok: true, items: bgListCache });
@@ -8514,6 +10938,14 @@ async function handleRequest(req, server) {
     const filename = `${id}.${ext}`;
     const filePath = join(uDir, filename);
     writeFileSync(filePath, bytes);
+    try {
+      const thumbPath = join(uDir, `${id}_thumb.webp`);
+      const isVideo = ext === 'webm' || ext === 'mp4';
+      const ffmpegArgs = isVideo
+        ? ['-y', '-ss', '00:00:01', '-i', filePath, '-vframes', '1', '-vf', 'scale=240:-1', '-q:v', '75', thumbPath]
+        : ['-y', '-i', filePath, '-vf', 'scale=240:-1', '-q:v', '75', thumbPath];
+      spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
+    } catch {}
 
     items.push({
       id,
@@ -8532,14 +10964,19 @@ async function handleRequest(req, server) {
     const { email } = authedEmailForRequest();
     if (!email) return jsonResp(401, { error: 'not logged in' });
     const norm = normalizeEmail(email);
-    const items = (bgLibrary()[norm] || []).map(item => ({
-      id: item.id,
-      url: `/api/bg/${item.file}`,
-      mime: item.mime,
-      bytes: item.bytes,
-      name: item.name || '',
-      ts: item.ts
-    }));
+    const uDir = bgUserDir(norm);
+    const items = (bgLibrary()[norm] || []).map(item => {
+      const hasThumb = existsSync(join(uDir, `${item.id}_thumb.webp`));
+      return {
+        id: item.id,
+        url: `/api/bg/${item.file}`,
+        thumbUrl: hasThumb ? `/api/bg/thumb/${item.id}.webp` : `/api/bg/${item.file}`,
+        mime: item.mime,
+        bytes: item.bytes,
+        name: item.name || '',
+        ts: item.ts
+      };
+    });
     return jsonResp(200, { ok: true, items });
   }
 
@@ -8557,6 +10994,7 @@ async function handleRequest(req, server) {
     if (idx === -1) return jsonResp(404, { error: 'not found' });
     const [removed] = items.splice(idx, 1);
     try { unlinkSync(join(bgUserDir(norm), removed.file)); } catch {}
+    try { unlinkSync(join(bgUserDir(norm), `${removed.id}_thumb.webp`)); } catch {}
     lib[norm] = items;
     await saveJson(BACKGROUNDS_FILE, lib);
     return jsonResp(200, { ok: true });
@@ -9284,6 +11722,18 @@ async function handleRequest(req, server) {
     return jsonResp(400, { error: 'websocket upgrade failed' });
   }
 
+  // LiveKit SFU Signaling WebSocket proxy
+  if (path.startsWith('/livekit/rtc') && req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+    const success = server.upgrade(req, {
+      data: {
+        isLiveKit: true,
+        search: url.search || ''
+      }
+    });
+    if (success) return;
+    return jsonResp(400, { error: 'websocket upgrade failed' });
+  }
+
   // Handle SSH Terminal Proxy WebSocket
   if (path === "/ssh/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
     const cookies = getCookies(req);
@@ -9304,44 +11754,43 @@ async function handleRequest(req, server) {
     if (success) return;
   }
 
-  // Handle VNC / noVNC Proxy WebSocket
-  if (path === "/vnc/ws" && req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-    const cookies = getCookies(req);
-    const sid = cookies['studentId'] || cookies['id'] || '';
-    if (!sid || !validId(sid) || isRevoked(sid)) {
-      return jsonResp(401, { error: 'auth required' });
-    }
-    const email = emailFromSid(sid);
-    if (!email) return jsonResp(401, { error: 'auth required' });
-
-    const targetIp = url.searchParams.get('host') || '';
-    const targetPort = parseInt(url.searchParams.get('port') || '5900', 10);
-
-    // Only allow connection to the customer subnet 10.0.0.0/24 for security
-    if (!targetIp.startsWith('10.0.0.')) {
-      return jsonResp(403, { error: 'Access denied: Target IP must be in the customer subnet.' });
-    }
-
-    // Security Check: Verify user owns this target IP
-    const emailNorm = normalizeEmail(email);
-    const isUserAdmin = isAnyAdminId(sid) || emailNorm === 'admin@mitch.pro';
-    if (!isUserAdmin) {
-      const allowedIp = await getVmConnectionIpForEmail(emailNorm);
-      if (targetIp !== allowedIp) {
-        console.warn(`[vnc-security] Blocked VNC connection attempt by ${email} to unauthorized host ${targetIp}`);
-        return jsonResp(403, { error: 'Access Denied: You can only connect to your own VM.' });
-      }
-    }
-
+  // Authenticated, single-use noVNC bridge to Proxmox. The opaque session was
+  // created server-side from a database ownership record; no upstream address,
+  // VMID, port, token, or VNC ticket is accepted from the browser.
+  if (path === '/api/vm/desktop/ws' && req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+    if (!vmSameOriginRequest(req)) return jsonResp(403, { error: 'WebSocket origin rejected.' });
+    cleanupVmDesktopSessions();
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    const sessionId = String(url.searchParams.get('session') || '');
+    const session = vmDesktopSessions.get(sessionId);
+    if (!session || session.used || session.expiresAt <= Date.now()) return jsonResp(401, { error: 'Desktop connection expired.' });
+    const record = getVirtualMachineById(session.recordId);
+    const sessionCheck = validateDesktopSession(session, actor, record);
+    if (!sessionCheck.ok) return jsonResp(sessionCheck.status, { error: sessionCheck.status === 401 ? 'Desktop connection expired.' : 'You do not have permission to access this computer.' });
+    session.used = true;
+    vmDesktopSessions.delete(sessionId);
     const success = server.upgrade(req, {
       data: {
-        isVNC: true,
-        targetIp,
-        targetPort,
-        email
+        isProxmoxVnc: true,
+        recordId: record.id,
+        actorEmail: actor.email,
+        sid: actor.sid,
+        authSessionKey: actor.authSessionKey,
+        ownerEmail: record.ownerEmail,
+        vmid: record.vmid,
+        node: record.node,
+        upstreamUrl: session.wsUrl,
+        upstreamAuthorization: session.authorization,
+        upstreamTlsOptions: session.tlsOptions,
       }
     });
     if (success) return;
+    return jsonResp(400, { error: 'Desktop connection could not be opened.' });
+  }
+
+  if (path === '/vnc/ws' && req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+    return jsonResp(410, { error: 'This desktop connection method is no longer available.' });
   }
 
   // Handle Blooket Bot Control WebSocket (Premium Only)
@@ -9987,18 +12436,117 @@ async function handleRequest(req, server) {
       }
 
       const app = data[norm];
-      // Soft delete: power off VM and mark status as 'deleted'. Background worker will purge after 7 days.
-      const result = await stopUserVm(app.vmid);
+      const isForce = Boolean(body.force);
+      let stopError = null;
 
-      if (!result.success) {
-        return jsonResp(500, { error: result.error || 'Failed to stop VM on Proxmox.' });
+      try {
+        const result = await stopUserVm(app.vmid);
+        if (!result.success) {
+          stopError = result.error || 'Failed to stop VM on Proxmox.';
+        }
+      } catch (err) {
+        stopError = err?.message || String(err);
+      }
+
+      // If stop failed and admin did not specify force, return 500 with canForce flag
+      if (stopError && !isForce) {
+        return jsonResp(500, {
+          error: stopError,
+          canForce: true,
+          email: targetEmail,
+          message: `${stopError} You can click Force Delete to remove it anyway and ignore Proxmox errors.`
+        });
+      }
+
+      // If force or purge requested, also attempt destroyUserVm (best effort)
+      if (isForce || body.purge) {
+        try {
+          await destroyUserVm(app.vmid);
+        } catch (_) {}
+      }
+
+      if (body.purge) {
+        delete data[norm];
+        saveJson(VM_APPS_FILE, data);
+        const vmRec = getVirtualMachineByVmid(app.vmid);
+        if (vmRec) {
+          deleteVirtualMachine(vmRec.id);
+          revokeVmDesktopConnections(vmRec.id);
+        }
+        return jsonResp(200, {
+          success: true,
+          message: `VM ${app.vmid} permanently purged${stopError ? ' (ignored Proxmox error).' : '.'}`
+        });
       }
 
       app.status = 'deleted';
       app.deletedAt = Date.now();
+      if (isForce) {
+        app.forceDeleted = true;
+        if (stopError) app.proxmoxError = stopError;
+      }
       saveJson(VM_APPS_FILE, data);
 
-      return jsonResp(200, { success: true, message: 'VM stopped and marked as deleted. It will be purged after 7 days, during which you can restore it.' });
+      return jsonResp(200, {
+        success: true,
+        message: isForce
+          ? `VM ${app.vmid} force deleted (ignored Proxmox error: ${stopError || 'none'}).`
+          : 'VM stopped and marked as deleted. It will be purged after 7 days, during which you can restore it.'
+      });
+    }
+
+    if (path === '/api/admin/purge-vm' && method === 'POST') {
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || !isAdminId(sid)) return jsonResp(401, { error: 'unauthorized' });
+
+      const targetEmail = String(body.email || '').toLowerCase().trim();
+      if (!targetEmail) return jsonResp(400, { error: 'Valid email required.' });
+
+      const data = loadJson(VM_APPS_FILE, {});
+      const norm = normalizeEmail(targetEmail);
+      if (!data[norm]) return jsonResp(400, { error: 'No VM request found for this user.' });
+
+      const app = data[norm];
+      const isForce = Boolean(body.force);
+      let destroyError = null;
+
+      if (app.vmid) {
+        try {
+          const result = await destroyUserVm(app.vmid);
+          if (!result.success) {
+            destroyError = result.error || 'Failed to destroy VM on Proxmox.';
+          }
+        } catch (err) {
+          destroyError = err?.message || String(err);
+        }
+      }
+
+      if (destroyError && !isForce) {
+        return jsonResp(500, {
+          error: destroyError,
+          canForce: true,
+          email: targetEmail,
+          message: `${destroyError} You can click Force Delete to remove it anyway and ignore Proxmox errors.`
+        });
+      }
+
+      delete data[norm];
+      saveJson(VM_APPS_FILE, data);
+      if (app.vmid) {
+        const vmRec = getVirtualMachineByVmid(app.vmid);
+        if (vmRec) {
+          deleteVirtualMachine(vmRec.id);
+          revokeVmDesktopConnections(vmRec.id);
+        }
+      }
+
+      return jsonResp(200, {
+        success: true,
+        message: `VM ${app.vmid || ''} permanently purged${destroyError ? ' (ignored Proxmox error).' : '.'}`
+      });
     }
 
     if (path === '/api/admin/restore-vm' && method === 'POST') {
@@ -10767,6 +13315,235 @@ async function handleRequest(req, server) {
       return jsonResp(404, { error: 'report not found' });
     }
 
+    // ── Matrix Chat Moderation APIs ──────────────────────────────────────────
+
+    // GET /api/matrix/moderation/overview
+    if (path === '/api/matrix/moderation/overview' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+
+      try {
+        const roomId = await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        const plData = plRes.ok ? await plRes.json() : { users: {} };
+        const staff = [];
+        for (const [mUserId, pl] of Object.entries(plData.users || {})) {
+          if (pl >= 50) {
+            staff.push({
+              userId: mUserId,
+              powerLevel: pl,
+              role: pl >= 100 ? 'Admin' : 'Moderator'
+            });
+          }
+        }
+        staff.sort((a, b) => b.powerLevel - a.powerLevel);
+
+        const allReports = loadJson(CHAT_REPORTS_FILE, []);
+        const matrixReports = allReports
+          .filter(r => r.matrixRoomId || (r.id && String(r.id).startsWith('matrix-')))
+          .slice(-50)
+          .reverse();
+
+        return jsonResp(200, {
+          ok: true,
+          officialRoom: '#general:mitch.pro',
+          roomId,
+          staff,
+          recentReports: matrixReports
+        });
+      } catch (err) {
+        console.error('[matrix-moderation] Overview error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: 'Failed to load Matrix moderation overview', details: err?.message });
+      }
+    }
+
+    // POST /api/matrix/moderation/set-role
+    if (path === '/api/matrix/moderation/set-role' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) {
+        targetUserId = `@${targetUserId}:mitch.pro`;
+      }
+      const targetPl = Number(body.powerLevel);
+      if (isNaN(targetPl) || targetPl < 0 || targetPl > 100) {
+        return jsonResp(400, { error: 'powerLevel must be between 0 and 100' });
+      }
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (!plRes.ok) throw new Error('Failed to fetch room power levels');
+        const plData = await plRes.json();
+        plData.users = plData.users || {};
+        if (targetPl > 0) {
+          plData.users[targetUserId] = targetPl;
+        } else {
+          delete plData.users[targetUserId];
+        }
+
+        const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify(plData)
+        });
+        if (!putRes.ok) {
+          const errData = await putRes.json().catch(() => ({}));
+          throw new Error(errData?.error || 'Failed to update power level state');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_set_role', {
+          userId: targetUserId,
+          powerLevel: targetPl,
+          roomId
+        });
+
+        return jsonResp(200, { ok: true, userId: targetUserId, powerLevel: targetPl });
+      } catch (err) {
+        console.error('[matrix-moderation] set-role error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to update user role' });
+      }
+    }
+
+    // POST /api/matrix/moderation/kick
+    if (path === '/api/matrix/moderation/kick' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'Staff access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+      const reason = String(body.reason || 'Kicked by Mitch.pro staff').slice(0, 300);
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const kickRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/kick`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify({ user_id: targetUserId, reason })
+        });
+        if (!kickRes.ok) {
+          const kickErr = await kickRes.json().catch(() => ({}));
+          throw new Error(kickErr?.error || 'Failed to kick user from room');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_kick_user', {
+          userId: targetUserId,
+          roomId,
+          reason
+        });
+
+        return jsonResp(200, { ok: true, userId: targetUserId, kicked: true });
+      } catch (err) {
+        console.error('[matrix-moderation] kick error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to kick user' });
+      }
+    }
+
+    // POST /api/matrix/moderation/ban
+    if (path === '/api/matrix/moderation/ban' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'Staff access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+      const reason = String(body.reason || 'Banned by Mitch.pro staff').slice(0, 300);
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const banRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/ban`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify({ user_id: targetUserId, reason })
+        });
+        if (!banRes.ok) {
+          const banErr = await banRes.json().catch(() => ({}));
+          throw new Error(banErr?.error || 'Failed to ban user from room');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_ban_user', {
+          userId: targetUserId,
+          roomId,
+          reason
+        });
+
+        return jsonResp(200, { ok: true, userId: targetUserId, banned: true });
+      } catch (err) {
+        console.error('[matrix-moderation] ban error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to ban user' });
+      }
+    }
+
+    // POST /api/matrix/moderation/redact
+    if (path === '/api/matrix/moderation/redact' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'Staff access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const eventId = String(body.eventId || '').trim();
+      if (!eventId) return jsonResp(400, { error: 'eventId is required' });
+      const reason = String(body.reason || 'Redacted by staff').slice(0, 300);
+
+      try {
+        const roomId = body.roomId || await ensureOfficialGeneralRoom();
+        const adminToken = await getSystemAdminMatrixToken();
+        const txnId = 'mitch_redact_' + Date.now();
+        const redactRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/redact/${encodeURIComponent(eventId)}/${txnId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${adminToken}`
+          },
+          body: JSON.stringify({ reason })
+        });
+        if (!redactRes.ok) {
+          const redErr = await redactRes.json().catch(() => ({}));
+          throw new Error(redErr?.error || 'Failed to redact message event');
+        }
+
+        logAdminAction(emailFromSid(sid) || 'admin', 'matrix_redact_message', {
+          eventId,
+          roomId,
+          reason
+        });
+
+        return jsonResp(200, { ok: true, eventId, redacted: true });
+      } catch (err) {
+        console.error('[matrix-moderation] redact error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to redact message' });
+      }
+    }
+
     // POST /api/admin/content/mirror
     if (path === '/api/admin/content/mirror') {
       const cookies = getCookies(req);
@@ -11005,29 +13782,47 @@ async function handleRequest(req, server) {
         const back = ssoBackAllowed(url.searchParams.get('back') || (RJUHSD_ORIGIN + '/'), req);
         if (!back) return jsonResp(400, { error: 'Invalid back URL.' });
 
+        const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+        const isMatrixPath = back.pathname === '/matrix' || back.pathname.startsWith('/matrix/');
+
         // Already signed in here? Mint a token and hop straight across.
+        // Matrix chat stays on the host the user opened (e.g. rjuhsd.school/matrix/).
+        // mitchdog.com / site.json alternate is only the identity SSO hop — the
+        // `back` URL must not be rewritten to the alternate Matrix origin.
         if (checkPasswordCookie(req)) {
           const cookies = getCookies(req);
           const sid = cookies['studentId'] || cookies['id'] || '';
           const email = sid ? emailFromSid(sid) : '';
           if (email && !bannedInfoForEmail(email)) {
             const token = createSsoBridgeToken(email);
-            const backIsRjuhsd = back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN);
-            const backIsPickle = back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN);
-            if (backIsRjuhsd || backIsPickle) {
+            if (back.hostname.toLowerCase() !== selfHost) {
               // Cookies are host-scoped: the token must be exchanged on the
               // destination domain for a session there.
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
               dest.searchParams.set('token', token);
               dest.searchParams.set('back', back.toString());
-              // localStorage is per-origin, so the school site can't see the
-              // Secure Chat identity cached on mitch.pro. This hop page runs
-              // on mitch.pro first, picks up the device's cached private key,
-              // and POSTs it with the token so the exchange can hand it to the
-              // school origin — Secure Chat then needs no second password
-              // prompt after an SSO sign-in. It's the user's own key going
-              // from their own browser to their own device over HTTPS.
+              // Matrix does not need the legacy Secure Chat JWK handoff. A
+              // normal top-level redirect also works with the site's
+              // form-action CSP, unlike a cross-origin hidden form.
+              if (isMatrixPath) {
+                return new Response(null, {
+                  status: 302,
+                  headers: {
+                    Location: dest.toString(),
+                    'Cache-Control': 'no-store',
+                    'Referrer-Policy': 'no-referrer'
+                  }
+                });
+              }
+              // localStorage is per-origin, so the school/club site can't see the
+              // Secure Chat identity cached on mitch.pro. This hop page runs on
+              // the identity origin first, picks up the device's cached private
+              // key, and same-origin form-POSTs it to /api/sso/bridge/handoff.
+              // That endpoint attaches the JWK to the token and 302s to the
+              // destination /api/sso/exchange — a same-origin form that works
+              // with Caddy's form-action 'self' CSP (a cross-origin form does not).
               const jwkKey = '_e2e_private_jwk_v3:' + encodeURIComponent(e2eClientStorageEmail(email));
+              const handoffUrl = '/api/sso/bridge/handoff';
               const hopHtml =
                 '<!doctype html><meta charset="utf-8"><title>Signing in…</title>\n' +
                 // The <body> element must exist before this script runs — an
@@ -11040,7 +13835,7 @@ async function handleRequest(req, server) {
                 `    jwk = localStorage.getItem(${JSON.stringify(jwkKey)}) || localStorage.getItem("_e2e_private_jwk") || "";\n` +
                 '  } catch (e) {}\n' +
                 '  var f = document.createElement("form");\n' +
-                `  f.action = ${JSON.stringify(dest.toString())};\n` +
+                `  f.action = ${JSON.stringify(handoffUrl)};\n` +
                 '  f.method = "POST";\n' +
                 '  function add(n, v) { var i = document.createElement("input"); i.type = "hidden"; i.name = n; i.value = v; f.appendChild(i); }\n' +
                 `  add("token", ${JSON.stringify(token)});\n` +
@@ -11050,9 +13845,16 @@ async function handleRequest(req, server) {
                 '  f.submit();\n' +
                 '})();\n' +
                 '<\/script>\n';
-              return new Response(hopHtml, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+              return new Response(hopHtml, {
+                status: 200,
+                headers: {
+                  'Content-Type': 'text/html; charset=utf-8',
+                  'Cache-Control': 'no-store',
+                  'Referrer-Policy': 'no-referrer'
+                }
+              });
             }
-            // Bound for mitch.pro — the session already works there.
+            // Bound for the current origin — the session already works here.
             return new Response(null, { status: 302, headers: { Location: back.toString() } });
           }
         }
@@ -11063,7 +13865,8 @@ async function handleRequest(req, server) {
         // If not, mitch.pro's bridge redirects them to /enroll/ to sign in.
         let loginOrigin = selfOrigin;
         if (!isMitchSsoHost(requestHost(req))) {
-          loginOrigin = mitchSsoOrigins().values().next().value || MITCH_ORIGIN;
+          const s = site();
+          loginOrigin = (s.alternate || s.primary || MITCH_ORIGIN).replace(/\/+$/, '');
           return new Response(null, {
             status: 302,
             headers: { Location: loginOrigin + '/api/sso/bridge?back=' + encodeURIComponent(back.toString()) }
@@ -11079,12 +13882,54 @@ async function handleRequest(req, server) {
       }
     }
 
+    // Same-origin hop from the SSO bridge page: attach optional E2E JWK to the
+    // single-use token, then redirect to the destination exchange URL.
+    if (path === '/api/sso/bridge/handoff' && method === 'POST') {
+      try {
+        const form = new URLSearchParams(await req.text());
+        const token = String(form.get('token') || '');
+        const rec = SSO_BRIDGE_TOKENS.get(token);
+        if (!rec || Date.now() > rec.expires || !rec.email) {
+          return new Response(null, { status: 302, headers: { Location: '/?sso=expired' } });
+        }
+        const jwkJson = parseSsoE2ePrivateJwk(form.get('e2ePrivateJwk'));
+        if (jwkJson) rec.e2ePrivateJwk = jwkJson;
+
+        const back = ssoBackAllowed(form.get('back') || '', req);
+        if (!back) return jsonResp(400, { error: 'Invalid back URL.' });
+        const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+        if (back.hostname.toLowerCase() === selfHost) {
+          // Shouldn't happen for cross-domain hops; fall through to back.
+          SSO_BRIDGE_TOKENS.delete(token);
+          return new Response(null, { status: 302, headers: { Location: back.toString(), 'Cache-Control': 'no-store' } });
+        }
+        const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
+        dest.searchParams.set('token', token);
+        dest.searchParams.set('back', back.toString());
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: dest.toString(),
+            'Cache-Control': 'no-store',
+            'Referrer-Policy': 'no-referrer'
+          }
+        });
+      } catch (e) {
+        console.error('[sso-handoff] failed:', e);
+        return jsonResp(500, { error: 'Sign-in handoff failed.' });
+      }
+    }
+
     if (path === '/api/sso/exchange' && (method === 'GET' || method === 'POST')) {
       try {
-        // The token only lands a session on a non-mitch.pro site host.
-        if (!isRjuhsdHost(req) && !isPickleHost(req)) return jsonResp(400, { error: 'Exchange only served on ' + RJUHSD_DOMAIN + '.' });
-        // The bridge hop page arrives as a form POST carrying the device's
-        // cached Secure Chat private JWK alongside the token.
+        // The token may land on any approved site origin so school/club Matrix
+        // (and other SSO destinations) can establish a host-scoped session
+        // after hopping through the identity host.
+        if (!isRjuhsdHost(req) && !isPickleHost(req) && !isMitchSsoHost(requestHost(req))) {
+          return jsonResp(400, { error: 'Exchange is not available on this host.' });
+        }
+        // Preferred path: GET after /api/sso/bridge/handoff (JWK already on the
+        // token). Legacy path: form POST still accepts e2ePrivateJwk in the body.
         let params = url.searchParams;
         if (method === 'POST') {
           const form = new URLSearchParams(await req.text());
@@ -11101,31 +13946,26 @@ async function handleRequest(req, server) {
         const session = createAuthSession(rec.email, rec.email, req);
         const back = ssoBackAllowed(params.get('back') || '/', req);
         const selfOrigin = 'https://' + (requestHost(req) || RJUHSD_DOMAIN);
-        const backOk = back && (
+        const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
+        const backOk = back && back.hostname.toLowerCase() === selfHost && (
           back.hostname === RJUHSD_DOMAIN || back.hostname.endsWith('.' + RJUHSD_DOMAIN) ||
-          back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN));
+          back.hostname === PICKLE_DOMAIN || back.hostname.endsWith('.' + PICKLE_DOMAIN) ||
+          isMitchSsoHost(back.hostname));
         const dest = backOk ? back : new URL(selfOrigin + '/');
         const headers = new Headers();
         headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
         headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
         headers.append('Set-Cookie', clearCookieHeader('password', req, false));
         headers.append('Set-Cookie', clearCookieHeader('id', req, false));
+        headers.set('Cache-Control', 'no-store');
+        headers.set('Referrer-Policy', 'no-referrer');
         writeAppLog('info', 'sso', 'Cross-domain sign-in', { email: rec.email, host: requestHost(req), ip });
 
-        // A private JWK came along: validate it, then cache it in this
-        // origin's localStorage before continuing to the destination, so the
-        // Secure Chat page unlocks without a second password prompt.
-        let jwkJson = null;
-        const rawJwk = String(params.get('e2ePrivateJwk') || '').slice(0, 8192);
-        if (rawJwk) {
-          try {
-            const cand = JSON.parse(rawJwk);
-            if (cand && cand.kty === 'EC' && cand.crv === 'P-256' && cand.x && cand.y && cand.d) {
-              jwkJson = { kty: cand.kty, crv: cand.crv, x: cand.x, y: cand.y, d: cand.d, ext: true };
-            }
-          } catch {}
-        }
-        if (jwkJson && method === 'POST') {
+        // Prefer a JWK attached to the token (handoff path); fall back to a
+        // legacy form-body JWK. Validate body JWK the same way either way.
+        let jwkJson = rec.e2ePrivateJwk || null;
+        if (!jwkJson) jwkJson = parseSsoE2ePrivateJwk(params.get('e2ePrivateJwk'));
+        if (jwkJson) {
           const storeKey = '_e2e_private_jwk_v3:' + encodeURIComponent(e2eClientStorageEmail(rec.email));
           headers.set('Content-Type', 'text/html; charset=utf-8');
           const settleHtml =
@@ -11427,6 +14267,27 @@ async function handleRequest(req, server) {
         }
       }
       if (dmsChanged) saveJson(DMS_FILE, dms);
+
+      const matrixIds = new Set(Array.isArray(body.matrixIds) ? body.matrixIds.map(String) : []);
+      const matrixRoomIds = new Set(Array.isArray(body.matrixRoomIds) ? body.matrixRoomIds.map(String) : []);
+      for (const id of coinGiftIds) {
+        if (id.startsWith('matrix:') || id.startsWith('matrix-')) matrixIds.add(id);
+      }
+      const allMatrix = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+      const mineMatrix = Array.isArray(allMatrix[norm]) ? allMatrix[norm] : [];
+      let matrixChanged = false;
+      for (const n of mineMatrix) {
+        if (markAll || matrixIds.has(String(n.id)) || matrixRoomIds.has(String(n.roomId))) {
+          if (!n.read) matrixChanged = true;
+          n.read = true;
+          cancelPendingMatrixEmailAlert(norm, n.roomId);
+        }
+      }
+      if (matrixChanged) {
+        allMatrix[norm] = mineMatrix;
+        saveJson(MATRIX_NOTIFICATIONS_FILE, allMatrix);
+        triggerNotificationRefresh();
+      }
 
       return jsonResp(200, { ok: true });
     }
@@ -11770,7 +14631,8 @@ async function handleRequest(req, server) {
           const rec = { normEmail, type: twofa.type, attempts: 0, expires: Date.now() + 5 * 60 * 1000 };
           if (twofa.type === 'email') {
             rec.code = Math.floor(100000 + Math.random() * 900000).toString();
-            sendEmailBg(normEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
+            const targetEmail = canonicalDeliveryEmail(normEmail);
+            sendEmailBg(targetEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5, targetEmail));
           }
           pendingTwoFactor.set(tempToken, rec);
           writeAppLog('info', 'login', 'Login requires 2FA', { email: normEmail, type: twofa.type, ip });
@@ -11920,7 +14782,8 @@ async function handleRequest(req, server) {
           const rec = { normEmail: credEmail, type: twofa.type, attempts: 0, expires: Date.now() + 5 * 60 * 1000 };
           if (twofa.type === 'email') {
             rec.code = Math.floor(100000 + Math.random() * 900000).toString();
-            sendEmailBg(credEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5));
+            const targetEmail = canonicalDeliveryEmail(credEmail);
+            sendEmailBg(targetEmail, 'Your mitch.pro login code', makeVerificationCodeHtml('Login Two-Factor Authentication', rec.code, 5, targetEmail));
           }
           pendingTwoFactor.set(tempToken, rec);
           writeAppLog('info', 'webauthn', 'Passkey login requires 2FA', { email: credEmail, type: twofa.type, ip });
@@ -12110,7 +14973,7 @@ async function handleRequest(req, server) {
         saveJson(SIGNUP_CODES_FILE, codes);
 
         const _s = site();
-        sendEmailBg(email, `Your ${_s.name} Verification Code`, makeVerificationCodeHtml('Account Signup', code, 30));
+        sendEmailBg(email, `Your ${_s.name} Verification Code`, makeVerificationCodeHtml('Account Signup', code, 30, email));
 
         writeAppLog('info', 'signup', 'Signup verification code sent', { email: normEmail, ip });
         return jsonResp(200, { success: true });
@@ -12194,7 +15057,8 @@ async function handleRequest(req, server) {
                 saveJson(INVITE_CLAIMS_FILE, invClaims);
                 addCoins(refNorm, 2000);
                 addCoins(normEmail, 2000);
-                sendEmailBg(refNorm, 'mitch.pro - Referral Bonus Claimed!', makeInviteAwardHtml(refNorm));
+                const targetRef = canonicalDeliveryEmail(refNorm);
+                sendEmailBg(targetRef, 'mitch.pro - Referral Bonus Claimed!', makeInviteAwardHtml(targetRef));
                 ntfy(`Referral paid: ${refNorm} and ${normEmail} each earned 2000 coins for invite`, { title: 'Invite Reward' });
                 console.log(`[invite] ${refNorm} and ${normEmail} each earned 2000 coins for referring`);
               }
@@ -12238,7 +15102,7 @@ async function handleRequest(req, server) {
         saveTokens(tokens);
 
         const _s = site();
-        sendEmailBg(email, `Your ${_s.name} Reset Code`, makeVerificationCodeHtml('Password Reset', otp, 30));
+        sendEmailBg(email, `Your ${_s.name} Reset Code`, makeVerificationCodeHtml('Password Reset', otp, 30, email));
 
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
@@ -12574,6 +15438,13 @@ async function handleRequest(req, server) {
         const e2eKeysData = loadJson(E2E_KEYS_FILE, {});
         const norm = normalizeEmail(email);
         const previous = e2eKeysData[norm];
+        if (body.createOnly === true && previous?.encryptedPrivateJwk) {
+          return jsonResp(409, {
+            success: false,
+            code: 'KEY_ALREADY_EXISTS',
+            message: 'Secure Chat is already set up for this account.'
+          });
+        }
         const history = Array.isArray(previous?.history) ? previous.history.slice(0, 4) : [];
         if (previous?.pubKeyHex && previous.pubKeyHex !== pubKeyHex && previous.encryptedPrivateJwk && previous.ivHex) {
           history.unshift({
@@ -12675,118 +15546,6 @@ async function handleRequest(req, server) {
       } catch (e) { return jsonResp(400, { error: String(e) }); }
     }
 
-let gamesCache = null // massive import // final library refresh // force refresh // force reload;
-function loadAllGamesList() {
-  if (gamesCache) return gamesCache;
-  const list = [];
-  const seen = new Set();
-  const files = [GAMES_FILE, GAMES_LOCAL_FILE, GAMES_EXTERNAL_FILE];
-  for (const f of files) {
-    try {
-      if (!existsSync(f)) continue;
-      const text = readFileSync(f, 'utf8');
-      text.split('\n').forEach(line => {
-        line = line.trim();
-        if (!line) return;
-        const parts = line.split(' ');
-        if (parts.length < 3) return;
-        const href = parts[1];
-        if (seen.has(href)) return;
-        seen.add(href);
-        list.push({ type: parts[0], href, label: parts.slice(2).join(' ') });
-      });
-    } catch {}
-  }
-  gamesCache = list;
-  return list;
-}
-
-    // /api/games
-    if (path === '/api/games') {
-      const rl = checkRateLimit(req, path); if (rl) return rl;
-      try {
-        if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
-        const cookies = getCookies(req);
-        const hash = (body.hash || cookies['studentId'] || cookies['id'] || '').trim();
-
-        if (checkPasswordCookie(req, hash)) {
-          // If body contains reload:true, clear cache
-          if (body.reload) gamesCache = null;
-
-          const all = loadAllGamesList();
-          const query = String(body.q || '').trim().toLowerCase();
-          const category = String(body.cat || '').trim().toLowerCase();
-          const offset = parseInt(body.offset) || 0;
-          const limit = parseInt(body.limit) || 50;
-
-          let filtered = all;
-          
-          // 1. Filter by Category
-          if (category && category !== 'all') {
-            const cats = loadJson(GAME_CATEGORIES_FILE, {});
-            Object.assign(cats, loadJson(GAME_CATEGORIES_LOCAL, {}));
-            Object.assign(cats, loadJson(GAME_CATEGORIES_EXTERNAL, {}));
-            filtered = filtered.filter(g => {
-              const c = cats[g.href] || cats[g.href.replace(/^\/games\//, '')] || 'other';
-              return c.toLowerCase() === category;
-            });
-          }
-
-          // 2. Filter by Search Query
-          if (query) {
-            filtered = filtered.filter(g => g.label.toLowerCase().includes(query));
-          }
-
-          const total = filtered.length;
-          const chunk = filtered.slice(offset, offset + limit);
-          
-          let featured = '';
-          if (offset === 0 && !query && (category === 'all' || !category)) {
-            featured = all.slice()
-              .sort((a,b) => {
-                const va = globalGameStats[a.href] || globalGameStats[a.href.replace(/^\/games\//, '')] || 0;
-                const vb = globalGameStats[b.href] || globalGameStats[b.href.replace(/^\/games\//, '')] || 0;
-                return vb - va;
-              })
-              .slice(0, 8)
-              .map(g => {
-                let href = g.href;
-                if (href.startsWith('https://html5.gamemonetize.co/')) {
-                  href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
-                }
-                return `${g.type} ${href} ${g.label}`;
-              }).join('\n');
-          }
-
-          // Convert back to text format for frontend compatibility
-          const content = chunk.map(g => {
-            let href = g.href;
-            if (href.startsWith('https://html5.gamemonetize.co/')) {
-              href = href.replace('https://html5.gamemonetize.co/', '/proxy/gamemonetize/');
-            }
-            return `${g.type} ${href} ${g.label}`;
-          }).join('\n');
-
-          return jsonResp(200, { 
-            success: true, 
-            content: content, 
-            featured: featured,
-            total: total,
-            offset: offset,
-            limit: limit,
-            hasMore: (offset + limit) < total
-          });
-        }
-        
-        if (!hash || !validId(hash)) return jsonResp(200, { success: false, error: 'no_valid_token' });
-        const email = emailFromSid(hash);
-        if (!email || !loadPasswords()[normalizeEmail(email)]) {
-           return jsonResp(200, { success: false, error: 'password_required', email });
-        }
-        return jsonResp(200, { success: false, error: 'unauthorized' });
-      } catch (e) { return jsonResp(400, { success: false, message: String(e) }); }
-    }
-
     // /api/migrateid
     if (path === '/api/migrateid') {
       const rl = checkRateLimit(req, path); if (rl) return rl;
@@ -12871,7 +15630,7 @@ function loadAllGamesList() {
             if (pageLower.includes('/games/chess/')) playingGame = 'Chess';
             else if (pageLower.includes('/games/casino/') || pageLower.includes('/casino/')) playingGame = 'Casino';
             else if (pageLower.includes('/canvas/')) playingGame = 'Canvas';
-            else if (pageLower.includes('/encrypt.html') || pageLower.includes('/encrypt/')) playingGame = 'Chat';
+            else if (pageLower.includes('/encrypt.html') || pageLower.includes('/encrypt/') || pageLower.includes('/matrix/')) playingGame = 'Chat';
             else if (pageLower.includes('/games/')) {
               const matches = page.match(/\/games\/([^/]+)/);
               playingGame = matches ? matches[1] : 'Games';
@@ -12990,7 +15749,7 @@ function loadAllGamesList() {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=4" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=5" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -13288,7 +16047,7 @@ function loadAllGamesList() {
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       const token = createTempToken();
       pendingEmailChanges.set(token, { oldNorm, newNorm, newEmail, code, expires: Date.now() + 30 * 60 * 1000, attempts: 0 });
-      sendEmailBg(newEmail, 'Confirm your mitch.pro email change', makeVerificationCodeHtml('Email Change Request', code, 30));
+      sendEmailBg(newEmail, 'Confirm your mitch.pro email change', makeVerificationCodeHtml('Email Change Request', code, 30, newEmail));
       return jsonResp(200, { ok: true, change_token: token });
     }
 
@@ -13555,6 +16314,72 @@ function loadAllGamesList() {
       const playing = String(body.playing || '').trim();
       touchUserPresence(email, playing);
       return jsonResp(200, { ok: true });
+    }
+
+    if (path === '/api/game-portal/status' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || isRevoked(sid)) return jsonResp(401, { authenticated: false });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { authenticated: false });
+      const stats = loadUserStats()[normalizeEmail(email)] || {};
+      const today = gamePortalDayKey();
+      const dailyEarned = stats.game_portal_reward_day === today ? Number(stats.game_portal_reward_today || 0) : 0;
+      return jsonResp(200, {
+        authenticated: true,
+        coins: getCoins(email),
+        dailyEarned,
+        dailyCap: GAME_PORTAL_DAILY_CAP,
+        rewardPerMinute: GAME_PORTAL_REWARD_PER_MINUTE,
+      });
+    }
+
+    if (path === '/api/game-portal/heartbeat' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!validId(sid) || isRevoked(sid)) return jsonResp(401, { authenticated: false });
+      const email = emailFromSid(sid);
+      if (!email) return jsonResp(401, { authenticated: false });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const norm = normalizeEmail(email);
+      const game = normalizeGamePortalTitle(body.game);
+      const active = body.active === true && !!game;
+      const now = Date.now();
+      const today = gamePortalDayKey(now);
+      const stats = loadUserStats();
+      if (!stats[norm]) stats[norm] = {};
+      if (stats[norm].game_portal_reward_day !== today) {
+        stats[norm].game_portal_reward_day = today;
+        stats[norm].game_portal_reward_today = 0;
+        saveUserStats(stats);
+      }
+
+      const settled = settleGamePortalHeartbeat(gamePortalSessions.get(norm), now, {
+        active,
+        game,
+        dailyEarned: stats[norm].game_portal_reward_today,
+      });
+      gamePortalSessions.set(norm, settled.next);
+
+      if (settled.earned > 0) {
+        addCoins(email, settled.earned);
+        stats[norm].game_portal_reward_today = Number(stats[norm].game_portal_reward_today || 0) + settled.earned;
+        stats[norm].game_portal_minutes = Number(stats[norm].game_portal_minutes || 0) + settled.minutes;
+        stats[norm].game_portal_coins = Number(stats[norm].game_portal_coins || 0) + settled.earned;
+        saveUserStats(stats);
+      }
+
+      touchUserPresence(email, active ? `Playing ${game}` : 'Browsing games');
+      return jsonResp(200, {
+        ok: true,
+        authenticated: true,
+        earned: settled.earned,
+        coins: getCoins(email),
+        dailyEarned: Number(stats[norm].game_portal_reward_today || 0),
+        dailyCap: GAME_PORTAL_DAILY_CAP,
+        rewardPerMinute: GAME_PORTAL_REWARD_PER_MINUTE,
+      });
     }
 
     if (path === '/api/delete-account' && method === 'POST') {
@@ -15470,6 +18295,326 @@ function loadAllGamesList() {
     }
   }
 
+  // Graphical computer portal. The browser supplies only an opaque application
+  // record id; node, VMID, VNC port, and upstream destination always come from
+  // the authenticated ownership record and Proxmox itself.
+  if (path === '/api/vm/computers' && method === 'GET') {
+    const rl = checkRateLimit(req, '/api/vm/computers'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in to view your computers.' });
+    const records = getVirtualMachinesForOwner(actor.email);
+    const computers = await Promise.all(records.map(async record => {
+      try {
+        const runtime = await proxmoxDesktop.getStatus(record);
+        updateVirtualMachineRuntime(record.id, { ipAddress: runtime.ipAddress });
+        return publicVmRecord(record, runtime);
+      } catch {
+        return publicVmRecord(record, { state: 'unavailable' });
+      }
+    }));
+    return jsonResp(200, { computers, serviceAvailable: proxmoxDesktop.configured });
+  }
+
+  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend))?$/);
+  if (vmComputerMatch) {
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in to access your computer.' });
+    const record = getVirtualMachineById(vmComputerMatch[1]);
+    if (!record) return jsonResp(404, { error: 'Computer not found.' });
+    if (!vmRecordAllowedForActor(record, actor)) return jsonResp(403, { error: 'You do not have permission to access this computer.' });
+    const operation = vmComputerMatch[2] || '';
+    if (method === 'POST' && !vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+    if (operation && record.status === 'provisioning') return jsonResp(409, { error: 'Your computer is still being prepared.', code: 'computer_starting' });
+    if (operation && record.status === 'provisioning-failed') return jsonResp(409, { error: 'This computer needs administrator attention before it can be opened.', code: 'setup_incomplete' });
+
+    if (!operation && method === 'GET') {
+      try {
+        const runtime = await proxmoxDesktop.getStatus(record);
+        updateVirtualMachineRuntime(record.id, { ipAddress: runtime.ipAddress });
+        return jsonResp(200, { computer: publicVmRecord(record, runtime) });
+      } catch (error) {
+        const friendly = friendlyVmError(error);
+        return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+      }
+    }
+
+    if (operation === 'extend' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/extend'); if (rl) return rl;
+      try {
+        const runtime = await proxmoxDesktop.getStatus(record);
+        if (runtime.state !== 'running') {
+          return jsonResp(400, { error: 'Computer must be running to extend session.' });
+        }
+        const leaseInfo = getVmLease(record.id, runtime.uptime);
+        if (leaseInfo.extended || !leaseInfo.canExtend) {
+          return jsonResp(400, { error: 'Maximum extension already applied (30 minutes maximum).', code: 'extension_limit_reached' });
+        }
+        const lease = vmLeases.get(record.id) || { startedAt: Date.now() - (runtime.uptime * 1000) };
+        lease.extended = true;
+        lease.extendedAt = Date.now();
+        lease.lastSeenUptime = runtime.uptime;
+        vmLeases.set(record.id, lease);
+        const updatedLease = getVmLease(record.id, runtime.uptime);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: 'VM_LEASE_EXTENDED',
+          success: true,
+          details: { remainingSeconds: updatedLease.remainingSeconds, maxUptimeSeconds: updatedLease.maxUptimeSeconds }
+        });
+        return jsonResp(200, {
+          success: true,
+          message: 'Session extended by 30 minutes.',
+          lease: updatedLease
+        });
+      } catch (error) {
+        const friendly = friendlyVmError(error);
+        return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+      }
+    }
+
+    if (operation === 'power' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/power'); if (rl) return rl;
+      if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+      const action = String(body.action || '').trim().toLowerCase();
+      if (!['start', 'shutdown', 'restart', 'force-stop'].includes(action)) return jsonResp(400, { error: 'Invalid power action.' });
+      if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
+      try {
+        const task = await proxmoxDesktop.power(record, action);
+        clearVmLease(record.id);
+        if (action === 'shutdown' || action === 'force-stop') {
+          revokeVmDesktopConnections(record.id);
+        }
+        void proxmoxDesktop.waitForTask(record.node, task, 180_000).then(() => {
+          vmAudit({ actorEmail: actor.email, record, action: action === 'restart' ? 'VM_RESTARTED' : action === 'start' ? 'VM_STARTED' : 'VM_STOPPED', success: true });
+        }).catch(error => {
+          vmAudit({ actorEmail: actor.email, record, action: action === 'restart' ? 'VM_RESTARTED' : action === 'start' ? 'VM_STARTED' : 'VM_STOPPED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+        }).finally(() => vmPowerGate.release(record.id));
+        return jsonResp(202, { success: true, state: action === 'start' ? 'starting' : action === 'restart' ? 'restarting' : 'shutting-down' });
+      } catch (error) {
+        vmPowerGate.release(record.id);
+        vmAudit({ actorEmail: actor.email, record, action: action === 'restart' ? 'VM_RESTARTED' : action === 'start' ? 'VM_STARTED' : 'VM_STOPPED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+        const friendly = friendlyVmError(error);
+        return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+      }
+    }
+
+    if (operation === 'desktop-session' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/desktop-session'); if (rl) return rl;
+      cleanupVmDesktopSessions();
+      try {
+        const consoleSession = await proxmoxDesktop.createConsole(record);
+        const sessionId = randomBytes(24).toString('base64url');
+        vmDesktopSessions.set(sessionId, {
+          actorEmail: actor.email,
+          sid: actor.sid,
+          authSessionKey: actor.authSessionKey,
+          recordId: record.id,
+          ownerEmail: record.ownerEmail,
+          vmid: record.vmid,
+          node: record.node,
+          wsUrl: consoleSession.wsUrl,
+          authorization: consoleSession.authorization,
+          tlsOptions: consoleSession.tlsOptions,
+          expiresAt: Date.now() + VM_DESKTOP_SESSION_TTL_MS,
+          used: false,
+        });
+        vmAudit({ actorEmail: actor.email, record, action: 'DESKTOP_OPENED', success: true });
+        return jsonResp(201, { socketPath: `/api/vm/desktop/ws?session=${encodeURIComponent(sessionId)}`, credentials: { password: consoleSession.ticket }, expiresIn: Math.floor(VM_DESKTOP_SESSION_TTL_MS / 1000) });
+      } catch (error) {
+        vmAudit({ actorEmail: actor.email, record, action: 'DESKTOP_OPENED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+        const friendly = friendlyVmError(error);
+        return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+      }
+    }
+
+    return jsonResp(405, { error: 'Method not allowed.' });
+  }
+
+  if (path.startsWith('/api/vm/computers/')) return jsonResp(400, { error: 'Invalid computer ID.', code: 'invalid_request' });
+  if (path.startsWith('/api/admin/vms/') && method === 'POST' && !vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+
+  if (path === '/api/admin/vms/overview' && method === 'GET') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    const records = listVirtualMachines({ includeUnassigned: true });
+    let guests = [], capacity = null, serviceError = '';
+    try {
+      [guests, capacity] = await Promise.all([proxmoxDesktop.listGuests(), proxmoxDesktop.nodeCapacity()]);
+    } catch (error) {
+      serviceError = friendlyVmError(error).error;
+    }
+    const assignedVmids = new Set(records.filter(item => item.status !== 'unassigned').map(item => item.vmid));
+    const recordViews = await Promise.all(records.map(async record => {
+      let runtime = null;
+      try { runtime = await proxmoxDesktop.getStatus(record); } catch {}
+      return { ...publicVmRecord(record, runtime), ownerEmail: record.ownerEmail, vmid: record.vmid, node: record.node, guestType: record.guestType, assignmentStatus: record.status };
+    }));
+    const profiles = loadJson(PROFILES_FILE, {});
+    const users = Object.keys(loadPasswords()).sort().map(email => ({
+      email,
+      name: profiles[normalizeEmail(email)]?.displayName || profiles[normalizeEmail(email)]?.nickname || defaultUsernameForEmail(email),
+    }));
+    return jsonResp(200, {
+      computers: recordViews,
+      availableGuests: guests.filter(guest => !guest.template && guest.type === 'qemu' && !assignedVmids.has(guest.vmid)),
+      templates: guests.filter(guest => guest.template && guest.type === 'qemu' && proxmoxDesktop.templateVmids.includes(guest.vmid)),
+      users, capacity, serviceAvailable: proxmoxDesktop.configured && !serviceError, serviceError,
+      audit: listVmAuditLogs(100),
+    });
+  }
+
+  if (path === '/api/admin/vms/assign' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const ownerEmail = normalizeEmail(resolveTargetEmail(String(body.ownerEmail || '')) || '');
+    const vmid = Number(body.vmid);
+    if (!ownerEmail || !loadPasswords()[ownerEmail]) return jsonResp(400, { error: 'Choose a valid website user.' });
+    if (!isVmIdInRange(vmid)) return jsonResp(400, { error: 'Choose a valid computer.' });
+    let record = getVirtualMachineByVmid(vmid);
+    if (record && record.status !== 'unassigned' && normalizeEmail(record.ownerEmail) !== ownerEmail) return jsonResp(409, { error: 'That computer is already assigned.' });
+    try {
+      const guest = (await proxmoxDesktop.listGuests()).find(item => item.vmid === vmid && item.type === 'qemu' && !item.template);
+      if (!guest) return jsonResp(404, { error: 'Computer not found or cannot be assigned.' });
+      const config = await proxmoxDesktop.getConfig({ vmid, node: guest.node, guestType: 'qemu' });
+      record = upsertVirtualMachine({
+        id: record?.id || `vm-${vmid}`,
+        ownerEmail, ownerUserId: getUidForEmail(ownerEmail) || '', vmid, node: guest.node,
+        guestType: 'qemu', friendlyName: String(body.friendlyName || 'My Computer').trim().slice(0, 60) || 'My Computer',
+        hostname: guest.name, operatingSystem: String(body.operatingSystem || 'Linux Mint Cinnamon').trim().slice(0, 80),
+        templateVmid: null, cpuCores: Number(config?.cores || guest.cpuCores || 4),
+        memoryMb: Number(config?.memory || guest.memoryMb || 4096), diskGb: guest.diskGb || 40,
+        status: 'assigned', createdAt: record?.createdAt || Date.now(),
+      });
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_ASSIGNED', success: true });
+      return jsonResp(201, { success: true, computer: { ...publicVmRecord(record), ownerEmail: record.ownerEmail, vmid: record.vmid } });
+    } catch (error) {
+      vmAudit({ actorEmail: actor.email, record: record || { vmid, ownerEmail }, action: 'VM_ASSIGNED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+      const friendly = friendlyVmError(error);
+      return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+    }
+  }
+
+  if (path === '/api/admin/vms/unassign' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const record = getVirtualMachineById(String(body.id || ''));
+    if (!record) return jsonResp(404, { error: 'Computer not found.' });
+    const success = unassignVirtualMachine(record.id);
+    if (success) revokeVmDesktopConnections(record.id);
+    vmAudit({ actorEmail: actor.email, record, action: 'VM_UNASSIGNED', success });
+    return jsonResp(200, { success });
+  }
+
+  if (path === '/api/admin/vms/create' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const ownerEmail = normalizeEmail(resolveTargetEmail(String(body.ownerEmail || '')) || '');
+    if (!ownerEmail || !loadPasswords()[ownerEmail]) return jsonResp(400, { error: 'Choose a valid website user.' });
+    if (vmPowerRequests.has('admin-create')) return jsonResp(409, { error: 'Another computer is currently being created.' });
+    const templateVmid = Number(body.templateVmid || proxmoxDesktop.templateVmids[0]);
+    if (!proxmoxDesktop.templateVmids.includes(templateVmid)) return jsonResp(400, { error: 'Choose an available desktop template.' });
+    let desktopLogin;
+    try { desktopLogin = proxmoxDesktop.validateDesktopLogin(body.desktopUsername, body.desktopPassword); }
+    catch { return jsonResp(400, { error: 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' }); }
+    const cpuCores = Math.max(2, Math.min(Math.round(Number(body.cpuCores) || 4), 8));
+    const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 4096), 16384));
+    const diskGb = Math.max(40, Math.min(Math.round(Number(body.diskGb) || 40), 256));
+    const hostname = String(body.hostname || `computer-${ownerEmail.split('@')[0]}`).trim();
+    vmPowerRequests.set('admin-create', { startedAt: Date.now() });
+    let pendingRecord = { ownerEmail, vmid: null, id: '' };
+    try {
+      const vmid = await proxmoxDesktop.nextAvailableVmid(PVE_VMID_MIN, PVE_VMID_MAX, listVirtualMachines({ includeUnassigned: true }).map(record => record.vmid));
+      pendingRecord = reserveVirtualMachine({
+        id: `vm-${vmid}`, ownerEmail, ownerUserId: getUidForEmail(ownerEmail) || '', vmid,
+        node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: String(body.friendlyName || 'My Computer').trim().slice(0, 60) || 'My Computer',
+        hostname, operatingSystem: String(body.operatingSystem || 'Ubuntu Desktop LTS').trim().slice(0, 80),
+        templateVmid, cpuCores, memoryMb, diskGb, status: 'provisioning', createdAt: Date.now(),
+      });
+      if (!pendingRecord) return jsonResp(409, { error: 'Another computer is being created. Please try again.' });
+      const created = await proxmoxDesktop.cloneDesktop({ templateVmid, vmid, hostname, cpuCores, memoryMb, diskGb, desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password });
+      const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_CREATED', success: true, details: { templateVmid } });
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_ASSIGNED', success: true });
+      return jsonResp(201, { success: true, computer: { ...publicVmRecord(record, { state: 'starting' }), ownerEmail: record.ownerEmail, vmid: record.vmid } });
+    } catch (error) {
+      console.error('[admin/vms/create] Error creating computer:', error);
+      if (pendingRecord?.id) updateVirtualMachineRuntime(pendingRecord.id, { status: 'provisioning-failed' });
+      vmAudit({ actorEmail: actor.email, record: pendingRecord, action: 'VM_CREATED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+      const friendly = friendlyVmError(error);
+      return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+    } finally {
+      desktopLogin.password = '';
+      body.desktopPassword = '';
+      vmPowerRequests.delete('admin-create');
+    }
+  }
+
+  if (path === '/api/admin/vms/delete' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const id = String(body.id || body.vmid || '');
+    const record = getVirtualMachineById(id) || getVirtualMachineByVmid(Number(id));
+    if (!record) return jsonResp(404, { error: 'Computer not found.' });
+
+    const isForce = Boolean(body.force);
+    let proxmoxError = null;
+
+    try {
+      await proxmoxDesktop.deleteGuest(record, { force: isForce });
+    } catch (err) {
+      proxmoxError = friendlyVmError(err).error;
+    }
+
+    if (proxmoxError && !isForce) {
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_DELETED', success: false, details: { error: proxmoxError } });
+      return jsonResp(500, {
+        error: proxmoxError,
+        canForce: true,
+        message: `${proxmoxError} You can click Force Delete to remove it anyway and ignore Proxmox errors.`
+      });
+    }
+
+    deleteVirtualMachine(record.id);
+    revokeVmDesktopConnections(record.id);
+
+    // Also clean up from VM_APPS_FILE if referenced there
+    try {
+      const vmApps = loadJson(VM_APPS_FILE, {});
+      let appsChanged = false;
+      for (const [norm, app] of Object.entries(vmApps)) {
+        if (app.vmid === record.vmid) {
+          delete vmApps[norm];
+          appsChanged = true;
+          break;
+        }
+      }
+      if (appsChanged) saveJson(VM_APPS_FILE, vmApps);
+    } catch (_) {}
+
+    vmAudit({ actorEmail: actor.email, record, action: 'VM_DELETED', success: true, details: { force: isForce, proxmoxError } });
+    return jsonResp(200, {
+      success: true,
+      message: isForce && proxmoxError
+        ? `Computer deleted from system (ignored Proxmox error: ${proxmoxError})`
+        : 'Computer deleted successfully.'
+    });
+  }
+
   // ── GET routes ──────────────────────────────────────────────────────────────
   if (method === 'GET') {
 
@@ -15633,9 +18778,18 @@ function loadAllGamesList() {
           pubKeyHex = legacyKeys.pubKeyHex;
         }
       }
+      const myNormEmail = email ? normalizeEmail(email) : '';
+      const myProfiles = loadJson(PROFILES_FILE, {});
+      const myProfile = myNormEmail ? (myProfiles[myNormEmail] || {}) : {};
+      const myUsername = myNormEmail ? normalizeUsername(myProfile.username || defaultUsernameForEmail(myNormEmail)) : '';
 
       return jsonResp(200, {
         email: maskEmail(email),
+        rawEmail: email,
+        normEmail: myNormEmail,
+        displayEmail: email ? displayEmail(email) : '',
+        username: myUsername,
+        displayName: myProfile.displayName || myProfile.nickname || myUsername || '',
         isPremium,
         isAdmin,
         isModerator,
@@ -15869,6 +19023,24 @@ function loadAllGamesList() {
           url: notificationUrl('/encrypt/'),
         });
       }
+
+      // Matrix Chat Notifications (messages, calls, invites)
+      const matrixNotifs = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+      const myMatrixNotifs = Array.isArray(matrixNotifs[norm]) ? matrixNotifs[norm] : [];
+      for (const mn of myMatrixNotifs) {
+        if (mn.read) continue;
+        notices.push({
+          type: mn.type || 'matrix',
+          id: mn.id,
+          matrixRoomId: mn.roomId,
+          title: mn.title,
+          body: mn.body || 'Matrix Chat',
+          detail: mn.detail || '',
+          ts: mn.ts || Date.now(),
+          url: mn.url ? notificationUrl(mn.url) : notificationUrl(`/matrix/#/room/${encodeURIComponent(mn.roomId)}`),
+        });
+      }
+
       notices.sort((a, b) => (b.ts || 0) - (a.ts || 0));
       return jsonResp(200, { notifications: notices.slice(0, 25), unread: notices.length });
     }
@@ -15907,10 +19079,8 @@ function loadAllGamesList() {
     }
 
     if (path === '/api/game-categories') {
-      const cats = loadJson(GAME_CATEGORIES_FILE, {});
-      Object.assign(cats, loadJson(GAME_CATEGORIES_LOCAL, {}));
-      Object.assign(cats, loadJson(GAME_CATEGORIES_EXTERNAL, {}));
-      return jsonResp(200, { categories: cats });
+      const rl = checkRateLimit(req, path); if (rl) return rl;
+      return jsonResp(200, { categories: getGameCategories() });
     }
 
     if (path === '/api/puzzle') {
@@ -16031,12 +19201,15 @@ function loadAllGamesList() {
         const outgoingRequest = friendRequests.some(req => normalizeEmail(req.from) === viewerNorm && normalizeEmail(req.to) === norm);
         const friendStatus = isSelf ? 'self' : (isFriend ? 'friends' : (incomingRequest ? 'incoming' : (outgoingRequest ? 'outgoing' : 'none')));
 
+        const memberOnline = isUserPresent(email, now);
+        const memberPresence = userPresence[norm];
         members.push({ 
           email: processed.email, 
           handle: username,
           profileUrl: `/profile/?u=${encodeURIComponent(username)}`,
           pfp: sanitizeProfileImageUrl(profile.pfp || '', { allowData: true, maxDataBytes: 120000 }),
-          online: isUserPresent(email, now),
+          online: memberOnline,
+          playing: memberOnline && memberPresence ? String(memberPresence.playing || '') : '',
           role,
           displayName: processed.displayName,
           bio: String(profile.bio || '').slice(0, 160),
@@ -16374,7 +19547,7 @@ function loadAllGamesList() {
       const effectiveExpiry = getChatExpiry(convExpiryKey) || expiry;
       const getNotificationBody = (t, img) => encryptedEnvelope
         ? '[Secure Message]'
-        : (img ? (t ? t.slice(0, 90) + ' [image]' : 'Sent an image') : t.slice(0, 120));
+        : (img ? '[Secure Message: Attachment]' : '[Secure Message]');
       if (groupId) {
         const groups = loadJson(store.groups, []);
         const group = groups.find(g => g.id === groupId);
@@ -16394,6 +19567,10 @@ function loadAllGamesList() {
         }
         dms.push(msg);
         saveJson(store.dms, pruneDms(dms, store.pickle));
+        const senderCanonical = canonicalDeliveryEmail(senderEmail);
+        const senderProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(senderEmail)] || {});
+        const senderDisplay = senderProf.displayName || senderProf.nickname || senderProf.username || senderCanonical.split('@')[0];
+
         if (VAPID_PUBLIC) {
           const notifyBody = getNotificationBody(text, safeImage);
           for (const member of group.members) {
@@ -16402,18 +19579,19 @@ function loadAllGamesList() {
             const recActive = (memberNorm in e2eUsers) && (Date.now() - e2eUsers[memberNorm].last_seen < 30000);
             if (!recActive && notifAllowed(memberNorm, 'group') && subs[memberNorm]) {
               await sendWebPushClean(subs, memberNorm, {
-                title: `${displayEmail(senderEmail)} in ${group.name}`,
+                title: `${senderDisplay} in ${group.name}`,
                 body: notifyBody,
                 url: notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))),
                 tag: `group-${groupId}-${msg.ts}`,
               });
             } else if (!recActive && notifAllowed(memberNorm, 'group')) {
-              ntfyNotify(memberNorm, `${displayEmail(senderEmail)} in ${group.name}`, notifyBody, notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))));
+              ntfyNotify(memberNorm, `${senderDisplay} in ${group.name}`, notifyBody, notificationUrl(chatAppUrl('?group=' + encodeURIComponent(groupId))));
             }
           }
         }
         } else {
-        msg = { kind: 'dm', from: senderEmail, to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
+        const toCanonical = resolveMemberRef(to) || normalizeEmail(to);
+        msg = { kind: 'dm', from: senderEmail, to: toCanonical || to, text, image: safeImage, replyTo, ts: Date.now(), read: false };
         // Non-E2E messages never touch disk in the clear: seal text+image at rest.
         if (!encryptedEnvelope) {
           const sealed = sealAtRest({ text, image: safeImage });
@@ -16425,17 +19603,21 @@ function loadAllGamesList() {
         }
         dms.push(msg);
         saveJson(store.dms, pruneDms(dms, store.pickle));
-        const recActive = (to in e2eUsers) && (Date.now() - e2eUsers[to].last_seen < 30000);
-        if (!recActive && notifAllowed(to, 'dm') && VAPID_PUBLIC && subs[to]) {
-          await sendWebPushClean(subs, to, {
-            title: `Message from ${displayEmail(senderEmail)}`,
+        const senderCanonical = canonicalDeliveryEmail(senderEmail);
+        const senderProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(senderEmail)] || {});
+        const senderDisplay = senderProf.displayName || senderProf.nickname || senderProf.username || senderCanonical.split('@')[0];
+
+        const recActive = (toCanonical in e2eUsers) && (Date.now() - e2eUsers[toCanonical].last_seen < 30000);
+        if (!recActive && notifAllowed(toCanonical, 'dm') && VAPID_PUBLIC && subs[toCanonical]) {
+          await sendWebPushClean(subs, toCanonical, {
+            title: `Message from ${senderDisplay}`,
             body:  getNotificationBody(text, safeImage),
             // Deep-link: /encrypt/?to=<sender> opens the conversation directly.
-            url:   notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))),
+            url:   notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderCanonical))),
             tag:   `dm-${msg.ts}`,
           });
-        } else if (!recActive && notifAllowed(to, 'dm')) {
-          ntfyNotify(to, `Message from ${displayEmail(senderEmail)}`, getNotificationBody(text, safeImage), notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderEmail))));
+        } else if (!recActive && notifAllowed(toCanonical, 'dm')) {
+          ntfyNotify(toCanonical, `Message from ${senderDisplay}`, getNotificationBody(text, safeImage), notificationUrl(chatAppUrl('?to=' + encodeURIComponent(senderCanonical))));
         }
         }
         addCoins(senderEmail, 2.0);
@@ -16466,11 +19648,12 @@ function loadAllGamesList() {
           }
         } else {
           const senderNorm = normalizeEmail(senderEmail);
-          const toNorm = normalizeEmail(to);
+          const toNorm = resolveMemberRef(to) || normalizeEmail(to);
+          const toUsername = normalizeUsername((loadJson(PROFILES_FILE, {})[toNorm] || {}).username || defaultUsernameForEmail(toNorm));
           for (const ws of allSockets) {
             if (ws.data && ws.data.isBroadcast && ws.data.email) {
               const wsEmailNorm = normalizeEmail(ws.data.email);
-              if (wsEmailNorm === senderNorm || wsEmailNorm === toNorm) {
+              if (wsEmailNorm === senderNorm || wsEmailNorm === toNorm || (toUsername && ws.data.username === toUsername)) {
                 try { ws.send(wsPayload); } catch {}
               }
             }
@@ -16569,11 +19752,30 @@ function loadAllGamesList() {
       const myNormEmail = normalizeEmail(myEmail);
       const myMaskedEmail = maskEmail(myEmail);
       const myUsername = normalizeUsername((loadJson(PROFILES_FILE, {})[myNormEmail] || {}).username || defaultUsernameForEmail(myNormEmail));
+      const myDisplayEmail = normalizeEmail(displayEmail(myNormEmail));
       const isMeRef = (v) => {
         if (!v) return false;
         const nv = normalizeEmail(v);
         if (nv === myNormEmail || (myMaskedEmail && nv === myMaskedEmail)) return true;
+        if (myDisplayEmail && nv === myDisplayEmail) return true;
         return !String(v).includes('@') && normalizeUsername(v) === myUsername;
+      };
+      const withNormEmail = normalizeEmail(withResolved || withUser);
+      const withMaskedEmail = maskEmail(withNormEmail);
+      const withDisplayEmail = normalizeEmail(displayEmail(withNormEmail));
+      const withUsername = normalizeUsername(
+        (loadJson(PROFILES_FILE, {})[withNormEmail] || {}).username ||
+        defaultUsernameForEmail(withNormEmail) ||
+        (!String(withUser).includes('@') ? withUser : '')
+      );
+      const isPeerRef = (v) => {
+        if (!v) return false;
+        const nv = normalizeEmail(v);
+        if (nv === withNormEmail || (withResolved && nv === normalizeEmail(withResolved))) return true;
+        if (nv === normalizeEmail(withUser)) return true;
+        if (withMaskedEmail && nv === normalizeEmail(withMaskedEmail)) return true;
+        if (withDisplayEmail && nv === withDisplayEmail) return true;
+        return !String(v).includes('@') && withUsername && normalizeUsername(v) === withUsername;
       };
       const now = Date.now();
       const msgs = dms.filter(m => {
@@ -16587,10 +19789,14 @@ function loadAllGamesList() {
         }
         if (withUser) {
           if (m.kind === 'group') return false;
-          const clearedAt = myCleared['dm:' + normalizeEmail(withUser)] || 0;
-          return ((normalizeEmail(m.from) === myNormEmail && (normalizeEmail(m.to) === withResolved || normalizeEmail(m.to) === normalizeEmail(withUser))) ||
-                  ((normalizeEmail(m.from) === withResolved || normalizeEmail(m.from) === normalizeEmail(withUser)) && normalizeEmail(m.to) === myNormEmail)) &&
-                 (m.ts || 0) > clearedAt;
+          const clearedAt = myCleared['dm:' + withNormEmail] ||
+                            myCleared['dm:' + normalizeEmail(withUser)] ||
+                            (withUsername ? myCleared['dm:' + withUsername] : 0) || 0;
+          const fromMe = isMeRef(m.from);
+          const toMe = isMeRef(m.to);
+          const fromPeer = isPeerRef(m.from);
+          const toPeer = isPeerRef(m.to);
+          return ((fromMe && toPeer) || (fromPeer && toMe)) && (m.ts || 0) > clearedAt;
         }
         // general inbox: my DMs + group messages for my groups
         if (m.kind === 'group') {
@@ -16598,8 +19804,8 @@ function loadAllGamesList() {
           const clearedAt = myCleared['group:' + m.groupId] || 0;
           return (m.ts || 0) > clearedAt;
         }
-        const peer = normalizeEmail(m.from) === myNormEmail ? normalizeEmail(m.to || '') : normalizeEmail(m.from || '');
-        const clearedAt = myCleared['dm:' + peer] || 0;
+        const peer = isMeRef(m.from) ? (resolveMemberRef(m.to) || normalizeEmail(m.to || '')) : (resolveMemberRef(m.from) || normalizeEmail(m.from || ''));
+        const clearedAt = myCleared['dm:' + peer] || myCleared['dm:' + normalizeEmail(m.from)] || myCleared['dm:' + normalizeEmail(m.to)] || 0;
         return (isMeRef(m.from) || isMeRef(m.to)) &&
                (m.ts || 0) > clearedAt;
       });
@@ -16660,7 +19866,22 @@ function loadAllGamesList() {
           }
         } else {
           const fromResolved = resolveMemberRef(from) || normalizeEmail(from);
-          if ((!m.kind || m.kind === 'dm') && (normalizeEmail(m.to) === normalizeEmail(myEmail) || resolveMemberRef(m.to) === normalizeEmail(myEmail)) && (!from || normalizeEmail(m.from) === fromResolved || normalizeEmail(m.from) === normalizeEmail(from)) && !m.read) {
+          const fromNormEmail = normalizeEmail(fromResolved || from);
+          const fromUsername = normalizeUsername((loadJson(PROFILES_FILE, {})[fromNormEmail] || {}).username || defaultUsernameForEmail(fromNormEmail) || from);
+          const isFromPeer = (v) => {
+            if (!v) return false;
+            const nv = normalizeEmail(v);
+            if (nv === fromNormEmail || nv === normalizeEmail(from)) return true;
+            return !String(v).includes('@') && fromUsername && normalizeUsername(v) === fromUsername;
+          };
+          const isToMe = (v) => {
+            if (!v) return false;
+            const nv = normalizeEmail(v);
+            if (nv === normalizeEmail(myEmail) || resolveMemberRef(v) === normalizeEmail(myEmail)) return true;
+            const myU = normalizeUsername((loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {}).username || defaultUsernameForEmail(normalizeEmail(myEmail)));
+            return !String(v).includes('@') && myU && normalizeUsername(v) === myU;
+          };
+          if ((!m.kind || m.kind === 'dm') && isToMe(m.to) && (!from || isFromPeer(m.from)) && !m.read) {
             m.read = true;
             m.readAt = m.readAt || now;
             marked = true;
@@ -16750,7 +19971,10 @@ function loadAllGamesList() {
       } else if (body.groupId) {
         cleared[norm]['group:' + String(body.groupId)] = now;
       } else if (body.with) {
-        cleared[norm]['dm:' + normalizeEmail(String(body.with))] = now;
+        const withRaw = String(body.with);
+        const withRes = resolveMemberRef(withRaw) || normalizeEmail(withRaw);
+        cleared[norm]['dm:' + normalizeEmail(withRaw)] = now;
+        cleared[norm]['dm:' + normalizeEmail(withRes)] = now;
       } else {
         return jsonResp(400, { error: 'missing target' });
       }
@@ -16808,9 +20032,11 @@ function loadAllGamesList() {
           if (wsGroupId) {
             matches = m.kind === 'group' && String(m.groupId) === String(wsGroupId);
           } else if (wsWith) {
+            const wsNorm = normalizeEmail(wsWith);
+            const isMeM = (v) => normalizeEmail(v) === norm || resolveMemberRef(v) === norm;
+            const isPeerM = (v) => normalizeEmail(v) === wsNorm || resolveMemberRef(v) === wsNorm;
             matches = m.kind !== 'group' &&
-              ((normalizeEmail(m.from) === norm && (normalizeEmail(m.to) === normalizeEmail(wsWith) || resolveMemberRef(m.to) === normalizeEmail(wsWith))) ||
-               ((normalizeEmail(m.from) === normalizeEmail(wsWith) || resolveMemberRef(m.from) === normalizeEmail(wsWith)) && normalizeEmail(m.to) === norm));
+              ((isMeM(m.from) && isPeerM(m.to)) || (isPeerM(m.from) && isMeM(m.to)));
           }
           if (!matches) return true;
           if (isDmMessageRead(m)) {
@@ -17313,14 +20539,16 @@ function loadAllGamesList() {
         }
       }
       const id = randomBytes(8).toString('hex');
-      cvChallenges[id] = { id, from: myEmail, to, type, tc, bet, createdAt: Date.now() };
+      const myCanonical = canonicalDeliveryEmail(myEmail);
+      const myProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {});
+      const fromName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
+      const targetTo = canonicalDeliveryEmail(to);
       if (type === 'corr' && !alreadyChallenged) {
-        const fromName = myEmail.split('@')[0];
         const days = tc.perMove / 86400000;
         const _s = site();
-        sendEmailBg(to, `Chess challenge from ${fromName}`, makeChessCorrActionHtml(to, `Chess challenge from ${fromName}`, `${fromName} has challenged you to a correspondence chess game (${days} day${days !== 1 ? 's' : ''}/move) with a bet of ${bet} coins.`));
+        sendEmailBg(targetTo, `Chess challenge from ${fromName}`, makeChessCorrActionHtml(targetTo, `Chess challenge from ${fromName}`, `${fromName} has challenged you to a correspondence chess game (${days} day${days !== 1 ? 's' : ''}/move) with a bet of ${bet} coins.`));
       }
-      addAdminNotification(to, 'New Chess Challenge', `${myEmail.split('@')[0]} has challenged you to a Chess game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/chess-bot/');
+      addAdminNotification(targetTo, 'New Chess Challenge', `${fromName} has challenged you to a Chess game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/chess-bot/');
       triggerNotificationRefresh();
       return jsonResp(200, { ok: true, id });
     }
@@ -17346,12 +20574,16 @@ function loadAllGamesList() {
       }
 
       delete cvChallenges[challengeId];
+      const responderCanonical = canonicalDeliveryEmail(myEmail);
+      const responderProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {});
+      const responderName = responderProf.displayName || responderProf.nickname || responderProf.username || responderCanonical.split('@')[0];
+      const challengerTarget = canonicalDeliveryEmail(c.from);
       if (!accept) {
-        addAdminNotification(c.from, 'Chess Challenge Declined', `${myEmail.split('@')[0]} declined your Chess challenge.`, 'admin', '', '/games/chess-bot/');
+        addAdminNotification(challengerTarget, 'Chess Challenge Declined', `${responderName} declined your Chess challenge.`, 'admin', '', '/games/chess-bot/');
         triggerNotificationRefresh();
         return jsonResp(200, { ok: true, declined: true });
       }
-      addAdminNotification(c.from, 'Chess Challenge Accepted', `${myEmail.split('@')[0]} accepted your Chess challenge!`, 'admin', '', '/games/chess-bot/');
+      addAdminNotification(challengerTarget, 'Chess Challenge Accepted', `${responderName} accepted your Chess challenge!`, 'admin', '', '/games/chess-bot/');
       triggerNotificationRefresh();
       const white = Math.random() < 0.5 ? c.from : myEmail;
       const black = white === c.from ? myEmail : c.from;
@@ -17450,12 +20682,15 @@ function loadAllGamesList() {
       if (g.type === 'corr') {
         cvSave();
         const oppEmail = myColor === 'w' ? g.black : g.white;
-        const fromName = myEmail.split('@')[0];
+        const oppTarget = canonicalDeliveryEmail(oppEmail);
+        const myCanonical = canonicalDeliveryEmail(myEmail);
+        const myProf = (loadJson(PROFILES_FILE, {})[normalizeEmail(myEmail)] || {});
+        const fromName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
         const subject = g.status === 'over'
           ? `Chess game over — ${fromName} played the final move`
           : `${fromName} played a move in your correspondence game`;
         const _s = site();
-        sendEmailBg(oppEmail, subject, makeChessCorrActionHtml(oppEmail, subject, g.status === 'over' ? `Result: ${g.result}.` : `It's your turn!`));
+        sendEmailBg(oppTarget, subject, makeChessCorrActionHtml(oppTarget, subject, g.status === 'over' ? `Result: ${g.result}.` : `It's your turn!`));
       }
       return jsonResp(200, { ok: true, game: g });
     }
@@ -17562,7 +20797,11 @@ function loadAllGamesList() {
       }
       const id = randomBytes(8).toString('hex');
       bsChallenges[id] = { id, from: myNorm, to, bet, createdAt: now };
-      addAdminNotification(to, 'New Battleship Challenge', `${myNorm.split('@')[0]} has challenged you to a Battleship game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/battleship/');
+      const myCanonical = canonicalDeliveryEmail(myNorm);
+      const myProf = (loadJson(PROFILES_FILE, {})[myNorm] || {});
+      const myDisplayName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
+      const toTarget = canonicalDeliveryEmail(to);
+      addAdminNotification(toTarget, 'New Battleship Challenge', `${myDisplayName} has challenged you to a Battleship game${bet > 0 ? ` (Bet: ${bet} coins)` : ''}.`, 'admin', '', '/games/battleship/');
       triggerNotificationRefresh();
       return jsonResp(200, { ok: true, challengeId: id });
     }
@@ -17583,12 +20822,16 @@ function loadAllGamesList() {
         }
       }
       delete bsChallenges[challengeId];
+      const myCanonical = canonicalDeliveryEmail(myNorm);
+      const myProf = (loadJson(PROFILES_FILE, {})[myNorm] || {});
+      const myDisplayName = myProf.displayName || myProf.nickname || myProf.username || myCanonical.split('@')[0];
+      const challengerTarget = canonicalDeliveryEmail(c.from);
       if (!accept) {
-        addAdminNotification(c.from, 'Battleship Challenge Declined', `${myNorm.split('@')[0]} declined your Battleship challenge.`, 'admin', '', '/games/battleship/');
+        addAdminNotification(challengerTarget, 'Battleship Challenge Declined', `${myDisplayName} declined your Battleship challenge.`, 'admin', '', '/games/battleship/');
         triggerNotificationRefresh();
         return jsonResp(200, { ok: true, declined: true });
       }
-      addAdminNotification(c.from, 'Battleship Challenge Accepted', `${myNorm.split('@')[0]} accepted your Battleship challenge!`, 'admin', '', '/games/battleship/');
+      addAdminNotification(challengerTarget, 'Battleship Challenge Accepted', `${myDisplayName} accepted your Battleship challenge!`, 'admin', '', '/games/battleship/');
       triggerNotificationRefresh();
       const gameId = randomBytes(8).toString('hex');
       const now = Date.now();
@@ -19840,6 +23083,13 @@ function loadAllGamesList() {
     if (!email) return jsonResp(401, { error: 'email not found' });
     const norm = normalizeEmail(email);
 
+    const casinoReadOnly = ['/api/casino/history', '/api/casino/global-feed', '/api/casino/blackjack/state'].includes(path);
+    if (method !== (casinoReadOnly ? 'GET' : 'POST')) return jsonResp(405, { error: 'Method not allowed' });
+    if (path === '/api/casino/blackjack/state') {
+      const active = bjGames.get(norm);
+      return jsonResp(200, active ? { active: true, bet: active.bet, playerHand: active.playerHand, dealerUpCard: active.dealerHand[0] } : { active: false });
+    }
+
     if (method === 'POST' && path !== '/api/casino/blackjack/hit' && path !== '/api/casino/blackjack/stand') {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
@@ -19870,7 +23120,7 @@ function loadAllGamesList() {
       return false;
     }
 
-    function settleCasinoRound(gameName, bet, payout, outcome, freeSpin = false) {
+    function settleCasinoRound(gameName, bet, payout, outcome, freeSpin = false, prepaid = false) {
       const stats = loadUserStats();
       const isDouble = stats[norm] && (stats[norm].double_down_until || 0) > Date.now();
       const isInsured = stats[norm] && (stats[norm].bad_beat_insurance_until || 0) > Date.now();
@@ -19890,10 +23140,10 @@ function loadAllGamesList() {
       const effectiveBet = freeSpin ? 0 : bet;
       const net = Number((safePayout - effectiveBet).toFixed(4));
 
-      casinoIntake += effectiveBet;
+      casinoIntake += prepaid ? 0 : effectiveBet;
       casinoPayout += safePayout;
       saveCasinoStats();
-      addCoins(email, net);
+      addCoins(email, prepaid ? safePayout : net);
       addHistory(email, gameName, net, finalOutcome);
       logBet(email, gameName, effectiveBet, finalOutcome);
 
@@ -19934,6 +23184,75 @@ function loadAllGamesList() {
         user: b.user ? b.user.split('@')[0] : 'anonymous'
       }));
       return jsonResp(200, { feed: sanitized });
+    }
+
+    if (path === '/api/casino/rock-paper-scissors') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const choice = String(body.choice || '').toLowerCase();
+      const options = ['rock', 'paper', 'scissors'];
+      if (!options.includes(choice)) return jsonResp(400, { error: 'Choose rock, paper, or scissors.' });
+      const computer = options[Math.floor(Math.random() * options.length)];
+      const tie = choice === computer;
+      const won = !tie && ((choice === 'rock' && computer === 'scissors') || (choice === 'paper' && computer === 'rock') || (choice === 'scissors' && computer === 'paper'));
+      const payout = tie ? betCheck.bet : won ? betCheck.bet * 1.9 : 0;
+      const settled = settleCasinoRound('Rock Paper Scissors', betCheck.bet, payout, tie ? 'PUSH' : won ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, choice, computer, tie, won, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/lucky-seven') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      const total = dice[0] + dice[1];
+      const won = total === 7;
+      const settled = settleCasinoRound('Lucky Seven', betCheck.bet, won ? betCheck.bet * 4.8 : 0, won ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, dice, total, won, mult: won ? 4.8 : 0, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/color-card') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const choice = String(body.choice || '').toLowerCase();
+      if (choice !== 'red' && choice !== 'black') return jsonResp(400, { error: 'Choose red or black.' });
+      const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
+      const suit = suits[Math.floor(Math.random() * suits.length)];
+      const color = suit === 'hearts' || suit === 'diamonds' ? 'red' : 'black';
+      const value = 1 + Math.floor(Math.random() * 13);
+      const card = value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' : value === 11 ? 'J' : String(value);
+      const won = choice === color;
+      const settled = settleCasinoRound('Color Card', betCheck.bet, won ? betCheck.bet * 1.92 : 0, won ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, choice, color, suit, card, won, mult: won ? 1.92 : 0, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/triple-dice') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const pick = Number(body.pick);
+      if (!Number.isInteger(pick) || pick < 1 || pick > 6) return jsonResp(400, { error: 'Pick a number from 1 to 6.' });
+      const dice = Array.from({ length: 3 }, () => 1 + Math.floor(Math.random() * 6));
+      const matches = dice.filter(value => value === pick).length;
+      const mult = [0, 2, 5, 25][matches];
+      const settled = settleCasinoRound('Triple Dice', betCheck.bet, betCheck.bet * mult, matches ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, pick, dice, matches, mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
+    }
+
+    if (path === '/api/casino/plinko') {
+      if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
+      const betCheck = readCasinoBet();
+      if (betCheck.error) return jsonResp(400, { error: betCheck.error });
+      const slot = weightedPick([
+        { label: '0x', mult: 0, weight: 25 }, { label: '0.5x', mult: 0.5, weight: 25 },
+        { label: '0.8x', mult: 0.8, weight: 18 }, { label: '1.2x', mult: 1.2, weight: 15 },
+        { label: '1.5x', mult: 1.5, weight: 10 }, { label: '3x', mult: 3, weight: 5 },
+        { label: '8x', mult: 8, weight: 2 },
+      ]);
+      const settled = settleCasinoRound('Plinko', betCheck.bet, betCheck.bet * slot.mult, slot.mult >= 1 ? 'WIN' : 'LOSE');
+      return jsonResp(200, { ok: true, slot: slot.label, mult: slot.mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
 
     if (path === '/api/casino/roulette') {
@@ -20004,6 +23323,7 @@ function loadAllGamesList() {
     if (path === '/api/casino/blackjack/start') {
       if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (bjGames.has(norm)) return jsonResp(409, { error: 'Finish your current blackjack hand first.' });
       const bet = Number(body.amount);
       const bal = getCoins(email);
       if (!Number.isFinite(bet) || bet < 1 || bet > bal) return jsonResp(400, { error: 'invalid bet' });
@@ -20087,7 +23407,7 @@ function loadAllGamesList() {
       const pval = getVal(game.playerHand);
       if (pval > 21) {
         bjGames.delete(norm);
-        const settled = settleCasinoRound('Blackjack', game.bet, 0, 'BUST');
+        const settled = settleCasinoRound('Blackjack', game.bet, 0, 'BUST', false, true);
         return jsonResp(200, { ok: true, gameOver: true, playerHand: game.playerHand, status: 'bust', dealerHand: game.dealerHand, winAmt: 0 });
       }
       return jsonResp(200, { ok: true, gameOver: false, playerHand: game.playerHand, status: 'active' });
@@ -20128,15 +23448,8 @@ function loadAllGamesList() {
         res = 'lose'; 
       }
       
-      // Note: we don't call settleCasinoRound rigging here because we handled it above via card drawing
-      const safePayout = Number(Math.max(0, winAmt || 0).toFixed(4));
-      const net = Number((safePayout - game.bet).toFixed(4));
-      casinoIntake += game.bet;
-      casinoPayout += safePayout;
-      saveCasinoStats();
-      addCoins(game.email, net);
-      addHistory(game.email, 'Blackjack', net, res.toUpperCase());
-      logBet(game.email, 'Blackjack', game.bet, res.toUpperCase());
+      const settled = settleCasinoRound('Blackjack', game.bet, winAmt, res.toUpperCase(), false, true);
+      const safePayout = settled.payout;
 
       const playerHand = game.playerHand;
       const dealerHand = game.dealerHand;
@@ -20476,10 +23789,13 @@ function loadAllGamesList() {
     if (path === '/api/me/coins') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
-      if (!validId(sid)) return jsonResp(401, { error: 'unauthorized' });
+      // The wallet is rendered in the public top bar too. A signed-out visitor
+      // is a normal UI state, not a failed page resource.
+      if (!validId(sid)) return jsonResp(200, { authenticated: false, coins: null });
       const email = emailFromSid(sid);
-      if (!email) return jsonResp(401, { error: 'email not found' });
+      if (!email) return jsonResp(200, { authenticated: false, coins: null });
       return jsonResp(200, {
+        authenticated: true,
         coins: getCoins(email),
         achievements: getAchievements(email),
         stats: loadUserStats()[normalizeEmail(email)] || {}
@@ -20919,7 +24235,7 @@ function loadAllGamesList() {
             { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
           ],
           shortcuts: [
-            { name: "The Cellar", short_name: "Cellar", description: "Open encrypted cellar chat", url: "/cellar/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
+            { name: "Matrix Chat", short_name: "Matrix", description: "Open encrypted Matrix chat", url: "/matrix/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
             { name: "The Barrel", short_name: "Barrel", description: "Live pickle lounge", url: "/barrel/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] },
             { name: "Bulletin", short_name: "Bulletin", description: "Official announcements", url: "/bulletin/?utm_source=pwa-shortcut", icons: [{ src: "/icon-192.png", sizes: "192x192" }] }
           ]
@@ -20949,7 +24265,7 @@ function loadAllGamesList() {
           ],
           shortcuts: [
             { name: "Bell Schedule", short_name: "Bells", description: "Live RJUHSD bell schedules", url: "/?utm_source=pwa-shortcut#schedule-panel", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] },
-            { name: "Encrypted Chat", short_name: "Chat", description: "Open end-to-end encrypted messages", url: "/encrypt/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] }
+            { name: "Matrix Chat", short_name: "Matrix", description: "Open end-to-end encrypted Matrix chat", url: "/matrix/?utm_source=pwa-shortcut", icons: [{ src: "/rjuhsd-assets/icon-192.png", sizes: "192x192" }] }
           ]
         };
         return new Response(JSON.stringify(rjuhsdManifest, null, 2), {
@@ -20957,10 +24273,159 @@ function loadAllGamesList() {
         });
       }
     }
-    const rjuhsdHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8'));
+    if (path === '/sitemap.xml') {
+      const sitemapDomain = isRjuhsdHost(req) ? 'https://rjuhsd.school' : 'https://mitch.pro';
+      const sitemapXml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+        `  <url><loc>${sitemapDomain}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=woodcreek</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=roseville</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=granitebay</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=antelope</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=westpark</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/?school=oakmont</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/matrix/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/encrypt/</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n` +
+        `  <url><loc>${sitemapDomain}/public-chat/</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>\n` +
+        (isRjuhsdHost(req) ? '' : '  <url><loc>https://mitch.pro/rjuhsd/</loc><changefreq>daily</changefreq><priority>0.9</priority></url>\n') +
+        '</urlset>';
+      return new Response(sitemapXml, {
+        headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' }
+      });
+    }
+    function prepareRjuhsdHtml(rawHtml, r) {
+      let html = injectSharedHead(rawHtml);
+      const s = site();
+      let primaryOrigin = 'https://mitch.pro';
+      let primaryHost = 'mitch.pro';
+      try {
+        const pu = new URL(s.primary || 'https://mitch.pro');
+        primaryOrigin = pu.origin;
+        primaryHost = pu.hostname;
+      } catch {}
+
+      let altOrigin = '';
+      let altHost = '';
+      if (s.alternate) {
+        try {
+          const au = new URL(s.alternate);
+          altOrigin = au.origin;
+          altHost = au.hostname;
+        } catch {}
+      }
+
+      const reqHost = (r ? requestHost(r) : '') || (r && isRjuhsdHost(r) ? RJUHSD_DOMAIN : primaryHost);
+      const isPreview = !r || !isRjuhsdHost(r);
+      const backPath = isPreview ? '/rjuhsd/' : '/';
+      const backUrl = 'https://' + reqHost + backPath;
+
+      const effectiveOrigin = altOrigin || primaryOrigin;
+
+      if (altHost && altHost !== primaryHost) {
+        // 1. Injected alternate domain by default into sign-in buttons
+        const signinPrimaryRegex = new RegExp('Sign in with\\s+' + primaryHost.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        html = html.replace(signinPrimaryRegex, 'Sign in with ' + altHost);
+
+        // Update href of js-signin-link / SSO bridge
+        const altBridgeUrl = effectiveOrigin + '/api/sso/bridge?back=' + encodeURIComponent(backUrl);
+        html = html.replaceAll('href="/api/sso/bridge?back=%2F"', 'href="' + altBridgeUrl + '"');
+
+        // 2. Client verification probe script:
+        // UNLESS it can fetch the verification file (verify-open.json) on main domain,
+        // in which case it uses main domain (primaryHost) instead.
+        const verifyScript = '<script>\n' +
+          '(function() {\n' +
+          '  var primaryOrigin = ' + JSON.stringify(primaryOrigin) + ';\n' +
+          '  var primaryHost = ' + JSON.stringify(primaryHost) + ';\n' +
+          '  var altHost = ' + JSON.stringify(altHost) + ';\n' +
+          '  var verifyUrl = primaryOrigin + "/verify-open.json";\n' +
+          '  var backTarget = ' + JSON.stringify(backUrl) + ';\n' +
+          '  function checkOpen() {\n' +
+          '    var ctl = window.AbortController ? new AbortController() : null;\n' +
+          '    var timer = setTimeout(function() { if (ctl) ctl.abort(); }, 4000);\n' +
+          '    fetch(verifyUrl, {\n' +
+          '      method: "GET",\n' +
+          '      mode: "cors",\n' +
+          '      cache: "no-store",\n' +
+          '      signal: ctl ? ctl.signal : undefined\n' +
+          '    }).then(function(res) {\n' +
+          '      clearTimeout(timer);\n' +
+          '      if (!res.ok) throw new Error("not ok");\n' +
+          '      return res.json();\n' +
+          '    }).then(function(data) {\n' +
+          '      if (data && data.verified === true && data.token === "mitch-open-verified-2026") {\n' +
+          '        var links = document.querySelectorAll(".js-signin-link");\n' +
+          '        var bridgeUrl = primaryOrigin + "/api/sso/bridge?back=" + encodeURIComponent(window.location.href || backTarget);\n' +
+          '        links.forEach(function(el) {\n' +
+          '          if (el.classList.contains("is-signed-in")) return;\n' +
+          '          el.href = bridgeUrl;\n' +
+          '          if (el.textContent && el.textContent.includes(altHost)) {\n' +
+          '            el.textContent = el.textContent.replace(altHost, primaryHost);\n' +
+          '          } else if (el.textContent && el.textContent.includes("Sign in with")) {\n' +
+          '            el.textContent = "Sign in with " + primaryHost;\n' +
+          '          }\n' +
+          '        });\n' +
+          '      }\n' +
+          '    }).catch(function() {\n' +
+          '      clearTimeout(timer);\n' +
+          '    });\n' +
+          '  }\n' +
+          '  if (document.readyState === "loading") {\n' +
+          '    document.addEventListener("DOMContentLoaded", checkOpen);\n' +
+          '  } else {\n' +
+          '    checkOpen();\n' +
+          '  }\n' +
+          '})();\n' +
+          '</script>';
+        if (html.includes('</body>')) {
+          html = html.replace('</body>', '\n</body>');
+        } else {
+          html += '';
+        }
+      }
+
+      // SEO & School personalization for server-rendered HTML
+      let reqSchool = '';
+      if (r && r.url) {
+        try {
+          const u = new URL(r.url, 'https://' + reqHost);
+          reqSchool = (u.searchParams.get('school') || '').toLowerCase().trim();
+        } catch {}
+      }
+      const schoolMeta = {
+        woodcreek:  { name: 'Woodcreek High School',  short: 'Woodcreek',  mascot: 'Timberwolves' },
+        roseville:  { name: 'Roseville High School',  short: 'Roseville',  mascot: 'Tigers' },
+        granitebay: { name: 'Granite Bay High School', short: 'Granite Bay', mascot: 'Grizzlies' },
+        antelope:   { name: 'Antelope High School',   short: 'Antelope',   mascot: 'Titans' },
+        westpark:   { name: 'West Park High School',  short: 'West Park',  mascot: 'Panthers' },
+        oakmont:    { name: 'Oakmont High School',    short: 'Oakmont',    mascot: 'Vikings' }
+      }[reqSchool];
+
+      if (schoolMeta) {
+        const schoolTitle = `${schoolMeta.name} Bell Schedule | RJUHSD Hub`;
+        const schoolDesc = `Live ${schoolMeta.name} bell schedule, period countdowns, daily times, and calendar for the ${schoolMeta.mascot} in Roseville Joint Union High School District (RJUHSD).`;
+        const schoolCanonical = `https://${reqHost}${backPath}?school=${reqSchool}`;
+
+        html = html.replace(/<title>.*?<\/title>/i, `<title>${schoolTitle}</title>`);
+        html = html.replace(/(<meta\s+name="description"\s+content=")[^"]*(")/i, `$1${schoolDesc}$2`);
+        html = html.replace(/(<link\s+rel="canonical"\s+href=")[^"]*(")/i, `$1${schoolCanonical}$2`);
+        html = html.replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/i, `$1${schoolTitle}$2`);
+        html = html.replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/i, `$1${schoolDesc}$2`);
+        html = html.replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/i, `$1${schoolCanonical}$2`);
+        html = html.replace(/(<meta\s+name="twitter:title"\s+content=")[^"]*(")/i, `$1${schoolTitle}$2`);
+        html = html.replace(/(<meta\s+name="twitter:description"\s+content=")[^"]*(")/i, `$1${schoolDesc}$2`);
+
+        html = html.replace(/<p class="hero-overline" id="hero-overline">.*?<\/p>/, `<p class="hero-overline" id="hero-overline">${schoolMeta.name.toUpperCase()}</p>`);
+        html = html.replace(/<span id="school-heading">.*?<\/span>/, `<span id="school-heading">${schoolMeta.short}</span>`);
+        html = html.replace(/<span class="period-range" id="current-range">.*?<\/span>/, `<span class="period-range" id="current-range">${schoolMeta.name}</span>`);
+      }
+
+      return html;
+    }
+    const rjuhsdHubHtml = (r = req) => prepareRjuhsdHtml(readFileSync(join(WEBROOT, 'rjuhsd', 'index.html'), 'utf8'), r);
     if ((path === '/' || path === '/index.html') && isRjuhsdHost(req)) {
       try {
-        return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        return new Response(rjuhsdHubHtml(req), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       } catch {}
     }
     // sexypickleclub.com — a pickle-branded landing (webserver/sexypickleclub/)
@@ -20974,7 +24439,10 @@ function loadAllGamesList() {
                                 '/appeal', '/unsubscribe', '/admin',
                                 '/faq', '/use-agreement', '/privacy', '/bell', '/bell/index',
                                 '/preferences', '/preferences/index',
-                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index']);
+                                '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index',
+                                '/games', '/games/index', '/game-portal', '/game-portal/index', '/msn-games', '/msn-games/index',
+                                '/matrix', '/matrix/index',
+                                '/rjuhsd', '/rjuhsd/index', '/sexypickleclub', '/sexypickleclub/index']);
     const pickleHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'sexypickleclub', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isPickleHost(req)) {
       try {
@@ -21062,7 +24530,7 @@ function loadAllGamesList() {
     // Preview of the school hub from mitch.pro (same page, no DNS needed).
     if (path === '/rjuhsd' || path === '/rjuhsd/' || path === '/rjuhsd/index.html') {
       try {
-        return new Response(rjuhsdHubHtml(), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        return new Response(rjuhsdHubHtml(req), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
       } catch { return errResp(404, 'Not found'); }
     }
 
@@ -21108,7 +24576,7 @@ function loadAllGamesList() {
           }
         }
         try {
-          let html = injectSharedHead(readFileSync(file, 'utf8'));
+          let html = prepareRjuhsdHtml(readFileSync(file, 'utf8'), req);
           // reCAPTCHA loader: rjuhsd.school pages bypass the main injection
           // below, so add it here or getCaptchaToken never exists and chat
           // sends fail with "reCAPTCHA failed". Mirrors the main block's
@@ -21154,7 +24622,12 @@ function loadAllGamesList() {
     if (htmlBase.endsWith('.html')) htmlBase = htmlBase.slice(0, -5);
     if (htmlBase.endsWith('/') && htmlBase.length > 1) htmlBase = htmlBase.slice(0, -1);
     const isHtmlRequest = path.endsWith('.html') || path.endsWith('/');
-    const isOpenHtmlPage = isHtmlRequest && HTML_OPEN.has(htmlBase);
+    const isOpenHtmlPage = isHtmlRequest && (HTML_OPEN.has(htmlBase) || htmlBase.startsWith('/games') || htmlBase.startsWith('/matrix'));
+	    if (isHtmlRequest && (htmlBase === '/admin/vms' || htmlBase.startsWith('/admin/vms/'))) {
+	      const actor = authenticatedVmActor(req);
+	      if (!actor) return Response.redirect('/enroll/', 302);
+	      if (!actor.isAdmin) return errResp(403, 'Admin access required.');
+	    }
 	    if (isHtmlRequest && !isOpenHtmlPage && !path.startsWith('/unsubscribe/')) {
 	      const cookies = getCookies(req);
 	      const sid = cookies['studentId'] || cookies['id'] || '';
@@ -21171,12 +24644,23 @@ function loadAllGamesList() {
 	        return Response.redirect('/' + dirName + '/' + url.search, 302);
 	      }
 	    }
-	
+
+	    // SPA route fallback for Matrix Chat (/matrix/*)
+	    if (path.startsWith('/matrix/') && !path.includes('.')) {
+	      const indexPath = join(WEBROOT, 'matrix', 'index.html');
+	      if (existsSync(indexPath)) {
+	        const content = readFileSync(indexPath, 'utf8');
+	        return new Response(content, {
+	          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+	        });
+	      }
+	    }
+
 	    // Inject tracking into HTML pages
 	    if ((path.endsWith('.html') || path === '/' || (path.endsWith('/') && path.length > 1)) && path !== '/admin.html' && path !== '/roblox.html') {
 	      let filePath;
 	      if (path === '/') {
-	        filePath = checkPasswordCookie(req) ? join(WEBROOT, 'index.html') : join(WEBROOT, 'index-sales.html');
+	        filePath = join(WEBROOT, 'index.html');
 	      }
 	      else if (path.endsWith('/')) filePath = safeWebrootPath(path.replace(/^\//, '') + 'index.html');
 
@@ -21185,6 +24669,9 @@ function loadAllGamesList() {
 	      if (filePath && existsSync(filePath) && !statSync(filePath).isDirectory()) {
 	        try {
 	          let raw    = readFileSync(filePath);
+          if (/^\/vms\/desktop\/(?:index\.html)?$/.test(path) || path.startsWith('/matrix/public/element-call/')) {
+            return new Response(raw, { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=86400' } });
+          }
 
           let injectStr = '';
           const rcKey = (process.env.RECAPTCHA_SITE_KEY || '').trim();
@@ -21200,13 +24687,18 @@ function loadAllGamesList() {
           const ua = req.headers.get('user-agent') || '';
           const isMobile = /Mobi|Android|iPhone|iPad/i.test(ua);
           const isEnrollPage = path === '/enroll' || path === '/enroll/' || path === '/enroll/index.html';
-          const isEmbeddedGameRuntime = path.startsWith('/games/') && path !== '/games/' && path !== '/games/index.html';
+          const isStandaloneGamePortal = path === '/game-portal' || path === '/game-portal/' || path === '/game-portal/index.html';
+          const isEmbeddedGameRuntime = isStandaloneGamePortal || (path.startsWith('/games/') && path !== '/games/' && path !== '/games/index.html');
           const pageCookies = getCookies(req);
           const pageSid = pageCookies['studentId'] || pageCookies['id'] || '';
           const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
+          if (!isRjuhsdHost(req) && !isPickleHost(req) && (!isEmbeddedGameRuntime || isStandaloneGamePortal)) {
+            injectStr += '<link rel="stylesheet" href="/community-refresh.css?v=2">\n';
+            if (!isAuthenticatedHtml) injectStr += '<script src="/guest-preview.js?v=1" defer></script>\n';
+          }
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=4" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=5" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }
@@ -21300,8 +24792,8 @@ function loadAllGamesList() {
         // and the fixed footer collides with it on phones — skip injecting it
         // there on mitch hosts. rjuhsd.school/encrypt keeps the footer.
         const isEncryptAppPage = path === '/encrypt' || path === '/encrypt/' || path === '/encrypt/index.html';
-        const isRjuhsdHost = reqHost === 'rjuhsd.school' || reqHost.endsWith('.rjuhsd.school');
-        if (!raw.includes(Buffer.from('_agree_footer')) && !(isEncryptAppPage && !isRjuhsdHost)) {
+        const isRjuhsdPageHost = reqHost === 'rjuhsd.school' || reqHost.endsWith('.rjuhsd.school');
+        if (!raw.includes(Buffer.from('_agree_footer')) && !(isEncryptAppPage && !isRjuhsdPageHost)) {
           const bi = raw.lastIndexOf(Buffer.from('<\/body>'));
           raw = bi >= 0
             ? Buffer.concat([raw.slice(0, bi), agreeB, raw.slice(bi)])
@@ -21321,12 +24813,14 @@ function loadAllGamesList() {
 
     // Public assets whitelist
     const PUBLIC_ASSETS = new Set([
+      '/community-refresh.css', '/guest-preview.js', '/home-friends.js', '/home.css', '/home-dayboard.js',
+      '/tab-cloak.js', '/tab-cloak.css', '/cloak-google-classroom.svg', '/cloak-google-drive.svg', '/cloak-google-docs.svg', '/cloak-clever.png',
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
-      '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
+      '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/mitchcoin.webp', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
       '/vendor/simplewebauthn.browser.min.js',
       '/home-redesign.css', '/welcome.css',
-      '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/woodcreek.png',
+      '/rjuhsd-assets/app.js', '/rjuhsd-assets/styles.css', '/rjuhsd-assets/reference-theme.css', '/rjuhsd-assets/redesign.css', '/preferences-school.css', '/rjuhsd-assets/woodcreek.png',
       '/rjuhsd-assets/calendar.js', '/rjuhsd-assets/woodcreek-logo.png', '/rjuhsd-assets/roseville-logo.png', '/rjuhsd-assets/granitebay-logo.png', '/rjuhsd-assets/antelope-logo.png', '/rjuhsd-assets/westpark-logo.png', '/rjuhsd-assets/oakmont-logo.png',
       '/rjuhsd-assets/icon-192.png', '/rjuhsd-assets/icon-512.png', '/rjuhsd-assets/maskable-512.png', '/rjuhsd-assets/apple-touch-icon.png', '/rjuhsd-assets/favicon-32.png',
       '/liquid-glass.js',
@@ -21336,10 +24830,12 @@ function loadAllGamesList() {
       '/games/chess-bot/chessboard.min.js', '/games/chess-bot/chessboard.min.css',
       '/bell/schedule.js',
       '/favicon.ico', '/manifest.json', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/home-burning-cherry.webp',
-      '/robots.txt'
+      '/robots.txt',
+      '/sitemap.xml',
+      '/verify-open.json'
     ]);
     const isPieceSvg = path.startsWith('/games/chess-bot/pieces-svg/') && path.endsWith('.svg');
-    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !checkPasswordCookie(req)) {
+    if (!isOpenHtmlPage && !PUBLIC_API_PATHS.has(cleanPath) && !PUBLIC_ASSETS.has(path) && !isPieceSvg && !path.startsWith('/matrix/') && !path.startsWith('/unsubscribe/') && !path.startsWith('/images/') && !path.startsWith('/backgrounds/') && path !== '/larp' && !path.startsWith('/larp/') && !path.startsWith('/games') && !path.startsWith('/game-portal/') && !checkPasswordCookie(req)) {
       const cookies = getCookies(req);
       const ban = bannedInfoForSid(cookies['studentId'] || cookies['id'] || '');
       if (ban) return bannedResponse(ban);
@@ -21383,7 +24879,11 @@ function isPrivateIP(ip, ipType) {
 
 // ── Start server ──────────────────────────────────────────────────────────────
 
-try { convertBackgroundsToWebm(join(WEBROOT, 'backgrounds')); } catch {}
+try {
+  const bgDir = join(WEBROOT, 'backgrounds');
+  convertBackgroundsToWebm(bgDir);
+  generateBackgroundThumbs(bgDir);
+} catch {}
 
 console.log(`Starting server on http://${HOST}:${PORT}...`);
 
@@ -21430,30 +24930,70 @@ Bun.serve({
           ws.close();
         };
       }
-      if (ws.data && ws.data.isVNC) {
-        console.log(`[vnc-proxy] Opening VNC bridge to ${ws.data.targetIp}:${ws.data.targetPort}`);
+      if (ws.data && ws.data.isLiveKit) {
+        const livekitHost = process.env.LIVEKIT_HOST || (process.env.DOCKER_ENV === '1' || existsSync('/.dockerenv') ? 'livekit' : '127.0.0.1');
+        const livekitPort = process.env.LIVEKIT_PORT || '7880';
+        const upstreamUrl = `ws://${livekitHost}:${livekitPort}/rtc${ws.data.search || ''}`;
         try {
-          const socket = await Bun.connect({
-            hostname: ws.data.targetIp,
-            port: ws.data.targetPort,
-            socket: {
-              data(socket, data) {
-                if (ws.readyState === 1) ws.send(data);
-              },
-              close(socket) {
-                console.log(`[vnc-proxy] TCP connection closed for ${ws.data.targetIp}`);
-                ws.close();
-              },
-              error(socket, err) {
-                console.error(`[vnc-proxy] TCP error for ${ws.data.targetIp}:`, err);
-                ws.close();
-              }
+          const upstream = new WebSocket(upstreamUrl);
+          ws.data.upstream = upstream;
+          upstream.binaryType = "arraybuffer";
+          upstream.onopen = () => {
+            if (ws.data.pending && ws.data.pending.length) {
+              for (const m of ws.data.pending) upstream.send(m);
+              ws.data.pending = null;
+            }
+          };
+          upstream.onmessage = (e) => {
+            if (ws.readyState === 1) ws.send(e.data);
+          };
+          upstream.onclose = (ev) => {
+            if (ws.readyState === 1) ws.close(ev?.code || 1000, ev?.reason);
+          };
+          upstream.onerror = (err) => {
+            console.warn(`[livekit-proxy] Upstream error:`, err?.message || err);
+            if (ws.readyState === 1) ws.close(1011, 'LiveKit upstream connection failed');
+          };
+        } catch (e) {
+          console.warn(`[livekit-proxy] Failed to connect upstream:`, e?.message || e);
+          ws.close(1011, 'LiveKit service unavailable');
+        }
+      }
+      if (ws.data && ws.data.isProxmoxVnc) {
+        try {
+          if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
+          vmDesktopSockets.add(ws);
+          const upstream = new WebSocket(ws.data.upstreamUrl, {
+            headers: { Authorization: ws.data.upstreamAuthorization },
+            tls: ws.data.upstreamTlsOptions,
+          });
+          delete ws.data.upstreamUrl;
+          delete ws.data.upstreamAuthorization;
+          ws.data.upstreamVnc = upstream;
+          ws.data.pendingVnc = [];
+          ws.data.pendingVncBytes = 0;
+          upstream.binaryType = 'arraybuffer';
+          upstream.addEventListener('open', () => {
+            for (const message of ws.data.pendingVnc || []) upstream.send(message);
+            ws.data.pendingVnc = [];
+            ws.data.pendingVncBytes = 0;
+          });
+          upstream.addEventListener('message', event => {
+            if (ws.readyState === 1) {
+              if (ws.getBufferedAmount() > 8 * 1024 * 1024) { ws.close(1013, 'Desktop connection is too slow'); return; }
+              ws.send(event.data);
             }
           });
-          ws.data.tcpSocket = socket;
-        } catch (err) {
-          console.error(`[vnc-proxy] Failed to connect to VNC target:`, err);
-          ws.close();
+          upstream.addEventListener('close', () => {
+            if (ws.readyState === 1) ws.close(1012, 'Desktop connection ended');
+          });
+          upstream.addEventListener('error', () => {
+            console.warn(`[desktop] Proxmox console bridge failed for record ${ws.data.recordId}`);
+            if (ws.readyState === 1) ws.close(1011, 'Desktop connection failed');
+          });
+        } catch {
+          console.warn(`[desktop] Unable to initialize console bridge for record ${ws.data.recordId}`);
+          ws.close(1011, 'Desktop connection failed');
         }
       }
     },
@@ -21498,15 +25038,30 @@ Bun.serve({
           console.error('[blooket-bot-ws] failed to route client message:', e);
         }
       }
+      if (ws.data && ws.data.isLiveKit) {
+        if (ws.data.upstream && ws.data.upstream.readyState === 1) {
+          ws.data.upstream.send(msg);
+        } else if (ws.data.upstream && ws.data.upstream.readyState === 0) {
+          ws.data.pending = ws.data.pending || [];
+          if (ws.data.pending.length < 50) ws.data.pending.push(msg);
+        }
+        return;
+      }
       if (ws.data && ws.data.proxyTo) {
         if (ws.data.upstream && ws.data.upstream.readyState === 1) {
           ws.data.upstream.send(msg);
         }
       }
-      if (ws.data && ws.data.isVNC) {
-        if (ws.data.tcpSocket) {
-          ws.data.tcpSocket.write(msg);
+      if (ws.data && ws.data.isProxmoxVnc) {
+        if (Date.now() - (ws.data.lastAuthorizationCheck || 0) > 1000) {
+          ws.data.lastAuthorizationCheck = Date.now();
+          if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
         }
+        if (ws.data.upstreamVnc && ws.data.upstreamVnc.readyState === 1) ws.data.upstreamVnc.send(msg);
+        else if ((ws.data.pendingVnc || []).length < 32 && (ws.data.pendingVncBytes || 0) + msg.byteLength <= 1024 * 1024) {
+          ws.data.pendingVnc.push(msg);
+          ws.data.pendingVncBytes += msg.byteLength;
+        } else ws.close(1009, 'Desktop input buffer exceeded');
         return;
       }
       if (ws.data && ws.data.isSSH) {
@@ -21655,8 +25210,10 @@ Bun.serve({
           try { ws.data.sshGateway.close(); } catch (e) {}
         }
       }
-      if (ws.data && ws.data.isVNC && ws.data.tcpSocket) {
-        try { ws.data.tcpSocket.end(); } catch (e) {}
+      if (ws.data && ws.data.isProxmoxVnc) {
+        vmDesktopSockets.delete(ws);
+        ws.data.pendingVnc = [];
+        try { ws.data.upstreamVnc?.close(); } catch (e) {}
       }
     }
   }
@@ -21682,6 +25239,11 @@ setTimeout(() => {
 
   initPortalSshKey();
   cleanupAllEphemeralVms();
+  shutdownAllRunningVmsOnStartup();
+  migrateLegacyVmOwnership();
+  cleanupVmDesktopSessions();
+  setInterval(cleanupVmDesktopSessions, 5000);
+  setInterval(enforceVmMaxUptimeWorker, 15000);
 
   setInterval(happyHourWorker, 60000);
   computedHappyHour = getLeastUsedSchoolHour();
@@ -21958,6 +25520,264 @@ const PVE_TOKEN = process.env.PVE_TOKEN || ''; // Format: "PVEAPIToken=api-helpe
 const PVE_NODE = process.env.PVE_NODE || 'tartarus';
 const PVE_TEMPLATE_LINUX = parseInt(process.env.PVE_TEMPLATE_LINUX || '9000', 10);
 const PVE_LXC_TEMPLATE = process.env.PVE_LXC_TEMPLATE || 'local:vztmpl/debian-13-standard_13.6-1_amd64.tar.zst';
+const proxmoxDesktop = ProxmoxDesktopService.fromEnv(process.env);
+const vmDesktopSessions = new Map();
+const vmDesktopSockets = new Set();
+const vmPowerRequests = new Map();
+const vmPowerGate = new VmOperationGate(5000);
+const VM_DESKTOP_SESSION_TTL_MS = 75_000;
+const VM_BASE_MAX_UPTIME_SECONDS = 3600; // 1 hour maximum base uptime
+const VM_MAX_EXTENSION_SECONDS = 1800;   // 30 minutes maximum extension
+const VM_TOTAL_MAX_UPTIME_SECONDS = VM_BASE_MAX_UPTIME_SECONDS + VM_MAX_EXTENSION_SECONDS; // 5400 seconds (90 min)
+const vmLeases = new Map();
+
+function getVmLease(recordId, currentUptime = 0) {
+  const normalizedUptime = Math.max(0, Math.floor(Number(currentUptime) || 0));
+  let lease = vmLeases.get(recordId);
+  if (!lease) {
+    lease = {
+      extended: false,
+      startedAt: Date.now() - (normalizedUptime * 1000),
+      lastSeenUptime: normalizedUptime,
+    };
+    vmLeases.set(recordId, lease);
+  } else if (normalizedUptime > 0 && lease.lastSeenUptime > 60 && normalizedUptime < (lease.lastSeenUptime - 60)) {
+    lease.extended = false;
+    lease.startedAt = Date.now() - (normalizedUptime * 1000);
+  }
+  lease.lastSeenUptime = normalizedUptime;
+
+  const maxUptimeSeconds = lease.extended ? VM_TOTAL_MAX_UPTIME_SECONDS : VM_BASE_MAX_UPTIME_SECONDS;
+  const remainingSeconds = Math.max(0, maxUptimeSeconds - normalizedUptime);
+  const canExtend = !lease.extended && remainingSeconds > 0;
+
+  return {
+    extended: Boolean(lease.extended),
+    maxUptimeSeconds,
+    remainingSeconds,
+    canExtend,
+    currentUptime: normalizedUptime,
+  };
+}
+
+function clearVmLease(recordId) {
+  vmLeases.delete(recordId);
+}
+
+function migrateLegacyVmOwnership() {
+  const legacy = loadJson(VM_APPS_FILE, {});
+  for (const [ownerEmail, app] of Object.entries(legacy || {})) {
+    const vmid = Number(app?.vmid);
+    if (app?.status !== 'approved' || !Number.isInteger(vmid) || getVirtualMachineByVmid(vmid)) continue;
+    const norm = normalizeEmail(app.email || ownerEmail);
+    upsertVirtualMachine({
+      id: `vm-${vmid}`,
+      ownerEmail: norm,
+      ownerUserId: getUidForEmail(norm) || '',
+      vmid,
+      node: app.node || PVE_NODE,
+      guestType: app.type || (app.tier === 'premium' ? 'lxc' : 'qemu'),
+      friendlyName: app.friendlyName || 'My Computer',
+      hostname: app.hostname || `student-${vmid}`,
+      operatingSystem: app.operatingSystem || (app.tier === 'paid' ? 'Linux Desktop' : 'Linux'),
+      templateVmid: app.templateVmid || (app.tier === 'paid' ? PVE_TEMPLATE_LINUX : null),
+      cpuCores: app.cpuCores || (app.tier === 'paid' ? 4 : 2),
+      memoryMb: app.memoryMb || (app.tier === 'paid' ? 8192 : 4096),
+      diskGb: app.diskGb || (app.tier === 'paid' ? 64 : 8),
+      ipAddress: app.ip || '',
+      status: 'assigned',
+      createdAt: app.approvedAt || app.appliedAt || Date.now(),
+    });
+  }
+}
+
+function vmAudit({ actorEmail, record, action, success, details = null }) {
+  appendVmAuditLog({
+    actorEmail: normalizeEmail(actorEmail || 'system'),
+    ownerEmail: record?.ownerEmail || '',
+    vmRecordId: record?.id || '',
+    vmid: record?.vmid ?? null,
+    action,
+    success,
+    details,
+  });
+}
+
+function authenticatedVmActor(req) {
+  const cookies = getCookies(req);
+  const sid = cookies['studentId'] || cookies['id'] || '';
+  if (!sid || !validId(sid) || isRevoked(sid) || !checkPasswordCookie(req, sid)) return null;
+  const email = normalizeEmail(emailFromSid(sid) || '');
+  return email ? { sid, email, isAdmin: isAdminId(sid), authSessionKey: cookies[AUTH_COOKIE] ? hashSessionToken(cookies[AUTH_COOKIE]) : '' } : null;
+}
+
+function vmSameOriginRequest(req) {
+  try { return new URL(req.headers.get('Origin')).host.toLowerCase() === requestHost(req).toLowerCase(); }
+  catch { return false; }
+}
+
+function vmRecordAllowedForActor(record, actor) {
+  return canAccessVmRecord(record, actor);
+}
+
+function friendlyVmError(error) {
+  if (error instanceof ProxmoxServiceError || error?.name === 'ProxmoxServiceError') {
+    if (error.code === 'STOPPED') return { status: 409, error: 'Your computer is currently offline. Start it and try again.', code: 'computer_offline' };
+    if (error.code === 'TIMEOUT' || error.code === 'TASK_TIMEOUT') return { status: 504, error: 'Your computer is still starting. Try again in a moment.', code: 'computer_starting' };
+    if (error.code === 'INVALID_ACTION' || error.code === 'INVALID_VM' || error.code === 'INVALID_TEMPLATE') return { status: 400, error: error.message || 'That computer request is not valid.', code: 'invalid_request' };
+    if (error.code === 'INVALID_DESKTOP_LOGIN') return { status: 400, error: error.message || 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' };
+    if (error.code === 'NO_CAPACITY') return { status: 409, error: 'No computer slots are available right now.', code: 'no_capacity' };
+    if (error.code === 'NO_GRAPHICAL_DESKTOP') return { status: 409, error: 'This machine does not have a graphical desktop.', code: 'desktop_unavailable' };
+    if (error.code === 'GUEST_SETUP_FAILED') return { status: 504, error: error.message || 'The graphical desktop did not finish starting.', code: 'guest_setup_failed' };
+    if (error.code === 'TASK_FAILED') return { status: 502, error: error.message || 'The computer task failed.', code: 'task_failed' };
+    if (error.code === 'UPSTREAM_REJECTED') return { status: error.status || 502, error: 'Your computer could not be reached.', code: 'computer_unreachable' };
+    return { status: error.status || 502, error: error.message || 'Your computer could not be reached.', code: (error.code || 'computer_error').toLowerCase() };
+  }
+  return { status: 502, error: error?.message || 'Your computer could not be reached.', code: error?.code || 'computer_unreachable' };
+}
+
+function publicVmRecord(record, runtime = null) {
+  const isRunning = runtime?.state === 'running';
+  const lease = isRunning ? getVmLease(record.id, runtime.uptime) : {
+    extended: false,
+    maxUptimeSeconds: VM_BASE_MAX_UPTIME_SECONDS,
+    remainingSeconds: VM_BASE_MAX_UPTIME_SECONDS,
+    canExtend: true,
+    currentUptime: 0,
+  };
+  return {
+    id: record.id,
+    name: record.friendlyName || 'My Computer',
+    hostname: runtime?.hostname || record.hostname,
+    operatingSystem: record.operatingSystem || 'Linux Desktop',
+    status: record.status === 'provisioning' ? 'starting' : record.status === 'provisioning-failed' ? 'setup-incomplete' : runtime?.state || 'unknown',
+    cpuCores: runtime?.cpuCores || record.cpuCores,
+    cpuUsage: runtime?.cpuUsage || 0,
+    memoryMb: record.memoryMb,
+    memoryUsed: runtime?.memoryUsed || 0,
+    memoryTotal: runtime?.memoryTotal || record.memoryMb * 1024 * 1024,
+    diskGb: record.diskGb,
+    diskUsed: runtime?.diskUsed || 0,
+    diskTotal: runtime?.diskTotal || record.diskGb * 1024 * 1024 * 1024,
+    ipAddress: runtime?.ipAddress || record.ipAddress || '',
+    uptime: runtime?.uptime || 0,
+    desktopAvailable: record.guestType === 'qemu',
+    createdAt: record.createdAt,
+    lease,
+  };
+}
+
+function cleanupVmDesktopSessions() {
+  const now = Date.now();
+  for (const [id, session] of vmDesktopSessions) {
+    if (!session || session.expiresAt <= now || session.used) vmDesktopSessions.delete(id);
+  }
+  for (const ws of vmDesktopSockets) {
+    if (ws.readyState !== 1) vmDesktopSockets.delete(ws);
+    else if (!vmDesktopSocketAuthorized(ws)) ws.close(1008, 'Desktop access expired');
+  }
+  vmPowerGate.cleanup(now);
+}
+
+function vmDesktopSocketAuthorized(ws) {
+  const data = ws.data;
+  if (!data?.sid || !validId(data.sid) || isRevoked(data.sid) || bannedInfoForSid(data.sid)) return false;
+  if (data.authSessionKey) {
+    const session = loadAuthSessions()[data.authSessionKey];
+    if (!session || session.expiresAt <= Date.now() || (session.gen || 0) !== currentSessionGeneration(data.actorEmail)) return false;
+  } else if (process.env.NODE_ENV !== 'test') return false;
+  const record = getVirtualMachineById(data.recordId);
+  if (!record || record.ownerEmail !== data.ownerEmail || record.vmid !== data.vmid || record.node !== data.node) return false;
+  return vmRecordAllowedForActor(record, { email: data.actorEmail, isAdmin: isAdminId(data.sid) });
+}
+
+function revokeVmDesktopConnections(recordId) {
+  for (const [id, session] of vmDesktopSessions) if (session.recordId === recordId) vmDesktopSessions.delete(id);
+  for (const ws of vmDesktopSockets) if (ws.data.recordId === recordId) ws.close(1008, 'Desktop access changed');
+}
+
+async function shutdownAllRunningVmsOnStartup() {
+  console.log('[startup] Checking for running VMs to shut down on server start...');
+  try {
+    if (!proxmoxDesktop.configured) {
+      console.log('[startup] Proxmox service not configured; skipping startup VM shutdown.');
+      return;
+    }
+    const guests = await proxmoxDesktop.listGuests();
+    const running = (guests || []).filter(g => !g.template && (g.status === 'running' || g.status === 'paused'));
+    if (running.length === 0) {
+      console.log('[startup] No running VMs found on Proxmox.');
+      return;
+    }
+    console.log(`[startup] Found ${running.length} running VM(s) to shut down on startup:`, running.map(g => `${g.vmid} (${g.name})`).join(', '));
+    await Promise.allSettled(running.map(async guest => {
+      try {
+        console.log(`[startup] Initiating graceful shutdown for VM ${guest.vmid} (${guest.name})...`);
+        await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
+      } catch (err) {
+        console.warn(`[startup] Graceful shutdown failed for VM ${guest.vmid}, attempting force-stop:`, err?.message || err);
+        try {
+          await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop');
+        } catch (stopErr) {
+          console.error(`[startup] Failed to stop VM ${guest.vmid}:`, stopErr?.message || stopErr);
+        }
+      }
+    }));
+    vmDesktopSessions.clear();
+    vmDesktopSockets.clear();
+    vmLeases.clear();
+    console.log('[startup] Finished shutting down all running VMs on startup.');
+  } catch (err) {
+    console.error('[startup] Error shutting down running VMs on startup:', err);
+  }
+}
+
+async function enforceVmMaxUptimeWorker() {
+  if (!proxmoxDesktop.configured) return;
+  try {
+    const guests = await proxmoxDesktop.listGuests();
+    for (const guest of (guests || [])) {
+      if (guest.template || guest.status !== 'running') continue;
+      const record = getVirtualMachineByVmid(guest.vmid);
+      const recordKey = record ? record.id : `vmid-${guest.vmid}`;
+      const lease = getVmLease(recordKey, guest.uptime);
+      if (lease.remainingSeconds <= 0) {
+        console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) reached max uptime (${guest.uptime}s / ${lease.maxUptimeSeconds}s). Automatically shutting down...`);
+        if (record) {
+          vmAudit({
+            actorEmail: 'system',
+            record,
+            action: 'VM_SHUTDOWN_TIMEOUT',
+            success: true,
+            details: { uptime: guest.uptime, maxUptimeSeconds: lease.maxUptimeSeconds, extended: lease.extended },
+          });
+          revokeVmDesktopConnections(record.id);
+          try {
+            await proxmoxDesktop.power(record, 'shutdown');
+          } catch (err) {
+            console.warn(`[vm-watchdog] Graceful shutdown failed for ${record.id}, attempting force-stop:`, err?.message || err);
+            try {
+              await proxmoxDesktop.power(record, 'force-stop');
+            } catch (stopErr) {
+              console.error(`[vm-watchdog] Force stop failed for ${record.id}:`, stopErr?.message || stopErr);
+            }
+          }
+        } else {
+          try {
+            await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
+          } catch (err) {
+            try {
+              await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop');
+            } catch {}
+          }
+        }
+        vmLeases.delete(recordKey);
+      }
+    }
+  } catch (err) {
+    console.error('[vm-watchdog] Error in enforceVmMaxUptimeWorker:', err);
+  }
+}
 
 // Allowlist range for student/premium sandbox VMIDs. The free-VM allocator
 // scans 200-209; the approve-vm admin endpoint accepts anything in this
