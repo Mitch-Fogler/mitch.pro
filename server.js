@@ -7536,7 +7536,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=7" defer></script>';
+  const tag = '<script src="/broadcast.js?v=8" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -15777,7 +15777,7 @@ async function handleRequest(req, server) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=7" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=8" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -24716,7 +24716,7 @@ async function handleRequest(req, server) {
           }
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=7" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=8" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }
