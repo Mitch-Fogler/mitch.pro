@@ -23,7 +23,7 @@ use serde_json::{json, Map, Value};
 use std::sync::Arc;
 
 /// `isAnyAdminId(sid)` with the JS falsy-sid short-circuit made explicit.
-fn admin_ok(state: &Arc<AppState>, sid: &str) -> bool {
+pub(crate) fn admin_ok(state: &Arc<AppState>, sid: &str) -> bool {
     if sid.is_empty() {
         return false;
     }

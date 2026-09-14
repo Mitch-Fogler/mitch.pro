@@ -1054,6 +1054,104 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'csrf_blocked'
   },
+  // ── canvas bookmarks + zones (Step 10 batch 3) ──
+  {
+    name: 'GET /api/canvas/bookmarks (Anonymous)',
+    path: '/api/canvas/bookmarks',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/canvas/bookmarks (Anonymous)',
+    path: '/api/canvas/bookmarks',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/bookmarks/approve (Anonymous)',
+    path: '/api/canvas/bookmarks/approve',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/canvas/zones (Anonymous)',
+    path: '/api/canvas/zones',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/canvas/zones (Anonymous)',
+    path: '/api/canvas/zones',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/zones/add-user (Anonymous)',
+    path: '/api/canvas/zones/add-user',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/zones/remove-user (Anonymous)',
+    path: '/api/canvas/zones/remove-user',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/zones/delete (Anonymous)',
+    path: '/api/canvas/zones/delete',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/zones/update (Anonymous)',
+    path: '/api/canvas/zones/update',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/canvas/zones/clear (Anonymous)',
+    path: '/api/canvas/zones/clear',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/admin/canvas-report-status (Anonymous)',
+    path: '/api/admin/canvas-report-status',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',

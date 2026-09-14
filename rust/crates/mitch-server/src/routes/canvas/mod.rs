@@ -9,6 +9,7 @@
 mod paint;
 mod reads;
 pub mod state_core;
+mod zones;
 
 pub use state_core::CanvasState;
 
@@ -52,6 +53,21 @@ pub async fn handle(
         | (_, "/api/canvas/admin-ban")
         | (_, "/api/canvas/admin-unban") => {
             paint::dispatch(state, method, path, headers, body_bytes)
+        }
+        // Batch 3: bookmarks + zones families, plus the admin
+        // canvas-report-status endpoint (unmatched /api/admin/* paths fall
+        // through here from the admin group, so it lives in the canvas
+        // module like in the JS).
+        (_, "/api/canvas/bookmarks")
+        | (_, "/api/canvas/bookmarks/approve")
+        | (_, "/api/canvas/zones")
+        | (_, "/api/canvas/zones/add-user")
+        | (_, "/api/canvas/zones/remove-user")
+        | (_, "/api/canvas/zones/delete")
+        | (_, "/api/canvas/zones/update")
+        | (_, "/api/canvas/zones/clear")
+        | (_, "/api/admin/canvas-report-status") => {
+            zones::dispatch(state, method, path, headers, body_bytes).await
         }
         (_, "/api/canvas/whoami") => Some(reads::whoami(state, headers)),
         (_, "/api/canvas/admin-bans") => Some(reads::admin_bans(state)),
