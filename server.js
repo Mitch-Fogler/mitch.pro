@@ -7082,17 +7082,18 @@ function executeModeratorApprovedAction(action, rawPayload, approverEmail, reque
     return { ok: true, multiplier };
   }
   if (action === 'broadcast') {
-    const msg = payload.msg;
-    if (!msg) adminActionError(400, 'message required');
     const type = payload.type === 'jumpscare' ? 'jumpscare' : 'normal';
+    const msg = String(payload.msg || '').trim().slice(0, 500);
+    if (type === 'normal' && !msg) adminActionError(400, 'message required');
     const socketPayload = JSON.stringify({ type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast', message: msg });
+    let recipients = 0;
     for (const ws of allSockets) {
       if (ws.data && ws.data.isBroadcast) {
-        try { ws.send(socketPayload); } catch {}
+        try { ws.send(socketPayload); recipients++; } catch {}
       }
     }
     logAdminAction(actor, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg, requestedBy: requesterEmail });
-    return { ok: true };
+    return { ok: true, recipients };
   }
   if (action === 'shadow_ban') {
     const target = normalizeEmail(payload.email);
@@ -7511,7 +7512,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=5" defer></script>';
+  const tag = '<script src="/broadcast.js?v=6" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -12718,14 +12719,18 @@ async function handleRequest(req, server) {
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const adminEmail = emailFromSid(sid) || 'admin';
-      const { msg, type } = body;
+      const type = body.type === 'jumpscare' ? 'jumpscare' : 'normal';
+      const msg = String(body.msg || '').trim().slice(0, 500);
+      if (type === 'normal' && !msg) return jsonResp(400, { error: 'message required' });
       const payload = JSON.stringify({ type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast', message: msg });
+      let recipients = 0;
       for (const ws of allSockets) {
         if (ws.data && ws.data.isBroadcast) {
-          try { ws.send(payload); } catch {}
+          try { ws.send(payload); recipients++; } catch {}
         }
-      }      logAdminAction(adminEmail, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg });
-      return jsonResp(200, { ok: true });
+      }
+      logAdminAction(adminEmail, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg });
+      return jsonResp(200, { ok: true, recipients });
       }
 
     // POST /api/admin/casino/rig
@@ -15741,7 +15746,7 @@ async function handleRequest(req, server) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=5" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=6" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -24680,7 +24685,7 @@ async function handleRequest(req, server) {
           }
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=5" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=6" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }

@@ -45,21 +45,52 @@
       };
     }
     function showJumpscare(msg) {
-      var el = document.createElement('div');
-      el.style.cssText = 'position:fixed;inset:0;background:#000;color:#f00;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:serif;text-align:center;padding:2rem;animation:shake 0.1s infinite;';
-      el.innerHTML = '<div style="font-size:8rem;margin-bottom:20px;">😱</div><div style="font-size:3rem;font-weight:900;text-transform:uppercase;letter-spacing:-0.05em;">' + (msg || 'WAKE UP') + '</div>';
-      
-      if (!document.getElementById('jumpscare-style')) {
-        var style = document.createElement('style');
-        style.id = 'jumpscare-style';
-        style.textContent = '@keyframes shake { 0% { transform: translate(2px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }';
-        document.head.appendChild(style);
+      showVideoJumpscare(msg);
+    }
+    function showVideoJumpscare(msg) {
+      var previous = document.getElementById('admin-video-jumpscare');
+      if (previous) {
+        var previousVideo = previous.querySelector('video');
+        if (previousVideo) previousVideo.pause();
+        previous.remove();
       }
-      
-      document.body.appendChild(el);
-      var audio = new Audio('https://www.myinstants.com/media/sounds/screamer.mp3');
-      audio.play().catch(function(){});
-      setTimeout(function() { el.remove(); }, 3000);
+      var overlay = document.createElement('div');
+      overlay.id = 'admin-video-jumpscare';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:2147483647;display:grid;place-items:center;overflow:hidden;';
+      var video = document.createElement('video');
+      video.src = '/media/admin-jumpscare-krupp-1935.mp4';
+      video.autoplay = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+      var close = document.createElement('button');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Close video');
+      close.textContent = '×';
+      close.style.cssText = 'position:absolute;top:max(12px,env(safe-area-inset-top));right:14px;width:42px;height:42px;border:1px solid #ffffff55;border-radius:50%;background:#000a;color:#fff;font:26px/1 system-ui;cursor:pointer;z-index:2;';
+      var caption = document.createElement('div');
+      caption.style.cssText = 'position:absolute;left:50%;bottom:max(18px,env(safe-area-inset-bottom));translate:-50% 0;max-width:min(760px,calc(100% - 40px));padding:9px 14px;border-radius:10px;background:#000b;color:#fff;font:700 clamp(14px,2vw,22px)/1.25 system-ui;text-align:center;';
+      caption.textContent = String(msg || '').trim();
+      caption.hidden = !caption.textContent;
+      var sound = document.createElement('button');
+      sound.type = 'button';
+      sound.textContent = 'Tap for sound';
+      sound.style.cssText = 'position:absolute;left:50%;top:50%;translate:-50% -50%;padding:12px 18px;border:1px solid #ffffff66;border-radius:12px;background:#000c;color:#fff;font:700 14px system-ui;cursor:pointer;z-index:2;';
+      sound.hidden = true;
+      function remove() { video.pause(); video.removeAttribute('src'); overlay.remove(); }
+      close.onclick = remove;
+      video.addEventListener('ended', remove, { once: true });
+      video.addEventListener('error', function() { caption.hidden = false; caption.textContent = 'The video could not be loaded.'; });
+      sound.onclick = function() { video.muted = false; sound.hidden = true; video.play().catch(function() { sound.hidden = false; }); };
+      overlay.append(video, close, caption, sound);
+      document.body.appendChild(overlay);
+      video.play().catch(function() {
+        video.muted = true;
+        sound.hidden = false;
+        video.play().catch(function() { sound.textContent = 'Tap to play video'; });
+      });
     }
     function showBroadcast(msg) {
       var el = document.createElement('div');
