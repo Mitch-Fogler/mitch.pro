@@ -275,9 +275,12 @@ pub async fn content(
     ))
 }
 
-fn is_premium_email(_state: &Arc<AppState>, _hash: &str) -> bool {
-    // isPremiumEmail requires the full role-resolution chain (Step 8).
-    false
+fn is_premium_email(state: &Arc<AppState>, hash: &str) -> bool {
+    // The hash IS the sid: resolve to email, then the full premium ladder.
+    let Some(email) = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, hash) else {
+        return false;
+    };
+    mitch_lib::auth::is_premium_email(&state.store, &email)
 }
 
 fn json_response(code: u16, obj: serde_json::Value) -> Response {

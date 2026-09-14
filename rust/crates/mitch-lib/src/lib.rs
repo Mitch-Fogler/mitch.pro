@@ -16,7 +16,9 @@
 // Tests may unwrap; production code may not (Cargo.toml lints).
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod admin;
 pub mod auth;
+pub mod coins;
 pub mod config;
 pub mod crypto;
 pub mod data;

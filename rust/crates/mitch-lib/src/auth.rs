@@ -17,7 +17,7 @@
 //!   timing-bot detection (>=4 intervals within 10s each, spread < 50ms).
 
 use crate::data::DataStore;
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 
 /// Minimal header access without coupling mitch-lib to a web framework.
@@ -762,6 +762,50 @@ impl RateLimiter {
         }
         false
     }
+
+    /// Per-endpoint rlLog stats for `/api/admin/data` dtype `rl_list` —
+    /// `{endpoint: {keys, max_hits}}` keyed by `key::endpoint` suffix.
+    pub fn rl_endpoints(&self) -> Vec<(String, usize, usize)> {
+        let log = self.log.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out: Vec<(String, usize, usize)> = Vec::new();
+        for (key, ts) in log.iter() {
+            if ts.is_empty() {
+                continue;
+            }
+            let ep = key.split("::").skip(1).collect::<Vec<_>>().join("::");
+            let entry = out.iter_mut().find(|(e, _, _)| *e == ep);
+            match entry {
+                Some((_, keys, max_hits)) => {
+                    *keys += 1;
+                    *max_hits = (*max_hits).max(ts.len());
+                }
+                None => out.push((ep, 1, ts.len())),
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    /// dtype `rl_reset` — drop every key for one endpoint.
+    pub fn rl_reset_endpoint(&self, endpoint: &str) {
+        let suffix = format!("::{endpoint}");
+        let mut log = self.log.lock().unwrap_or_else(|e| e.into_inner());
+        log.retain(|k, _| !k.ends_with(&suffix));
+    }
+
+    /// dtype `rl_reset_all` / `reset-ratelimit` support.
+    pub fn rl_clear(&self) {
+        self.log.lock().unwrap_or_else(|e| e.into_inner()).clear();
+    }
+
+    /// `/api/admin/reset-ratelimit` — remove keys ending in `::<ep>` for any
+    /// of `endpoints`; returns the number cleared.
+    pub fn rl_reset_many(&self, endpoints: &[String]) -> usize {
+        let mut log = self.log.lock().unwrap_or_else(|e| e.into_inner());
+        let before = log.len();
+        log.retain(|k, _| !endpoints.iter().any(|ep| k.ends_with(&format!("::{ep}"))));
+        before - log.len()
+    }
 }
 
 /// `checkRateLimit` — the full per-request gate. `id_key` is the cookie-derived
@@ -792,6 +836,268 @@ pub fn check_rate_limit(
     None
 }
 
+// ── Admin role resolution ────────────────────────────────────────────────────
+// Port of server.js:6160-6260. Shape (corrected by exploring the live data):
+// admins.json is a LIST OF EMAILS PER ROLE — `{owners: string[], admins:
+// string[], coOwners?: string[]}` — NOT `{email: {rank}}`. moderators.json is
+// a plain JSON array of emails. The hierarchy is flat, not cumulative:
+// `isAdminEmail` covers owners+co-owners+config-admins; moderators are a
+// DISJOINT set. `isOwnerEmail` grants co-owners full owner privileges.
+
+/// `SITE_CO_OWNER_EMAILS` (server.js:6215) — hardcoded, not data-driven.
+pub const SITE_CO_OWNER_EMAIL: &str = "tyler.thompson1@student.rjuhsd.us";
+
+/// `loadAdminConfig()` (server.js:6211) — `{owners, admins, coOwners?}` with
+/// the JS defaults applied when a key is missing. Re-read on every call.
+pub struct AdminConfig {
+    pub owners: Vec<String>,
+    pub admins: Vec<String>,
+    pub co_owners: Vec<String>,
+}
+
+pub fn load_admin_config(store: &DataStore) -> AdminConfig {
+    let val = store.read_document(&store.base_dir.join("data/admins.json"), json!({}));
+    let str_list = |key: &str, default: Vec<String>| -> Vec<String> {
+        val.get(key)
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or(default)
+    };
+    AdminConfig {
+        owners: str_list("owners", vec!["admin@mitch.pro".to_owned()]),
+        admins: str_list("admins", Vec::new()),
+        co_owners: str_list("coOwners", Vec::new()),
+    }
+}
+
+/// `adminMemberEmails()` (6219).
+pub fn admin_member_emails(store: &DataStore) -> Vec<String> {
+    load_admin_config(store).admins
+}
+
+/// `ownerMemberEmails()` (6223) — falls back to `['admin@mitch.pro']`.
+pub fn owner_member_emails(store: &DataStore) -> Vec<String> {
+    load_admin_config(store).owners
+}
+
+/// `coOwnerMemberEmails()` (6227) — hardcoded set ∪ configured, deduped.
+pub fn co_owner_member_emails(store: &DataStore) -> Vec<String> {
+    let mut out = vec![SITE_CO_OWNER_EMAIL.to_owned()];
+    out.extend(
+        load_admin_config(store)
+            .co_owners
+            .into_iter()
+            .filter(|e| !e.is_empty()),
+    );
+    dedup_normalized(out)
+}
+
+/// `moderatorEmails()` (6160) — `loadJson(MODERATORS_FILE, [])`, a bare array.
+pub fn moderator_emails(store: &DataStore) -> Vec<String> {
+    store
+        .read_document(&store.base_dir.join("data/moderators.json"), json!([]))
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// `siteAdminEmails()` (6242) — owners ∪ co-owners ∪ admins, normalized, deduped.
+pub fn site_admin_emails(store: &DataStore) -> Vec<String> {
+    let mut all = owner_member_emails(store);
+    all.extend(co_owner_member_emails(store));
+    all.extend(admin_member_emails(store));
+    dedup_normalized(all)
+}
+
+fn dedup_normalized(emails: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for e in emails {
+        let norm = normalize_email(&e);
+        if norm.is_empty() || !seen.insert(norm.clone()) {
+            continue;
+        }
+        out.push(norm);
+    }
+    out
+}
+
+/// `isCoOwnerEmail(email)` (6232).
+pub fn is_co_owner_email(store: &DataStore, email: &str) -> bool {
+    if email.is_empty() {
+        return false;
+    }
+    let norm = normalize_email(email);
+    co_owner_member_emails(store).contains(&norm)
+}
+
+/// `isOwnerEmail(email)` (6236) — co-owners get full owner privileges.
+pub fn is_owner_email(store: &DataStore, email: &str) -> bool {
+    if email.is_empty() {
+        return false;
+    }
+    let norm = normalize_email(email);
+    is_co_owner_email(store, &norm)
+        || owner_member_emails(store)
+            .iter()
+            .any(|o| normalize_email(o) == norm)
+}
+
+/// `isAdminEmail(email)` (6246) — dev-test backdoor, then site-admin membership.
+pub fn is_admin_email(store: &DataStore, email: &str) -> bool {
+    if email.is_empty() {
+        return false;
+    }
+    let norm = normalize_email(email);
+    if dev_test_access_enabled() && norm == DEV_TEST_EMAIL {
+        return true;
+    }
+    site_admin_emails(store).contains(&norm)
+}
+
+/// `isModeratorEmail(email)` (6164) — dev-test backdoor, then bare-array scan.
+pub fn is_moderator_email(store: &DataStore, email: &str) -> bool {
+    if email.is_empty() {
+        return false;
+    }
+    let norm = normalize_email(email);
+    if dev_test_access_enabled() && norm == DEV_TEST_EMAIL {
+        return true;
+    }
+    moderator_emails(store)
+        .iter()
+        .any(|m| normalize_email(m) == norm)
+}
+
+/// `isModeratorId(sid)` (6171) — sid → email → isModeratorEmail.
+pub fn is_moderator_id(store: &DataStore, id_secret: &[u8], sid: &str) -> bool {
+    if sid.is_empty() {
+        return false;
+    }
+    email_from_sid(store, id_secret, sid)
+        .map(|email| is_moderator_email(store, &email))
+        .unwrap_or(false)
+}
+
+/// `isOwnerId(sid)` — sid → email → isOwnerEmail (used by owner-only routes).
+pub fn is_owner_id(store: &DataStore, id_secret: &[u8], sid: &str) -> bool {
+    if sid.is_empty() {
+        return false;
+    }
+    email_from_sid(store, id_secret, sid)
+        .map(|email| is_owner_email(store, &email))
+        .unwrap_or(false)
+}
+
+/// `isAdminId(sid)` (server.js:6181) — three stages in exact JS order:
+/// 1. NODE_ENV=test backdoor: `emailFromSid(sid)` normalizes to admin@mitch.pro
+///    (no admins.json read — a synthetic test session resolves via names.json).
+/// 2. names.json path: if `names[sid]` is a site admin, verify the sid is the
+///    CURRENT generation id for that email; return true/false WITHOUT falling
+///    through to stage 3 (a stale/rotated sid fails outright).
+/// 3. Infinite-token path: any `infinite` token whose normalized email is a
+///    site admin, with `gen = claim_count || 0`.
+///
+/// Note: no validId() pre-gate — the makeEmailId comparisons enforce it.
+pub fn is_admin_id(store: &DataStore, id_secret: &[u8], sid: &str, node_env_test: bool) -> bool {
+    if sid.is_empty() {
+        return false;
+    }
+    if node_env_test {
+        if let Some(email) = email_from_sid(store, id_secret, sid) {
+            if normalize_email(&email) == DEV_TEST_EMAIL {
+                return true;
+            }
+        }
+    }
+    // names.json path (generation-bound; no fallthrough on mismatch).
+    let names = store.read_document(&store.base_dir.join(names_file()), json!({}));
+    if let Some(email) = names.get(sid).and_then(|v| v.as_str()) {
+        let norm = normalize_email(email);
+        if !site_admin_emails(store).contains(&norm) {
+            return false;
+        }
+        let gen = current_session_generation(store, &norm);
+        return sid == make_email_id(&norm, gen as u64, id_secret)
+            || sid == make_email_id(email, gen as u64, id_secret);
+    }
+    // Infinite-token path.
+    let tokens = store.read_document(&store.base_dir.join("data/tokens.json"), json!({}));
+    let admin_norms: std::collections::HashSet<String> =
+        site_admin_emails(store).into_iter().collect();
+    for rec in tokens
+        .as_object()
+        .map(|m| m.values().collect::<Vec<_>>())
+        .unwrap_or_default()
+    {
+        if !rec
+            .get("infinite")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let norm = rec
+            .get("norm_email")
+            .or_else(|| rec.get("email"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_default();
+        let norm = normalize_email(&norm);
+        if !admin_norms.contains(&norm) {
+            continue;
+        }
+        let gen = rec.get("claim_count").and_then(|v| v.as_i64()).unwrap_or(0);
+        if sid == make_email_id(&norm, gen as u64, id_secret) {
+            return true;
+        }
+    }
+    false
+}
+
+/// `isAnyAdminId(sid)` (6177) — admin (incl. owner/co-owner) OR moderator.
+pub fn is_any_admin_id(
+    store: &DataStore,
+    id_secret: &[u8],
+    sid: &str,
+    node_env_test: bool,
+) -> bool {
+    is_admin_id(store, id_secret, sid, node_env_test) || is_moderator_id(store, id_secret, sid)
+}
+
+/// `isPremiumEmail(email)` (6147) — admin/moderator OR an approved premium
+/// application in applications.json.
+pub fn is_premium_email(store: &DataStore, email: &str) -> bool {
+    if email.is_empty() {
+        return false;
+    }
+    if is_admin_email(store, email) || is_moderator_email(store, email) {
+        return true;
+    }
+    let norm = normalize_email(email);
+    let applications =
+        store.read_document(&store.base_dir.join("data/applications.json"), json!([]));
+    applications
+        .as_array()
+        .map(|a| {
+            a.iter().any(|app| {
+                normalize_email(app.get("email").and_then(|v| v.as_str()).unwrap_or("")) == norm
+                    && app.get("status").and_then(|v| v.as_str()) == Some("approved")
+                    && (app.get("type").and_then(|v| v.as_str()) == Some("premium")
+                        || app.get("grantPremium").and_then(|v| v.as_bool()) == Some(true))
+            })
+        })
+        .unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -814,6 +1120,197 @@ mod tests {
 
     fn secret() -> Vec<u8> {
         b"test-id-secret-bytes-0123456789".to_vec()
+    }
+
+    #[test]
+    fn role_resolution_matches_js_shape() {
+        // admins.json is a LIST OF EMAILS PER ROLE (verified against live data),
+        // NOT {email: {rank}}: {owners: [], admins: [], coOwners?: []}.
+        let (base, store) = temp_store("roles");
+        store
+            .write_document(
+                &base.join("data/admins.json"),
+                &json!({
+                    "owners": ["owner@mitch.pro", "co-owner@mitch.pro"],
+                    "coOwners": ["configured-coowner@mitch.pro"],
+                    "admins": ["admin@mitch.pro"],
+                }),
+            )
+            .unwrap();
+        store
+            .write_document(
+                &base.join("data/moderators.json"),
+                &json!(["mod@mitch.pro"]),
+            )
+            .unwrap();
+
+        // Co-owners get full owner privileges (isOwnerEmail includes isCoOwnerEmail).
+        assert!(is_owner_email(&store, "co-owner@mitch.pro"));
+        assert!(is_co_owner_email(&store, "configured-coowner@mitch.pro"));
+        assert!(
+            is_co_owner_email(&store, SITE_CO_OWNER_EMAIL),
+            "hardcoded co-owner"
+        );
+        assert!(is_owner_email(&store, "configured-coowner@mitch.pro"));
+        assert!(is_owner_email(&store, "owner@mitch.pro"));
+        // Plain config admins: admin yes, owner no.
+        assert!(is_admin_email(&store, "admin@mitch.pro"));
+        assert!(!is_owner_email(&store, "admin@mitch.pro"));
+        // Moderators are a DISJOINT set, not cumulative with admin.
+        assert!(is_moderator_email(&store, "mod@mitch.pro"));
+        assert!(!is_admin_email(&store, "mod@mitch.pro"));
+        assert!(!is_moderator_email(&store, "admin@mitch.pro"));
+        // siteAdminEmails = owners ∪ co-owners ∪ admins.
+        let site = site_admin_emails(&store);
+        for email in [
+            "owner@mitch.pro",
+            "co-owner@mitch.pro",
+            "configured-coowner@mitch.pro",
+            SITE_CO_OWNER_EMAIL,
+            "admin@mitch.pro",
+        ] {
+            assert!(site.contains(&normalize_email(email)), "{email} missing");
+        }
+        // Defaults when admins.json is absent: owners default to admin@mitch.pro.
+        let (empty_base, empty_store) = temp_store("roles-empty");
+        assert!(is_owner_email(&empty_store, "admin@mitch.pro"));
+        assert!(!is_admin_email(&empty_store, "random@mitch.pro"));
+        std::fs::remove_dir_all(base).ok();
+        std::fs::remove_dir_all(empty_base).ok();
+    }
+
+    #[test]
+    fn is_admin_id_requires_current_generation() {
+        // names.json path: the sid must be the CURRENT generation id — a stale
+        // generation fails outright without falling through to the token path.
+        let id_secret = secret();
+        let (base, store) = temp_store("roles-gen");
+        let email = "admin@mitch.pro";
+        let norm = normalize_email(email);
+        store
+            .write_document(&base.join("data/names.json"), &json!({}))
+            .unwrap();
+        store
+            .write_document(
+                &base.join("data/admins.json"),
+                &json!({ "owners": [email] }),
+            )
+            .unwrap();
+        // generations.json shape: {normEmail: {gen} | number}.
+        store
+            .write_document(
+                &base.join("data/generations.json"),
+                &json!({ "admin@mitch.pro": { "gen": 2 } }),
+            )
+            .unwrap();
+
+        let stale = make_email_id(email, 0, &id_secret);
+        let current = make_email_id(email, 2, &id_secret);
+        let norm_current = make_email_id(&norm, 2, &id_secret);
+        store
+            .write_document(
+                &base.join("data/names.json"),
+                &json!({ stale.clone(): email, current.clone(): email }),
+            )
+            .unwrap();
+        // Stale generation: admin email but wrong gen → false, no fallthrough.
+        assert!(!is_admin_id(&store, &id_secret, &stale, false));
+        // Current generation via raw email and via normalized email both pass.
+        assert!(is_admin_id(&store, &id_secret, &current, false));
+        assert!(is_admin_id(&store, &id_secret, &norm_current, false));
+        assert!(is_any_admin_id(&store, &id_secret, &current, false));
+        // A non-admin name with a valid generation is still not an admin.
+        let rando = make_email_id("rando@mitch.pro", 0, &id_secret);
+        store
+            .write_document(
+                &base.join("data/names.json"),
+                &json!({ rando.clone(): "rando@mitch.pro" }),
+            )
+            .unwrap();
+        assert!(!is_admin_id(&store, &id_secret, &rando, false));
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn is_admin_id_infinite_token_path() {
+        let id_secret = secret();
+        let (base, store) = temp_store("roles-token");
+        let email = "owner@mitch.pro";
+        let norm = normalize_email(email);
+        store
+            .write_document(&base.join("data/names.json"), &json!({}))
+            .unwrap();
+        store
+            .write_document(
+                &base.join("data/admins.json"),
+                &json!({ "owners": [email] }),
+            )
+            .unwrap();
+        // Infinite token claimed once: gen = claim_count = 1.
+        let claimed = make_email_id(&norm, 1, &id_secret);
+        store
+            .write_document(
+                &base.join("data/tokens.json"),
+                &json!({ "tok123": {
+                    "email": email,
+                    "norm_email": norm,
+                    "infinite": true,
+                    "claim_count": 1,
+                }}),
+            )
+            .unwrap();
+        assert!(is_admin_id(&store, &id_secret, &claimed, false));
+        // Wrong generation fails.
+        assert!(!is_admin_id(
+            &store,
+            &id_secret,
+            &make_email_id(&norm, 0, &id_secret),
+            false
+        ));
+        // Non-infinite tokens are skipped.
+        store
+            .write_document(
+                &base.join("data/tokens.json"),
+                &json!({ "tok123": {
+                    "email": email,
+                    "norm_email": norm,
+                    "infinite": false,
+                    "claim_count": 1,
+                }}),
+            )
+            .unwrap();
+        assert!(!is_admin_id(&store, &id_secret, &claimed, false));
+        std::fs::remove_dir_all(base).ok();
+    }
+
+    #[test]
+    fn is_premium_email_ladder() {
+        let (base, store) = temp_store("roles-premium");
+        store
+            .write_document(
+                &base.join("data/admins.json"),
+                &json!({ "owners": ["owner@mitch.pro"] }),
+            )
+            .unwrap();
+        // Admin → premium.
+        assert!(is_premium_email(&store, "owner@mitch.pro"));
+        // Approved premium application → premium.
+        store
+            .write_document(
+                &base.join("data/applications.json"),
+                &json!([
+                    {"email": "paid@mitch.pro", "status": "approved", "type": "premium"},
+                    {"email": "pending@mitch.pro", "status": "pending", "type": "premium"},
+                    {"email": "rejected@mitch.pro", "status": "approved", "type": "free"},
+                    {"email": "granted@mitch.pro", "status": "approved", "grantPremium": true},
+                ]),
+            )
+            .unwrap();
+        assert!(is_premium_email(&store, "paid@mitch.pro"));
+        assert!(!is_premium_email(&store, "pending@mitch.pro"));
+        assert!(!is_premium_email(&store, "rejected@mitch.pro"));
+        assert!(is_premium_email(&store, "granted@mitch.pro"));
+        std::fs::remove_dir_all(base).ok();
     }
 
     #[test]

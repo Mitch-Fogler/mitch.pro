@@ -320,6 +320,37 @@ pub async fn handle(
         }
     }
 
+    // 3b2. IP ban gate — server.js:7677-7684, immediately after getRealIp.
+    // Bans apply to every path except the appeal set.
+    {
+        let ip = get_real_ip(headers, None);
+        if let Some(ip_ban) = mitch_lib::auth::banned_info_for_ip(&state.store, &ip) {
+            if !BAN_OPEN_PATHS.contains(&path.as_str()) {
+                let reason = ip_ban
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("This IP address is banned from the website.");
+                let by = ip_ban
+                    .get("by")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("site admin");
+                return banned_response(reason, by);
+            }
+        }
+    }
+
+    // 3c. Admin gate — server.js:7945-7973, which sits BEFORE the captcha
+    // proxy, the maintenance gate, the banned check, and password enforcement.
+    // Every /api/admin/* path except passphrase-status requires a valid sid,
+    // isAnyAdminId, and (for full admins) the X-Admin-Passphrase header.
+    if path.starts_with("/api/admin/") && path != "/api/admin/passphrase-status" {
+        if let Some(resp) = crate::routes::admin::admin_gate(&state, headers) {
+            return resp;
+        }
+    }
+
     // 4. Soft-maintenance gate.
     if state.soft_maintenance_active() {
         let exempt = path == "/maintenance.html"
@@ -342,6 +373,67 @@ pub async fn handle(
                 );
             }
             return redirect("/maintenance.html", 302);
+        }
+    }
+
+    // 4a. Account-ban gate — server.js:8256-8271, between maintenance and
+    // password enforcement. Banned sessions get the ban page (HTML) or a JSON
+    // error for /api/ paths, except on the appeal paths.
+    {
+        let cookie_header = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let cookies = mitch_lib::auth::get_cookies_from_header_value(
+            cookie_header,
+            &state.store,
+            &state.id_secret,
+            node_env_test,
+        );
+        let sid = cookies
+            .get("studentId")
+            .filter(|s| !s.is_empty())
+            .or_else(|| cookies.get("id"))
+            .unwrap_or("")
+            .to_string();
+        if let Some(ban) =
+            mitch_lib::auth::banned_info_for_sid(&state.store, &state.id_secret, &sid)
+        {
+            if !BAN_OPEN_PATHS.contains(&path.as_str()) {
+                if path.starts_with("/api/") {
+                    let reason = ban
+                        .get("reason")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                        .unwrap_or("This account is banned from the website.");
+                    let code = if path == "/api/pass" { 200 } else { 403 };
+                    return json_resp(
+                        code,
+                        serde_json::json!({
+                            "success": false,
+                            "banned": true,
+                            "error": "account banned",
+                            "reason": reason,
+                        }),
+                    );
+                }
+                let reason = ban
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("This account is banned from the website.");
+                let by = ban
+                    .get("by")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| {
+                        ban.get("admin")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("site admin")
+                    });
+                return banned_response(reason, by);
+            }
         }
     }
 
@@ -392,7 +484,7 @@ pub async fn handle(
         return redirect("/enroll/", 302);
     }
 
-    // 4c. API route dispatch — the ported route groups (plan Step 7).
+    // 4c. API route dispatch — the ported route groups (plan Step 7+).
     if path.starts_with("/api/") {
         // Captcha proxy (solve/submit/stats/token/next/puzzle/images).
         if let Some(resp) = crate::routes::proxy::captcha_proxy(
@@ -411,6 +503,14 @@ pub async fn handle(
             if let Some(resp) = crate::routes::proxy::content(&state, &body, headers).await {
                 return resp;
             }
+        }
+        if path.starts_with("/api/admin/") {
+            if let Some(resp) =
+                crate::routes::admin::handle(&state, &method, &path, headers, &search, &body).await
+            {
+                return resp;
+            }
+            // Unmatched admin paths fall through to the static 404 below.
         }
         if let Some(resp) =
             crate::routes::misc::handle(&state, &method, &path, headers, &search, &body).await
@@ -635,6 +735,50 @@ pub async fn handle(
 fn html_response(html: String) -> Response {
     Response::builder()
         .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(axum::body::Body::from(html))
+        .expect("static response")
+}
+
+/// `banOpenPaths` — server.js:7605. Exact-path matches only.
+const BAN_OPEN_PATHS: &[&str] = &["/appeal.html", "/api/appeal", "/api/pass"];
+
+/// `bannedResponse(info)` — server.js:5004. 403 HTML ban page with an alert
+/// script; `reason`/`by` are HTML-escaped, the alert text is JSON-escaped
+/// with `<` rewritten to the `<` sequence (matching the JS).
+fn banned_response(reason: &str, by: &str) -> Response {
+    let reason_esc = crate::errors::html_esc(reason);
+    let by_esc = crate::errors::html_esc(by);
+    let alert_raw = format!("This account is banned from the website. Reason: {reason}");
+    let alert_json = serde_json::to_string(&alert_raw).unwrap_or("\"\"".into());
+    let alert_text = alert_json.replace('<', "\\u003c");
+    let html = format!(
+        r#"<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Account Banned</title>
+<style>
+body{{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#111318;color:#f8fafc;font-family:system-ui,sans-serif;padding:24px;}}
+.modal{{width:min(440px,100%);background:#1b1f2a;border:1px solid rgba(248,113,113,.35);border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.45);padding:24px;text-align:center;}}
+.badge{{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:999px;background:rgba(239,68,68,.14);color:#fecaca;font-weight:900;margin-bottom:14px;}}
+h1{{font-size:1.35rem;margin:0 0 10px;}}
+p{{color:#cbd5e1;line-height:1.5;margin:0 0 12px;font-size:.94rem;}}
+.reason{{background:#111827;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:12px;margin:14px 0;color:#e5e7eb;text-align:left;}}
+.small{{font-size:.78rem;color:#94a3b8;}}
+button{{margin-top:8px;border:0;border-radius:9px;background:#ef4444;color:white;padding:10px 16px;font-weight:700;cursor:pointer;}}
+</style></head><body>
+<div class="modal" role="dialog" aria-modal="true" aria-labelledby="ban-title">
+  <div class="badge">!</div>
+  <h1 id="ban-title">This account is banned from the website</h1>
+  <p>Your account cannot access mitch.pro right now.</p>
+  <div class="reason"><strong>Reason:</strong><br>{reason_esc}</div>
+  <p class="small">Issued by {by_esc}. Contact site staff if you think this was a mistake.</p>
+  <button onclick="location.href='/appeal.html'">Appeal ban</button>
+</div>
+<script>alert({alert_text});</script>
+</body></html>"#,
+    );
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
         .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
         .body(axum::body::Body::from(html))
         .expect("static response")

@@ -12,6 +12,9 @@ Record one row per plan step; report honestly — partial passes are data.
 | 4 | core skeleton (hosts, static, pipeline) | 2026-09-08 | 52/52 urls | 52+ | headers AND bodies byte-identical vs bun (104 checks) |
 | 5 | data layer + crypto | 2026-09-08 | 8/8 paths | 8 | data parity harness: passthrough + reserialize byte-identical; 29 rust tests green |
 | 6a | auth/sessions + rate limits | 2026-09-09 | 102/102 urls | 102+ | parity holds with the live rate limiter + real checkPasswordCookie; 6a test bypass order fixed |
+| 7 batch 1 | misc read-heavy endpoints (site-info, bad-passwords, backgrounds, log-click, leaderboard, games) | 2026-09-09 | 102/102 urls | 102+ | six endpoints live with data layer + auth; parity unaffected |
+| 7 batch 2 | captcha proxy, ping, content | 2026-09-09 | 102/102 urls | 102+ | worldshardestcaptcha proxy + ping + content endpoints live |
+| 8 | admin route group (~60 endpoints) | 2026-09-13 | 102/102 urls | 102+ | parity_static green; admin gate probes byte-identical vs bun (401/403 ladder + passphrase-status passthrough) |
 
 ## Step 4 verification log (2026-09-08)
 
@@ -72,3 +75,12 @@ Record one row per plan step; report honestly — partial passes are data.
 - Parity: 102/102 headers+bodies byte-identical with the live rate limiter — the harness's ~51 sequential requests stay under the default [100, 60] bucket.
 - Functional: hammering /api/stats on the rust server returns 429 after the bucket fills (verified with a 105-request curl loop).
 - Test-semantics fix: the NODE_ENV=test bypass fires AFTER sid validation and email resolution (matching the JS order), not before — the test was asserting the wrong order.
+
+## Step 8 verification log (2026-09-13)
+
+- Admin route group ported as `routes/admin/{mod,dashboard,moderation,economy,legacy,data,vm}.rs` + a shared `AdminCtx` (cookies/sid/ip) — one file per concern, none over ~700 lines; `mitch-lib` gains `admin.rs` (passphrase store, admin-actions log, advanced-data builder, moderator panel/request engine) and `coins.rs` (multiplier, happy hour, gift notices, notifications).
+- **Gate-order bug the parity probes caught**: bun's admin gate (server.js:7945) runs BEFORE the maintenance gate, the banned check, and password enforcement — the Rust port had it after the password prelude, so unauthenticated `/api/admin/*` returned `403 password required` instead of `401 unauthorized`. Moved the gate to prelude position 3c; the no-sid ladder (`passphrase-status` 403 passthrough, everything else 401, response bodies identical) now matches bun exactly.
+- Admin role model corrected to the real admins.json shape (`{owners, admins, coOwners?}`, moderators a bare array, flat hierarchy); `is_admin_id` keeps the JS three-stage order (test backdoor → names.json generation binding → infinite token).
+- Web-push fan-out ported with the `web-push` crate (VAPID from env, AES128GCM, 410/404 subscription cleanup); ntfy + bg-email stay fire-and-forget like the JS `proc.unref()` paths.
+- Deferred stubs, documented: Proxmox executors + `ssh-key/copy-id` + `lxc-attach-sshd-hook` → Step 13 (russh) — they return structured failures and never write fake approval state; broadcast WS fan-out → Step 11; `/api/admin-members` + `/api/moderator-members` → Step 9 (need processMemberFields/profiles); ssh-key save re-encrypts via `ssh-keygen -p` instead of node PKCS8 (same russh-readable result).
+- Gates: cargo fmt clean, clippy `-D warnings` 0 errors, `cargo test --workspace` 46+11+6 green; `tests/parity_static.js` 102/102 byte-identical.

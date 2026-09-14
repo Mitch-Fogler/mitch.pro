@@ -184,6 +184,19 @@ pub fn argon2_verify(phc_hash: &str, password: &str) -> bool {
     }
 }
 
+/// `Bun.password.hash(pw)` — argon2id PHC string (crate defaults).
+pub fn argon2_hash(password: &str) -> String {
+    use argon2::password_hash::SaltString;
+    use argon2::{Argon2, PasswordHasher};
+    let Ok(salt) = SaltString::encode_b64(&random_bytes(16)) else {
+        return String::new();
+    };
+    Argon2::default()
+        .hash_password(password.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .unwrap_or_default()
+}
+
 /// `Disconnect` reason codes for russh teardown parity.
 pub const DISCONNECT_BY_APPLICATION: &str = "ByApplication";
 

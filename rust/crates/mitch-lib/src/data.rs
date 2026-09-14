@@ -451,6 +451,16 @@ impl DataStore {
         })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
+
+    /// `queryAppLogs`'s categories query — top 80 categories by count.
+    pub fn app_log_categories_sync(&self) -> Result<Vec<(String, i64)>, DataError> {
+        let conn = self.conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = conn.prepare(
+            "SELECT category, COUNT(*) FROM app_logs GROUP BY category ORDER BY COUNT(*) DESC, category ASC LIMIT 80",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
 }
 
 fn normalize_log_level(level: &str) -> String {
