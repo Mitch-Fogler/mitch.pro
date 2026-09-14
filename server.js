@@ -9080,7 +9080,11 @@ async function handleRequest(req, server) {
     path.startsWith('/_matrix/') || path.startsWith('/.well-known/matrix/') ||
     path === '/ws' || path === '/health' || path === '/healthz';
   if (incomingHost === 'mitch.pro' && (method === 'GET' || method === 'HEAD') && !isCompatibilityEndpoint) {
-    return Response.redirect(`https://mitchdog.com${path}${url.search}`, 308);
+    const canonicalDestination = `https://mitchdog.com${path}${url.search}`;
+    if (checkPasswordCookie(req)) {
+      return Response.redirect(`https://mitch.pro/api/sso/bridge?back=${encodeURIComponent(canonicalDestination)}`, 302);
+    }
+    return Response.redirect(canonicalDestination, 308);
   }
 
   const bellRedirect = bellScheduleRedirect(url, method);
