@@ -58,6 +58,10 @@ const preferencesHtml = readFileSync('webserver/preferences/index.html', 'utf8')
 const preferencesSchoolCss = readFileSync('webserver/preferences-school.css', 'utf8');
 assert(rjuhsdHtml.includes('<a class="brand" href="/" aria-label="rjuhsd.school home"><span class="brand-logo"><img class="site-logo" src="/icon-192.png"'), 'rjuhsd top left brand must use mitch.pro logo');
 assert(rjuhsdHtml.includes('/rjuhsd-assets/redesign.css?v=2'), 'rjuhsd must load the schedule-first redesign');
+assert(rjuhsdHtml.includes('/rjuhsd-assets/reference-theme.css?v=10'), 'rjuhsd must load updated reference-theme.css?v=10');
+const referenceThemeCss = readFileSync('webserver/rjuhsd-assets/reference-theme.css', 'utf8');
+assert(referenceThemeCss.includes('.calendar-days>button:hover:not(.today)'), 'dark calendar date hover must be styled without white box');
+assert(referenceThemeCss.includes('body.dark .calendar-days>button:not(.today):nth-child(7n+1)'), 'weekend styling must not clobber today highlight');
 assert(rjuhsdRedesign.includes('.schedule-zone { order: 2; }'), 'full schedule must appear before secondary school content');
 assert(rjuhsdRedesign.includes('.live-card {') && rjuhsdRedesign.includes('.countdown-dial {'), 'active countdown must have the redesigned live surface');
 assert(rjuhsdApp.includes('document.querySelectorAll(".js-signin-link").forEach(a=>a.remove())'), 'signed-in users must not see sign-in prompts');
