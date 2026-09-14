@@ -5,6 +5,7 @@
     var fallbackTimer;
     var LAST_BROADCAST_KEY = 'mitch:last-admin-broadcast';
     var lastBroadcastId = '';
+    var pageOpenedAt = Date.now();
     function stopPresencePing() {
       if (presenceTimer) clearInterval(presenceTimer);
       presenceTimer = null;
@@ -25,6 +26,9 @@
       return false;
     }
     function handleMessage(data) {
+      if ((data.type === 'admin_broadcast' || data.type === 'admin_jumpscare') && data.createdAt && Number(data.createdAt) < pageOpenedAt) {
+        return;
+      }
       if (data.type === 'admin_broadcast') {
         if (!hasSeenBroadcast(data)) showBroadcast(data.message);
       } else if (data.type === 'admin_jumpscare') {

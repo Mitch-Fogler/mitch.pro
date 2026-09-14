@@ -19,6 +19,8 @@ assert.doesNotMatch(broadcast, /myinstants\.com/, 'The old third-party screamer 
 assert.match(broadcast, /fetch\('\/api\/broadcast\/latest'/, 'Clients need an HTTP fallback when school networks block WebSockets');
 assert.match(broadcast, /setInterval\(pollLatestBroadcast, 3000\)/, 'Fallback delivery should check promptly');
 assert.match(broadcast, /sessionStorage\.setItem\(LAST_BROADCAST_KEY/, 'WebSocket and polling delivery must be deduplicated per tab');
+assert.match(broadcast, /pageOpenedAt = Date\.now\(\)/, 'Refreshed pages must not replay an older broadcast');
+assert.match(broadcast, /Number\(data\.createdAt\) < pageOpenedAt/, 'Only pages open when the broadcast was sent may play it');
 assert.match(broadcast, /scheduleReconnect\(\)/, 'WebSocket delivery must recover after a dropped connection');
 assert.match(admin, /value="jumpscare">Video Jumpscare/);
 assert.match(admin, /Play video for everyone/);
@@ -27,7 +29,7 @@ assert.match(server, /function publishAdminBroadcast\(type, message\)/);
 assert.match(server, /ADMIN_BROADCAST_TTL_MS = 5 \* 60 \* 1000/);
 assert.match(server, /path === '\/api\/broadcast\/latest'/);
 assert.match(server, /'Cache-Control', 'private, no-store, max-age=0'/);
-assert.match(home, /broadcast\.js\?v=7/);
-assert.match(server, /broadcast\.js\?v=7/);
+assert.match(home, /broadcast\.js\?v=8/);
+assert.match(server, /broadcast\.js\?v=8/);
 
 console.log('Video jumpscare asset, resilient multi-PC delivery, deduplication, cleanup, and cache-version checks passed.');
