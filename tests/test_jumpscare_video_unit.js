@@ -3,7 +3,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = join(import.meta.dir, '..');
-const videoPath = join(root, 'webserver', 'media', 'admin-jumpscare-krupp-1935.mp4');
+const videoPath = join(root, 'webserver', 'media', 'admin-jumpscare-krupp-1935.webm');
 const broadcast = readFileSync(join(root, 'webserver', 'broadcast.js'), 'utf8');
 const admin = readFileSync(join(root, 'webserver', 'admin', 'index.html'), 'utf8');
 const server = readFileSync(join(root, 'server.js'), 'utf8');
@@ -12,7 +12,7 @@ const serviceWorker = readFileSync(join(root, 'webserver', 'sw.js'), 'utf8');
 
 assert.ok(existsSync(videoPath), 'The local jumpscare video must be deployed');
 assert.ok(statSync(videoPath).size > 1_000_000, 'The jumpscare MP4 must not be an empty placeholder');
-assert.match(broadcast, /video\.src = '\/media\/admin-jumpscare-krupp-1935\.mp4'/);
+assert.match(broadcast, /video\.src = '\/media\/admin-jumpscare-krupp-1935\.webm'/);
 assert.match(broadcast, /overlay\.append\(video, close, caption\)/);
 assert.doesNotMatch(broadcast, /Tap for sound/, 'The overlay should not show a sound button');
 assert.match(broadcast, /video\.muted = true/, 'Muted fallback is required when autoplay audio is blocked');
@@ -33,6 +33,6 @@ assert.match(server, /path === '\/api\/broadcast\/latest'/);
 assert.match(server, /'Cache-Control', 'private, no-store, max-age=0'/);
 assert.match(home, /broadcast\.js\?v=8/);
 assert.match(server, /broadcast\.js\?v=8/);
-assert.match(serviceWorker, /requestUrl\.pathname === '\/media\/admin-jumpscare-krupp-1935\.mp4'/, 'Service Worker must not cache the large authenticated video stream');
+assert.match(serviceWorker, /requestUrl\.pathname === '\/media\/admin-jumpscare-krupp-1935\.webm'/, 'Service Worker must not cache the large authenticated video stream');
 
 console.log('Video jumpscare asset, resilient multi-PC delivery, deduplication, cleanup, and cache-version checks passed.');

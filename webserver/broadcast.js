@@ -114,7 +114,7 @@
       overlay.setAttribute('aria-modal', 'true');
       overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:2147483647;display:grid;place-items:center;overflow:hidden;';
       var video = document.createElement('video');
-      video.src = '/media/admin-jumpscare-krupp-1935.mp4';
+      video.src = '/media/admin-jumpscare-krupp-1935.webm';
       video.autoplay = true;
       video.playsInline = true;
       video.preload = 'auto';
