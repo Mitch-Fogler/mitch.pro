@@ -565,6 +565,92 @@ const tests = [
     verify: (b) => b && b.error === 'not logged in'
   },
   {
+    name: 'GET /api/me (Authenticated)',
+    path: '/api/me',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/me (Anonymous)',
+    path: '/api/me',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/me/security-code (Anonymous)',
+    path: '/api/me/security-code',
+    method: 'POST',
+    token: null,
+    body: { action: 'change_password' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/me/2fa/setup-totp (Anonymous)',
+    path: '/api/me/2fa/setup-totp',
+    method: 'POST',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/me/2fa/enable (Anonymous)',
+    path: '/api/me/2fa/enable',
+    method: 'POST',
+    token: null,
+    body: { type: 'email' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/me/2fa/disable (Anonymous)',
+    path: '/api/me/2fa/disable',
+    method: 'POST',
+    token: null,
+    body: { password: 'wrong' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/me/change-email (Anonymous)',
+    path: '/api/me/change-email',
+    method: 'POST',
+    token: null,
+    body: { newEmail: 'test_normal_user@student.rjuhsd.us' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/me/change-email/confirm (Authenticated)',
+    path: '/api/me/change-email/confirm',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { change_token: 'bogus', code: '1' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/me/change-password (Anonymous)',
+    path: '/api/me/change-password',
+    method: 'POST',
+    token: null,
+    body: { currentPassword: 'a', newPassword: 'b', confirmPassword: 'b' },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/me/logout-other (Anonymous)',
+    path: '/api/me/logout-other',
+    method: 'POST',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',
     method: 'GET',

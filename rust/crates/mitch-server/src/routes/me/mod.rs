@@ -13,6 +13,7 @@
 //! that call is a no-op after the prelude's (server.js:5987 sets
 //! `req._rateLimitChecked`), so the Rust prelude gate covers everything here.
 
+mod account;
 mod cosmetics;
 mod notifications;
 mod security;
@@ -32,9 +33,16 @@ pub async fn handle(
     body: &serde_json::Value,
     body_bytes: &[u8],
 ) -> Option<Response> {
-    cosmetics::handle(state, method, path, headers, body, body_bytes)
-        .or_else(|| notifications::handle(state, method, path, headers, body, body_bytes))
-        .or_else(|| security::handle(state, method, path, headers, body, body_bytes))
+    if let Some(resp) = cosmetics::handle(state, method, path, headers, body, body_bytes) {
+        return Some(resp);
+    }
+    if let Some(resp) = notifications::handle(state, method, path, headers, body, body_bytes) {
+        return Some(resp);
+    }
+    if let Some(resp) = security::handle(state, method, path, headers, body, body_bytes) {
+        return Some(resp);
+    }
+    account::handle(state, method, path, headers, body_bytes).await
 }
 
 /// `tryParseJson()` (server.js:10514): empty body → `{}`; unparseable →
@@ -64,6 +72,17 @@ pub(crate) fn cookies_of(state: &AppState, headers: &HeaderMap) -> mitch_lib::au
         &state.id_secret,
         node_env_test,
     )
+}
+
+/// `cookies['studentId'] || cookies['id'] || ''` — the JS fallback that the
+/// me/* endpoints use before `emailFromSid`.
+pub(crate) fn me_uid(cookies: &mitch_lib::auth::Cookies) -> String {
+    let student = cookies.get("studentId").unwrap_or("");
+    if !student.is_empty() {
+        student.to_string()
+    } else {
+        cookies.get("id").unwrap_or("").to_string()
+    }
 }
 
 /// The `data/<file>` path helper used across the group.

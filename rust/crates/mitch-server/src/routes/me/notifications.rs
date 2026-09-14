@@ -6,6 +6,7 @@
 //! twins have NO method check (any verb matches); every auth check reads
 //! `cookies['studentId'] || cookies['id'] || ''`.
 
+use super::me_uid;
 use super::{cookies_of, data_file, json_response, parse_body_strict};
 use crate::state::AppState;
 use axum::http::{HeaderMap, Method};
@@ -53,16 +54,6 @@ fn now_millis() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
-}
-
-/// `cookies['studentId'] || cookies['id'] || ''`.
-fn me_uid(cookies: &auth::Cookies) -> String {
-    let student = cookies.get("studentId").unwrap_or("");
-    if !student.is_empty() {
-        student.to_string()
-    } else {
-        cookies.get("id").unwrap_or("").to_string()
-    }
 }
 
 // ── Notif prefs ─────────────────────────────────────────────────────────────

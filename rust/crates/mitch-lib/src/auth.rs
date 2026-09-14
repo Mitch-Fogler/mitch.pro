@@ -17,6 +17,7 @@
 //!   timing-bot detection (>=4 intervals within 10s each, spread < 50ms).
 
 use crate::data::DataStore;
+use base64::Engine;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
@@ -560,6 +561,30 @@ pub fn cookie_path_attrs(
     parts.join("; ")
 }
 
+/// `encodeURIComponent(value || '')` — JS encodeURIComponent (unreserved set:
+/// `A-Za-z0-9-_.!~*'()`), used for cookie values in `setCookieHeader`.
+pub fn encode_uri_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.as_bytes() {
+        match b {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'!'
+            | b'~'
+            | b'*'
+            | b'\''
+            | b'('
+            | b')' => out.push(*b as char),
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
 /// `setCookieHeader(name, value, req, maxAge, httpOnly)`.
 pub fn set_cookie_header(
     name: &str,
@@ -571,9 +596,162 @@ pub fn set_cookie_header(
 ) -> String {
     format!(
         "{name}={}; {}",
-        crate::data::js_quote(value),
+        encode_uri_component(value),
         cookie_path_attrs(secure_flag, node_env_production, max_age, http_only)
     )
+}
+
+/// `clearCookieHeader(name, req, httpOnly)` (server.js:2841).
+pub fn clear_cookie_header(
+    name: &str,
+    secure_flag: &str,
+    node_env_production: bool,
+    http_only: bool,
+) -> String {
+    format!(
+        "{name}=; {}",
+        cookie_path_attrs(secure_flag, node_env_production, 0, http_only)
+    )
+}
+
+/// Result of `createAuthSession`.
+pub struct IssuedAuthSession {
+    pub token: String,
+    pub sid: String,
+    pub email: String,
+    pub norm_email: String,
+    pub gen: i64,
+}
+
+/// `createAuthSession(normEmail, originalEmail, req, options)`
+/// (server.js:2870-2898) — random 32-byte base64url token, hashed key,
+/// full session record in auth_sessions.json.
+pub fn create_auth_session(
+    store: &DataStore,
+    id_secret: &[u8],
+    norm_email: &str,
+    original_email: &str,
+    user_agent: &str,
+    ip: &str,
+    dev_superuser: bool,
+) -> IssuedAuthSession {
+    let norm = normalize_email(norm_email);
+    let email = if original_email.is_empty() {
+        norm.clone()
+    } else {
+        original_email.to_string()
+    };
+    let gen = current_session_generation(store, &norm);
+    let sid = issue_login_session(store, id_secret, &norm, &email);
+    let mut token_bytes = [0u8; 32];
+    use rand::RngCore;
+    rand::rng().fill_bytes(&mut token_bytes);
+    let token = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(token_bytes);
+    let key = hash_session_token(&token);
+    let now = now_millis();
+    let sessions_path = store.base_dir.join(sessions_file());
+    let mut sessions = store.read_document(&sessions_path, serde_json::json!({}));
+    let ua: String = user_agent.chars().take(240).collect();
+    if let Some(map) = sessions.as_object_mut() {
+        map.insert(
+            key,
+            serde_json::json!({
+                "email": email,
+                "normEmail": norm,
+                "sid": sid,
+                "gen": gen,
+                "createdAt": now,
+                "lastSeen": now,
+                "expiresAt": now + AUTH_SESSION_TTL_MS,
+                "userAgent": ua,
+                "ip": ip,
+                "devSuperuser": dev_superuser && dev_test_access_enabled(),
+            }),
+        );
+    }
+    let _ = store.write_document(&sessions_path, &sessions);
+    IssuedAuthSession {
+        token,
+        sid,
+        email,
+        norm_email: norm,
+        gen,
+    }
+}
+
+/// `invalidateAuthSessionsForEmail(normEmail, keepToken)` (server.js:2918-2931).
+pub fn invalidate_auth_sessions_for_email(
+    store: &DataStore,
+    norm_email: &str,
+    keep_token: Option<&str>,
+) {
+    let norm = normalize_email(norm_email);
+    let keep_key = keep_token.map(hash_session_token).unwrap_or_default();
+    let sessions_path = store.base_dir.join(sessions_file());
+    let mut sessions = store.read_document(&sessions_path, serde_json::json!({}));
+    let mut changed = false;
+    if let Some(map) = sessions.as_object_mut() {
+        let stale: Vec<String> = map
+            .iter()
+            .filter(|(key, rec)| {
+                key.as_str() != keep_key
+                    && normalize_email(
+                        rec.get("normEmail")
+                            .or_else(|| rec.get("email"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(""),
+                    ) == norm
+            })
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in stale {
+            map.remove(&key);
+            changed = true;
+        }
+    }
+    if changed {
+        let _ = store.write_document(&sessions_path, &sessions);
+    }
+}
+
+/// `rotateSessionGeneration(normEmail)` (server.js:2932-2947) — bumps the
+/// generation, drops the email's names.json sids, kills its sessions.
+pub fn rotate_session_generation(store: &DataStore, norm_email: &str) -> i64 {
+    let norm = normalize_email(norm_email);
+    let current_gen = current_session_generation(store, &norm);
+    let next_gen = current_gen + 1;
+    let gens_path = store.base_dir.join(generations_file());
+    let mut gens = store.read_document(&gens_path, serde_json::json!({}));
+    if let Some(map) = gens.as_object_mut() {
+        map.insert(
+            norm.clone(),
+            serde_json::json!({
+                "gen": next_gen,
+                "last_registered": now_millis() as f64 / 1000.0,
+            }),
+        );
+    }
+    let _ = store.write_document(&gens_path, &gens);
+
+    let names_path = store.base_dir.join(names_file());
+    let mut names = store.read_document(&names_path, serde_json::json!({}));
+    if let Some(map) = names.as_object_mut() {
+        let stale: Vec<String> = map
+            .iter()
+            .filter(|(_, v)| {
+                v.as_str()
+                    .map(|s| normalize_email(s) == norm)
+                    .unwrap_or(false)
+            })
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in stale {
+            map.remove(&key);
+        }
+        let _ = store.write_document(&names_path, &names);
+    }
+    invalidate_auth_sessions_for_email(store, &norm, None);
+    next_gen
 }
 
 // ── Rate limiting ────────────────────────────────────────────────────────────

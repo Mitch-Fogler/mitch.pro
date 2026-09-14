@@ -1,0 +1,810 @@
+//! `/api/me/change-email(/confirm)`, `/api/me/change-password`,
+//! `/api/me/logout-other`, `GET /api/me` (server.js:16035-16077,
+//! 17202-17259, 18736-18821) plus `renameEmailReferences`
+//! (server.js:2626-2693) and `authSuccessResponse` (server.js:2949-2957).
+//!
+//! `change-password` deliberately matches the JS and accepts ANY method.
+
+use super::security::verify_password_change_second_factor;
+use super::{cookies_of, data_file, json_response, me_uid, parse_body_strict};
+use crate::routes::push::{ntfy_notify, send_email_bg, verify_recaptcha};
+use crate::state::{AppState, PendingEmailChange};
+use axum::http::{HeaderMap, Method};
+use axum::response::Response;
+use mitch_lib::auth;
+use mitch_lib::jsval;
+use serde_json::{json, Value};
+use std::sync::Arc;
+
+pub(crate) async fn handle(
+    state: &Arc<AppState>,
+    method: &Method,
+    path: &str,
+    headers: &HeaderMap,
+    body_bytes: &[u8],
+) -> Option<Response> {
+    if path == "/api/me/change-email" && method == Method::POST {
+        return Some(change_email(state, headers, body_bytes));
+    }
+    if path == "/api/me/change-email/confirm" && method == Method::POST {
+        return Some(change_email_confirm(state, headers, body_bytes));
+    }
+    // JS: `if (path === '/api/me/change-password')` — no method check.
+    if path == "/api/me/change-password" {
+        return Some(change_password(state, headers, body_bytes).await);
+    }
+    if path == "/api/me/logout-other" && method == Method::POST {
+        return Some(logout_other(state, headers));
+    }
+    if path == "/api/me" {
+        return Some(me_root(state, headers));
+    }
+    None
+}
+
+fn change_email(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -> Response {
+    let cookies = cookies_of(state, headers);
+    let uid = me_uid(&cookies);
+    let Some(email) = auth::email_from_sid(&state.store, &state.id_secret, &uid) else {
+        return json_response(401, json!({ "error": "not logged in" }));
+    };
+    let Some(body) = parse_body_strict(body_bytes) else {
+        return json_response(400, json!({ "error": "bad json" }));
+    };
+    let new_email = jsval::string(&jsval::or(body.get("newEmail"), json!("")))
+        .trim()
+        .to_lowercase();
+    let new_norm = auth::normalize_email(&new_email);
+    if !new_email.contains('@') || !new_norm.contains('@') {
+        return json_response(400, json!({ "error": "invalid email" }));
+    }
+    let old_norm = auth::normalize_email(&email);
+    if old_norm == new_norm {
+        return json_response(400, json!({ "error": "new email matches current email" }));
+    }
+    let passwords = state
+        .store
+        .read_document(&data_file(state, "passwords.json"), json!({}));
+    if passwords.get(&new_norm).is_some() {
+        return json_response(400, json!({ "error": "email already in use" }));
+    }
+    let code = format!("{}", (100000.0 + js_rand() * 900000.0) as i64);
+    let token = mitch_lib::totp::create_temp_token();
+    state
+        .pending_email_changes
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            token.clone(),
+            PendingEmailChange {
+                old_norm,
+                new_norm,
+                new_email: new_email.clone(),
+                code: code.clone(),
+                expires: mitch_lib::school::now_millis() + 30 * 60 * 1000,
+                attempts: 0,
+            },
+        );
+    let html = super::security::make_verification_code_html(
+        "Email Change Request",
+        &code,
+        30.0,
+        &new_email,
+    );
+    send_email_bg(
+        state,
+        &new_email,
+        "Confirm your mitch.pro email change",
+        &html,
+    );
+    json_response(200, json!({ "ok": true, "change_token": token }))
+}
+
+fn change_email_confirm(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -> Response {
+    let cookies = cookies_of(state, headers);
+    let uid = me_uid(&cookies);
+    let Some(email) = auth::email_from_sid(&state.store, &state.id_secret, &uid) else {
+        return json_response(401, json!({ "error": "not logged in" }));
+    };
+    let Some(body) = parse_body_strict(body_bytes) else {
+        return json_response(400, json!({ "error": "bad json" }));
+    };
+    // JS: String(body.change_token || body.token || '').trim()
+    let token = jsval::string(&jsval::or(
+        body.get("change_token").filter(|v| jsval::truthy(v)),
+        jsval::or(body.get("token"), json!("")),
+    ))
+    .trim()
+    .to_string();
+    let mut changes = state
+        .pending_email_changes
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let valid = match changes.get(&token) {
+        Some(rec) => {
+            mitch_lib::school::now_millis() <= rec.expires
+                && rec.old_norm == auth::normalize_email(&email)
+        }
+        None => false,
+    };
+    if !valid {
+        changes.remove(&token);
+        drop(changes);
+        return json_response(401, json!({ "error": "email change expired" }));
+    }
+    let rec = changes
+        .get_mut(&token)
+        .unwrap_or_else(|| unreachable!("entry checked above"));
+    rec.attempts += 1;
+    if rec.attempts > 5 {
+        changes.remove(&token);
+        drop(changes);
+        return json_response(429, json!({ "error": "too many attempts" }));
+    }
+    let supplied = jsval::string(&jsval::or(body.get("code"), json!("")))
+        .trim()
+        .to_string();
+    if supplied != rec.code {
+        drop(changes);
+        return json_response(400, json!({ "error": "invalid code" }));
+    }
+    let rec = changes
+        .remove(&token)
+        .unwrap_or_else(|| unreachable!("entry checked above"));
+    drop(changes);
+    rename_email_references(state, &rec.old_norm, &rec.new_norm, &rec.new_email);
+    auth::invalidate_auth_sessions_for_email(&state.store, &rec.old_norm, None);
+    auth::rotate_session_generation(&state.store, &rec.new_norm);
+    ntfy_notify(
+        &format!("Email changed: {} -> {}", rec.old_norm, rec.new_norm),
+        "Security",
+        "",
+    );
+    auth_success_response(
+        state,
+        headers,
+        json!({ "ok": true }),
+        &rec.new_norm,
+        &rec.new_email,
+    )
+}
+
+async fn change_password(
+    state: &Arc<AppState>,
+    headers: &HeaderMap,
+    body_bytes: &[u8],
+) -> Response {
+    let Some(body) = parse_body_strict(body_bytes) else {
+        return json_response(400, json!({ "success": false, "message": "bad json" }));
+    };
+
+    let ip = crate::handler::get_real_ip(headers, None);
+    let cookies = cookies_of(state, headers);
+    let uid = me_uid(&cookies);
+    // JS: verifyRecaptcha(body.recaptcha_token || '', ip) — no sid.
+    if !verify_recaptcha(
+        state,
+        &jsval_string_of(body.get("recaptcha_token")),
+        &ip,
+        "",
+    )
+    .await
+    {
+        return json_response(
+            400,
+            json!({ "success": false, "message": "reCAPTCHA failed." }),
+        );
+    }
+    if !state.check_password_cookie(headers, non_empty(&uid)) {
+        return json_response(
+            401,
+            json!({ "success": false, "message": "Auth required." }),
+        );
+    }
+
+    // JS: emailFromSid may return null → normalizeEmail(null) is '' and the
+    // flow continues, failing at the stored-password lookup.
+    let email = auth::email_from_sid(&state.store, &state.id_secret, &uid).unwrap_or_default();
+    let norm = auth::normalize_email(&email);
+
+    let current_password = jsval_string_of(body.get("currentPassword"));
+    let new_password = jsval_string_of(body.get("newPassword"));
+    let confirm_password = jsval_string_of(body.get("confirmPassword"));
+    if current_password.is_empty() || new_password.is_empty() || confirm_password.is_empty() {
+        return json_response(
+            400,
+            json!({ "success": false, "message": "All fields required." }),
+        );
+    }
+    let (pwd_ok, pwd_error) = is_secure_password(state, &new_password);
+    if !pwd_ok {
+        return json_response(400, json!({ "success": false, "message": pwd_error }));
+    }
+    if new_password != confirm_password {
+        return json_response(
+            400,
+            json!({ "success": false, "message": "New passwords do not match." }),
+        );
+    }
+
+    let passwords_file = data_file(state, "passwords.json");
+    let mut passwords = state.store.read_document(&passwords_file, json!({}));
+    let stored = passwords.get(&norm).and_then(|v| v.as_str()).unwrap_or("");
+    if stored.is_empty() || !mitch_lib::crypto::argon2_verify(stored, &current_password) {
+        return json_response(
+            401,
+            json!({ "success": false, "message": "Current password incorrect." }),
+        );
+    }
+
+    // JS: body.verificationCode || body.emailCode
+    let second_factor_code = jsval::or(
+        body.get("verificationCode").filter(|v| jsval::truthy(v)),
+        jsval::or(body.get("emailCode"), json!("")),
+    );
+    let verified = verify_password_change_second_factor(state, &norm, Some(&second_factor_code));
+    if !verified.ok {
+        return json_response(
+            verified.status,
+            json!({ "success": false, "message": verified.error }),
+        );
+    }
+
+    if let Some(map) = passwords.as_object_mut() {
+        map.insert(
+            norm.clone(),
+            json!(mitch_lib::crypto::argon2_hash(&new_password)),
+        );
+    }
+    let _ = state.store.write_document(&passwords_file, &passwords);
+    auth::rotate_session_generation(&state.store, &norm);
+
+    auth_success_response(state, headers, json!({ "success": true }), &norm, &email)
+}
+
+fn logout_other(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
+    let cookies = cookies_of(state, headers);
+    let uid = me_uid(&cookies);
+    if !state.check_password_cookie(headers, non_empty(&uid)) {
+        return json_response(
+            401,
+            json!({ "success": false, "message": "Auth required." }),
+        );
+    }
+    let Some(email) = auth::email_from_sid(&state.store, &state.id_secret, &uid) else {
+        return json_response(
+            401,
+            json!({ "success": false, "message": "Auth required." }),
+        );
+    };
+    let norm = auth::normalize_email(&email);
+    auth::rotate_session_generation(&state.store, &norm);
+    auth_success_response(state, headers, json!({ "success": true }), &norm, &email)
+}
+
+/// `GET /api/me` (server.js:18736-18821).
+fn me_root(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
+    let cookies = cookies_of(state, headers);
+    let uid = me_uid(&cookies);
+    if !auth::valid_id(&uid, &state.id_secret) {
+        return json_response(401, json!({ "error": "Not authenticated" }));
+    }
+    if let Some(ban) = auth::banned_info_for_sid(&state.store, &state.id_secret, &uid) {
+        let reason = ban
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("This account is banned from the website.");
+        return json_response(
+            403,
+            json!({ "error": "account banned", "banned": true, "reason": reason }),
+        );
+    }
+    let email = auth::email_from_sid(&state.store, &state.id_secret, &uid);
+    let has_email = email.is_some();
+    let email_str = email.clone().unwrap_or_default();
+    let is_premium = has_email && auth::is_premium_email(&state.store, &email_str);
+    let node_env_test = std::env::var("NODE_ENV").unwrap_or_default() == "test";
+    let is_admin = auth::is_admin_id(&state.store, &state.id_secret, &uid, node_env_test);
+    let is_moderator = auth::is_moderator_id(&state.store, &state.id_secret, &uid);
+    let is_co_owner = has_email && auth::is_co_owner_email(&state.store, &email_str);
+    let is_owner = has_email && auth::is_owner_email(&state.store, &email_str);
+    let is_blog_contributor = has_email && is_blog_contributor_email(state, &email_str);
+    let can_grant_premium =
+        mitch_lib::admin::can_grant_premium_id(&state.store, &state.id_secret, &uid);
+
+    let norm = email
+        .as_ref()
+        .map(|e| auth::normalize_email(e))
+        .unwrap_or_default();
+    let stats = if has_email {
+        state
+            .store
+            .read_document(&data_file(state, "user_stats.json"), json!({}))
+            .get(&norm)
+            .cloned()
+            .unwrap_or(json!({}))
+    } else {
+        json!({})
+    };
+    let cosmetics = if has_email {
+        state
+            .store
+            .read_document(&data_file(state, "cosmetics.json"), json!({}))
+            .get(&norm)
+            .cloned()
+            .unwrap_or(json!({}))
+    } else {
+        json!({})
+    };
+
+    // Server-derived fallback key from before password-wrapped backups
+    // existed (server.js:18753-18779).
+    let mut pub_key_hex: Option<String> = None;
+    let mut encrypted_private_jwk: Option<Value> = None;
+    let mut iv_hex: Option<String> = None;
+    let mut kdf_salt_hex = String::new();
+    let mut kdf_iterations: i64 = 0;
+    let mut key_history: Vec<Value> = Vec::new();
+    let mut legacy_jwk: Option<Value> = None;
+    if let Some(ref email) = email {
+        let (jwk, legacy_pub_hex) = mitch_lib::e2e::derive_user_e2e_keys(&state.id_secret, email);
+        legacy_jwk = Some(jwk);
+        let norm = auth::normalize_email(email);
+        let entry = state
+            .store
+            .read_document(&data_file(state, "e2e_keys.json"), json!({}))
+            .get(&norm)
+            .cloned();
+        match entry {
+            Some(entry) if entry.is_object() => {
+                pub_key_hex = entry
+                    .get("pubKeyHex")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                encrypted_private_jwk = entry.get("encryptedPrivateJwk").cloned();
+                iv_hex = entry
+                    .get("ivHex")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string);
+                kdf_salt_hex = entry
+                    .get("kdfSaltHex")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                kdf_iterations = entry
+                    .get("kdfIterations")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
+                key_history = entry
+                    .get("history")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.iter().take(5).cloned().collect())
+                    .unwrap_or_default();
+            }
+            _ => {
+                pub_key_hex = Some(legacy_pub_hex);
+            }
+        }
+    }
+
+    let my_profile = if has_email {
+        state
+            .store
+            .read_document(&data_file(state, "profiles.json"), json!({}))
+            .get(&norm)
+            .cloned()
+            .unwrap_or(json!({}))
+    } else {
+        json!({})
+    };
+    let my_username = if has_email {
+        let raw = jsval::string(&jsval::or(
+            my_profile.get("username").filter(|v| jsval::truthy(v)),
+            json!(mitch_lib::profile::default_username_for_email(&norm)),
+        ));
+        mitch_lib::profile::normalize_username(&raw)
+    } else {
+        String::new()
+    };
+    let display_name = jsval::string(&jsval::or(
+        my_profile.get("displayName").filter(|v| jsval::truthy(v)),
+        jsval::or(
+            my_profile.get("nickname").filter(|v| jsval::truthy(v)),
+            jsval::or(Some(&json!(my_username)), json!("")),
+        ),
+    ));
+
+    let happy_hour_active = state
+        .happy_hour_active
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let computed = state.happy_hour();
+    let happy_hour_message = if happy_hour_active {
+        format!(
+            "HAPPY HOUR IS ACTIVE! Earn 2X Coins on games & canvas! (Runs {}) 🎰",
+            mitch_lib::school::format_school_hour(computed)
+        )
+    } else {
+        format!(
+            "Happy Hour today: {} (Based on yesterday's least used school hour!) 🍻",
+            mitch_lib::school::format_school_hour(computed)
+        )
+    };
+
+    let role = if is_co_owner {
+        "co-owner"
+    } else if is_owner {
+        "owner"
+    } else if is_admin {
+        "admin"
+    } else if is_moderator {
+        "moderator"
+    } else {
+        "member"
+    };
+
+    json_response(
+        200,
+        json!({
+            "email": mitch_lib::admin::mask_email(&email_str),
+            "rawEmail": email.as_ref().map(|e| json!(e)).unwrap_or(Value::Null),
+            "normEmail": norm,
+            "displayEmail": email.as_ref().map(|e| mitch_lib::profile::display_email(&state.store, state.data_dir(), &state.id_secret, e)).unwrap_or_default(),
+            "username": my_username,
+            "displayName": display_name,
+            "isPremium": is_premium,
+            "isAdmin": is_admin,
+            "isModerator": is_moderator,
+            "isOwner": is_owner,
+            "isCoOwner": is_co_owner,
+            "role": role,
+            "isBlogContributor": is_blog_contributor,
+            "canBlogPost": has_email && can_write_blog_email(state, &email_str),
+            "canGrantPremium": can_grant_premium,
+            "vipUntil": stats.get("vip_casino_until").and_then(|v| v.as_i64()).unwrap_or(0),
+            "activeTheme": jsval::string(&jsval::or(cosmetics.get("activeTheme"), json!(""))),
+            "activeAi": jsval::string(&jsval::or(cosmetics.get("activeAi"), json!(""))),
+            "jwk": legacy_jwk,
+            "legacyJwk": legacy_jwk,
+            "pubKeyHex": pub_key_hex,
+            "encryptedPrivateJwk": encrypted_private_jwk,
+            "ivHex": iv_hex,
+            "kdfSaltHex": kdf_salt_hex,
+            "kdfIterations": kdf_iterations,
+            "keyHistory": key_history,
+            "premium_email": jsval_or_null(stats.get("premium_email")),
+            "happyHour": {
+                "active": happy_hour_active,
+                "message": happy_hour_message,
+            },
+        }),
+    )
+}
+
+// ── shared helpers ───────────────────────────────────────────────────────────
+
+/// `authSuccessResponse(req, payload, normEmail, originalEmail)` — creates the
+/// session and sets the four cookies (server.js:2949-2957).
+pub(crate) fn auth_success_response(
+    state: &Arc<AppState>,
+    headers: &HeaderMap,
+    payload: Value,
+    norm_email: &str,
+    original_email: &str,
+) -> Response {
+    let user_agent = headers
+        .get(axum::http::header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let ip = crate::handler::get_real_ip(headers, None);
+    let session = auth::create_auth_session(
+        &state.store,
+        &state.id_secret,
+        norm_email,
+        original_email,
+        user_agent,
+        &ip,
+        false,
+    );
+    let secure_flag = std::env::var("SESSION_COOKIE_SECURE").unwrap_or_default();
+    let node_env_production = std::env::var("NODE_ENV").unwrap_or_default() == "production";
+    let max_age = auth::AUTH_SESSION_TTL_MS / 1000;
+    let cookie_value = |value: String| {
+        axum::http::HeaderValue::from_str(&value)
+            .unwrap_or_else(|_| unreachable!("cookie header is ASCII-safe"))
+    };
+    let mut obj = payload;
+    if let Some(map) = obj.as_object_mut() {
+        map.insert("id".to_string(), json!(session.sid));
+        map.insert(
+            "email".to_string(),
+            json!(if original_email.is_empty() {
+                norm_email
+            } else {
+                original_email
+            }),
+        );
+    }
+    let mut resp = json_response(200, obj);
+    let append = |resp: &mut Response, value: String| {
+        resp.headers_mut()
+            .append(axum::http::header::SET_COOKIE, cookie_value(value));
+    };
+    append(
+        &mut resp,
+        auth::set_cookie_header(
+            "mitch_session",
+            &session.token,
+            &secure_flag,
+            node_env_production,
+            max_age,
+            true,
+        ),
+    );
+    append(
+        &mut resp,
+        auth::set_cookie_header(
+            "studentId",
+            &session.sid,
+            &secure_flag,
+            node_env_production,
+            max_age,
+            false,
+        ),
+    );
+    append(
+        &mut resp,
+        auth::clear_cookie_header("password", &secure_flag, node_env_production, false),
+    );
+    append(
+        &mut resp,
+        auth::clear_cookie_header("id", &secure_flag, node_env_production, false),
+    );
+    resp
+}
+
+/// `isSecurePassword(password)` (server.js:2111-2127) → (valid, error).
+pub(crate) fn is_secure_password(state: &Arc<AppState>, password: &str) -> (bool, &'static str) {
+    // JS .length is the UTF-16 length.
+    if password.is_empty() || password.encode_utf16().count() < 8 {
+        return (false, "Password must be at least 8 characters long.");
+    }
+    let bad: Vec<String> = state
+        .store
+        .read_document(&data_file(state, "bad_passwords.json"), json!([]))
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if bad.contains(&password.to_lowercase()) {
+        return (false, "Password is too common and insecure.");
+    }
+    (true, "")
+}
+
+/// `isBlogContributorEmail(email)` (server.js:6446-6450).
+pub(crate) fn is_blog_contributor_email(state: &Arc<AppState>, email: &str) -> bool {
+    if email.is_empty() {
+        return false;
+    }
+    let norm = auth::normalize_email(email);
+    let raw = state
+        .store
+        .read_document(&data_file(state, "blog_contributors.json"), json!([]));
+    let contributors: Vec<String> = match &raw {
+        Value::Array(a) => a
+            .iter()
+            .filter(|v| jsval::truthy(v))
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        Value::Object(m) => m
+            .iter()
+            .filter(|(_, active)| active.as_bool() != Some(false))
+            .map(|(email, _)| email.clone())
+            .collect(),
+        _ => Vec::new(),
+    };
+    contributors
+        .iter()
+        .any(|c| auth::normalize_email(c) == norm)
+}
+
+/// `canWriteBlogEmail(email)` (server.js:6452-6454).
+pub(crate) fn can_write_blog_email(state: &Arc<AppState>, email: &str) -> bool {
+    !email.is_empty()
+        && (auth::is_admin_email(&state.store, email)
+            || auth::is_moderator_email(&state.store, email)
+            || is_blog_contributor_email(state, email))
+}
+
+/// `renameEmailReferences(oldNorm, newNorm, newEmail)` (server.js:2626-2693).
+/// The `rebuildCoreTablesFromDocuments()` tail is deferred with the rest of
+/// the SQL-table sync work.
+pub(crate) fn rename_email_references(
+    state: &Arc<AppState>,
+    old_norm: &str,
+    new_norm: &str,
+    new_email: &str,
+) {
+    let key_maps = [
+        "passwords.json",
+        "profiles.json",
+        "coins.json",
+        "user_stats.json",
+        "achievements.json",
+        "daily_logins.json",
+        "cosmetics.json",
+        "coin_gifts.json",
+        "invite_codes.json",
+        "invite_claims.json",
+        "invite_sent.json",
+        "premium_gifts_sent.json",
+        "e2e_keys.json",
+        "dm_cleared.json",
+        "push_subs.json",
+        "sebastians_claims.json",
+        "piccolo_sessions.json",
+    ];
+    for file in key_maps {
+        let path = data_file(state, file);
+        let mut obj = state.store.read_document(&path, json!({}));
+        let Some(value) = obj.get(old_norm).cloned() else {
+            continue;
+        };
+        if let Some(map) = obj.as_object_mut() {
+            map.insert(new_norm.to_string(), value);
+            map.remove(old_norm);
+            if file == "profiles.json" {
+                if let Some(rec) = map.get_mut(new_norm) {
+                    if let Some(inner) = rec.as_object_mut() {
+                        inner.insert("email".to_string(), json!(new_email));
+                    }
+                }
+            }
+        }
+        let _ = state.store.write_document(&path, &obj);
+    }
+
+    // names.json — any sid pointing at the old email moves to the new one.
+    let names_path = data_file(state, "names.json");
+    let mut names = state.store.read_document(&names_path, json!({}));
+    if let Some(map) = names.as_object_mut() {
+        for value in map.values_mut() {
+            if let Some(s) = value.as_str() {
+                if auth::normalize_email(s) == old_norm {
+                    *value = json!(new_email);
+                }
+            }
+        }
+    }
+    let _ = state.store.write_document(&names_path, &names);
+
+    // tokens.json — email + norm_email on matching records.
+    let tokens_path = data_file(state, "tokens.json");
+    let mut tokens = state.store.read_document(&tokens_path, json!({}));
+    if let Some(map) = tokens.as_object_mut() {
+        for rec in map.values_mut() {
+            let rec_norm = rec
+                .get("email")
+                .or_else(|| rec.get("norm_email"))
+                .and_then(|v| v.as_str())
+                .map(auth::normalize_email)
+                .unwrap_or_default();
+            if rec_norm == old_norm {
+                if let Some(inner) = rec.as_object_mut() {
+                    inner.insert("email".to_string(), json!(new_email));
+                    inner.insert("norm_email".to_string(), json!(new_norm));
+                }
+            }
+        }
+    }
+    let _ = state.store.write_document(&tokens_path, &tokens);
+
+    // friends.json — move the key, then remap list entries.
+    let friends_path = data_file(state, "friends.json");
+    let mut friends = state.store.read_document(&friends_path, json!({}));
+    if let Some(map) = friends.as_object_mut() {
+        if let Some(list) = map.remove(old_norm) {
+            map.insert(new_norm.to_string(), list);
+        }
+        for value in map.values_mut() {
+            if let Some(arr) = value.as_array_mut() {
+                for f in arr.iter_mut() {
+                    if let Some(s) = f.as_str() {
+                        if auth::normalize_email(s) == old_norm {
+                            *f = json!(new_norm);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let _ = state.store.write_document(&friends_path, &friends);
+
+    // friend_requests.json — remap from/to.
+    let requests_path = data_file(state, "friend_requests.json");
+    let mut requests = state.store.read_document(&requests_path, json!([]));
+    if let Some(arr) = requests.as_array_mut() {
+        for req in arr.iter_mut() {
+            for key in ["from", "to"] {
+                if let Some(s) = req.get(key).and_then(|v| v.as_str()) {
+                    if auth::normalize_email(s) == old_norm {
+                        if let Some(inner) = req.as_object_mut() {
+                            inner.insert(key.to_string(), json!(new_norm));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let _ = state.store.write_document(&requests_path, &requests);
+
+    // Array documents: every string equal (normalized) to oldNorm becomes the
+    // NEW DISPLAY email — nested values included (server.js:2679-2690).
+    for file in [
+        "dms.json",
+        "public_chat.json",
+        "premium_chat.json",
+        "applications.json",
+        "sessions.json",
+    ] {
+        let path = data_file(state, file);
+        let mut data = state.store.read_document(&path, json!([]));
+        rewrite_norm_strings(&mut data, old_norm, new_email);
+        let _ = state.store.write_document(&path, &data);
+    }
+}
+
+/// The recursive string rewrite from server.js:2681-2688.
+fn rewrite_norm_strings(value: &mut Value, old_norm: &str, new_email: &str) {
+    match value {
+        Value::String(s) => {
+            if auth::normalize_email(s) == old_norm {
+                *value = json!(new_email);
+            }
+        }
+        Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                rewrite_norm_strings(v, old_norm, new_email);
+            }
+        }
+        Value::Object(map) => {
+            for v in map.values_mut() {
+                rewrite_norm_strings(v, old_norm, new_email);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `Math.random()` — f64 in [0, 1) like JS.
+pub(crate) fn js_rand() -> f64 {
+    use rand::Rng;
+    rand::rng().random::<f64>()
+}
+
+/// `String(x || '')` for optional body fields.
+fn jsval_string_of(v: Option<&Value>) -> String {
+    jsval::string(&jsval::or(v, json!("")))
+}
+
+/// The check_password_cookie sid argument (None when empty, like JS passing
+/// an empty string that fails validId).
+fn non_empty(s: &str) -> Option<&str> {
+    if s.is_empty() {
+        None
+    } else {
+        Some(s)
+    }
+}
+
+/// `stats.premium_email || null` — null when absent.
+fn jsval_or_null(v: Option<&Value>) -> Value {
+    match v {
+        Some(val) if jsval::truthy(val) => val.clone(),
+        _ => Value::Null,
+    }
+}

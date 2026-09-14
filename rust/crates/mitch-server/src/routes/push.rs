@@ -204,3 +204,165 @@ fn mail_service_url(_state: &Arc<AppState>) -> String {
 
 #[allow(unused)]
 pub fn unused_state_guard(_state: &AppState) {}
+
+/// `verifyRecaptcha(token, ip, sid)` (server.js:3598-3689). Fail-open on
+/// missing secrets / unreachable Google; 5s total budget; caches per-sid
+/// success for 10 minutes.
+pub async fn verify_recaptcha(state: &Arc<AppState>, token: &str, ip: &str, sid: &str) -> bool {
+    if std::env::var("NODE_ENV").unwrap_or_default() == "test" {
+        return true;
+    }
+    if !ip.is_empty() && (ip == "66.60.183.124" || ip == "127.0.0.1" || ip == "::1") {
+        return true;
+    }
+
+    if !sid.is_empty() {
+        let last = state
+            .last_recaptcha_success
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(sid)
+            .copied();
+        if let Some(last_success) = last {
+            if mitch_lib::school::now_millis() - last_success < 10 * 60 * 1000 {
+                return true;
+            }
+        }
+    }
+
+    let trim_env = |name: &str| std::env::var(name).unwrap_or_default().trim().to_string();
+    let secret_key = trim_env("SECRET_KEY");
+    let recaptcha_secret_key = trim_env("RECAPTCHA_SECRET_KEY");
+    let mut recaptcha_secrets: Vec<String> = Vec::new();
+    if !recaptcha_secret_key.is_empty() {
+        recaptcha_secrets.push(recaptcha_secret_key);
+    } else if !secret_key.is_empty() {
+        recaptcha_secrets.push(secret_key);
+    }
+
+    if recaptcha_secrets.is_empty() {
+        return true; // JS parity: no secret configured → fail open.
+    }
+    if token.is_empty() {
+        tracing::info!("[recaptcha] Blocked: empty token received (from IP: {ip})");
+        return false;
+    }
+
+    let verify_urls: Vec<String> = match std::env::var("RECAPTCHA_VERIFY_URL") {
+        Ok(v) if !v.trim().is_empty() => vec![v.trim().to_string()],
+        _ => vec![
+            "https://www.google.com/recaptcha/api/siteverify".to_string(),
+            "https://www.recaptcha.net/recaptcha/api/siteverify".to_string(),
+        ],
+    };
+
+    let min_score_env = trim_env("RECAPTCHA_MIN_SCORE");
+    let min_score: f64 = min_score_env.parse().unwrap_or(0.3);
+    let threshold = if min_score.is_finite() {
+        min_score
+    } else {
+        0.3
+    };
+
+    async fn call_verify(
+        verify_urls: &[String],
+        token: &str,
+        ip: &str,
+        secret: &str,
+        threshold: f64,
+    ) -> bool {
+        {
+            if secret.is_empty() {
+                return false;
+            }
+            for verify_url in verify_urls {
+                let mut params = Vec::new();
+                params.push(format!("secret={}", encode_form(secret)));
+                params.push(format!("response={}", encode_form(token)));
+                if !ip.is_empty() && ip.parse::<std::net::IpAddr>().is_ok() {
+                    params.push(format!("remoteip={}", encode_form(ip)));
+                }
+                // No per-request timeout: the outer 5s budget (JS's single
+                // AbortController) cancels the whole attempt on expiry.
+                let result = reqwest::Client::new()
+                    .post(verify_url)
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .body(params.join("&"))
+                    .send()
+                    .await;
+                let data = match result {
+                    Ok(r) => match r.json::<serde_json::Value>().await {
+                        Ok(d) => d,
+                        Err(_) => return true, // JS: fetch error → fail open.
+                    },
+                    Err(_) => return true, // JS: fetch error → fail open.
+                };
+                if data.get("success").and_then(|v| v.as_bool()) != Some(true) {
+                    let errors: Vec<String> = data
+                        .get("error-codes")
+                        .and_then(|v| v.as_array())
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|e| e.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    if errors
+                        .iter()
+                        .any(|e| e == "invalid-input-response" || e == "bad-request")
+                    {
+                        continue; // try next verify host
+                    }
+                    return false;
+                }
+                if let Some(score) = data.get("score").and_then(|v| v.as_f64()) {
+                    if score < threshold {
+                        return false;
+                    }
+                }
+                return true;
+            }
+            false
+        }
+    }
+    let mut verified = false;
+    // JS wraps all secret attempts in ONE AbortController with a 5s budget;
+    // an abort leaves `verified` false.
+    let attempt = async {
+        for secret in &recaptcha_secrets {
+            if call_verify(&verify_urls, token, ip, secret, threshold).await {
+                return true;
+            }
+        }
+        false
+    };
+    match tokio::time::timeout(std::time::Duration::from_secs(5), attempt).await {
+        Ok(v) => verified = v,
+        Err(_) => tracing::info!("[recaptcha] Verification timed out after 5s"),
+    }
+
+    if verified && !sid.is_empty() {
+        state
+            .last_recaptcha_success
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(sid.to_string(), mitch_lib::school::now_millis());
+    }
+    verified
+}
+
+/// `application/x-www-form-urlencoded` value encoding (JS URLSearchParams.set
+/// → space as `+`, everything else percent-encoded).
+fn encode_form(v: &str) -> String {
+    let mut out = String::with_capacity(v.len());
+    for b in v.as_bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_' => {
+                out.push(*b as char)
+            }
+            b' ' => out.push('+'),
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}

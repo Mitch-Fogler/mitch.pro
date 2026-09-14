@@ -44,6 +44,37 @@ pub struct AppState {
     /// The delayed-alert scheduler itself lands with the Step 11 DM group;
     /// the cancel path is live so notification reads stay correct.
     pub matrix_pending_email_alerts: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `pendingSecurityCodes` (server.js:2460) — `norm:action` -> code record.
+    pub pending_security_codes:
+        std::sync::Mutex<std::collections::HashMap<String, PendingSecurityCode>>,
+    /// `pendingEmailChanges` (server.js:16049) — change token -> record.
+    pub pending_email_changes:
+        std::sync::Mutex<std::collections::HashMap<String, PendingEmailChange>>,
+    /// `lastRecaptchaSuccess` (server.js:3597) — sid -> last success ms.
+    pub last_recaptcha_success: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `happyHourActive` (server.js:1188) — starts false; the Step 11 worker
+    /// flips it inside the school-hour window.
+    pub happy_hour_active: std::sync::atomic::AtomicBool,
+    /// `computedHappyHour` (server.js:1189) — computed once at boot from the
+    /// session log (server.js:25249).
+    pub computed_happy_hour: std::sync::atomic::AtomicI64,
+}
+
+/// A record in `pendingSecurityCodes` (server.js:2482-2486).
+pub struct PendingSecurityCode {
+    pub code: String,
+    pub attempts: u32,
+    pub expires: i64,
+}
+
+/// A record in `pendingEmailChanges` (server.js:16049).
+pub struct PendingEmailChange {
+    pub old_norm: String,
+    pub new_norm: String,
+    pub new_email: String,
+    pub code: String,
+    pub expires: i64,
+    pub attempts: u32,
 }
 
 impl AppState {
@@ -80,6 +111,13 @@ impl AppState {
                     .collect()
             })
             .unwrap_or_default();
+        // `computedHappyHour = getLeastUsedSchoolHour()` at boot
+        // (server.js:25249). Uses the same now_ms the boot run would see.
+        let computed_happy_hour = mitch_lib::school::get_least_used_school_hour(
+            &store,
+            &cfg.base_dir.join("data"),
+            mitch_lib::school::now_millis(),
+        );
         Self {
             cfg,
             static_cache: StaticCache::new(),
@@ -110,7 +148,20 @@ impl AppState {
             featured_game_href: std::sync::RwLock::new(String::new()),
             pickle_presence: std::sync::Mutex::new(std::collections::HashMap::new()),
             matrix_pending_email_alerts: std::sync::Mutex::new(std::collections::HashMap::new()),
+            pending_security_codes: std::sync::Mutex::new(std::collections::HashMap::new()),
+            pending_email_changes: std::sync::Mutex::new(std::collections::HashMap::new()),
+            last_recaptcha_success: std::sync::Mutex::new(std::collections::HashMap::new()),
+            happy_hour_active: std::sync::atomic::AtomicBool::new(false),
+            computed_happy_hour: std::sync::atomic::AtomicI64::new(computed_happy_hour),
         }
+    }
+
+    /// The boot-computed `computedHappyHour` value.
+    pub fn happy_hour(&self) -> i64 {
+        std::sync::atomic::AtomicI64::load(
+            &self.computed_happy_hour,
+            std::sync::atomic::Ordering::Relaxed,
+        )
     }
 
     /// `globalCoinMultiplier` as f64.

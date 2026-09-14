@@ -2222,6 +2222,7 @@ dependencies = [
  "axum",
  "form_urlencoded",
  "mitch-lib",
+ "rand 0.9.5",
  "regex",
  "reqwest",
  "serde",
