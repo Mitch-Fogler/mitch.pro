@@ -24774,8 +24774,8 @@ async function handleRequest(req, server) {
         // and the fixed footer collides with it on phones — skip injecting it
         // there on mitch hosts. rjuhsd.school/encrypt keeps the footer.
         const isEncryptAppPage = path === '/encrypt' || path === '/encrypt/' || path === '/encrypt/index.html';
-        const isRjuhsdHost = reqHost === 'rjuhsd.school' || reqHost.endsWith('.rjuhsd.school');
-        if (!raw.includes(Buffer.from('_agree_footer')) && !(isEncryptAppPage && !isRjuhsdHost)) {
+        const isRjuhsdPageHost = reqHost === 'rjuhsd.school' || reqHost.endsWith('.rjuhsd.school');
+        if (!raw.includes(Buffer.from('_agree_footer')) && !(isEncryptAppPage && !isRjuhsdPageHost)) {
           const bi = raw.lastIndexOf(Buffer.from('<\/body>'));
           raw = bi >= 0
             ? Buffer.concat([raw.slice(0, bi), agreeB, raw.slice(bi)])
