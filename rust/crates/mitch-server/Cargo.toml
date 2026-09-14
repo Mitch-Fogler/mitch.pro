@@ -19,6 +19,11 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 regex = "1"
 form_urlencoded = "1"
+# Multipart/form-data parsing for /api/dm/attachment/upload (the JS uses
+# WHATWG req.formData(); multer is the same parser axum's multipart feature
+# is built on).
+multer = "3"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
 reqwest = { workspace = true }
 web-push = "0.10"
 rand = { workspace = true }

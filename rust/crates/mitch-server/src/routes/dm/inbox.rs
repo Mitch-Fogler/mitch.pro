@@ -4,8 +4,8 @@
 //! match — every normalization ladder here is load-bearing.
 
 use super::{
-    cleared_lookup, concat_key, dm_auth, js_eq, js_num_value, member_norm, norm_of, read_by_some,
-    string_prop,
+    cleared_lookup, concat_key, dm_auth, js_eq, js_num_value, member_norm, norm_of, qs_get,
+    read_by_some, string_prop,
 };
 use crate::hosts::is_pickle_host;
 use crate::routes::me::{data_file, dm_content_parts, json_response};
@@ -589,39 +589,4 @@ fn parse_int_or_zero(s: &str) -> f64 {
     } else {
         n
     }
-}
-
-/// `qs.get(key)` — split on '&', first '=' splits key/value, %XX decoded.
-fn qs_get(search: &str, key: &str) -> Option<String> {
-    for pair in search.trim_start_matches('?').split('&') {
-        if pair.is_empty() {
-            continue;
-        }
-        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-        if percent_decode(k) == key {
-            return Some(percent_decode(v));
-        }
-    }
-    None
-}
-
-fn percent_decode(s: &str) -> String {
-    let bytes = s.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' && i + 3 <= bytes.len() {
-            if let Some(byte) = s
-                .get(i + 1..i + 3)
-                .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-            {
-                out.push(byte);
-                i += 3;
-                continue;
-            }
-        }
-        out.push(bytes[i]);
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }

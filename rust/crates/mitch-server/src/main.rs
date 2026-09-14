@@ -82,9 +82,21 @@ async fn get_any(
     let method = req.method().clone();
     let headers = req.headers().clone();
     let uri = req.uri().clone();
-    // Read the body (empty for GET/HEAD; bounded for API POSTs).
-    let body_bytes = axum::body::to_bytes(req.into_body(), 256 * 1024)
-        .await
-        .unwrap_or_default();
+    // Read the body (empty for GET/HEAD; bounded for API POSTs). The JS
+    // enforces its caps inside the handlers — the largest chat JSON envelope
+    // is ~2.3MB and raw attachment uploads reach 250MB — so the read cap is
+    // path-aware. A body that overflows the cap is replaced by cap+1 zero
+    // bytes so the route's own length check fires (the JS
+    // readRequestTextLimited throw), instead of an empty body silently
+    // parsing to {}.
+    let cap = match uri.path() {
+        "/api/dm/attachment/upload" => crate::routes::dm::upload_body_cap(),
+        "/api/dm/send" => mitch_lib::dm::max_chat_json_body_bytes(),
+        _ => 256 * 1024,
+    };
+    let body_bytes = match axum::body::to_bytes(req.into_body(), cap).await {
+        Ok(b) => b,
+        Err(_) => axum::body::Bytes::from(vec![0u8; cap + 1]),
+    };
     handler::handle(state, method, &uri, &headers, &body_bytes).await
 }

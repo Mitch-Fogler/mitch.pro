@@ -278,16 +278,6 @@ pub async fn handle(
     let path = uri.path().to_string();
     let search = uri.query().unwrap_or("").to_string();
 
-    // Non-GET/HEAD/OPTIONS on any path → 405 page (the JS falls through every
-    // route block to errResp(405)); CSRF still applies to /api POSTs first.
-    let is_get_like = method == Method::GET || method == Method::HEAD || method == Method::OPTIONS;
-    if !is_get_like {
-        if let Some(resp) = csrf_check(headers, &path, &method) {
-            return resp;
-        }
-        return err_resp(405, None, None);
-    }
-
     // 1. Bell/blooket redirects.
     if let Some(resp) = bell_schedule_redirect(&path, &method, &search) {
         return resp;
@@ -570,6 +560,17 @@ pub async fn handle(
             return resp;
         }
         // Unmatched /api/ paths fall through to static 404 (same as bun).
+    }
+
+    // 4d. Non-GET fallthrough — server.js:18619/24851. The entire page/static
+    // section lives inside `if (method === 'GET')`, so any request method no
+    // top-level route block claimed (POST/PUT/DELETE/HEAD/OPTIONS on an
+    // unclaimed path) skips the page section entirely and lands on the final
+    // errResp(405). Everything before this point — CSRF, rate limits, ban
+    // gates, the password gate — applies to every method, which is why a
+    // CSRF-exempt upload POST surfaces the password gate in dev, not 405.
+    if method != Method::GET {
+        return err_resp(405, None, None);
     }
 
     // 5. /team route (GET) — injectReadability of the team page.

@@ -1301,6 +1301,95 @@ const tests = [
     expectedStatus: 403,
     verify: (b) => b && b.error === 'csrf_blocked'
   },
+  // ── dm attachments (Step 11 batch 3). In the dev baseline every GET lands
+  // on the password gate; upload POST is CSRF-exempt (CSRF_EXEMPT_PATHS), so
+  // its no-Origin POST reaches the password gate too — delete POST is not
+  // exempt and hits csrf_blocked. Wrong-verb requests fall through the whole
+  // page section to the final 405.
+  {
+    name: 'GET /api/dm/attachment (Anonymous)',
+    path: '/api/dm/attachment',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/dm/attachment?id=abc (Anonymous)',
+    path: '/api/dm/attachment?id=abc',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/dm/attachment?download=1 (Anonymous)',
+    path: '/api/dm/attachment?download=1&id=abc',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/dm/attachments (Anonymous)',
+    path: '/api/dm/attachments',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/dm/attachment/upload (Anonymous, wrong verb)',
+    path: '/api/dm/attachment/upload',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/dm/attachment/upload (Anonymous, CSRF-exempt)',
+    path: '/api/dm/attachment/upload',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'PUT /api/dm/attachment (Anonymous)',
+    path: '/api/dm/attachment',
+    method: 'PUT',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/attachments/delete (Anonymous)',
+    path: '/api/dm/attachments/delete',
+    method: 'POST',
+    token: null,
+    body: {},
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/dm/attachments/delete bad json (Anonymous)',
+    path: '/api/dm/attachments/delete',
+    method: 'POST',
+    token: null,
+    body: '{nope',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/dm/attachments/delete (Anonymous, wrong verb)',
+    path: '/api/dm/attachments/delete',
+    method: 'GET',
+    token: null,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
   {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',

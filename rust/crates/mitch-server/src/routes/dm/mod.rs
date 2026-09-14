@@ -7,8 +7,11 @@
 //! Method checks mirror the JS exactly: /api/dm/send and /api/dm/inbox have
 //! NO method gate (any verb runs the ladder), /api/dm/groups splits GET
 //! (list) from POST (create) with PUT/DELETE falling through to 404, and
-//! mark-read/leave/clear/expiry/report run on any verb.
+//! mark-read/leave/clear/expiry/report run on any verb. The four attachment
+//! endpoints are all method-checked (upload/delete POST, serve/list GET)
+//! with other verbs falling through to the 404/static path.
 
+mod attachment;
 mod inbox;
 mod manage;
 mod notif;
@@ -67,7 +70,43 @@ pub(crate) async fn handle(
     if path == "/api/dm/report" {
         return Some(manage::report(state, headers, body_bytes).await);
     }
+    // The attachment endpoints are method-checked in the JS; other verbs
+    // fall through to the 404/static path like every unclaimed route.
+    if path == "/api/dm/attachment/upload" {
+        return if *method == Method::POST {
+            Some(attachment::upload(state, headers, body_bytes, search).await)
+        } else {
+            None
+        };
+    }
+    if path == "/api/dm/attachment" {
+        return if *method == Method::GET {
+            Some(attachment::get_attachment(state, headers, search))
+        } else {
+            None
+        };
+    }
+    if path == "/api/dm/attachments" {
+        return if *method == Method::GET {
+            Some(attachment::list(state, headers))
+        } else {
+            None
+        };
+    }
+    if path == "/api/dm/attachments/delete" {
+        return if *method == Method::POST {
+            Some(attachment::delete_attachments(state, headers, body_bytes))
+        } else {
+            None
+        };
+    }
     None
+}
+
+/// The raw-stream upload body cap (see attachment.rs module docs): the 250MB
+/// per-user quota plus margin for multipart framing.
+pub(crate) fn upload_body_cap() -> usize {
+    attachment::E2E_MAX_USER_BYTES + 8 * 1024 * 1024
 }
 
 /// What the auth ladder hands to each endpoint handler.
@@ -197,4 +236,46 @@ pub(super) fn string_prop(v: Option<&Value>) -> String {
         Some(x) => jsval::string(x),
         None => "undefined".to_string(),
     }
+}
+
+/// `new URL(req.url).searchParams.get(k)` — WHATWG urlencoded decoding:
+/// '+' becomes a space, %XX decodes leniently (invalid sequences pass
+/// through, matching the bun probe `searchParams.get('%zz') === '%zz'`).
+/// Shared by inbox.rs and attachment.rs.
+pub(super) fn qs_get(search: &str, key: &str) -> Option<String> {
+    for pair in search.trim_start_matches('?').split('&') {
+        if pair.is_empty() {
+            continue;
+        }
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        if form_urlencoded_decode(k) == key {
+            return Some(form_urlencoded_decode(v));
+        }
+    }
+    None
+}
+
+fn form_urlencoded_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => out.push(b' '),
+            b'%' if i + 3 <= bytes.len() => {
+                if let Some(byte) = s
+                    .get(i + 1..i + 3)
+                    .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+                {
+                    out.push(byte);
+                    i += 3;
+                    continue;
+                }
+                out.push(bytes[i]);
+            }
+            _ => out.push(bytes[i]),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
