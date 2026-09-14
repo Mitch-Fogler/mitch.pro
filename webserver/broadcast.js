@@ -128,22 +128,15 @@
       caption.style.cssText = 'position:absolute;left:50%;bottom:max(18px,env(safe-area-inset-bottom));translate:-50% 0;max-width:min(760px,calc(100% - 40px));padding:9px 14px;border-radius:10px;background:#000b;color:#fff;font:700 clamp(14px,2vw,22px)/1.25 system-ui;text-align:center;';
       caption.textContent = String(msg || '').trim();
       caption.hidden = !caption.textContent;
-      var sound = document.createElement('button');
-      sound.type = 'button';
-      sound.textContent = 'Tap for sound';
-      sound.style.cssText = 'position:absolute;left:50%;top:50%;translate:-50% -50%;padding:12px 18px;border:1px solid #ffffff66;border-radius:12px;background:#000c;color:#fff;font:700 14px system-ui;cursor:pointer;z-index:2;';
-      sound.hidden = true;
       function remove() { video.pause(); video.removeAttribute('src'); overlay.remove(); }
       close.onclick = remove;
       video.addEventListener('ended', remove, { once: true });
       video.addEventListener('error', function() { caption.hidden = false; caption.textContent = 'The video could not be loaded.'; });
-      sound.onclick = function() { video.muted = false; sound.hidden = true; video.play().catch(function() { sound.hidden = false; }); };
-      overlay.append(video, close, caption, sound);
+      overlay.append(video, close, caption);
       document.body.appendChild(overlay);
       video.play().catch(function() {
         video.muted = true;
-        sound.hidden = false;
-        video.play().catch(function() { sound.textContent = 'Tap to play video'; });
+        video.play().catch(function() {});
       });
     }
     function showBroadcast(msg) {
