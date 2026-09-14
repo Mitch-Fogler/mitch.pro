@@ -529,6 +529,13 @@ pub async fn handle(
         {
             return resp;
         }
+        // me/* group (Step 9). Runs after misc so /api/me/coins (ported in
+        // the merge adaptation) keeps its existing match.
+        if let Some(resp) =
+            crate::routes::me::handle(&state, &method, &path, headers, &body, body_bytes).await
+        {
+            return resp;
+        }
         // Unmatched /api/ paths fall through to static 404 (same as bun).
     }
 

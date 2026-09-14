@@ -413,6 +413,39 @@ const tests = [
     expectedStatus: 200
   },
   {
+    name: 'GET /api/me/inventory (Anonymous)',
+    path: '/api/me/inventory',
+    method: 'GET',
+    token: null,
+    expectedStatus: 401
+  },
+  {
+    name: 'POST /api/me/cosmetics/equip (Unknown type)',
+    path: '/api/me/cosmetics/equip',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { itemId: '', type: 'not_a_type' },
+    expectedStatus: 400,
+    verify: (b) => b && b.error === 'invalid type'
+  },
+  {
+    name: 'POST /api/me/cosmetics/equip (Unequip name color)',
+    path: '/api/me/cosmetics/equip',
+    method: 'POST',
+    token: USER_TOKEN,
+    body: { itemId: '', type: 'name_color' },
+    expectedStatus: 200,
+    verify: (b) => b && b.ok === true
+  },
+  {
+    name: 'POST /api/me/cosmetics/equip (Anonymous)',
+    path: '/api/me/cosmetics/equip',
+    method: 'POST',
+    token: null,
+    body: { itemId: '', type: 'name_color' },
+    expectedStatus: 401
+  },
+  {
     name: 'GET /api/profile (Authenticated)',
     path: '/api/profile',
     method: 'GET',

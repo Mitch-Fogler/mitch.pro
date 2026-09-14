@@ -128,6 +128,15 @@ pub fn random_bytes(n: usize) -> Vec<u8> {
     out
 }
 
+/// Standard base64 decode (with padding), mirroring `Buffer.from(s, 'base64')`
+/// for the charset-validated inputs the callers pass.
+pub fn base64_decode(s: &str) -> Vec<u8> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD
+        .decode(s)
+        .unwrap_or_default()
+}
+
 /// `randomBytes(n).toString('hex')`.
 pub fn random_bytes_hex(n: usize) -> String {
     use rand::RngCore;

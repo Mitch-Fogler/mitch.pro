@@ -24,6 +24,8 @@ pub mod crypto;
 pub mod data;
 pub mod email;
 pub mod log;
+pub mod profile;
+pub mod shop;
 pub mod sso;
 pub mod state;
 pub mod totp;

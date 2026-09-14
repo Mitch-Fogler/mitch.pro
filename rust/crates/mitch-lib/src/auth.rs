@@ -256,7 +256,7 @@ fn sessions_file() -> std::path::PathBuf {
     std::path::PathBuf::from("data/auth_sessions.json")
 }
 
-fn names_file() -> std::path::PathBuf {
+pub(crate) fn names_file() -> std::path::PathBuf {
     std::path::PathBuf::from("data/names.json")
 }
 
