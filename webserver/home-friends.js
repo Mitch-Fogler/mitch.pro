@@ -4,7 +4,7 @@
   const section = document.createElement('section');
   section.className = 'home-friends';
   section.setAttribute('aria-label', 'Friends activity');
-  section.innerHTML = '<header><h2>Friends</h2><a href="https://mitchdog.com/members/">See all →</a></header><div class="home-friend-list"></div>';
+  section.innerHTML = '<header><h2>Friends <span class="home-friend-count"></span></h2><a href="https://mitchdog.com/members/">See All</a></header><div class="home-friend-list"></div>';
   bar.after(section);
   const list = section.querySelector('.home-friend-list');
   function activityLabel(friend) {
@@ -19,10 +19,13 @@
   }
   function render(friends) {
     list.replaceChildren();
-    const add = document.createElement('a');
-    add.className = 'home-friend'; add.href = 'https://mitchdog.com/members/';
-    add.innerHTML = '<span class="home-friend-avatar" aria-hidden="true">+</span><strong>Add friends</strong><small>Find your people</small>';
-    list.append(add);
+    section.querySelector('.home-friend-count').textContent = friends.length ? `(${friends.length})` : '';
+    section.classList.toggle('is-empty',!friends.length);
+    if (!friends.length) {
+      const empty = document.createElement('div'); empty.className = 'home-friends-empty';
+      empty.innerHTML = '<a class="home-friend-add" href="https://mitchdog.com/members/" aria-label="Add friends"><span aria-hidden="true">+</span></a><div><strong>Add some friends</strong><small>Find people and send a friend request.</small></div>';
+      list.append(empty); return;
+    }
     friends.sort((a,b) => Number(b.online)-Number(a.online)).forEach(friend => {
       const card = document.createElement('a'); card.className = 'home-friend' + (friend.online ? ' online' : '');
       card.href = '/profile/?u=' + encodeURIComponent(friend.handle || '');
@@ -34,7 +37,12 @@
         img.onerror = () => { avatar.textContent = name.slice(0,1).toUpperCase(); };
       }
       const title = document.createElement('strong'); title.textContent = name;
-      const activity = document.createElement('small'); activity.textContent = activityLabel(friend);
+      const activity = document.createElement('small');
+      const activityText = document.createElement('span'); activityText.textContent = activityLabel(friend);
+      const activityIcon = document.createElement('i'); activityIcon.setAttribute('aria-hidden','true');
+      const rawActivity = String(friend.playing || '').toLowerCase();
+      activityIcon.textContent = !friend.online ? '' : (/game|chess|casino|playing/.test(rawActivity) ? '▶' : (/chat|matrix|encrypt/.test(rawActivity) ? '●' : '•'));
+      activity.append(activityIcon,activityText);
       card.title = name + ' · ' + activity.textContent; card.append(avatar,title,activity); list.append(card);
     });
   }
