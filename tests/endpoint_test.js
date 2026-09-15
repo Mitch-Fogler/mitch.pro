@@ -434,6 +434,26 @@ const tests = [
     body: { picks: [1, 2, 3], amount: 10 }
   },
   {
+    name: 'POST /api/casino/slots (csrf gate)',
+    path: '/api/casino/slots', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/slots requires session (403)',
+    path: '/api/casino/slots', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 10 }
+  },
+  {
+    name: 'POST /api/casino/vip/slots (csrf gate)',
+    path: '/api/casino/vip/slots', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 100 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/vip/slots requires session (403)',
+    path: '/api/casino/vip/slots', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 100 }
+  },
+  {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
     body: { amount: 10 }, verify: data => typeof data.slot === 'string' && Number.isFinite(data.newBalance)

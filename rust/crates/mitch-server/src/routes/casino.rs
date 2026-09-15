@@ -152,7 +152,9 @@ fn game(
         "/api/casino/wheel" => Some(wheel(state, body, email, norm)),
         "/api/casino/scratch" => Some(scratch(state, body, email, norm)),
         "/api/casino/keno" => Some(keno(state, body, email, norm)),
-        // slots land in a later commit; unhandled paths return None so
+        "/api/casino/slots" => Some(slots(state, body, email, norm, false)),
+        "/api/casino/vip/slots" => Some(slots(state, body, email, norm, true)),
+        // unhandled paths return None so
         // the request falls through exactly like bun (POST → 405 fallthrough,
         // GET → static 404).
         _ => None,
@@ -1780,6 +1782,159 @@ fn keno(state: &Arc<AppState>, body: &Value, email: &str, norm: &str) -> axum::r
     )
 }
 
+/// The slots multiplier table (server.js:23686-23696): triples by symbol,
+/// a leading pair pays 3 (a trailing pair — A,B,B — pays nothing), else 0.
+fn slots_mult(res: &[&str; 3]) -> f64 {
+    if res[0] == res[1] && res[1] == res[2] {
+        match res[0] {
+            "💎" => 100.0,
+            "7️⃣" => 50.0,
+            "🔔" => 20.0,
+            "🍒" => 10.0,
+            _ => 6.0,
+        }
+    } else if res[0] == res[1] {
+        3.0
+    } else {
+        0.0
+    }
+}
+
+/// The rank map (server.js:23699) — keyed on the PRE-bonus mult.
+fn slots_rank(mult: f64) -> &'static str {
+    match mult {
+        100.0 => "JACKPOT (Diamonds)",
+        50.0 => "Triple Sevens",
+        20.0 => "Triple Bells",
+        10.0 => "Triple Cherries",
+        6.0 => "Triple Fruit",
+        3.0 => "Double",
+        // NaN compares unequal to every literal, same as JS `mult === n`.
+        _ => "Lose",
+    }
+}
+
+/// `POST /api/casino/slots` + `/api/casino/vip/slots` (server.js:23654-23721).
+/// Slots does NOT use readCasinoBet — the bet is the raw `Number(body.amount)`
+/// (no toFixed(2) normalization), checked against its own ladders. Free spins
+/// (granted elsewhere, capped at 500) settle with effectiveBet 0; the VIP room
+/// needs an active pass, bets ≥ 100, and pays a 10% bonus.
+fn slots(
+    state: &Arc<AppState>,
+    body: &Value,
+    email: &str,
+    norm: &str,
+    is_vip_room: bool,
+) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let mut stats = user_stats(state);
+    let is_vip = is_vip(state, norm);
+    if is_vip_room && !is_vip {
+        return resp(403, &json!({ "error": "VIP pass required" }));
+    }
+    let free_spins = stats
+        .get(norm)
+        .and_then(|s| s.get("slots_free_spins"))
+        .and_then(jsval::number)
+        .unwrap_or(0.0);
+    let is_free_spin = free_spins > 0.0 && !is_vip_room;
+
+    let bet = body
+        .get("amount")
+        .and_then(jsval::number)
+        .unwrap_or(f64::NAN);
+    // `bet < 100` is false for NaN, so the VIP min-bet check lets NaN through
+    // to the isFinite ladders below.
+    if is_vip_room && bet < 100.0 {
+        return resp(400, &json!({ "error": "VIP minimum bet is 100 coins" }));
+    }
+    if is_free_spin {
+        if !bet.is_finite() || bet < 1.0 || bet > 500.0 {
+            return resp(
+                400,
+                &json!({ "error": "invalid bet (free spins limit max 500 coins)" }),
+            );
+        }
+        // stats[norm].slots_free_spins = freeSpins - 1; saveUserStats.
+        if let Some(s) = stats.get_mut(norm) {
+            s["slots_free_spins"] = jsval::num_value(free_spins - 1.0);
+        }
+        let _ = state
+            .store
+            .write_document(&state.data_dir().join("user_stats.json"), &stats);
+    } else {
+        let bal = mitch_lib::coins::get_coins(&state.store, state.data_dir(), email);
+        if !bet.is_finite() || bet < 1.0 || bet > bal {
+            return resp(400, &json!({ "error": "invalid bet" }));
+        }
+        if !is_vip && bet > 500.0 {
+            return resp(
+                400,
+                &json!({ "error": "Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!" }),
+            );
+        }
+    }
+
+    const SYMBOLS: [&str; 7] = ["🍒", "🍋", "🍊", "🍇", "🔔", "💎", "7️⃣"];
+    let rigged = is_rigged();
+    let mut results: [&str; 3] = [
+        SYMBOLS[mitch_lib::crypto::js_random_index(SYMBOLS.len())],
+        SYMBOLS[mitch_lib::crypto::js_random_index(SYMBOLS.len())],
+        SYMBOLS[mitch_lib::crypto::js_random_index(SYMBOLS.len())],
+    ];
+    if rigged && slots_mult(&results) > 0.0 {
+        let mut attempts = 0;
+        while slots_mult(&results) > 0.0 && attempts < 20 {
+            results = [
+                SYMBOLS[mitch_lib::crypto::js_random_index(SYMBOLS.len())],
+                SYMBOLS[mitch_lib::crypto::js_random_index(SYMBOLS.len())],
+                SYMBOLS[mitch_lib::crypto::js_random_index(SYMBOLS.len())],
+            ];
+            attempts += 1;
+        }
+    }
+    let raw_mult = slots_mult(&results);
+    let rank = slots_rank(raw_mult);
+    let mut mult = raw_mult;
+    if is_vip_room && mult > 0.0 {
+        mult = js_num_from_fixed(&js_to_fixed(mult * 1.1, 2)); // 10% VIP bonus
+    }
+    let win_amt = bet * mult;
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        if is_vip_room { "VIP Slots" } else { "Slots" },
+        bet,
+        win_amt,
+        if mult > 0.0 { "WIN" } else { "LOSE" },
+        (is_free_spin, false),
+    );
+    // `stats[norm].slots_free_spins || 0` from the LOCAL stats object (the
+    // settle's internal reload doesn't touch it). bun throws → 500 if the
+    // user has no user_stats entry at all; the port reads 0 there instead —
+    // unreachable for any user who ever earned stats.
+    let remaining = stats
+        .get(norm)
+        .and_then(|s| s.get("slots_free_spins"))
+        .and_then(jsval::number)
+        .unwrap_or(0.0);
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "results": results,
+            "rank": rank,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+            "freeSpinsRemaining": jsval::num_value(remaining),
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2201,5 +2356,47 @@ mod tests {
         // Non-array picks → [] (→ 400 'Pick 3 to 10 numbers.').
         assert!(pick(json!(5)).is_empty());
         assert!(parse_keno_picks(&json!({})).is_empty());
+    }
+
+    /// The slots multiplier table (server.js:23686-23696): triples by
+    /// symbol, leading pair 3, trailing pair nothing, else 0.
+    #[test]
+    fn slots_mult_table() {
+        assert_eq!(slots_mult(&["💎", "💎", "💎"]), 100.0);
+        assert_eq!(slots_mult(&["7️⃣", "7️⃣", "7️⃣"]), 50.0);
+        assert_eq!(slots_mult(&["🔔", "🔔", "🔔"]), 20.0);
+        assert_eq!(slots_mult(&["🍒", "🍒", "🍒"]), 10.0);
+        // Other symbols triple to the 6x default.
+        assert_eq!(slots_mult(&["🍋", "🍋", "🍋"]), 6.0);
+        assert_eq!(slots_mult(&["🍇", "🍇", "🍇"]), 6.0);
+        assert_eq!(slots_mult(&["🍊", "🍊", "🍊"]), 6.0);
+        // Only the LEADING pair counts (server.js checks res[0] === res[1]).
+        assert_eq!(slots_mult(&["💎", "💎", "🍒"]), 3.0);
+        assert_eq!(slots_mult(&["💎", "🍒", "🍒"]), 0.0);
+        assert_eq!(slots_mult(&["💎", "🍒", "💎"]), 0.0);
+        assert_eq!(slots_mult(&["🍒", "🍋", "🍊"]), 0.0);
+    }
+
+    /// The rank map keyed on the PRE-bonus mult, 'Lose' for anything else.
+    #[test]
+    fn slots_rank_map() {
+        assert_eq!(slots_rank(100.0), "JACKPOT (Diamonds)");
+        assert_eq!(slots_rank(50.0), "Triple Sevens");
+        assert_eq!(slots_rank(20.0), "Triple Bells");
+        assert_eq!(slots_rank(10.0), "Triple Cherries");
+        assert_eq!(slots_rank(6.0), "Triple Fruit");
+        assert_eq!(slots_rank(3.0), "Double");
+        assert_eq!(slots_rank(0.0), "Lose");
+        assert_eq!(slots_rank(f64::NAN), "Lose");
+    }
+
+    /// VIP room boost: mult = Number((mult * 1.1).toFixed(2)).
+    #[test]
+    fn slots_vip_boost_vectors() {
+        let boost = |m: f64| js_num_from_fixed(&js_to_fixed(m * 1.1, 2));
+        assert_eq!(boost(100.0), 110.0); // 110.00000000000001 → '110.00'
+        assert_eq!(boost(50.0), 55.0);
+        assert_eq!(boost(6.0), 6.6); // 6.6000000000000005 → '6.60'
+        assert_eq!(boost(3.0), 3.3); // 3.3000000000000003 → '3.30'
     }
 }
