@@ -127,6 +127,13 @@ pub struct AppState {
     /// `bettingFeed` (server.js:1201) — every settled round, newest first,
     /// 50-cap; read by /api/casino/global-feed and the admin traffic page.
     pub betting_feed: std::sync::Mutex<Vec<serde_json::Value>>,
+    /// `jeopardyLobbies` (server.js:888) — gameId → lobby, kept as an
+    /// insertion-ordered Vec: /join scans in JS Object.values order. In-memory
+    /// only, like JS.
+    pub jeopardy_lobbies: std::sync::Mutex<Vec<crate::routes::jeopardy::JeopardyLobby>>,
+    /// `jeopardyClueCache` + `jeopardyLastFetch` (server.js:889-892) — lazily
+    /// refreshed from data/jeopardy_kids_clean.json on the 24h TTL.
+    pub jeopardy_clues: std::sync::Mutex<crate::routes::jeopardy::ClueCache>,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -286,6 +293,8 @@ impl AppState {
             bj_games: std::sync::Mutex::new(std::collections::HashMap::new()),
             casino_history: std::sync::Mutex::new(std::collections::HashMap::new()),
             betting_feed: std::sync::Mutex::new(Vec::new()),
+            jeopardy_lobbies: std::sync::Mutex::new(Vec::new()),
+            jeopardy_clues: std::sync::Mutex::new(crate::routes::jeopardy::ClueCache::default()),
         }
     }
 

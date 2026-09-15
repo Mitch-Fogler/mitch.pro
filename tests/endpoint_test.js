@@ -453,6 +453,174 @@ const tests = [
     path: '/api/casino/vip/slots', method: 'POST', token: null, expectedStatus: 403,
     body: { amount: 100 }
   },
+  // ── Step 12 batch 3b: jeopardy. Jeopardy is method-agnostic (the JS
+  // never checks req.method), so every path also gets a GET password-gate
+  // case. Handler bodies are verified live by the jeopardy probe.
+  {
+    name: 'GET /api/jeopardy/state (password gate)',
+    path: '/api/jeopardy/state', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/state (csrf gate)',
+    path: '/api/jeopardy/state', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/state requires session (403)',
+    path: '/api/jeopardy/state', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/jeopardy/create (password gate)',
+    path: '/api/jeopardy/create', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/create (csrf gate)',
+    path: '/api/jeopardy/create', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { maxPlayers: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/create requires session (403)',
+    path: '/api/jeopardy/create', method: 'POST', token: null, expectedStatus: 403,
+    body: { maxPlayers: 10 }
+  },
+  {
+    name: 'GET /api/jeopardy/join (password gate)',
+    path: '/api/jeopardy/join', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/join (csrf gate)',
+    path: '/api/jeopardy/join', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { joinCode: 'ABCDEF' }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/join requires session (403)',
+    path: '/api/jeopardy/join', method: 'POST', token: null, expectedStatus: 403,
+    body: { joinCode: 'ABCDEF' }
+  },
+  {
+    name: 'GET /api/jeopardy/start (password gate)',
+    path: '/api/jeopardy/start', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/start (csrf gate)',
+    path: '/api/jeopardy/start', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x' }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/start requires session (403)',
+    path: '/api/jeopardy/start', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x' }
+  },
+  {
+    name: 'GET /api/jeopardy/select (password gate)',
+    path: '/api/jeopardy/select', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/select (csrf gate)',
+    path: '/api/jeopardy/select', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x', category: 'c', value: 200 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/select requires session (403)',
+    path: '/api/jeopardy/select', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x', category: 'c', value: 200 }
+  },
+  {
+    name: 'GET /api/jeopardy/wager (password gate)',
+    path: '/api/jeopardy/wager', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/wager (csrf gate)',
+    path: '/api/jeopardy/wager', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x', wager: 500 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/wager requires session (403)',
+    path: '/api/jeopardy/wager', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x', wager: 500 }
+  },
+  {
+    name: 'GET /api/jeopardy/buzz (password gate)',
+    path: '/api/jeopardy/buzz', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/buzz (csrf gate)',
+    path: '/api/jeopardy/buzz', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x' }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/buzz requires session (403)',
+    path: '/api/jeopardy/buzz', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x' }
+  },
+  {
+    name: 'GET /api/jeopardy/answer (password gate)',
+    path: '/api/jeopardy/answer', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/answer (csrf gate)',
+    path: '/api/jeopardy/answer', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x', answer: 'x' }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/answer requires session (403)',
+    path: '/api/jeopardy/answer', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x', answer: 'x' }
+  },
+  {
+    name: 'GET /api/jeopardy/visibility (password gate)',
+    path: '/api/jeopardy/visibility', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/visibility (csrf gate)',
+    path: '/api/jeopardy/visibility', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x', hidden: true }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/visibility requires session (403)',
+    path: '/api/jeopardy/visibility', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x', hidden: true }
+  },
+  {
+    name: 'GET /api/jeopardy/final/wager (password gate)',
+    path: '/api/jeopardy/final/wager', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/final/wager (csrf gate)',
+    path: '/api/jeopardy/final/wager', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x', wager: 500 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/final/wager requires session (403)',
+    path: '/api/jeopardy/final/wager', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x', wager: 500 }
+  },
+  {
+    name: 'GET /api/jeopardy/final/answer (password gate)',
+    path: '/api/jeopardy/final/answer', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/jeopardy/final/answer (csrf gate)',
+    path: '/api/jeopardy/final/answer', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { gameId: 'x', answer: 'x' }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/jeopardy/final/answer requires session (403)',
+    path: '/api/jeopardy/final/answer', method: 'POST', token: null, expectedStatus: 403,
+    body: { gameId: 'x', answer: 'x' }
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
