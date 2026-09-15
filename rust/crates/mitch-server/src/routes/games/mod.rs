@@ -21,6 +21,9 @@ use crate::errors::json_resp;
 use crate::state::AppState;
 use mitch_lib::jsval;
 
+mod idle;
+mod mini;
+
 /// `GAME_PORTAL_REWARD_PER_MINUTE` (lib/game_portal_rewards.js:1).
 pub const GAME_PORTAL_REWARD_PER_MINUTE: i64 = 2;
 /// `GAME_PORTAL_DAILY_CAP` (lib/game_portal_rewards.js:2).
@@ -56,6 +59,12 @@ pub fn handle(
     }
     if path == "/api/game-portal/heartbeat" && *method == Method::POST {
         return Some(game_portal_heartbeat(state, headers, body, body_bytes));
+    }
+    if let Some(resp) = idle::handle(state, method, path, headers, body, body_bytes) {
+        return Some(resp);
+    }
+    if let Some(resp) = mini::handle(state, method, path, headers, body, body_bytes) {
+        return Some(resp);
     }
     // NOTE: `GET /api/game-portal/status` (server.js:16319-16336) is DEAD
     // CODE in bun-server: the handler sits inside the `if (method ===
@@ -132,6 +141,56 @@ fn is_revoked_id(state: &AppState, sid: &str) -> bool {
         .read_document(&state.data_dir().join("revoked.json"), json!({}))
         .get(sid)
         .is_some()
+}
+
+/// Which stage of the inline `studentId || id` ladder failed. The idle/mini
+/// game endpoints each write their own 401 bodies (unlike the game-portal
+/// pair's shared `{authenticated:false}`), so the shared helper reports the
+/// stage and lets the caller build the exact response.
+pub(crate) enum SidFail {
+    /// `validId(sid)` false (incl. missing cookie).
+    InvalidId,
+    /// `emailFromSid(sid)` falsy.
+    MissingIdentity,
+}
+
+/// The ladder the idle/mini game endpoints share (server.js 22425-22429,
+/// 22868-22871, …): `cookies['studentId'] || cookies['id'] || ''`, then
+/// `validId(sid)` and `emailFromSid(sid)`. Note bun does NOT check the
+/// revoked-id store on this ladder (unlike the game-portal pair).
+pub(crate) fn sid_email(state: &Arc<AppState>, headers: &HeaderMap) -> Result<String, SidFail> {
+    let cookies = crate::routes::me::cookies_of(state, headers);
+    let sid = cookies
+        .get("studentId")
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| cookies.get("id").unwrap_or(""))
+        .to_string();
+    if !mitch_lib::auth::valid_id(&sid, &state.id_secret) {
+        return Err(SidFail::InvalidId);
+    }
+    match mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, &sid) {
+        Some(email) => Ok(email),
+        None => Err(SidFail::MissingIdentity),
+    }
+}
+
+/// The adrian/richard ladder (server.js:22868-22871, same bodies at 22734+):
+/// `401 {error:'auth required'}` / `401 {error:'identity missing'}`.
+pub(crate) fn games_email(
+    state: &Arc<AppState>,
+    headers: &HeaderMap,
+) -> Result<String, Box<axum::response::Response>> {
+    match sid_email(state, headers) {
+        Ok(email) => Ok(email),
+        Err(SidFail::InvalidId) => Err(Box::new(json_resp(
+            401,
+            json!({ "error": "auth required" }),
+        ))),
+        Err(SidFail::MissingIdentity) => Err(Box::new(json_resp(
+            401,
+            json!({ "error": "identity missing" }),
+        ))),
+    }
 }
 
 /// `gamePortalDayKey(now)` — UTC ISO date (lib/game_portal_rewards.js:6-8).

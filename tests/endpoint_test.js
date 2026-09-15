@@ -1810,6 +1810,129 @@ const tests = [
     body: { game: 'Chess', active: true },
     expectedStatus: 403,
     verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  // ── Step 12 batch 2: idle games (adrian-clicker, richard-riches) + mini
+  // games (kodys-keyboard, pennys-piano-keys, sebastians-piccolo,
+  // lillians-logic). Same dev-server pattern as batch 1: anonymous requests
+  // hit the global password gate (403 'password required'; PUBLIC_API_PATHS
+  // exempts '/api/games' exactly, never its subpaths). Handler bodies are
+  // verified live with minted mitch_session cookies (probe: 44/44).
+  {
+    name: 'GET /api/games/adrian-clicker/state (password gate)',
+    path: '/api/games/adrian-clicker/state',
+    method: 'GET',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/games/richard-riches/state (password gate)',
+    path: '/api/games/richard-riches/state',
+    method: 'GET',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/games/lillians-logic/state (password gate)',
+    path: '/api/games/lillians-logic/state',
+    method: 'GET',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/adrian-clicker/buy (password gate)',
+    path: '/api/games/adrian-clicker/buy',
+    method: 'POST',
+    body: { id: 'desk', points: 10 },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/adrian-clicker/sync (password gate)',
+    path: '/api/games/adrian-clicker/sync',
+    method: 'POST',
+    body: { points: 100 },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/richard-riches/sync (password gate)',
+    path: '/api/games/richard-riches/sync',
+    method: 'POST',
+    body: { state: { cash: 100 } },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/kodys-keyboard/payout (password gate)',
+    path: '/api/games/kodys-keyboard/payout',
+    method: 'POST',
+    body: { wpm: 100, ms: 3000 },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/kodys-keyboard/payout (missing CSRF header)',
+    path: '/api/games/kodys-keyboard/payout',
+    method: 'POST',
+    body: { wpm: 100, ms: 3000 },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/games/kodys-keyboard/payout (wrong verb, password gate)',
+    path: '/api/games/kodys-keyboard/payout',
+    method: 'GET',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/pennys-piano-keys/payout (password gate)',
+    path: '/api/games/pennys-piano-keys/payout',
+    method: 'POST',
+    body: { score: 100, ms: 20000 },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/sebastians-piccolo/payout (password gate)',
+    path: '/api/games/sebastians-piccolo/payout',
+    method: 'POST',
+    body: { score: 1000, ms: 30000 },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/lillians-logic/validate (password gate)',
+    path: '/api/games/lillians-logic/validate',
+    method: 'POST',
+    body: { word: 'apple' },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/lillians-logic/next-wordle (password gate)',
+    path: '/api/games/lillians-logic/next-wordle',
+    method: 'POST',
+    body: {},
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/games/lillians-logic/solve (password gate)',
+    path: '/api/games/lillians-logic/solve',
+    method: 'POST',
+    body: { type: 'wordle', word: 'APPLE' },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
   }
 ];
 

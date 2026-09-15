@@ -21,7 +21,6 @@
 //! Response shapes differ too — the former three speak
 //! `{success, message}`, users/messages speak `{error}`.
 
-use crate::handler::get_real_ip;
 use crate::routes::dm::{is_revoked_id, qs_get};
 use crate::routes::me::{cookies_of, data_file, json_response};
 use crate::state::{AppState, E2eMessage, E2eUser};
@@ -504,23 +503,12 @@ fn parse_int_or_zero(s: &str) -> f64 {
 // ── POST /api/e2e/verify-password ────────────────────────────────────────────
 
 fn verify_password(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -> Response {
-    // checkRateLimit runs BEFORE the cookie/auth gates (server.js:15479).
-    let ip = get_real_ip(headers, None);
-    let cookies = cookies_of(state, headers);
-    let sid = cookies.get("studentId").unwrap_or("");
-    let sid = if sid.is_empty() {
-        cookies.get("id").unwrap_or("")
-    } else {
-        sid
-    };
-    let id_key = if auth::valid_id(sid, &state.id_secret) {
-        format!("id:{sid}")
-    } else {
-        "anon".to_string()
-    };
-    if let Some((code, msg)) = state.rate_limit_check(&ip, &id_key, "/api/e2e/verify-password") {
-        return json_response(code, json!({ "error": msg }));
-    }
+    // NOTE: bun calls `checkRateLimit(req, path)` explicitly here
+    // (server.js:15479), but it is a NO-OP — the global /api/ prelude already
+    // stamped `req._rateLimitChecked` (server.js:5987-5988), so the Rust port
+    // must NOT call rate_limit_check a second time or it would double-count a
+    // slot against the [5, 60] table entry. The global 3b gate (which derives
+    // the same getIdKey bucket) already covers this request.
     let email = match names_email(state, headers) {
         Ok(e) => e,
         Err(resp) => return *resp,

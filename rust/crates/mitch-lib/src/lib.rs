@@ -28,6 +28,7 @@ pub mod data;
 pub mod dm;
 pub mod e2e;
 pub mod email;
+pub mod jstime;
 pub mod jsval;
 pub mod log;
 pub mod profile;

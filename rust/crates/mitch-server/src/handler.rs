@@ -305,8 +305,20 @@ pub async fn handle(
     // ip+anon bucket; sequential runs stay under it.
     if path.starts_with("/api/") && !node_env_test {
         let ip = get_real_ip(headers, None);
-        let id_key = "anon"; // cookie-derived id key lands with sessions
-        if let Some((code, message)) = state.rate_limit_check(&ip, id_key, &path) {
+        // getIdKey (server.js:5915-5920): studentId || id from the
+        // session-restoring cookie map, 'id:<val>' when the HMAC validates,
+        // else the shared 'anon' bucket.
+        let cookies = crate::routes::me::cookies_of(&state, headers);
+        let val = cookies
+            .get("studentId")
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| cookies.get("id").unwrap_or(""));
+        let id_key = if mitch_lib::auth::valid_id(val, &state.id_secret) {
+            format!("id:{val}")
+        } else {
+            "anon".to_string()
+        };
+        if let Some((code, message)) = state.rate_limit_check(&ip, &id_key, &path) {
             return json_resp(code, serde_json::json!({ "error": message }));
         }
     }

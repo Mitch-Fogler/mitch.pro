@@ -91,6 +91,14 @@ pub fn err_resp(code: u16, message: Option<&str>, explain: Option<&str>) -> Resp
 
 /// `jsonResp(code, obj)`.
 pub fn json_resp(code: u16, obj: serde_json::Value) -> Response {
+    json_resp_str(code, obj.to_string())
+}
+
+/// `jsonResp` for a pre-serialized body — used by the game endpoints whose
+/// responses carry passthrough session state, so numbers can be rendered with
+/// the exact ECMAScript `Number::toString` via `mitch_lib::data::js_stringify`
+/// (serde_json would emit `1.0`/`1e22` where JS emits `1`/`1e+22`).
+pub fn json_resp_str(code: u16, body: String) -> Response {
     Response::builder()
         .status(code)
         .header(header::CONTENT_TYPE, "application/json")
@@ -101,6 +109,6 @@ pub fn json_resp(code: u16, obj: serde_json::Value) -> Response {
         .header(header::PRAGMA, "no-cache")
         .header(header::VARY, "Cookie")
         .header("x-content-type-options", "nosniff")
-        .body(axum::body::Body::from(obj.to_string()))
+        .body(axum::body::Body::from(body))
         .expect("static response")
 }

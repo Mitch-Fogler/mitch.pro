@@ -486,6 +486,48 @@ fn normalize_log_category(category: &str) -> String {
     out.chars().take(48).collect()
 }
 
+/// `JSON.stringify(value)` — compact form, same number/string semantics as
+/// [`js_stringify_pretty`]. Used for HTTP response bodies that carry
+/// passthrough game-session state, where serde_json's f64 formatting would
+/// emit `1e22` where JS emits `1e+22` (and `1.0` where JS emits `1`).
+pub fn js_stringify(value: &Value) -> String {
+    let mut out = String::new();
+    js_write_compact(value, &mut out);
+    out
+}
+
+fn js_write_compact(value: &Value, out: &mut String) {
+    match value {
+        Value::Null => out.push_str("null"),
+        Value::Bool(true) => out.push_str("true"),
+        Value::Bool(false) => out.push_str("false"),
+        Value::Number(n) => out.push_str(&js_number(n)),
+        Value::String(s) => out.push_str(&js_quote(s)),
+        Value::Array(items) => {
+            out.push('[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                js_write_compact(item, out);
+            }
+            out.push(']');
+        }
+        Value::Object(map) => {
+            out.push('{');
+            for (i, (k, v)) in map.iter().enumerate() {
+                if i > 0 {
+                    out.push(',');
+                }
+                out.push_str(&js_quote(k));
+                out.push(':');
+                js_write_compact(v, out);
+            }
+            out.push('}');
+        }
+    }
+}
+
 /// `JSON.stringify(value, null, 2)` with JS number semantics (integers print
 /// without a decimal point below 1e21, `-0` prints as `0`, exponential
 /// notation outside 1e-6..1e21). serde_json's default f64 formatting would
@@ -559,32 +601,65 @@ fn js_number(n: &serde_json::Number) -> String {
     js_f64(f)
 }
 
-/// JS `Number.prototype.toString()` rules (which JSON.stringify uses):
-/// decimal notation for 1e-6 <= |x| < 1e21, exponential outside that, `-0`
-/// printed as `0`.
-fn js_f64(f: f64) -> String {
+/// JS `Number.prototype.toString()` — the exact ECMAScript algorithm, which
+/// JSON.stringify uses for finite numbers: shortest round-trip digits
+/// (Rust's `{:e}` produces the same digit string as V8), then placement per
+/// spec — zero-fill when k <= n <= 21, `d1..dn.dn+1..dk` when 0 < n <= 21,
+/// `0.00…d` when -6 < n <= 0, exponential `d1.d2…e±m` otherwise. `-0` prints
+/// as `0`; non-finite values print as `null` (JSON.stringify drops them).
+///
+/// The old short-cut (`integral → i64`) broke at ≥ 2^53 where JS zero-fills
+/// the *shortest* digits instead of the exact integer — e.g. `2**60` prints
+/// `1152921504606847000`, not `1152921504606846976` (verified on bun).
+pub fn js_number_string(f: f64) -> String {
     if f == 0.0 {
-        return "0".to_string();
+        return "0".to_string(); // also covers -0
     }
-    let abs = f.abs();
-    if (1e-6..1e21).contains(&abs) {
-        if f.fract() == 0.0 && abs < 9.007_199_254_740_992e18 {
-            return format!("{}", f as i64);
+    if !f.is_finite() {
+        return "null".to_string(); // JSON.stringify(NaN/Infinity)
+    }
+    // Shortest round-trip digits: `format!("{:e}")` → "d1.d2…dk e EXP".
+    let sci = format!("{f:e}");
+    let Some((mantissa, exp)) = sci.split_once('e') else {
+        return sci; // unreachable for finite f64
+    };
+    let n: i32 = exp.parse::<i32>().unwrap_or(0) + 1; // decimal-point position
+    let digits: String = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
+    let k = digits.len() as i32;
+    let mut out = String::new();
+    if f < 0.0 {
+        out.push('-');
+    }
+    if k <= n && n <= 21 {
+        out.push_str(&digits);
+        for _ in 0..(n - k) {
+            out.push('0');
         }
-        return format!("{f}");
-    }
-    // Exponential notation, JS style: mantissa + e[+-]exp.
-    let exp_str = format!("{f:e}");
-    match exp_str.split_once('e') {
-        Some((mantissa, exp)) => {
-            if let Some(stripped) = exp.strip_prefix('-') {
-                format!("{mantissa}e-{stripped}")
-            } else {
-                format!("{mantissa}e+{exp}")
-            }
+    } else if 0 < n && n <= 21 {
+        out.push_str(&digits[..n as usize]);
+        out.push('.');
+        out.push_str(&digits[n as usize..]);
+    } else if -6 < n && n <= 0 {
+        out.push_str("0.");
+        for _ in 0..(-n) {
+            out.push('0');
         }
-        None => exp_str,
+        out.push_str(&digits);
+    } else {
+        out.push_str(&digits[..1]);
+        if k > 1 {
+            out.push('.');
+            out.push_str(&digits[1..]);
+        }
+        out.push('e');
+        out.push(if n >= 1 { '+' } else { '-' });
+        out.push_str(&(n - 1).unsigned_abs().to_string());
     }
+    out
+}
+
+fn js_f64(f: f64) -> String {
+    js_number_string(f)
 }
 
 /// `JSON.stringify(string)` escaping: quotes, backslashes, control chars as
@@ -613,6 +688,44 @@ pub fn js_quote(s: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn js_number_string_matches_ecmascript() {
+        // Expected values measured with bun (`String(n)` / JSON.stringify).
+        assert_eq!(js_number_string(0.0), "0");
+        assert_eq!(js_number_string(-0.0), "0");
+        assert_eq!(js_number_string(123.0), "123");
+        assert_eq!(js_number_string(123.5), "123.5");
+        assert_eq!(js_number_string(0.1), "0.1");
+        assert_eq!(js_number_string(0.30000000000000004), "0.30000000000000004");
+        assert_eq!(js_number_string(1e15), "1000000000000000");
+        assert_eq!(js_number_string(1e16), "10000000000000000");
+        assert_eq!(js_number_string(1.7e17), "170000000000000000");
+        assert_eq!(js_number_string(1.4e13), "14000000000000");
+        // ≥ 2^53: JS zero-fills the SHORTEST digits, not the exact integer.
+        assert_eq!(js_number_string(2.0f64.powi(60)), "1152921504606847000");
+        // Exponential band switch at 1e21.
+        assert_eq!(js_number_string(1e20), "100000000000000000000");
+        assert_eq!(js_number_string(1e21), "1e+21");
+        assert_eq!(js_number_string(1.4e21), "1.4e+21");
+        assert_eq!(js_number_string(2.6e22), "2.6e+22");
+        assert_eq!(js_number_string(1e290), "1e+290");
+        assert_eq!(js_number_string(-1e290), "-1e+290");
+        assert_eq!(js_number_string(1e-6), "0.000001");
+        assert_eq!(js_number_string(1.5e-7), "1.5e-7");
+        assert_eq!(js_number_string(1e-7), "1e-7");
+        // Non-finite → JSON.stringify renders null.
+        assert_eq!(js_number_string(f64::NAN), "null");
+        assert_eq!(js_number_string(f64::INFINITY), "null");
+        assert_eq!(
+            js_stringify(&json!({"a":1e21,"b":2.0f64.powi(60),"c":1e15,"d":1.5e-7})),
+            r#"{"a":1e+21,"b":1152921504606847000,"c":1000000000000000,"d":1.5e-7}"#
+        );
+        assert_eq!(
+            js_stringify_pretty(&json!({"a":1e21})),
+            "{\n  \"a\": 1e+21\n}"
+        );
+    }
 
     fn temp_base(tag: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!(
