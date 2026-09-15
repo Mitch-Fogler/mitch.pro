@@ -288,6 +288,50 @@ const tests = [
     name: 'GET /api/casino/blackjack/state requires session (403)',
     path: '/api/casino/blackjack/state', method: 'GET', token: null, expectedStatus: 403
   },
+  // ── Step 12 batch 3b: plinko, roulette, high-low. Same gate assertions as
+  // batch 3a: GETs hit the password gate, no-Origin POSTs the CSRF gate
+  // (which runs in the prelude before any body validation), anonymous
+  // requests 403. Handler bodies verified live by the casino probe.
+  {
+    name: 'GET /api/casino/plinko (password gate)',
+    path: '/api/casino/plinko', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/casino/roulette (password gate)',
+    path: '/api/casino/roulette', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/casino/high-low (password gate)',
+    path: '/api/casino/high-low', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/casino/roulette (csrf gate)',
+    path: '/api/casino/roulette', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { type: 'red', amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/high-low (csrf gate)',
+    path: '/api/casino/high-low', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { choice: 'higher', amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/plinko requires session (403)',
+    path: '/api/casino/plinko', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 1 }
+  },
+  {
+    name: 'POST /api/casino/roulette requires session (403)',
+    path: '/api/casino/roulette', method: 'POST', token: null, expectedStatus: 403,
+    body: { type: 'red', amount: 1 }
+  },
+  {
+    name: 'POST /api/casino/high-low requires session (403)',
+    path: '/api/casino/high-low', method: 'POST', token: null, expectedStatus: 403,
+    body: { choice: 'lower', amount: 1 }
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,

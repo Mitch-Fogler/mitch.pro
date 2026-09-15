@@ -6,8 +6,9 @@
 //! (server.js:23099-23175) and the per-game handlers.
 //!
 //! This commit ports the prelude + helpers + the read endpoints
-//! (`history`, `global-feed`) + the four instant games rock-paper-scissors,
-//! lucky-seven, color-card and triple-dice (server.js:23189-23242).
+//! (`history`, `global-feed`) + the instant games rock-paper-scissors,
+//! lucky-seven, color-card, triple-dice, plinko, roulette and high-low
+//! (server.js:23189-23310).
 //!
 //! Every response body leaves through `js_stringify` — the money fields are
 //! `Number(x.toFixed(n))` values whose exact rendering matters.
@@ -135,6 +136,9 @@ fn game(
         "/api/casino/lucky-seven" => Some(lucky_seven(state, body, email, norm)),
         "/api/casino/color-card" => Some(color_card(state, body, email, norm)),
         "/api/casino/triple-dice" => Some(triple_dice(state, body, email, norm)),
+        "/api/casino/plinko" => Some(plinko(state, body, email, norm)),
+        "/api/casino/roulette" => Some(roulette(state, body, email, norm)),
+        "/api/casino/high-low" => Some(high_low(state, body, email, norm)),
         // blackjack hit/stand/start, poker/slots/wheel/… land in later
         // commits; unhandled paths return None so the request falls through
         // exactly like bun (POST → 405 fallthrough, GET → static 404).
@@ -555,13 +559,7 @@ fn color_card(
         "black"
     };
     let value = 1.0 + mitch_lib::crypto::js_random().floor() * 13.0;
-    let card = match value as u32 {
-        1 => "A".to_string(),
-        13 => "K".to_string(),
-        12 => "Q".to_string(),
-        11 => "J".to_string(),
-        v => v.to_string(),
-    };
+    let card = card_name(value);
     let won = choice == color;
     let settled = settle_casino_round(
         state,
@@ -639,9 +637,338 @@ fn triple_dice(
     )
 }
 
+/// `isRigged()` (server.js:23119-23121) — hardcoded `false` in bun; the
+/// first caller is roulette. Kept as a function so the rig branches below
+/// stay a faithful port.
+fn is_rigged() -> bool {
+    false
+}
+
+/// `weightedPick(items)` (server.js:23163-23172): roll = Math.random() *
+/// total, then subtract each weight and return the first item where the
+/// running roll is ≤ 0 (fallback: the last item).
+fn weighted_pick<T>(items: &[(T, f64)]) -> &T {
+    let total: f64 = items.iter().map(|(_, w)| w).sum();
+    let mut roll = mitch_lib::crypto::js_random() * total;
+    for (item, weight) in items {
+        roll -= weight;
+        if roll <= 0.0 {
+            return item;
+        }
+    }
+    &items[items.len() - 1].0
+}
+
+/// `POST /api/casino/plinko` (server.js:23244-23258). Note plinko reads
+/// `body` without its own parse/recaptcha gates — the shared prelude already
+/// ran them.
+fn plinko(
+    state: &Arc<AppState>,
+    body: &Value,
+    email: &str,
+    norm: &str,
+) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    // The weighted slot table (server.js:23249-23252), label order preserved.
+    let slots: [(&str, f64); 7] = [
+        ("0x", 0.0),
+        ("0.5x", 0.5),
+        ("0.8x", 0.8),
+        ("1.2x", 1.2),
+        ("1.5x", 1.5),
+        ("3x", 3.0),
+        ("8x", 8.0),
+    ];
+    let weights: [f64; 7] = [25.0, 25.0, 18.0, 15.0, 10.0, 5.0, 2.0];
+    let paired: Vec<((&str, f64), f64)> = slots.iter().zip(weights).map(|(s, w)| (*s, w)).collect();
+    let (label, mult) = weighted_pick(&paired);
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Plinko",
+        bet,
+        bet * mult,
+        if *mult >= 1.0 { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "slot": label,
+            "mult": jsval::num_value(*mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
+/// The roulette color table (server.js:23286-23292), index = pocket number.
+const ROULETTE_COLORS: [&str; 37] = [
+    "green", "red", "black", "red", "black", "red", "black", "red", "black", "red", "black",
+    "black", "red", "black", "red", "black", "red", "black", "red", "red", "black", "red", "black",
+    "red", "black", "red", "black", "red", "black", "black", "red", "black", "red", "black", "red",
+    "black", "red",
+];
+
+/// `POST /api/casino/roulette` (server.js:23260-23304). `type` is consumed
+/// raw (no `|| ''` coercion): the string comparisons are strict, and the
+/// numeric branch accepts anything `Number(type)` turns into an integer
+/// 0-36 — including `true` (→ 1) and `null` (→ 0).
+fn roulette(
+    state: &Arc<AppState>,
+    body: &Value,
+    email: &str,
+    norm: &str,
+) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    // bun re-calls tryParseJson here; the shared prelude already parsed the
+    // same bytes (parsedJsonBody caches), so this is a no-op on both sides.
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let type_ = body.get("type");
+
+    let num = (mitch_lib::crypto::js_random() * 37.0).floor();
+    let mut num_value = jsval::num_value(num);
+    let mut result_color = ROULETTE_COLORS[num as usize];
+    let rigged = is_rigged();
+
+    let mut won = false;
+    let mut mult = 0.0;
+    let mut valid = true;
+
+    let type_str = type_.and_then(Value::as_str);
+    if let Some(t) = type_str.filter(|s| *s == "red" || *s == "black") {
+        won = result_color == t;
+        mult = 2.0;
+        if won && rigged {
+            // Object.keys(colors).find(n => colors[n] !== type && n !== '0'):
+            // first pocket (insertion order, '0' first) with a different
+            // color; num becomes the STRING key from here on.
+            if let Some((i, _)) = ROULETTE_COLORS
+                .iter()
+                .enumerate()
+                .find(|(i, c)| **c != t && *i != 0)
+            {
+                num_value = Value::String(i.to_string());
+                result_color = ROULETTE_COLORS[i];
+            }
+            won = false;
+        }
+    } else if type_str == Some("green") {
+        won = num == 0.0;
+        mult = 35.0;
+        if won && rigged {
+            num_value = jsval::num_value(1.0);
+            result_color = "red";
+            won = false;
+        }
+    } else {
+        // Number.isInteger(Number(type)) && Number(type) >= 0 && <= 36.
+        let n = type_.and_then(jsval::number).unwrap_or(f64::NAN);
+        if n.is_finite() && n.fract() == 0.0 && (0.0..=36.0).contains(&n) {
+            won = num == n;
+            mult = 35.0;
+            if won && rigged {
+                let next = ((num + 1.0) % 37.0) as usize;
+                num_value = jsval::num_value(next as f64);
+                result_color = ROULETTE_COLORS[next];
+                won = false;
+            }
+        } else {
+            valid = false;
+        }
+    }
+
+    if !valid {
+        return resp(400, &json!({ "error": "Invalid bet type." }));
+    }
+    let payout = if won { bet * mult } else { 0.0 };
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Roulette",
+        bet,
+        payout,
+        if won { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "number": num_value,
+            "color": result_color,
+            "won": won,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
+/// `POST /api/casino/high-low` (server.js:23306-23319).
+fn high_low(
+    state: &Arc<AppState>,
+    body: &Value,
+    email: &str,
+    norm: &str,
+) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let choice = jsval::string(&jsval::or(body.get("choice"), json!(""))).to_lowercase();
+    if choice != "higher" && choice != "lower" {
+        return resp(400, &json!({ "error": "Choose higher or lower." }));
+    }
+    let value = 1.0 + (mitch_lib::crypto::js_random() * 13.0).floor();
+    let card = card_name(value);
+    let push = value == 7.0;
+    let won = !push
+        && if choice == "higher" {
+            value > 7.0
+        } else {
+            value < 7.0
+        };
+    let payout = if push {
+        bet
+    } else if won {
+        bet * 2.0
+    } else {
+        0.0
+    };
+    let outcome = if push {
+        "PUSH"
+    } else if won {
+        "WIN"
+    } else {
+        "LOSE"
+    };
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "High / Low",
+        bet,
+        payout,
+        outcome,
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "choice": choice,
+            "card": card,
+            "value": jsval::num_value(value),
+            "push": push,
+            "won": won,
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
+/// The card label shared by color-card and high-low
+/// (`value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' :
+/// value === 11 ? 'J' : String(value)`).
+fn card_name(value: f64) -> String {
+    match value as u32 {
+        1 => "A".to_string(),
+        11 => "J".to_string(),
+        12 => "Q".to_string(),
+        13 => "K".to_string(),
+        v => v.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The roulette color table must match the JS object literal verbatim.
+    #[test]
+    fn roulette_color_table_matches_js() {
+        let expected = [
+            "green", "red", "black", "red", "black", "red", "black", "red", "black", "red",
+            "black", "black", "red", "black", "red", "black", "red", "black", "red", "red",
+            "black", "red", "black", "red", "black", "red", "black", "red", "black", "black",
+            "red", "black", "red", "black", "red", "black", "red",
+        ];
+        assert_eq!(ROULETTE_COLORS, expected);
+        assert_eq!(ROULETTE_COLORS.len(), 37);
+        assert_eq!(ROULETTE_COLORS[0], "green");
+        // Red and black each appear 18 times.
+        assert_eq!(ROULETTE_COLORS.iter().filter(|c| **c == "red").count(), 18);
+        assert_eq!(
+            ROULETTE_COLORS.iter().filter(|c| **c == "black").count(),
+            18
+        );
+    }
+
+    /// Card labels A/2-10/J/Q/K for values 1-13 (color-card + high-low).
+    #[test]
+    fn card_name_covers_1_to_13() {
+        let expected = [
+            "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K",
+        ];
+        for (v, want) in expected.iter().enumerate() {
+            assert_eq!(&card_name((v + 1) as f64), want);
+        }
+    }
+
+    /// High-low outcomes: push only on 7, higher wins 8-13, lower wins 1-6.
+    #[test]
+    fn high_low_outcome_matrix() {
+        for v in 1u32..=13 {
+            let value = v as f64;
+            let push = value == 7.0;
+            let higher_won = !push && value > 7.0;
+            let lower_won = !push && value < 7.0;
+            assert_eq!(push, v == 7);
+            assert_eq!(higher_won, (8..=13).contains(&v));
+            assert_eq!(lower_won, (1..=6).contains(&v));
+        }
+    }
+
+    /// Plinko weight table: labels, multipliers and the 100-weight sum.
+    #[test]
+    fn plinko_slot_table() {
+        let slots: [(&str, f64); 7] = [
+            ("0x", 0.0),
+            ("0.5x", 0.5),
+            ("0.8x", 0.8),
+            ("1.2x", 1.2),
+            ("1.5x", 1.5),
+            ("3x", 3.0),
+            ("8x", 8.0),
+        ];
+        let weights: [f64; 7] = [25.0, 25.0, 18.0, 15.0, 10.0, 5.0, 2.0];
+        let total: f64 = weights.iter().sum();
+        assert_eq!(total, 100.0);
+        let wins = slots
+            .iter()
+            .zip(weights)
+            .filter(|((_, m), _)| *m >= 1.0)
+            .count();
+        assert_eq!(wins, 4); // 1.2x / 1.5x / 3x / 8x pay WIN
+    }
 
     /// `Number(x.toFixed(4))` money rounding through the shared helper.
     #[test]
