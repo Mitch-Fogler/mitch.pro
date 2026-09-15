@@ -149,9 +149,11 @@ fn game(
         "/api/casino/coinflip" => Some(coinflip(state, body, email, norm)),
         "/api/casino/dice" => Some(dice(state, body, email, norm)),
         "/api/casino/crash" => Some(crash(state, body, email, norm)),
-        // wheel/scratch/keno/slots land in later commits; unhandled paths
-        // return None so the request falls through exactly like bun
-        // (POST → 405 fallthrough, GET → static 404).
+        "/api/casino/wheel" => Some(wheel(state, body, email, norm)),
+        "/api/casino/scratch" => Some(scratch(state, body, email, norm)),
+        // keno/slots land in later commits; unhandled paths return None so
+        // the request falls through exactly like bun (POST → 405 fallthrough,
+        // GET → static 404).
         _ => None,
     }
 }
@@ -1500,6 +1502,146 @@ fn crash(state: &Arc<AppState>, body: &Value, email: &str, norm: &str) -> axum::
     )
 }
 
+/// The prize-wheel segments (server.js:23579-23587) — label/mult/weight in
+/// JS literal order.
+const WHEEL_SEGMENTS: [(&str, f64, f64); 7] = [
+    ("Bust", 0.0, 85.0),
+    ("Half Back", 0.5, 40.0),
+    ("Small Win", 1.25, 32.0),
+    ("Double", 2.0, 31.0),
+    ("Triple", 3.0, 8.0),
+    ("Meteor", 8.0, 3.0),
+    ("Galaxy Jackpot", 20.0, 1.0),
+];
+
+/// `POST /api/casino/wheel` (server.js:23570-23590). weightedPick over the
+/// 7 segments; a win pays bet×mult (Half Back's 0.5 loses half, counts as
+/// LOSE in history).
+fn wheel(state: &Arc<AppState>, body: &Value, email: &str, norm: &str) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let paired: Vec<((&str, f64), f64)> = WHEEL_SEGMENTS
+        .iter()
+        .map(|(l, m, w)| ((*l, *m), *w))
+        .collect();
+    let rigged = is_rigged();
+    let mut segment = weighted_pick(&paired);
+    if rigged && segment.1 >= 1.0 {
+        segment = &paired[0].0; // Force Bust
+    }
+    let (label, mult) = *segment;
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Prize Wheel",
+        bet,
+        bet * mult,
+        if mult >= 1.0 { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "segment": label,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
+/// The scratch-card rank table (server.js:23596-23603): roll thresholds and
+/// the mult each band pays. Extracted for testability; the ladder is
+/// strictly `<` against the thresholds in ascending order.
+fn scratch_rank(roll: f64) -> (f64, &'static str) {
+    if roll < 0.002 {
+        (90.0, "Triple Diamonds")
+    } else if roll < 0.010 {
+        (25.0, "Triple Sevens")
+    } else if roll < 0.040 {
+        (6.0, "Triple Bells")
+    } else if roll < 0.100 {
+        (2.5, "Triple Fruit")
+    } else if roll < 0.180 {
+        (1.5, "Small Match")
+    } else if roll < 0.300 {
+        (1.0, "Half Back")
+    } else {
+        (0.0, "No Match")
+    }
+}
+
+/// `POST /api/casino/scratch` (server.js:23591-23614). One uniform roll
+/// picks the band; the 3×3 tile grid is random with winning bands stamping
+/// their diagonal/line symbols on top.
+fn scratch(
+    state: &Arc<AppState>,
+    body: &Value,
+    email: &str,
+    norm: &str,
+) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let rigged = is_rigged();
+    let mut roll = mitch_lib::crypto::js_random();
+    if rigged && roll < 0.180 {
+        roll = 0.300 + mitch_lib::crypto::js_random() * 0.7; // Force No Match
+    }
+    let (mult, rank) = scratch_rank(roll);
+    const SYMBOLS: [&str; 7] = ["🍒", "🍋", "🍊", "🍇", "🔔", "💎", "7️⃣"];
+    let mut tiles: Vec<String> = (0..9)
+        .map(|_| SYMBOLS[mitch_lib::crypto::js_random_index(SYMBOLS.len())].to_string())
+        .collect();
+    if mult >= 25.0 {
+        let s = if mult >= 90.0 { "💎" } else { "7️⃣" };
+        tiles[0] = s.to_string();
+        tiles[4] = s.to_string();
+        tiles[8] = s.to_string();
+    } else if mult >= 2.5 {
+        let s = if mult >= 6.0 { "🔔" } else { "🍒" };
+        tiles[1] = s.to_string();
+        tiles[4] = s.to_string();
+        tiles[7] = s.to_string();
+    } else if mult > 0.0 {
+        tiles[3] = "🍋".to_string();
+        tiles[4] = "🍋".to_string();
+    }
+    let tiles: Vec<Value> = tiles.into_iter().map(Value::String).collect();
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Scratch Card",
+        bet,
+        bet * mult,
+        if mult >= 1.0 { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "tiles": tiles,
+            "rank": rank,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1791,5 +1933,45 @@ mod tests {
             c("♠", "A"),
         ];
         assert_eq!(poker_rank(&high_card), ("Lose", 0.0));
+    }
+
+    /// The prize-wheel segment table (server.js:23579-23587) — labels,
+    /// mults and weights in literal order.
+    #[test]
+    fn wheel_segment_table_matches_js() {
+        let expected: [(&str, f64, f64); 7] = [
+            ("Bust", 0.0, 85.0),
+            ("Half Back", 0.5, 40.0),
+            ("Small Win", 1.25, 32.0),
+            ("Double", 2.0, 31.0),
+            ("Triple", 3.0, 8.0),
+            ("Meteor", 8.0, 3.0),
+            ("Galaxy Jackpot", 20.0, 1.0),
+        ];
+        assert_eq!(WHEEL_SEGMENTS, expected);
+        // Weights sum to 200; five segments pay ≥ 1 (WIN — Small Win through
+        // Galaxy Jackpot), two don't (Bust, Half Back).
+        assert_eq!(WHEEL_SEGMENTS.iter().map(|(_, _, w)| w).sum::<f64>(), 200.0);
+        assert_eq!(
+            WHEEL_SEGMENTS.iter().filter(|(_, m, _)| *m >= 1.0).count(),
+            5
+        );
+    }
+
+    /// The scratch-card band ladder (server.js:23596-23603) — `<`
+    /// thresholds with the exact boundary rolls.
+    #[test]
+    fn scratch_rank_thresholds() {
+        assert_eq!(scratch_rank(0.0), (90.0, "Triple Diamonds"));
+        // Exactly at a threshold falls into the NEXT band (strict <).
+        assert_eq!(scratch_rank(0.002), (25.0, "Triple Sevens"));
+        assert_eq!(scratch_rank(0.010), (6.0, "Triple Bells"));
+        assert_eq!(scratch_rank(0.040), (2.5, "Triple Fruit"));
+        assert_eq!(scratch_rank(0.100), (1.5, "Small Match"));
+        assert_eq!(scratch_rank(0.180), (1.0, "Half Back"));
+        assert_eq!(scratch_rank(0.300), (0.0, "No Match"));
+        assert_eq!(scratch_rank(0.999), (0.0, "No Match"));
+        assert_eq!(scratch_rank(0.1799), (1.5, "Small Match"));
+        assert_eq!(scratch_rank(0.0099), (25.0, "Triple Sevens"));
     }
 }

@@ -401,6 +401,28 @@ const tests = [
     path: '/api/casino/crash', method: 'POST', token: null, expectedStatus: 403,
     body: { target: 2, amount: 10 }
   },
+  // ── Step 12 wheel/scratch batch: 7-segment weighted wheel, 9-tile scratch
+  // bands. Handler bodies verified live by the casino probe.
+  {
+    name: 'POST /api/casino/wheel (csrf gate)',
+    path: '/api/casino/wheel', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/wheel requires session (403)',
+    path: '/api/casino/wheel', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 10 }
+  },
+  {
+    name: 'POST /api/casino/scratch (csrf gate)',
+    path: '/api/casino/scratch', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/scratch requires session (403)',
+    path: '/api/casino/scratch', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 10 }
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
