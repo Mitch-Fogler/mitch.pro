@@ -261,15 +261,15 @@ pub fn handle(
             &state.cfg.data_dir,
             &admin_email,
             "gift_coins",
-            json!({ "targetEmail": target_email, "targetRaw": target_raw, "amount": amount, "reason": reason }),
+            json!({ "targetEmail": target_email, "targetRaw": target_raw, "amount": mitch_lib::jsval::num_value(amount), "reason": reason }),
         );
         return Some(json_response(
             200,
             json!({
                 "ok": true,
                 "targetEmail": target_raw,
-                "amount": amount,
-                "newBalance": mitch_lib::coins::get_coins(&state.store, &state.cfg.data_dir, &target_raw),
+                "amount": mitch_lib::jsval::num_value(amount),
+                "newBalance": mitch_lib::jsval::num_value(mitch_lib::coins::get_coins(&state.store, &state.cfg.data_dir, &target_raw)),
             }),
         ));
     }
@@ -329,7 +329,7 @@ pub fn handle(
             &state.cfg.data_dir,
             &admin_email,
             "burn_coins",
-            json!({ "target": target, "amount": amount }),
+            json!({ "target": target, "amount": mitch_lib::jsval::num_value(amount) }),
         );
         return Some(json_response(200, json!({ "ok": true })));
     }
@@ -963,7 +963,7 @@ pub fn moderator_gift_coins(
         "gift_coins",
         json!({
             "targetEmail": target,
-            "amount": amount,
+            "amount": mitch_lib::jsval::num_value(amount),
             "reason": payload.get("reason").cloned().unwrap_or(Value::Null),
             "requestedBy": requester_email,
         }),
@@ -971,8 +971,8 @@ pub fn moderator_gift_coins(
     Ok(json!({
         "ok": true,
         "targetEmail": target,
-        "amount": amount,
-        "newBalance": mitch_lib::coins::get_coins(&state.store, &state.cfg.data_dir, &target),
+        "amount": mitch_lib::jsval::num_value(amount),
+        "newBalance": mitch_lib::jsval::num_value(mitch_lib::coins::get_coins(&state.store, &state.cfg.data_dir, &target)),
     }))
 }
 
@@ -1007,13 +1007,13 @@ pub fn moderator_burn_coins(
         &state.cfg.data_dir,
         actor,
         "burn_coins",
-        json!({ "target": target, "amount": amount, "requestedBy": requester_email }),
+        json!({ "target": target, "amount": mitch_lib::jsval::num_value(amount), "requestedBy": requester_email }),
     );
     Ok(json!({
         "ok": true,
         "targetEmail": target,
-        "amount": amount,
-        "newBalance": mitch_lib::coins::get_coins(&state.store, &state.cfg.data_dir, &target),
+        "amount": mitch_lib::jsval::num_value(amount),
+        "newBalance": mitch_lib::jsval::num_value(mitch_lib::coins::get_coins(&state.store, &state.cfg.data_dir, &target)),
     }))
 }
 

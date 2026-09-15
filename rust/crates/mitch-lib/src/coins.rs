@@ -222,7 +222,12 @@ fn now_millis() -> i64 {
 
 /// `new Date().toISOString()` — `YYYY-MM-DDTHH:MM:SS.sssZ`, UTC, no time crate.
 pub fn js_iso_date() -> String {
-    let millis = now_millis();
+    js_iso_date_from(now_millis())
+}
+
+/// `new Date(ms).toISOString()` — the parameterized form used by endpoints
+/// that stamp a request-time `now` into day keys.
+pub fn js_iso_date_from(millis: i64) -> String {
     let days = millis.div_euclid(86_400_000);
     let secs = millis.rem_euclid(86_400_000) / 1000;
     let ms = millis.rem_euclid(1000);

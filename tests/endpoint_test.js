@@ -1755,6 +1755,61 @@ const tests = [
     expectedStatus: 403,
     headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
     verify: (b) => b && b.error === 'password required'
+  },
+  // ── Step 12 batch 1: game-portal rewards + game stats/categories ──
+  // NOTE: on this dev server the global password gate intercepts anonymous
+  // /api/ requests with 403 'password required' (only the password-gate
+  // exempt set passes through), so these cases assert that gate; the ported
+  // handler bodies are verified live with minted mitch_session cookies.
+  {
+    name: 'GET /api/game-categories (password gate)',
+    path: '/api/game-categories',
+    method: 'GET',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/game-stats (password gate)',
+    path: '/api/game-stats',
+    method: 'GET',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  // GET /api/game-portal/status is DEAD CODE in server.js (the handler sits
+  // inside the method==='POST' block, 13991-17779), so bun 404s it even with
+  // a valid session — verified live. An anonymous requests hits the global
+  // password gate first (403); the 404 body is HTML, so no verify.
+  {
+    name: 'GET /api/game-portal/status (password gate)',
+    path: '/api/game-portal/status',
+    method: 'GET',
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/game-portal/status (password gate, raw sid cookie)',
+    path: '/api/game-portal/status',
+    method: 'GET',
+    token: USER_TOKEN,
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/game-portal/heartbeat (password gate)',
+    path: '/api/game-portal/heartbeat',
+    method: 'POST',
+    body: { game: 'Chess', active: true },
+    expectedStatus: 403,
+    headers: { 'X-Mitch-Requested-With': '1', Origin: BASE_URL },
+    verify: (b) => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/game-portal/heartbeat (missing CSRF header)',
+    path: '/api/game-portal/heartbeat',
+    method: 'POST',
+    body: { game: 'Chess', active: true },
+    expectedStatus: 403,
+    verify: (b) => b && b.error === 'csrf_blocked'
   }
 ];
 

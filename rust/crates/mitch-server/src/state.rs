@@ -90,6 +90,12 @@ pub struct AppState {
     /// with Step 12 (chess-vs).
     #[allow(dead_code)]
     pub cv_online: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+
+    /// `gamePortalSessions` (server.js:493) — normalized email → active
+    /// game-portal reward heartbeat. In-memory only, like JS.
+    pub game_portal_sessions: std::sync::Mutex<
+        std::collections::HashMap<String, crate::routes::games::GamePortalSession>,
+    >,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -228,6 +234,7 @@ impl AppState {
             // load; a lagged receiver skips forward like a slow JS client.
             ws_tx: tokio::sync::broadcast::channel(1024).0,
             cv_online: std::sync::Mutex::new(std::collections::HashMap::new()),
+            game_portal_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 

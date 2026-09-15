@@ -289,7 +289,7 @@ fn leaderboard(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
             .unwrap_or(Value::Null);
         rows.push(json!({
             "name": name,
-            "coins": coins.get(norm).cloned().unwrap_or(json!(0.0)),
+            "coins": coins.get(norm).cloned().unwrap_or(json!(0)),
             "wins": field(stats, "chess_wins"),
             "puzzles": field(stats, "puzzles_solved"),
             "pixels": field(stats, "pixels"),
@@ -538,7 +538,7 @@ fn me_coins(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
         200,
         json!({
             "authenticated": true,
-            "coins": coins,
+            "coins": jsval::num_value(coins),
             "achievements": achievements,
             "stats": stats,
         }),

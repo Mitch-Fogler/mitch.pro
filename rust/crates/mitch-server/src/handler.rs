@@ -556,6 +556,16 @@ pub async fn handle(
         {
             return resp;
         }
+        // games group (Step 12): game-portal rewards + game stats/categories
+        // (game-portal at server.js:16320, game-categories at 19081,
+        // game-stats at 19107 — all before dm at 19452). Idle games and the
+        // casino/jeopardy/battleship/chess-vs groups land here in later
+        // batches.
+        if let Some(resp) =
+            crate::routes::games::handle(&state, &method, &path, headers, &body, body_bytes)
+        {
+            return resp;
+        }
         // members + userdata group (Step 9 batch 6).
         if let Some(resp) =
             crate::routes::members::handle(&state, &method, &path, headers, body_bytes).await
