@@ -300,9 +300,15 @@ pub async fn handle(
     let node_env_test = std::env::var("NODE_ENV").unwrap_or_default() == "test";
     let body: serde_json::Value =
         serde_json::from_slice(body_bytes).unwrap_or(serde_json::json!({}));
-    // 3b. Rate limiting — only /api/ paths (server.js ~7658). The parity
+    // 3b. Rate limiting — every /api/ path (server.js:9130-9134: the global
+    // gate calls checkRateLimit unconditionally for /api/*, including the
+    // chess-vs block; the RATE_LIMITS entries in the chess-vs block itself
+    // are dead config but the global gate still applies). The parity
     // harness hits unlisted paths which get the __default__ [100, 60] per
-    // ip+anon bucket; sequential runs stay under it.
+    // ip+anon bucket; sequential runs stay under it. Includes the anti-bot
+    // timing check (server.js:5992-5999) with the same exempt suffixes
+    // (/state, /inbox, /heartbeat, /groups, /dm/send, /canvas/,
+    // /blooket-bot/status).
     if path.starts_with("/api/") && !node_env_test {
         let ip = get_real_ip(headers, None);
         // getIdKey (server.js:5915-5920): studentId || id from the
@@ -574,6 +580,15 @@ pub async fn handle(
         // here; chess-vs in a later batch.
         if let Some(resp) =
             crate::routes::games::handle(&state, &method, &path, headers, &body, body_bytes)
+        {
+            return resp;
+        }
+        // chess-vs group (Step 12): the 10 /api/chess-vs/* endpoints
+        // (server.js:20483 — file order puts it before battleship at 20754).
+        // Needs the raw query string for /game?id=.
+        if let Some(resp) =
+            crate::routes::chess_vs::handle(&state, &method, &path, headers, &search, body_bytes)
+                .await
         {
             return resp;
         }

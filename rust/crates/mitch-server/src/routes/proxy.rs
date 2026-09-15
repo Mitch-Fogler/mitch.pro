@@ -11,6 +11,7 @@ use crate::state::AppState;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use serde_json::json;
+use serde_json::Value;
 use std::sync::Arc;
 
 const CAPTCHA_TARGET: &str = "https://www.worldshardestcaptcha.com";
@@ -357,7 +358,7 @@ pub async fn ping(
         None
     };
 
-    // Playtime stats for the email.
+    // Playtime stats + ping reward for the email (server.js:15663-15682).
     if let Some(ref em) = email {
         let norm = mitch_lib::auth::normalize_email(em);
         let stats_file = state.data_dir().join("user_stats.json");
@@ -370,6 +371,31 @@ pub async fn ping(
                     let cat_entry = pt.entry(category.clone()).or_insert(json!(0));
                     let cur = cat_entry.as_i64().unwrap_or(0);
                     *cat_entry = json!(cur + 1);
+                }
+                // last_ping_reward: 0.25 coins per 60s (server.js:15668-15673).
+                let now = now_millis() as f64;
+                let last_reward = u
+                    .get("last_ping_reward")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0);
+                if now - last_reward >= 60_000.0 {
+                    mitch_lib::coins::add_coins(
+                        &state.store,
+                        state.data_dir(),
+                        em,
+                        0.25,
+                        state.coin_multiplier(),
+                        "",
+                    );
+                    u.insert("last_ping_reward".into(), json!(now));
+                }
+                if now
+                    - u.get("last_active_at")
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0)
+                    >= 10_000.0
+                {
+                    u.insert("last_active_at".into(), json!(now));
                 }
             }
         }
@@ -412,9 +438,37 @@ pub async fn ping(
         crate::ws::touch_user_presence(state, em, &playing);
     }
 
+    // `/api/ping`'s challenge list (server.js:15683-15689): filters
+    // `c.to === normalizeEmail(em)` over the cvChallenges map — which is
+    // provably always empty (the /challenge handler never stores), so this
+    // stays [] in practice; kept for structural fidelity. Note the JS maps
+    // `type: "c".type` — undefined, so the key is dropped by JSON.stringify.
+    let challenges = if let Some(ref em) = email {
+        let norm = mitch_lib::auth::normalize_email(em);
+        let chs = state
+            .cv_challenges
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        chs.values()
+            .filter(|c| mitch_lib::jsval::string_of(c.get("to")) == norm)
+            .map(|c| {
+                let mut m = serde_json::Map::new();
+                if let Some(v) = c.get("from") {
+                    m.insert("from".into(), v.clone());
+                }
+                if let Some(v) = c.get("id") {
+                    m.insert("id".into(), v.clone());
+                }
+                Value::Object(m)
+            })
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+
     Some(json_response(
         200,
-        json!({ "success": true, "challenges": [] }),
+        json!({ "success": true, "challenges": challenges }),
     ))
 }
 
@@ -444,6 +498,13 @@ fn normalize_game_page(page: &str) -> String {
         p.push('/');
     }
     p
+}
+
+fn now_millis() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn now_millis_str() -> String {

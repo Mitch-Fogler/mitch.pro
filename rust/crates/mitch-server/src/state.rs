@@ -145,6 +145,15 @@ pub struct AppState {
     /// `bsOnline` (server.js:886) — email → last-seen ms; /online scans in
     /// insertion order.
     pub bs_online: std::sync::Mutex<indexmap::IndexMap<String, i64>>,
+    /// `cvGames` (server.js:853) — gameId → raw game JSON, seeded from
+    /// data/chess_vs.json at boot (856); insertion order = file order.
+    pub cv_games: std::sync::Mutex<indexmap::IndexMap<String, serde_json::Value>>,
+    /// `cvChallenges` (server.js:854) — provably empty for the process
+    /// lifetime: the /challenge handler never stores (routes/chess_vs.rs).
+    /// Kept as state so respond/heartbeat/ping keep their JS shape.
+    pub cv_challenges: std::sync::Mutex<indexmap::IndexMap<String, serde_json::Value>>,
+    /// `cvChats` (server.js:855) — gameId → messages; in-memory only.
+    pub cv_chats: std::sync::Mutex<indexmap::IndexMap<String, serde_json::Value>>,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -245,6 +254,7 @@ impl AppState {
         let logic_map = Self::load_session_map(&store, &cfg.data_dir, "logic_sessions.json");
         let richard_map = Self::load_session_map(&store, &cfg.data_dir, "richard_sessions.json");
         let logic_dictionary = Self::load_logic_dictionary(&cfg.data_dir);
+        let cv_games_map = Self::load_cv_games(&store, &cfg.data_dir);
         Self {
             cfg,
             static_cache: StaticCache::new(),
@@ -309,7 +319,24 @@ impl AppState {
             bs_challenges: std::sync::Mutex::new(indexmap::IndexMap::new()),
             bs_games: std::sync::Mutex::new(indexmap::IndexMap::new()),
             bs_online: std::sync::Mutex::new(indexmap::IndexMap::new()),
+            cv_games: std::sync::Mutex::new(cv_games_map),
+            cv_challenges: std::sync::Mutex::new(indexmap::IndexMap::new()),
+            cv_chats: std::sync::Mutex::new(indexmap::IndexMap::new()),
         }
+    }
+
+    /// `Object.assign(cvGames, loadJson(CHESS_VS_FILE, {}))`
+    /// (server.js:856) — every document entry becomes an own property,
+    /// insertion order = file order.
+    fn load_cv_games(
+        store: &mitch_lib::data::DataStore,
+        data_dir: &std::path::Path,
+    ) -> indexmap::IndexMap<String, serde_json::Value> {
+        store
+            .read_document(&data_dir.join("chess_vs.json"), serde_json::json!({}))
+            .as_object()
+            .map(|o| o.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+            .unwrap_or_default()
     }
 
     /// `loadXxxSessions()` — `Map(Object.entries(loadJson(FILE, {})))` with a

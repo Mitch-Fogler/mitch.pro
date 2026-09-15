@@ -744,6 +744,26 @@ const tests = [
     path: '/api/battleship/resign', method: 'POST', token: null, expectedStatus: 403,
     body: {}
   },
+  // --- Chess-vs: the global password/CSRF gates precede the block (like the
+  // --- other game groups); the 401/403 ladder itself is probed by the
+  // --- differential probe. The challenge handler never stores (quirk).
+  ...['challenge', 'respond', 'game', 'move', 'resign', 'draw', 'chat', 'heartbeat', 'online', 'challenges'].flatMap(p => ([
+    {
+      name: `GET /api/chess-vs/${p} (password gate)`,
+      path: `/api/chess-vs/${p}`, method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+      verify: b => b && b.error === 'password required'
+    },
+    {
+      name: `POST /api/chess-vs/${p} (csrf gate)`,
+      path: `/api/chess-vs/${p}`, method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+      body: { gameId: 'ep-none' }, verify: b => b && b.error === 'csrf_blocked'
+    },
+    {
+      name: `POST /api/chess-vs/${p} requires session (403)`,
+      path: `/api/chess-vs/${p}`, method: 'POST', token: null, expectedStatus: 403,
+      body: { gameId: 'ep-none' }
+    },
+  ])),
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
