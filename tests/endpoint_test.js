@@ -424,6 +424,16 @@ const tests = [
     body: { amount: 10 }
   },
   {
+    name: 'POST /api/casino/keno (csrf gate)',
+    path: '/api/casino/keno', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { picks: [1, 2, 3], amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/keno requires session (403)',
+    path: '/api/casino/keno', method: 'POST', token: null, expectedStatus: 403,
+    body: { picks: [1, 2, 3], amount: 10 }
+  },
+  {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
     body: { amount: 10 }, verify: data => typeof data.slot === 'string' && Number.isFinite(data.newBalance)

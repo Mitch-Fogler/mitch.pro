@@ -151,7 +151,8 @@ fn game(
         "/api/casino/crash" => Some(crash(state, body, email, norm)),
         "/api/casino/wheel" => Some(wheel(state, body, email, norm)),
         "/api/casino/scratch" => Some(scratch(state, body, email, norm)),
-        // keno/slots land in later commits; unhandled paths return None so
+        "/api/casino/keno" => Some(keno(state, body, email, norm)),
+        // slots land in a later commit; unhandled paths return None so
         // the request falls through exactly like bun (POST → 405 fallthrough,
         // GET → static 404).
         _ => None,
@@ -1642,6 +1643,143 @@ fn scratch(
     )
 }
 
+/// The keno payout table (server.js:23628-23637) — `payoutTable[picks][hits]`
+/// in JS literal order; absent cells pay nothing.
+const KENO_PAYOUT: [(usize, &[(usize, f64)]); 8] = [
+    (3, &[(2, 2.1), (3, 14.0)]),
+    (4, &[(2, 0.9), (3, 5.0), (4, 38.0)]),
+    (5, &[(3, 2.8), (4, 14.0), (5, 90.0)]),
+    (6, &[(3, 1.3), (4, 5.5), (5, 38.0), (6, 210.0)]),
+    (7, &[(4, 3.6), (5, 17.0), (6, 90.0), (7, 480.0)]),
+    (8, &[(4, 2.4), (5, 8.5), (6, 45.0), (7, 190.0), (8, 950.0)]),
+    (
+        9,
+        &[(5, 5.5), (6, 25.0), (7, 120.0), (8, 450.0), (9, 1700.0)],
+    ),
+    (
+        10,
+        &[
+            (5, 3.8),
+            (6, 14.0),
+            (7, 65.0),
+            (8, 250.0),
+            (9, 1000.0),
+            (10, 2800.0),
+        ],
+    ),
+];
+
+/// `payoutTable[picks.length][hits.length] || 0`.
+fn keno_payout(picks: usize, hits: usize) -> f64 {
+    KENO_PAYOUT
+        .iter()
+        .find(|(p, _)| *p == picks)
+        .and_then(|(_, row)| row.iter().find(|(h, _)| *h == hits))
+        .map(|(_, m)| *m)
+        .unwrap_or(0.0)
+}
+
+/// The keno `picks` parser (server.js:23622): non-array → `[]`; else
+/// `Number()`-coerced, Set-deduped, filtered to integers 1-40, sorted
+/// ascending.
+fn parse_keno_picks(body: &Value) -> Vec<f64> {
+    let Some(arr) = body.get("picks").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut set: Vec<f64> = Vec::new();
+    for v in arr {
+        let n = jsval::number(v).unwrap_or(f64::NAN);
+        if !set.contains(&n) {
+            set.push(n);
+        }
+    }
+    let mut picks: Vec<f64> = set
+        .into_iter()
+        .filter(|n| n.is_finite() && n.fract() == 0.0 && *n >= 1.0 && *n <= 40.0)
+        .collect();
+    picks.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    picks
+}
+
+/// `drawUniqueNumbers(max, count)` (server.js:23168-23175): 1..max,
+/// Fisher-Yates from the end, first `count`, sorted ascending.
+fn draw_unique_numbers(max: usize, count: usize) -> Vec<f64> {
+    let mut nums: Vec<f64> = (1..=max).map(|i| i as f64).collect();
+    for i in (1..nums.len()).rev() {
+        let j = (mitch_lib::crypto::js_random() * (i as f64 + 1.0)).floor() as usize;
+        nums.swap(i, j);
+    }
+    nums.truncate(count);
+    nums.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    nums
+}
+
+/// `POST /api/casino/keno` (server.js:23615-23653). 12 balls drawn without
+/// replacement against 3-10 picks; each hit pays the table × 1.12
+/// (toFixed(2)). Hits are picks-order (both sides ascending).
+fn keno(state: &Arc<AppState>, body: &Value, email: &str, norm: &str) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let picks = parse_keno_picks(body);
+    if picks.len() < 3 || picks.len() > 10 {
+        return resp(400, &json!({ "error": "Pick 3 to 10 numbers." }));
+    }
+    let rigged = is_rigged();
+    let mut drawn = draw_unique_numbers(40, 12);
+    let mut hits: Vec<f64> = picks
+        .iter()
+        .filter(|p| drawn.contains(p))
+        .cloned()
+        .collect();
+    if rigged && keno_payout(picks.len(), hits.len()) > 0.0 {
+        // If rigged and user was going to win, keep re-drawing until they lose.
+        let mut attempts = 0;
+        while keno_payout(picks.len(), hits.len()) > 0.0 && attempts < 20 {
+            drawn = draw_unique_numbers(40, 12);
+            hits = picks
+                .iter()
+                .filter(|p| drawn.contains(p))
+                .cloned()
+                .collect();
+            attempts += 1;
+        }
+    }
+    let mut mult = keno_payout(picks.len(), hits.len());
+    if mult > 0.0 {
+        mult = js_num_from_fixed(&js_to_fixed(mult * 1.12, 2));
+    }
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Keno Rush",
+        bet,
+        bet * mult,
+        if mult > 0.0 { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    let picks_v: Vec<Value> = picks.iter().map(|p| jsval::num_value(*p)).collect();
+    let drawn_v: Vec<Value> = drawn.iter().map(|d| jsval::num_value(*d)).collect();
+    let hits_v: Vec<Value> = hits.iter().map(|h| jsval::num_value(*h)).collect();
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "picks": picks_v,
+            "drawn": drawn_v,
+            "hits": hits_v,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1973,5 +2111,95 @@ mod tests {
         assert_eq!(scratch_rank(0.999), (0.0, "No Match"));
         assert_eq!(scratch_rank(0.1799), (1.5, "Small Match"));
         assert_eq!(scratch_rank(0.0099), (25.0, "Triple Sevens"));
+    }
+
+    /// The keno payout table (server.js:23628-23637) and the ×1.12
+    /// toFixed(2) boost applied to any paying cell.
+    #[test]
+    fn keno_payout_table_matches_js() {
+        let expected = [
+            (3usize, vec![(2usize, 2.1), (3, 14.0)]),
+            (4, vec![(2, 0.9), (3, 5.0), (4, 38.0)]),
+            (5, vec![(3, 2.8), (4, 14.0), (5, 90.0)]),
+            (6, vec![(3, 1.3), (4, 5.5), (5, 38.0), (6, 210.0)]),
+            (7, vec![(4, 3.6), (5, 17.0), (6, 90.0), (7, 480.0)]),
+            (
+                8,
+                vec![(4, 2.4), (5, 8.5), (6, 45.0), (7, 190.0), (8, 950.0)],
+            ),
+            (
+                9,
+                vec![(5, 5.5), (6, 25.0), (7, 120.0), (8, 450.0), (9, 1700.0)],
+            ),
+            (
+                10,
+                vec![
+                    (5, 3.8),
+                    (6, 14.0),
+                    (7, 65.0),
+                    (8, 250.0),
+                    (9, 1000.0),
+                    (10, 2800.0),
+                ],
+            ),
+        ];
+        for (picks, row) in expected {
+            let got: Vec<(usize, f64)> = KENO_PAYOUT
+                .iter()
+                .find(|(p, _)| *p == picks)
+                .map(|(_, r)| r.to_vec())
+                .unwrap_or_default();
+            assert_eq!(got, row, "picks={picks}");
+            // Row invariants: hit counts ascend, first paying row starts ≥ 2
+            // (a single hit never pays).
+            assert!(row.windows(2).all(|w| w[0].0 < w[1].0));
+            assert!(row[0].0 >= 2);
+        }
+        // Absent cells pay nothing.
+        assert_eq!(keno_payout(3, 0), 0.0);
+        assert_eq!(keno_payout(3, 1), 0.0);
+        assert_eq!(keno_payout(5, 2), 0.0);
+        assert_eq!(keno_payout(3, 4), 0.0); // hits can't exceed picks anyway
+                                            // mult = Number((mult * 1.12).toFixed(2)) for paying cells.
+        let boost = |m: f64| js_num_from_fixed(&js_to_fixed(m * 1.12, 2));
+        assert_eq!(boost(2.1), 2.35); // 2.352 → '2.35'
+        assert_eq!(boost(0.9), 1.01); // 1.008 → '1.01'
+        assert_eq!(boost(5.0), 5.6); // 5.6 → '5.60'
+        assert_eq!(boost(2800.0), 3136.0); // 3136.0000000000005 → '3136.00'
+    }
+
+    /// drawUniqueNumbers: `count` unique ascending integers from 1..max.
+    #[test]
+    fn draw_unique_numbers_shape() {
+        for _ in 0..50 {
+            let drawn = draw_unique_numbers(40, 12);
+            assert_eq!(drawn.len(), 12);
+            let mut sorted = drawn.clone();
+            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            assert_eq!(drawn, sorted, "must be ascending");
+            assert!(drawn.windows(2).all(|w| w[0] < w[1]), "must be unique");
+            assert!(drawn
+                .iter()
+                .all(|n| *n >= 1.0 && *n <= 40.0 && n.fract() == 0.0));
+        }
+        // count larger than max yields all max numbers.
+        assert_eq!(draw_unique_numbers(3, 10), vec![1.0, 2.0, 3.0]);
+    }
+
+    /// The picks parser: Number() coercion, Set dedupe, integer 1-40 filter,
+    /// ascending sort — non-arrays and under-full filters hit the 400.
+    #[test]
+    fn keno_picks_parser() {
+        let pick = |p: Value| parse_keno_picks(&json!({ "picks": p }));
+        assert_eq!(pick(json!([1, 2, 3])), vec![1.0, 2.0, 3.0]);
+        // Dedupe + sort: input order irrelevant.
+        assert_eq!(pick(json!([7, 3, 7, 1])), vec![1.0, 3.0, 7.0]);
+        // Number coercion: strings parse, true → 1, null → 0 (filtered).
+        assert_eq!(pick(json!(["5", 6, true, null])), vec![1.0, 5.0, 6.0]);
+        // Filter: floats, 0, 41, non-numeric strings (NaN) all drop.
+        assert_eq!(pick(json!([1.5, 0, 41, "abc", 2, 3])), vec![2.0, 3.0]);
+        // Non-array picks → [] (→ 400 'Pick 3 to 10 numbers.').
+        assert!(pick(json!(5)).is_empty());
+        assert!(parse_keno_picks(&json!({})).is_empty());
     }
 }
