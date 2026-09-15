@@ -145,7 +145,8 @@ fn game(
         "/api/casino/blackjack/start" => Some(bj_start(state, body, email, norm)),
         "/api/casino/blackjack/hit" => Some(bj_hit(state, email, norm)),
         "/api/casino/blackjack/stand" => Some(bj_stand(state, email, norm)),
-        // blackjack hit/stand/start, poker/slots/wheel/… land in later
+        "/api/casino/poker/start" => Some(poker(state, body, email, norm)),
+        // coinflip/dice/crash/wheel/scratch/keno/slots land in later
         // commits; unhandled paths return None so the request falls through
         // exactly like bun (POST → 405 fallthrough, GET → static 404).
         _ => None,
@@ -1195,6 +1196,149 @@ fn bj_stand(state: &Arc<AppState>, email: &str, norm: &str) -> axum::response::R
     )
 }
 
+/// `POST /api/casino/poker/start` (server.js:23460-23518). Five cards off a
+/// shuffled 52-card deck, evaluated against the rank ladder — there is no
+/// draw phase; the dealt hand IS the hand. The game name embeds the rank
+/// (`Poker (Two Pair)`), so the history/feed read differently per rank.
+fn poker(state: &Arc<AppState>, body: &Value, email: &str, norm: &str) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    // The poker deck literal (server.js:23468-23470) — vals ascending 2..A,
+    // unlike blackjack's A-first deck.
+    let mut deck = Vec::with_capacity(52);
+    for s in ["♠", "♥", "♦", "♣"] {
+        for v in [
+            "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A",
+        ] {
+            deck.push(json!({ "s": s, "v": v }));
+        }
+    }
+    for i in (1..deck.len()).rev() {
+        let j = mitch_lib::crypto::js_random_index(i + 1);
+        deck.swap(i, j);
+    }
+    let pop = |deck: &mut Vec<Value>| deck.pop().unwrap_or(Value::Null);
+    let mut hand: Vec<Value> = (0..5).map(|_| pop(&mut deck)).collect();
+
+    let rigged = is_rigged();
+    if rigged && poker_rank(&hand).1 > 0.0 {
+        // The rig re-draws WITH replacement from the remaining deck.
+        let mut attempts = 0;
+        while poker_rank(&hand).1 > 0.0 && attempts < 20 {
+            hand = (0..5)
+                .map(|_| deck[mitch_lib::crypto::js_random_index(deck.len())].clone())
+                .collect();
+            attempts += 1;
+        }
+    }
+
+    let (rank, mult) = poker_rank(&hand);
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        &format!("Poker ({rank})"),
+        bet,
+        bet * mult,
+        if mult > 0.0 { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "hand": hand,
+            "rank": rank,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
+/// `checkHand` (server.js:23477-23496). There is NO ace-low straight (A is
+/// always 14), and a single pair pays only when the paired value is J/Q/K/A
+/// (`vMap[v] >= 11`). Group sizes come from the counts object sorted
+/// descending; the pair lookup reads the first hand-ordered key with count
+/// 2 (only reachable for a single pair — two pairs are matched earlier).
+fn poker_rank(hand: &[Value]) -> (&'static str, f64) {
+    let vmap = |v: &str| -> Option<f64> {
+        match v {
+            "J" => Some(11.0),
+            "Q" => Some(12.0),
+            "K" => Some(13.0),
+            "A" => Some(14.0),
+            other => other.parse::<f64>().ok(),
+        }
+    };
+    let mut nums: Vec<f64> = hand
+        .iter()
+        .map(|c| {
+            c.get("v")
+                .and_then(Value::as_str)
+                .and_then(vmap)
+                .unwrap_or(f64::NAN)
+        })
+        .collect();
+    nums.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mut counts: Vec<(String, u32)> = Vec::new();
+    let mut suits: Vec<(String, u32)> = Vec::new();
+    for c in hand {
+        let v = c.get("v").and_then(Value::as_str).unwrap_or("");
+        let s = c.get("s").and_then(Value::as_str).unwrap_or("");
+        for (map, key) in [(&mut counts, v), (&mut suits, s)] {
+            match map.iter_mut().find(|(k, _)| k == key) {
+                Some((_, n)) => *n += 1,
+                None => map.push((key.to_string(), 1)),
+            }
+        }
+    }
+    let mut sizes: Vec<u32> = counts.iter().map(|(_, n)| *n).collect();
+    sizes.sort_by(|a, b| b.cmp(a));
+    let is_flush = suits.iter().any(|(_, n)| *n == 5);
+    let is_straight = nums.windows(2).all(|w| w[1] == w[0] + 1.0);
+
+    if is_flush && is_straight && nums.first() == Some(&10.0) {
+        return ("Royal Flush", 500.0);
+    }
+    if is_flush && is_straight {
+        return ("Straight Flush", 100.0);
+    }
+    if sizes.first() == Some(&4) {
+        return ("Four of a Kind", 50.0);
+    }
+    if sizes.first() == Some(&3) && sizes.get(1) == Some(&2) {
+        return ("Full House", 15.0);
+    }
+    if is_flush {
+        return ("Flush", 10.0);
+    }
+    if is_straight {
+        return ("Straight", 7.0);
+    }
+    if sizes.first() == Some(&3) {
+        return ("Three of a Kind", 5.0);
+    }
+    if sizes.first() == Some(&2) && sizes.get(1) == Some(&2) {
+        return ("Two Pair", 3.0);
+    }
+    if sizes.first() == Some(&2) {
+        let paired = counts
+            .iter()
+            .find(|(_, n)| *n == 2)
+            .and_then(|(k, _)| vmap(k));
+        if paired.is_some_and(|n| n >= 11.0) {
+            return ("Jacks or Better", 2.0);
+        }
+    }
+    ("Lose", 0.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1380,5 +1524,111 @@ mod tests {
         assert_eq!(table[1], 2.0);
         assert_eq!(table[2], 5.0);
         assert_eq!(table[3], 25.0);
+    }
+
+    /// The poker rank ladder (server.js:23497-23509) — every branch, in
+    /// ladder order, including the ace-low NON-straight and the pair
+    /// J-or-better rule.
+    #[test]
+    fn poker_rank_ladder() {
+        let c = |s: &str, v: &str| json!({ "s": s, "v": v });
+        let royal = vec![
+            c("♠", "10"),
+            c("♠", "J"),
+            c("♠", "Q"),
+            c("♠", "K"),
+            c("♠", "A"),
+        ];
+        assert_eq!(poker_rank(&royal), ("Royal Flush", 500.0));
+        let st_flush = vec![
+            c("♥", "5"),
+            c("♥", "6"),
+            c("♥", "7"),
+            c("♥", "8"),
+            c("♥", "9"),
+        ];
+        assert_eq!(poker_rank(&st_flush), ("Straight Flush", 100.0));
+        let quads = vec![
+            c("♠", "7"),
+            c("♥", "7"),
+            c("♦", "7"),
+            c("♣", "7"),
+            c("♠", "K"),
+        ];
+        assert_eq!(poker_rank(&quads), ("Four of a Kind", 50.0));
+        let boat = vec![
+            c("♠", "9"),
+            c("♥", "9"),
+            c("♦", "9"),
+            c("♣", "2"),
+            c("♠", "2"),
+        ];
+        assert_eq!(poker_rank(&boat), ("Full House", 15.0));
+        let flush = vec![
+            c("♦", "2"),
+            c("♦", "5"),
+            c("♦", "9"),
+            c("♦", "J"),
+            c("♦", "A"),
+        ];
+        assert_eq!(poker_rank(&flush), ("Flush", 10.0));
+        let straight = vec![
+            c("♠", "4"),
+            c("♥", "5"),
+            c("♦", "6"),
+            c("♣", "7"),
+            c("♠", "8"),
+        ];
+        assert_eq!(poker_rank(&straight), ("Straight", 7.0));
+        // Ace-low (A,2,3,4,5) is NOT a straight: A is always 14.
+        let wheel = vec![
+            c("♠", "A"),
+            c("♥", "2"),
+            c("♦", "3"),
+            c("♣", "4"),
+            c("♠", "5"),
+        ];
+        assert_eq!(poker_rank(&wheel), ("Lose", 0.0));
+        let trips = vec![
+            c("♠", "6"),
+            c("♥", "6"),
+            c("♦", "6"),
+            c("♣", "2"),
+            c("♠", "K"),
+        ];
+        assert_eq!(poker_rank(&trips), ("Three of a Kind", 5.0));
+        let two_pair = vec![
+            c("♠", "9"),
+            c("♥", "9"),
+            c("♦", "3"),
+            c("♣", "3"),
+            c("♠", "K"),
+        ];
+        assert_eq!(poker_rank(&two_pair), ("Two Pair", 3.0));
+        let jacks = vec![
+            c("♠", "J"),
+            c("♥", "J"),
+            c("♦", "2"),
+            c("♣", "5"),
+            c("♠", "9"),
+        ];
+        assert_eq!(poker_rank(&jacks), ("Jacks or Better", 2.0));
+        // A low pair pays nothing.
+        let lows = vec![
+            c("♠", "9"),
+            c("♥", "9"),
+            c("♦", "2"),
+            c("♣", "5"),
+            c("♠", "K"),
+        ];
+        assert_eq!(poker_rank(&lows), ("Lose", 0.0));
+        let high_card = vec![
+            c("♠", "2"),
+            c("♥", "5"),
+            c("♦", "9"),
+            c("♣", "J"),
+            c("♠", "A"),
+        ];
+        assert_eq!(poker_rank(&high_card), ("Lose", 0.0));
     }
 }

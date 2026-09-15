@@ -355,6 +355,19 @@ const tests = [
     path: '/api/casino/blackjack/stand', method: 'POST', token: null, expectedStatus: 403,
     body: {}
   },
+  // ── Step 12 poker batch: dealt-hand 5-card evaluation, readCasinoBet
+  // ladder, game name embeds the rank. Handler bodies verified live by the
+  // casino probe.
+  {
+    name: 'POST /api/casino/poker/start (csrf gate)',
+    path: '/api/casino/poker/start', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/poker/start requires session (403)',
+    path: '/api/casino/poker/start', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 10 }
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
