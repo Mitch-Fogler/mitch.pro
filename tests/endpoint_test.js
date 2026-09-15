@@ -226,6 +226,68 @@ const tests = [
     path: '/api/casino/triple-dice', method: 'POST', token: USER_TOKEN, expectedStatus: 200,
     body: { amount: 10, pick: 3 }, verify: data => Array.isArray(data.dice) && data.dice.length === 3 && Number.isFinite(data.newBalance)
   },
+  // ── Step 12 batch 3a: casino prelude + history/global-feed + 4 games.
+  // On this dev baseline the legacy id-cookie USER_TOKEN is dropped outside
+  // NODE_ENV=test, so GETs land on the password gate (403 'password
+  // required') and no-Origin POSTs on the CSRF gate (403 'csrf_blocked').
+  // Handler bodies are verified live by tools probes with minted sessions.
+  {
+    name: 'GET /api/casino/history (password gate)',
+    path: '/api/casino/history', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'GET /api/casino/global-feed (password gate)',
+    path: '/api/casino/global-feed', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/casino/history (csrf gate)',
+    path: '/api/casino/history', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/global-feed (csrf gate)',
+    path: '/api/casino/global-feed', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/casino/rock-paper-scissors (password gate)',
+    path: '/api/casino/rock-paper-scissors', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/casino/rock-paper-scissors (csrf gate)',
+    path: '/api/casino/rock-paper-scissors', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10, choice: 'dynamite' }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/triple-dice (csrf gate)',
+    path: '/api/casino/triple-dice', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10, pick: 9 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/color-card (csrf gate)',
+    path: '/api/casino/color-card', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10, choice: 'green' }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'GET /api/casino/history requires session (403)',
+    path: '/api/casino/history', method: 'GET', token: null, expectedStatus: 403
+  },
+  {
+    name: 'GET /api/casino/global-feed requires session (403)',
+    path: '/api/casino/global-feed', method: 'GET', token: null, expectedStatus: 403
+  },
+  {
+    name: 'POST /api/casino/rock-paper-scissors requires session (403)',
+    path: '/api/casino/rock-paper-scissors', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 1, choice: 'rock' }
+  },
+  {
+    name: 'GET /api/casino/blackjack/state requires session (403)',
+    path: '/api/casino/blackjack/state', method: 'GET', token: null, expectedStatus: 403
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,

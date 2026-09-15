@@ -578,6 +578,13 @@ pub async fn handle(
         {
             return resp;
         }
+        // casino group (Step 12): the shared prelude + instant games first;
+        // blackjack/poker/slots/… land in later commits.
+        if let Some(resp) =
+            crate::routes::casino::handle(&state, &method, &path, headers, &body, body_bytes).await
+        {
+            return resp;
+        }
         // members + userdata group (Step 9 batch 6).
         if let Some(resp) =
             crate::routes::members::handle(&state, &method, &path, headers, body_bytes).await

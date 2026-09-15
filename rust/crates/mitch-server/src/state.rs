@@ -116,6 +116,17 @@ pub struct AppState {
     /// from data/wordle_dictionary.txt, loaded once at boot (missing file →
     /// empty set, like the JS try/catch).
     pub logic_dictionary: std::sync::Mutex<std::collections::HashSet<String>>,
+
+    /// `bjGames` (server.js:837) — norm email → the active blackjack hand.
+    /// In-memory only, like JS: hands die with the process.
+    pub bj_games:
+        std::sync::Mutex<std::collections::HashMap<String, crate::routes::casino::BjGame>>,
+    /// `casinoHistory` (server.js:839) — norm email → the last 25 settled
+    /// rounds (newest first). In-memory only.
+    pub casino_history: std::sync::Mutex<std::collections::HashMap<String, Vec<serde_json::Value>>>,
+    /// `bettingFeed` (server.js:1201) — every settled round, newest first,
+    /// 50-cap; read by /api/casino/global-feed and the admin traffic page.
+    pub betting_feed: std::sync::Mutex<Vec<serde_json::Value>>,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -272,6 +283,9 @@ impl AppState {
             piano_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
             piccolo_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
             logic_dictionary: std::sync::Mutex::new(logic_dictionary),
+            bj_games: std::sync::Mutex::new(std::collections::HashMap::new()),
+            casino_history: std::sync::Mutex::new(std::collections::HashMap::new()),
+            betting_feed: std::sync::Mutex::new(Vec::new()),
         }
     }
 

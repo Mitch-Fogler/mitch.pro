@@ -24,175 +24,180 @@ const SAFE_CAP: f64 = 1e290;
 
 /// `ADRIAN_TECH` (server.js:493-510) — key order preserved (JSON.stringify
 /// echoes these verbatim in the state response).
-pub static ADRIAN_TECH: std::sync::LazyLock<Vec<(&'static str, Value)>> =
-    std::sync::LazyLock::new(|| vec![
-    (
-        "desk_1",
-        json!({"name": "Reinforced Desk", "cost": 100, "icon": "🪑", "target": "desk", "mult": 2, "unlock": {"id": "desk", "n": 1}}),
-    ),
-    (
-        "desk_2",
-        json!({"name": "Ergonomic Chair", "cost": 500, "icon": "💺", "target": "desk", "mult": 2, "unlock": {"id": "desk", "n": 10}}),
-    ),
-    (
-        "desk_3",
-        json!({"name": "Dual Monitor", "cost": 10000, "icon": "🖥️", "target": "desk", "mult": 2, "unlock": {"id": "desk", "n": 25}}),
-    ),
-    (
-        "chrome_1",
-        json!({"name": "Speed Extension", "cost": 1000, "icon": "⚡", "target": "chromebook", "mult": 2, "unlock": {"id": "chromebook", "n": 1}}),
-    ),
-    (
-        "chrome_2",
-        json!({"name": "Overclocked RAM", "cost": 5000, "icon": "🧠", "target": "chromebook", "mult": 2, "unlock": {"id": "chromebook", "n": 10}}),
-    ),
-    (
-        "fiber_1",
-        json!({"name": "Cat6 Cables", "cost": 11000, "icon": "🔌", "target": "fiber", "mult": 2, "unlock": {"id": "fiber", "n": 1}}),
-    ),
-    (
-        "fiber_2",
-        json!({"name": "Router Pro", "cost": 55000, "icon": "📡", "target": "fiber", "mult": 2, "unlock": {"id": "fiber", "n": 10}}),
-    ),
-    (
-        "ai_1",
-        json!({"name": "Neural Network", "cost": 120000, "icon": "🤖", "target": "ai_bot", "mult": 2, "unlock": {"id": "ai_bot", "n": 1}}),
-    ),
-    (
-        "ai_2",
-        json!({"name": "Quantum Training", "cost": 600000, "icon": "✨", "target": "ai_bot", "mult": 2, "unlock": {"id": "ai_bot", "n": 10}}),
-    ),
-    (
-        "mitch_1",
-        json!({"name": "Mitch's Advice", "cost": 5000, "icon": "💡", "target": "global", "mult": 2, "unlock": {"id": "desk", "n": 5}}),
-    ),
-    (
-        "mitch_2",
-        json!({"name": "Community Server", "cost": 500000, "icon": "🌐", "target": "global", "mult": 2, "unlock": {"id": "mainframe", "n": 5}}),
-    ),
-    (
-        "star_1",
-        json!({"name": "Pulsar Harvest", "cost": 1e15, "icon": "💫", "target": "neutron_star", "mult": 2, "unlock": {"id": "neutron_star", "n": 1}}),
-    ),
-    (
-        "star_2",
-        json!({"name": "Quasar Focus", "cost": 5e15, "icon": "💠", "target": "neutron_star", "mult": 2, "unlock": {"id": "neutron_star", "n": 10}}),
-    ),
-    (
-        "void_1",
-        json!({"name": "Void Insight", "cost": 1e18, "icon": "🌑", "target": "black_hole", "mult": 2, "unlock": {"id": "black_hole", "n": 1}}),
-    ),
-    (
-        "googol_1",
-        json!({"name": "Infinite Logic", "cost": 1e85, "icon": "♾️", "target": "global", "mult": 10, "unlock": {"id": "beyond_googol", "n": 1}}),
-    ),
-]);
+pub static ADRIAN_TECH: std::sync::LazyLock<Vec<(&'static str, Value)>> = std::sync::LazyLock::new(
+    || {
+        vec![
+            (
+                "desk_1",
+                json!({"name": "Reinforced Desk", "cost": 100, "icon": "🪑", "target": "desk", "mult": 2, "unlock": {"id": "desk", "n": 1}}),
+            ),
+            (
+                "desk_2",
+                json!({"name": "Ergonomic Chair", "cost": 500, "icon": "💺", "target": "desk", "mult": 2, "unlock": {"id": "desk", "n": 10}}),
+            ),
+            (
+                "desk_3",
+                json!({"name": "Dual Monitor", "cost": 10000, "icon": "🖥️", "target": "desk", "mult": 2, "unlock": {"id": "desk", "n": 25}}),
+            ),
+            (
+                "chrome_1",
+                json!({"name": "Speed Extension", "cost": 1000, "icon": "⚡", "target": "chromebook", "mult": 2, "unlock": {"id": "chromebook", "n": 1}}),
+            ),
+            (
+                "chrome_2",
+                json!({"name": "Overclocked RAM", "cost": 5000, "icon": "🧠", "target": "chromebook", "mult": 2, "unlock": {"id": "chromebook", "n": 10}}),
+            ),
+            (
+                "fiber_1",
+                json!({"name": "Cat6 Cables", "cost": 11000, "icon": "🔌", "target": "fiber", "mult": 2, "unlock": {"id": "fiber", "n": 1}}),
+            ),
+            (
+                "fiber_2",
+                json!({"name": "Router Pro", "cost": 55000, "icon": "📡", "target": "fiber", "mult": 2, "unlock": {"id": "fiber", "n": 10}}),
+            ),
+            (
+                "ai_1",
+                json!({"name": "Neural Network", "cost": 120000, "icon": "🤖", "target": "ai_bot", "mult": 2, "unlock": {"id": "ai_bot", "n": 1}}),
+            ),
+            (
+                "ai_2",
+                json!({"name": "Quantum Training", "cost": 600000, "icon": "✨", "target": "ai_bot", "mult": 2, "unlock": {"id": "ai_bot", "n": 10}}),
+            ),
+            (
+                "mitch_1",
+                json!({"name": "Mitch's Advice", "cost": 5000, "icon": "💡", "target": "global", "mult": 2, "unlock": {"id": "desk", "n": 5}}),
+            ),
+            (
+                "mitch_2",
+                json!({"name": "Community Server", "cost": 500000, "icon": "🌐", "target": "global", "mult": 2, "unlock": {"id": "mainframe", "n": 5}}),
+            ),
+            (
+                "star_1",
+                json!({"name": "Pulsar Harvest", "cost": 1e15, "icon": "💫", "target": "neutron_star", "mult": 2, "unlock": {"id": "neutron_star", "n": 1}}),
+            ),
+            (
+                "star_2",
+                json!({"name": "Quasar Focus", "cost": 5e15, "icon": "💠", "target": "neutron_star", "mult": 2, "unlock": {"id": "neutron_star", "n": 10}}),
+            ),
+            (
+                "void_1",
+                json!({"name": "Void Insight", "cost": 1e18, "icon": "🌑", "target": "black_hole", "mult": 2, "unlock": {"id": "black_hole", "n": 1}}),
+            ),
+            (
+                "googol_1",
+                json!({"name": "Infinite Logic", "cost": 1e85, "icon": "♾️", "target": "global", "mult": 10, "unlock": {"id": "beyond_googol", "n": 1}}),
+            ),
+        ]
+    },
+);
 
 /// `ADRIAN_UPGRADES` (server.js:511-538). `type: "c"` = click power,
 /// `type: "a"` = auto power.
 pub static ADRIAN_UPGRADES: std::sync::LazyLock<Vec<(&'static str, Value)>> =
-    std::sync::LazyLock::new(|| vec![
-    (
-        "desk",
-        json!({"name": "Student Desk", "baseCost": 15, "power": 0.1, "type": "c", "desc": "Basic study station."}),
-    ),
-    (
-        "chromebook",
-        json!({"name": "Chromebook Script", "baseCost": 100, "power": 1, "type": "a", "desc": "Automated clicking script."}),
-    ),
-    (
-        "fiber",
-        json!({"name": "Fiber Connection", "baseCost": 1100, "power": 8, "type": "a", "desc": "Ultra-low latency clicks."}),
-    ),
-    (
-        "ai_bot",
-        json!({"name": "Assistant Bot", "baseCost": 12000, "power": 47, "type": "a", "desc": "AI-driven productivity."}),
-    ),
-    (
-        "mainframe",
-        json!({"name": "High-End Mainframe", "baseCost": 130000, "power": 260, "type": "a", "desc": "Enterprise-grade speed."}),
-    ),
-    (
-        "quantum",
-        json!({"name": "Quantum Core", "baseCost": 1400000, "power": 1400, "type": "a", "desc": "Beyond human limits."}),
-    ),
-    (
-        "cloud_farm",
-        json!({"name": "Cloud Computing Farm", "baseCost": 20000000, "power": 7800, "type": "a", "desc": "Distributed clicking power."}),
-    ),
-    (
-        "satellite",
-        json!({"name": "Orbital Uplink", "baseCost": 330000000, "power": 44000, "type": "a", "desc": "Interstellar bandwidth."}),
-    ),
-    (
-        "dyson",
-        json!({"name": "Dyson Swarm", "baseCost": 5100000000.0, "power": 260000, "type": "a", "desc": "Total solar output clicks."}),
-    ),
-    (
-        "singularity",
-        json!({"name": "AI Singularity", "baseCost": 75000000000.0, "power": 1600000, "type": "a", "desc": "Infinite intelligence."}),
-    ),
-    (
-        "multiverse",
-        json!({"name": "Multiverse Bridge", "baseCost": 1e12, "power": 10000000, "type": "a", "desc": "Harvesting other timelines."}),
-    ),
-    (
-        "neutron_star",
-        json!({"name": "Neutron Star Forge", "baseCost": 1.4e13, "power": 65000000, "type": "a", "desc": "High-density clicking."}),
-    ),
-    (
-        "antimatter",
-        json!({"name": "Antimatter Engine", "baseCost": 1.7e17, "power": 430000000, "type": "a", "desc": "Pure annihilation speed."}),
-    ),
-    (
-        "black_hole",
-        json!({"name": "Black Hole Event Horizon", "baseCost": 2.1e18, "power": 2.9e9, "type": "a", "desc": "Time-dilated clicking."}),
-    ),
-    (
-        "galactic_cluster",
-        json!({"name": "Galactic Cluster", "baseCost": 2.6e22, "power": 2.1e10, "type": "a", "desc": "A trillion worlds clicking."}),
-    ),
-    (
-        "supercluster",
-        json!({"name": "Laniakea Supercluster", "baseCost": 3.1e24, "power": 1.5e11, "type": "a", "desc": "The great attractor."}),
-    ),
-    (
-        "dimension_rip",
-        json!({"name": "Dimensional Rip", "baseCost": 7.1e28, "power": 1.1e12, "type": "a", "desc": "Bleeding points from 2D."}),
-    ),
-    (
-        "hyper_dimension",
-        json!({"name": "11th Dimension", "baseCost": 1.2e32, "power": 8.3e12, "type": "a", "desc": "Multi-dimensional input."}),
-    ),
-    (
-        "string_theory",
-        json!({"name": "String Theory Core", "baseCost": 1.9e38, "power": 6.4e13, "type": "a", "desc": "Vibrating atoms."}),
-    ),
-    (
-        "quantum_foam",
-        json!({"name": "Quantum Foam", "baseCost": 5.4e42, "power": 5.1e14, "type": "a", "desc": "Clicking at the Planck scale."}),
-    ),
-    (
-        "beyond_googol",
-        json!({"name": "Beyond Googol", "baseCost": 1e80, "power": 1e30, "type": "a", "desc": "Numbers without names."}),
-    ),
-    (
-        "infinite_set",
-        json!({"name": "Infinite Set", "baseCost": 1e100, "power": 1e45, "type": "a", "desc": "Cantor would be proud."}),
-    ),
-    (
-        "aleph_null",
-        json!({"name": "Aleph Null", "baseCost": 1e140, "power": 1e65, "type": "a", "desc": "Counting the uncountable."}),
-    ),
-    (
-        "quantum_singularity",
-        json!({"name": "Quantum Singularity", "baseCost": 1e200, "power": 1e85, "type": "a", "desc": "Crushing logic."}),
-    ),
-    (
-        "omnipresence",
-        json!({"name": "Omnipresence", "baseCost": 1e260, "power": 1e135, "type": "a", "desc": "Everywhere at once."}),
-    ),
-]);
+    std::sync::LazyLock::new(|| {
+        vec![
+            (
+                "desk",
+                json!({"name": "Student Desk", "baseCost": 15, "power": 0.1, "type": "c", "desc": "Basic study station."}),
+            ),
+            (
+                "chromebook",
+                json!({"name": "Chromebook Script", "baseCost": 100, "power": 1, "type": "a", "desc": "Automated clicking script."}),
+            ),
+            (
+                "fiber",
+                json!({"name": "Fiber Connection", "baseCost": 1100, "power": 8, "type": "a", "desc": "Ultra-low latency clicks."}),
+            ),
+            (
+                "ai_bot",
+                json!({"name": "Assistant Bot", "baseCost": 12000, "power": 47, "type": "a", "desc": "AI-driven productivity."}),
+            ),
+            (
+                "mainframe",
+                json!({"name": "High-End Mainframe", "baseCost": 130000, "power": 260, "type": "a", "desc": "Enterprise-grade speed."}),
+            ),
+            (
+                "quantum",
+                json!({"name": "Quantum Core", "baseCost": 1400000, "power": 1400, "type": "a", "desc": "Beyond human limits."}),
+            ),
+            (
+                "cloud_farm",
+                json!({"name": "Cloud Computing Farm", "baseCost": 20000000, "power": 7800, "type": "a", "desc": "Distributed clicking power."}),
+            ),
+            (
+                "satellite",
+                json!({"name": "Orbital Uplink", "baseCost": 330000000, "power": 44000, "type": "a", "desc": "Interstellar bandwidth."}),
+            ),
+            (
+                "dyson",
+                json!({"name": "Dyson Swarm", "baseCost": 5100000000.0, "power": 260000, "type": "a", "desc": "Total solar output clicks."}),
+            ),
+            (
+                "singularity",
+                json!({"name": "AI Singularity", "baseCost": 75000000000.0, "power": 1600000, "type": "a", "desc": "Infinite intelligence."}),
+            ),
+            (
+                "multiverse",
+                json!({"name": "Multiverse Bridge", "baseCost": 1e12, "power": 10000000, "type": "a", "desc": "Harvesting other timelines."}),
+            ),
+            (
+                "neutron_star",
+                json!({"name": "Neutron Star Forge", "baseCost": 1.4e13, "power": 65000000, "type": "a", "desc": "High-density clicking."}),
+            ),
+            (
+                "antimatter",
+                json!({"name": "Antimatter Engine", "baseCost": 1.7e17, "power": 430000000, "type": "a", "desc": "Pure annihilation speed."}),
+            ),
+            (
+                "black_hole",
+                json!({"name": "Black Hole Event Horizon", "baseCost": 2.1e18, "power": 2.9e9, "type": "a", "desc": "Time-dilated clicking."}),
+            ),
+            (
+                "galactic_cluster",
+                json!({"name": "Galactic Cluster", "baseCost": 2.6e22, "power": 2.1e10, "type": "a", "desc": "A trillion worlds clicking."}),
+            ),
+            (
+                "supercluster",
+                json!({"name": "Laniakea Supercluster", "baseCost": 3.1e24, "power": 1.5e11, "type": "a", "desc": "The great attractor."}),
+            ),
+            (
+                "dimension_rip",
+                json!({"name": "Dimensional Rip", "baseCost": 7.1e28, "power": 1.1e12, "type": "a", "desc": "Bleeding points from 2D."}),
+            ),
+            (
+                "hyper_dimension",
+                json!({"name": "11th Dimension", "baseCost": 1.2e32, "power": 8.3e12, "type": "a", "desc": "Multi-dimensional input."}),
+            ),
+            (
+                "string_theory",
+                json!({"name": "String Theory Core", "baseCost": 1.9e38, "power": 6.4e13, "type": "a", "desc": "Vibrating atoms."}),
+            ),
+            (
+                "quantum_foam",
+                json!({"name": "Quantum Foam", "baseCost": 5.4e42, "power": 5.1e14, "type": "a", "desc": "Clicking at the Planck scale."}),
+            ),
+            (
+                "beyond_googol",
+                json!({"name": "Beyond Googol", "baseCost": 1e80, "power": 1e30, "type": "a", "desc": "Numbers without names."}),
+            ),
+            (
+                "infinite_set",
+                json!({"name": "Infinite Set", "baseCost": 1e100, "power": 1e45, "type": "a", "desc": "Cantor would be proud."}),
+            ),
+            (
+                "aleph_null",
+                json!({"name": "Aleph Null", "baseCost": 1e140, "power": 1e65, "type": "a", "desc": "Counting the uncountable."}),
+            ),
+            (
+                "quantum_singularity",
+                json!({"name": "Quantum Singularity", "baseCost": 1e200, "power": 1e85, "type": "a", "desc": "Crushing logic."}),
+            ),
+            (
+                "omnipresence",
+                json!({"name": "Omnipresence", "baseCost": 1e260, "power": 1e135, "type": "a", "desc": "Everywhere at once."}),
+            ),
+        ]
+    });
 
 fn adrian_upgrade(id: &str) -> Option<&Value> {
     ADRIAN_UPGRADES
@@ -226,48 +231,50 @@ fn adrian_tech_object() -> Value {
 /// `RICHARD_BUSINESSES` (server.js:683-696) — id → {name, baseCost,
 /// baseRevenue, baseSpeed}, in the JS object-literal order.
 pub static RICHARD_BUSINESSES: std::sync::LazyLock<Vec<(&'static str, Value)>> =
-    std::sync::LazyLock::new(|| vec![
-    (
-        "lemon",
-        json!({"name": "Lemon Squeezer", "baseCost": 4, "baseRevenue": 1, "baseSpeed": 0.6}),
-    ),
-    (
-        "news",
-        json!({"name": "Newspaper Delivery", "baseCost": 60, "baseRevenue": 60, "baseSpeed": 3}),
-    ),
-    (
-        "carwash",
-        json!({"name": "Car Wash", "baseCost": 720, "baseRevenue": 540, "baseSpeed": 6}),
-    ),
-    (
-        "pizza",
-        json!({"name": "Pizza Delivery", "baseCost": 8640, "baseRevenue": 4320, "baseSpeed": 12}),
-    ),
-    (
-        "donut",
-        json!({"name": "Donut Shop", "baseCost": 103680, "baseRevenue": 51840, "baseSpeed": 24}),
-    ),
-    (
-        "shrimp",
-        json!({"name": "Shrimp Boat", "baseCost": 1244160, "baseRevenue": 622080, "baseSpeed": 96}),
-    ),
-    (
-        "hockey",
-        json!({"name": "Hockey Team", "baseCost": 14929920, "baseRevenue": 7464960, "baseSpeed": 384}),
-    ),
-    (
-        "movie",
-        json!({"name": "Movie Studio", "baseCost": 179159040, "baseRevenue": 89579520, "baseSpeed": 1536}),
-    ),
-    (
-        "bank",
-        json!({"name": "Bank", "baseCost": 2149908480.0, "baseRevenue": 1074954240.0, "baseSpeed": 6144}),
-    ),
-    (
-        "oil",
-        json!({"name": "Oil Company", "baseCost": 25798901760.0, "baseRevenue": 29668737024.0, "baseSpeed": 36864}),
-    ),
-]);
+    std::sync::LazyLock::new(|| {
+        vec![
+            (
+                "lemon",
+                json!({"name": "Lemon Squeezer", "baseCost": 4, "baseRevenue": 1, "baseSpeed": 0.6}),
+            ),
+            (
+                "news",
+                json!({"name": "Newspaper Delivery", "baseCost": 60, "baseRevenue": 60, "baseSpeed": 3}),
+            ),
+            (
+                "carwash",
+                json!({"name": "Car Wash", "baseCost": 720, "baseRevenue": 540, "baseSpeed": 6}),
+            ),
+            (
+                "pizza",
+                json!({"name": "Pizza Delivery", "baseCost": 8640, "baseRevenue": 4320, "baseSpeed": 12}),
+            ),
+            (
+                "donut",
+                json!({"name": "Donut Shop", "baseCost": 103680, "baseRevenue": 51840, "baseSpeed": 24}),
+            ),
+            (
+                "shrimp",
+                json!({"name": "Shrimp Boat", "baseCost": 1244160, "baseRevenue": 622080, "baseSpeed": 96}),
+            ),
+            (
+                "hockey",
+                json!({"name": "Hockey Team", "baseCost": 14929920, "baseRevenue": 7464960, "baseSpeed": 384}),
+            ),
+            (
+                "movie",
+                json!({"name": "Movie Studio", "baseCost": 179159040, "baseRevenue": 89579520, "baseSpeed": 1536}),
+            ),
+            (
+                "bank",
+                json!({"name": "Bank", "baseCost": 2149908480.0, "baseRevenue": 1074954240.0, "baseSpeed": 6144}),
+            ),
+            (
+                "oil",
+                json!({"name": "Oil Company", "baseCost": 25798901760.0, "baseRevenue": 29668737024.0, "baseSpeed": 36864}),
+            ),
+        ]
+    });
 
 /// `getAdrianPower(s)` (server.js:618-638) → (click, auto).
 pub fn get_adrian_power(upgrades: &Value) -> (f64, f64) {

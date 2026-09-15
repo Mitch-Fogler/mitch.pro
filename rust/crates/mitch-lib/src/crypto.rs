@@ -128,6 +128,20 @@ pub fn random_bytes(n: usize) -> Vec<u8> {
     out
 }
 
+/// `Math.random()` — a uniform in [0, 1) from 53 random bits (the largest
+/// exactly-representable denominator; matches V8's range even though V8
+/// derives its value differently).
+pub fn js_random() -> f64 {
+    let buf: [u8; 8] = random_bytes(8).try_into().unwrap_or([0; 8]);
+    let n = u64::from_le_bytes(buf) >> 11;
+    n as f64 / (1u64 << 53) as f64
+}
+
+/// `arr[Math.floor(Math.random() * arr.length)]`.
+pub fn js_random_index(len: usize) -> usize {
+    (js_random() * len as f64).floor() as usize
+}
+
 /// `genServerKeypair()` (server.js:3993) — an ECDH P-256 pair whose public
 /// half exports as the raw 65-byte `04…` point hex. The JS draws the key via
 /// WebCrypto; here the 32-byte scalar comes from `random_bytes` with a retry

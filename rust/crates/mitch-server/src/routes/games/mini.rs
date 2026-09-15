@@ -711,7 +711,7 @@ fn logic_next_wordle(state: &Arc<AppState>, headers: &HeaderMap) -> axum::respon
         }
     };
     let norm = mitch_lib::auth::normalize_email(&email);
-    let random_word = LOGIC_WORDS[(js_random() * LOGIC_WORDS.len() as f64).floor() as usize];
+    let random_word = LOGIC_WORDS[mitch_lib::crypto::js_random_index(LOGIC_WORDS.len())];
     let mut map = state
         .logic_sessions
         .lock()
@@ -726,14 +726,6 @@ fn logic_next_wordle(state: &Arc<AppState>, headers: &HeaderMap) -> axum::respon
     map.insert(norm.clone(), s.clone());
     save_sessions(&state.store, state.data_dir(), "logic_sessions.json", &map);
     json_resp(200, json!({ "success": true, "word": random_word }))
-}
-
-/// `Math.random()` — a fresh per-call uniform in [0, 1) (the JS picks a
-/// random word per request; tests don't constrain which).
-fn js_random() -> f64 {
-    let buf: [u8; 8] = mitch_lib::crypto::random_bytes(8).try_into().unwrap_or([0; 8]);
-    let n = u64::from_le_bytes(buf) >> 11; // 53 bits
-    n as f64 / (1u64 << 53) as f64
 }
 
 /// `POST /api/games/lillians-logic/solve` — server.js:22719-22863.

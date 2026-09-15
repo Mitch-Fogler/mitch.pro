@@ -662,6 +662,80 @@ fn js_f64(f: f64) -> String {
     js_number_string(f)
 }
 
+/// `Number.prototype.toFixed(digits)` — the exact decimal rounding the ES
+/// spec defines: pick the integer n whose value n/10^f is closest to |x|,
+/// ties choosing the LARGER n. Rust's `{:.n$}` rounds half-to-even, which
+/// disagrees on exact binary ties (`0.125.toFixed(2)` → "0.13" in JS, "0.12"
+/// in Rust), so round the true decimal expansion by hand.
+///
+/// Correctness note: an f64 is m·2^e. Either |x| IS an exact decimal tie
+/// (its expansion terminates in zeros — handled correctly below) or it
+/// differs from the nearest tie by ≥ ~2.2e-16 relative (the mantissa
+/// granularity), so rendering with 30 guard digits and half-up rounding the
+/// digit string reproduces the spec choice for every finite f64.
+pub fn js_to_fixed(x: f64, digits: usize) -> String {
+    if x.is_nan() {
+        return "NaN".to_string();
+    }
+    if x.is_infinite() {
+        return if x > 0.0 { "Infinity" } else { "-Infinity" }.to_string();
+    }
+    let neg = x < 0.0; // -0.0 is not < 0: JS prints "0.00" for it
+    let a = x.abs(); // also strips the sign off -0.0 so the format is unsigned
+    let guard = digits + 30;
+    let s = format!("{a:.guard$}");
+    let (int_part, frac) = match s.split_once('.') {
+        Some((i, f)) => (i, f),
+        // `{:.0}` prints no decimal point; frac is empty then.
+        None => (s.as_str(), ""),
+    };
+    // Combined digits: integer part + the first `digits` fraction digits.
+    let mut digs: Vec<u8> = int_part.bytes().map(|b| b - b'0').collect();
+    digs.extend(frac.bytes().take(digits).map(|b| b - b'0'));
+    while digs.len() < 1 + digits {
+        digs.push(0);
+    }
+    // The rounding digit lives at fraction position `digits` in the exact
+    // expansion (guard digits guarantee it exists for prec ≥ 1).
+    let round_up = frac.as_bytes().get(digits).is_some_and(|b| *b - b'0' >= 5);
+    if round_up {
+        let mut i = digs.len();
+        loop {
+            i -= 1;
+            if digs[i] == 9 {
+                digs[i] = 0;
+                if i == 0 {
+                    digs.insert(0, 1);
+                    break;
+                }
+            } else {
+                digs[i] += 1;
+                break;
+            }
+        }
+    }
+    let int_len = digs.len() - digits;
+    let mut out = String::new();
+    if neg {
+        out.push('-');
+    }
+    for d in &digs[..int_len] {
+        out.push((b'0' + d) as char);
+    }
+    if digits > 0 {
+        out.push('.');
+        for d in &digs[int_len..] {
+            out.push((b'0' + d) as char);
+        }
+    }
+    out
+}
+
+/// `Number(str)` on a toFixed result — correctly-rounded parse, like JS.
+pub fn js_num_from_fixed(s: &str) -> f64 {
+    s.parse::<f64>().unwrap_or(f64::NAN)
+}
+
 /// `JSON.stringify(string)` escaping: quotes, backslashes, control chars as
 /// short escapes or `\uXXXX`, non-ASCII kept raw.
 pub fn js_quote(s: &str) -> String {
@@ -688,6 +762,28 @@ pub fn js_quote(s: &str) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn js_to_fixed_matches_ecmascript() {
+        assert_eq!(js_to_fixed(1.9, 4), "1.9000");
+        assert_eq!(js_to_fixed(19.0, 4), "19.0000");
+        assert_eq!(js_to_fixed(0.0, 2), "0.00");
+        assert_eq!(js_to_fixed(-0.0, 2), "0.00"); // JS: (-0).toFixed(2) === "0.00"
+                                                  // Exact binary tie → JS picks the larger candidate (half-up).
+        assert_eq!(js_to_fixed(0.125, 2), "0.13");
+        assert_eq!(js_to_fixed(0.5, 0), "1");
+        // Not representable — true expansion decides, not Rust's half-even.
+        assert_eq!(js_to_fixed(1.005, 2), "1.00");
+        assert_eq!(js_to_fixed(2.675, 2), "2.67");
+        assert_eq!(js_to_fixed(123.456, 2), "123.46");
+        // Carry across the decimal point.
+        assert_eq!(js_to_fixed(9.99996, 4), "10.0000");
+        assert_eq!(js_to_fixed(0.99999, 4), "1.0000");
+        assert_eq!(js_to_fixed(-1.25, 1), "-1.3"); // -1.25 exact tie → larger n
+        assert_eq!(js_to_fixed(10.5, 2), "10.50");
+        assert_eq!(js_to_fixed(f64::NAN, 2), "NaN");
+        assert_eq!(js_to_fixed(f64::INFINITY, 2), "Infinity");
+    }
 
     #[test]
     fn js_number_string_matches_ecmascript() {
