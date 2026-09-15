@@ -621,6 +621,129 @@ const tests = [
     path: '/api/jeopardy/final/answer', method: 'POST', token: null, expectedStatus: 403,
     body: { gameId: 'x', answer: 'x' }
   },
+  // ── Step 12 batch 3c: battleship. Battleship is method-agnostic (the JS
+  // never checks req.method), so every path gets a GET password-gate case.
+  // Handler bodies are verified live by the battleship probe.
+  {
+    name: 'GET /api/battleship/heartbeat (password gate)',
+    path: '/api/battleship/heartbeat', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/heartbeat (csrf gate)',
+    path: '/api/battleship/heartbeat', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/heartbeat requires session (403)',
+    path: '/api/battleship/heartbeat', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/battleship/online (password gate)',
+    path: '/api/battleship/online', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/online (csrf gate)',
+    path: '/api/battleship/online', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/online requires session (403)',
+    path: '/api/battleship/online', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/battleship/challenge (password gate)',
+    path: '/api/battleship/challenge', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/challenge (csrf gate)',
+    path: '/api/battleship/challenge', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/challenge requires session (403)',
+    path: '/api/battleship/challenge', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/battleship/respond (password gate)',
+    path: '/api/battleship/respond', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/respond (csrf gate)',
+    path: '/api/battleship/respond', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/respond requires session (403)',
+    path: '/api/battleship/respond', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/battleship/place (password gate)',
+    path: '/api/battleship/place', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/place (csrf gate)',
+    path: '/api/battleship/place', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/place requires session (403)',
+    path: '/api/battleship/place', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/battleship/fire (password gate)',
+    path: '/api/battleship/fire', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/fire (csrf gate)',
+    path: '/api/battleship/fire', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/fire requires session (403)',
+    path: '/api/battleship/fire', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/battleship/state (password gate)',
+    path: '/api/battleship/state', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/state (csrf gate)',
+    path: '/api/battleship/state', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/state requires session (403)',
+    path: '/api/battleship/state', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'GET /api/battleship/resign (password gate)',
+    path: '/api/battleship/resign', method: 'GET', token: USER_TOKEN, expectedStatus: 403,
+    verify: b => b && b.error === 'password required'
+  },
+  {
+    name: 'POST /api/battleship/resign (csrf gate)',
+    path: '/api/battleship/resign', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: {}, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/battleship/resign requires session (403)',
+    path: '/api/battleship/resign', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,

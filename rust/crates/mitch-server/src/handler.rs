@@ -571,9 +571,18 @@ pub async fn handle(
         // games group (Step 12): game-portal rewards + game stats/categories
         // (game-portal at server.js:16320, game-categories at 19081,
         // game-stats at 19107 — all before dm at 19452). Idle games land
-        // here; battleship/chess-vs in later batches.
+        // here; chess-vs in a later batch.
         if let Some(resp) =
             crate::routes::games::handle(&state, &method, &path, headers, &body, body_bytes)
+        {
+            return resp;
+        }
+        // battleship group (Step 12): the 8 /api/battleship/* endpoints
+        // (server.js:20754 — file order puts it before jeopardy at 21010).
+        // Needs the raw query string for /state?id=.
+        if let Some(resp) =
+            crate::routes::battleship::handle(&state, &method, &path, headers, &search, body_bytes)
+                .await
         {
             return resp;
         }

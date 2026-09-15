@@ -134,6 +134,17 @@ pub struct AppState {
     /// `jeopardyClueCache` + `jeopardyLastFetch` (server.js:889-892) — lazily
     /// refreshed from data/jeopardy_kids_clean.json on the 24h TTL.
     pub jeopardy_clues: std::sync::Mutex<crate::routes::jeopardy::ClueCache>,
+    /// `bsChallenges` (server.js:884) — challenge id → record, insertion-
+    /// ordered: the heartbeat's challenge list iterates in JS Object.values
+    /// order. In-memory only, like JS.
+    pub bs_challenges:
+        std::sync::Mutex<indexmap::IndexMap<String, crate::routes::battleship::BsChallenge>>,
+    /// `bsGames` (server.js:885) — gameId → game, insertion-ordered (the
+    /// heartbeat's activeGames list iterates in Object.values order).
+    pub bs_games: std::sync::Mutex<indexmap::IndexMap<String, crate::routes::battleship::BsGame>>,
+    /// `bsOnline` (server.js:886) — email → last-seen ms; /online scans in
+    /// insertion order.
+    pub bs_online: std::sync::Mutex<indexmap::IndexMap<String, i64>>,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -295,6 +306,9 @@ impl AppState {
             betting_feed: std::sync::Mutex::new(Vec::new()),
             jeopardy_lobbies: std::sync::Mutex::new(Vec::new()),
             jeopardy_clues: std::sync::Mutex::new(crate::routes::jeopardy::ClueCache::default()),
+            bs_challenges: std::sync::Mutex::new(indexmap::IndexMap::new()),
+            bs_games: std::sync::Mutex::new(indexmap::IndexMap::new()),
+            bs_online: std::sync::Mutex::new(indexmap::IndexMap::new()),
         }
     }
 
