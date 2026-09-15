@@ -368,6 +368,39 @@ const tests = [
     path: '/api/casino/poker/start', method: 'POST', token: null, expectedStatus: 403,
     body: { amount: 10 }
   },
+  // ── Step 12 coinflip/dice/crash batch: called-side flips, 1-100 rolls,
+  // cashout multiplier bounds. Handler bodies verified live by the casino
+  // probe.
+  {
+    name: 'POST /api/casino/coinflip (csrf gate)',
+    path: '/api/casino/coinflip', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { side: 'heads', amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/coinflip requires session (403)',
+    path: '/api/casino/coinflip', method: 'POST', token: null, expectedStatus: 403,
+    body: { side: 'heads', amount: 10 }
+  },
+  {
+    name: 'POST /api/casino/dice (csrf gate)',
+    path: '/api/casino/dice', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { side: 'under', amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/dice requires session (403)',
+    path: '/api/casino/dice', method: 'POST', token: null, expectedStatus: 403,
+    body: { side: 'over', amount: 10 }
+  },
+  {
+    name: 'POST /api/casino/crash (csrf gate)',
+    path: '/api/casino/crash', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { target: 2, amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/crash requires session (403)',
+    path: '/api/casino/crash', method: 'POST', token: null, expectedStatus: 403,
+    body: { target: 2, amount: 10 }
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,

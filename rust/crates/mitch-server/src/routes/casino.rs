@@ -146,9 +146,12 @@ fn game(
         "/api/casino/blackjack/hit" => Some(bj_hit(state, email, norm)),
         "/api/casino/blackjack/stand" => Some(bj_stand(state, email, norm)),
         "/api/casino/poker/start" => Some(poker(state, body, email, norm)),
-        // coinflip/dice/crash/wheel/scratch/keno/slots land in later
-        // commits; unhandled paths return None so the request falls through
-        // exactly like bun (POST → 405 fallthrough, GET → static 404).
+        "/api/casino/coinflip" => Some(coinflip(state, body, email, norm)),
+        "/api/casino/dice" => Some(dice(state, body, email, norm)),
+        "/api/casino/crash" => Some(crash(state, body, email, norm)),
+        // wheel/scratch/keno/slots land in later commits; unhandled paths
+        // return None so the request falls through exactly like bun
+        // (POST → 405 fallthrough, GET → static 404).
         _ => None,
     }
 }
@@ -1337,6 +1340,164 @@ fn poker_rank(hand: &[Value]) -> (&'static str, f64) {
         }
     }
     ("Lose", 0.0)
+}
+
+/// `POST /api/casino/coinflip` (server.js:23519-23534). A fair flip against
+/// a called side at 1.9x; the rig force-flips a would-be win.
+fn coinflip(
+    state: &Arc<AppState>,
+    body: &Value,
+    email: &str,
+    norm: &str,
+) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let side = jsval::string(&jsval::or(body.get("side"), json!(""))).to_lowercase();
+    if !["heads", "tails"].contains(&side.as_str()) {
+        return resp(400, &json!({ "error": "Choose heads or tails." }));
+    }
+    let rigged = is_rigged();
+    let mut result = if mitch_lib::crypto::js_random() < 0.5 {
+        "heads"
+    } else {
+        "tails"
+    };
+    if rigged && result == side {
+        result = if side == "heads" { "tails" } else { "heads" };
+    }
+    let won = side == result;
+    let mult = if won { 1.9 } else { 0.0 };
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Coin Flip",
+        bet,
+        if won { bet * mult } else { 0.0 },
+        if won { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "result": result,
+            "won": won,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
+/// `POST /api/casino/dice` (server.js:23535-23553). Roll 1-100; `under`
+/// wins below 50, `over` wins above 51 (50 and 51 always lose) at 1.94x.
+/// The rig re-rolls a winning range into the losing range.
+fn dice(state: &Arc<AppState>, body: &Value, email: &str, norm: &str) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let side = jsval::string(&jsval::or(body.get("side"), json!(""))).to_lowercase();
+    if !["under", "over"].contains(&side.as_str()) {
+        return resp(400, &json!({ "error": "Choose under or over." }));
+    }
+    let rigged = is_rigged();
+    let mut roll = (mitch_lib::crypto::js_random() * 100.0).floor() + 1.0;
+    if rigged {
+        if side == "under" && roll < 50.0 {
+            roll = (mitch_lib::crypto::js_random() * 51.0).floor() + 50.0;
+        } else if side == "over" && roll > 51.0 {
+            roll = (mitch_lib::crypto::js_random() * 51.0).floor() + 1.0;
+        }
+    }
+    let won = if side == "under" {
+        roll < 50.0
+    } else {
+        roll > 51.0
+    };
+    let mult = if won { 1.94 } else { 0.0 };
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Dice Duel",
+        bet,
+        if won { bet * mult } else { 0.0 },
+        if won { "WIN" } else { "LOSE" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "roll": jsval::num_value(roll),
+            "won": won,
+            "mult": jsval::num_value(mult),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
+}
+
+/// `POST /api/casino/crash` (server.js:23554-23569). The player picks a
+/// cashout multiplier 1.2-6.0; the crash point is
+/// `max(1, min(10, 0.95/max(random, 1e-6)))` at 2dp — a win pays
+/// `bet * cashout`. Note the 1.2/6.0 bounds are checked BEFORE the
+/// toFixed(2) normalization of the cashout.
+fn crash(state: &Arc<AppState>, body: &Value, email: &str, norm: &str) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    let bet = match read_casino_bet(state, body, email, norm, 1.0) {
+        Ok(b) => b,
+        Err(r) => return *r,
+    };
+    let target = jsval::number(&jsval::or(body.get("target"), json!(null))).unwrap_or(f64::NAN);
+    if !target.is_finite() || target < 1.2 || target > 6.0 {
+        return resp(
+            400,
+            &json!({ "error": "Cashout must be between 1.20x and 6.00x." }),
+        );
+    }
+    let rigged = is_rigged();
+    let raw = 0.95 / mitch_lib::crypto::js_random().max(0.000001);
+    let mut crash_at = js_num_from_fixed(&js_to_fixed(raw.clamp(1.0, 10.0), 2));
+    let cashout = js_num_from_fixed(&js_to_fixed(target, 2));
+    if rigged && cashout <= crash_at {
+        crash_at = js_num_from_fixed(&js_to_fixed((cashout - 0.01).max(1.0), 2));
+    }
+    let won = cashout <= crash_at;
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Crash",
+        bet,
+        if won { bet * cashout } else { 0.0 },
+        if won { "WIN" } else { "CRASH" },
+        (false, false),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "crashAt": jsval::num_value(crash_at),
+            "target": jsval::num_value(cashout),
+            "won": won,
+            "mult": jsval::num_value(if won { cashout } else { 0.0 }),
+            "win": jsval::num_value(settled.payout),
+            "net": jsval::num_value(settled.net),
+            "newBalance": jsval::num_value(settled.new_balance),
+        }),
+    )
 }
 
 #[cfg(test)]
