@@ -332,6 +332,29 @@ const tests = [
     path: '/api/casino/high-low', method: 'POST', token: null, expectedStatus: 403,
     body: { choice: 'lower', amount: 1 }
   },
+  // ── Step 12 blackjack batch: start/hit/stand gate assertions. The CSRF
+  // gate runs in the prelude before the bjGames.has check and bet ladder;
+  // handler bodies verified live by the casino probe.
+  {
+    name: 'POST /api/casino/blackjack/start (csrf gate)',
+    path: '/api/casino/blackjack/start', method: 'POST', token: USER_TOKEN, expectedStatus: 403,
+    body: { amount: 10 }, verify: b => b && b.error === 'csrf_blocked'
+  },
+  {
+    name: 'POST /api/casino/blackjack/start requires session (403)',
+    path: '/api/casino/blackjack/start', method: 'POST', token: null, expectedStatus: 403,
+    body: { amount: 10 }
+  },
+  {
+    name: 'POST /api/casino/blackjack/hit requires session (403)',
+    path: '/api/casino/blackjack/hit', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
+  {
+    name: 'POST /api/casino/blackjack/stand requires session (403)',
+    path: '/api/casino/blackjack/stand', method: 'POST', token: null, expectedStatus: 403,
+    body: {}
+  },
   {
     name: 'POST /api/casino/plinko',
     path: '/api/casino/plinko', method: 'POST', token: USER_TOKEN, expectedStatus: 200,

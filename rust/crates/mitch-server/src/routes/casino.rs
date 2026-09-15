@@ -8,7 +8,8 @@
 //! This commit ports the prelude + helpers + the read endpoints
 //! (`history`, `global-feed`) + the instant games rock-paper-scissors,
 //! lucky-seven, color-card, triple-dice, plinko, roulette and high-low
-//! (server.js:23189-23310).
+//! (server.js:23189-23310) and blackjack (start/hit/stand,
+//! server.js:23323-23459).
 //!
 //! Every response body leaves through `js_stringify` — the money fields are
 //! `Number(x.toFixed(n))` values whose exact rendering matters.
@@ -23,14 +24,16 @@ use mitch_lib::data::{js_num_from_fixed, js_stringify, js_to_fixed};
 use mitch_lib::jsval;
 
 /// One entry of `bjGames` (server.js:23377): the shuffled deck plus the two
-/// hands, the locked-in bet, and the (always false) rig flag. Only
-/// `blackjack/state` reads it before the blackjack commit fills the rest.
-#[allow(dead_code)]
+/// hands, the locked-in bet, and the (always false) rig flag the dead rig
+/// branches read.
 pub struct BjGame {
     pub deck: Vec<Value>,
     pub player_hand: Vec<Value>,
     pub dealer_hand: Vec<Value>,
     pub bet: f64,
+    // bun stores `email` in the map but never reads it back (the handlers
+    // close over the request's email) — kept for shape parity.
+    #[allow(dead_code)]
     pub email: String,
     pub rigged: bool,
 }
@@ -74,8 +77,8 @@ pub(crate) async fn handle(
         return Some(resp(405, &json!({ "error": "Method not allowed" })));
     }
 
-    // `GET /api/casino/blackjack/state` (server.js:23088-23091) — bjGames is
-    // empty until the blackjack commit lands, so this answers {active:false}.
+    // `GET /api/casino/blackjack/state` (server.js:23088-23091) — the
+    // in-progress hand's public view (bet, player hand, dealer up card).
     if path == "/api/casino/blackjack/state" {
         let games = state.bj_games.lock().unwrap_or_else(|e| e.into_inner());
         return Some(match games.get(&norm) {
@@ -139,6 +142,9 @@ fn game(
         "/api/casino/plinko" => Some(plinko(state, body, email, norm)),
         "/api/casino/roulette" => Some(roulette(state, body, email, norm)),
         "/api/casino/high-low" => Some(high_low(state, body, email, norm)),
+        "/api/casino/blackjack/start" => Some(bj_start(state, body, email, norm)),
+        "/api/casino/blackjack/hit" => Some(bj_hit(state, email, norm)),
+        "/api/casino/blackjack/stand" => Some(bj_stand(state, email, norm)),
         // blackjack hit/stand/start, poker/slots/wheel/… land in later
         // commits; unhandled paths return None so the request falls through
         // exactly like bun (POST → 405 fallthrough, GET → static 404).
@@ -898,6 +904,297 @@ fn card_name(value: f64) -> String {
     }
 }
 
+/// `getVal` (server.js:23393-23398) — aces count last (each adds 11 while
+/// the running total stays ≤ 21, else 1); face cards 10; everything else
+/// parseInt. A card without a parseable `v` poisons the value to NaN, which
+/// makes every comparison below false exactly like JS.
+fn hand_value(hand: &[Value]) -> f64 {
+    let mut v = 0.0;
+    let mut aces: u32 = 0;
+    for c in hand {
+        let cv = c.get("v").and_then(Value::as_str).unwrap_or("");
+        if cv == "A" {
+            aces += 1;
+        } else if cv == "J" || cv == "Q" || cv == "K" {
+            v += 10.0;
+        } else {
+            match cv.parse::<f64>() {
+                Ok(n) => v += n,
+                // parseInt(undefined)/parseInt('') → NaN; NaN + aces stays NaN
+                Err(_) => return f64::NAN,
+            }
+        }
+    }
+    for _ in 0..aces {
+        v += if v + 11.0 <= 21.0 { 11.0 } else { 1.0 };
+    }
+    v
+}
+
+/// The 52-card deck literal (server.js:23347-23349) — suits ♠♥♦♣ ×
+/// A/2-10/J/Q/K as `{s, v}` objects.
+fn build_deck() -> Vec<Value> {
+    let mut deck = Vec::with_capacity(52);
+    for s in ["♠", "♥", "♦", "♣"] {
+        for v in [
+            "A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K",
+        ] {
+            deck.push(json!({ "s": s, "v": v }));
+        }
+    }
+    deck
+}
+
+/// `POST /api/casino/blackjack/start` (server.js:23323-23381). The bet is
+/// NOT readCasinoBet — its own ladder is an `invalid bet` (non-finite, <1 or
+/// over balance) then the non-VIP 500 cap, with no toFixed(2) normalization.
+/// The bet is deducted up front; the prepaid settle below only adds the
+/// payout back.
+fn bj_start(
+    state: &Arc<AppState>,
+    body: &Value,
+    email: &str,
+    norm: &str,
+) -> axum::response::Response {
+    if !enabled(state) {
+        return closed();
+    }
+    // bun re-calls tryParseJson here — a cached no-op (the prelude parsed).
+    if state
+        .bj_games
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains_key(norm)
+    {
+        return resp(
+            409,
+            &json!({ "error": "Finish your current blackjack hand first." }),
+        );
+    }
+    let bet = body
+        .get("amount")
+        .and_then(jsval::number)
+        .unwrap_or(f64::NAN);
+    let bal = mitch_lib::coins::get_coins(&state.store, state.data_dir(), email);
+    if !bet.is_finite() || bet < 1.0 || bet > bal {
+        return resp(400, &json!({ "error": "invalid bet" }));
+    }
+    if !is_vip(state, norm) && bet > 500.0 {
+        return resp(
+            400,
+            &json!({ "error": "Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!" }),
+        );
+    }
+
+    add_casino_stat(&state.casino_intake, bet);
+    save_casino_stats(state);
+    mitch_lib::coins::add_coins(
+        &state.store,
+        state.data_dir(),
+        email,
+        -bet,
+        state.coin_multiplier(),
+        "",
+    );
+
+    let mut deck = build_deck();
+    // Fisher-Yates from the end, exactly like the JS loop.
+    for i in (1..deck.len()).rev() {
+        let j = mitch_lib::crypto::js_random_index(i + 1);
+        deck.swap(i, j);
+    }
+    // playerHand = two pops, dealerHand = the next two.
+    let mut player_hand: Vec<Value> = Vec::with_capacity(2);
+    let mut dealer_hand: Vec<Value> = Vec::with_capacity(2);
+    for _ in 0..2 {
+        player_hand.push(deck.pop().unwrap_or(Value::Null));
+    }
+    for _ in 0..2 {
+        dealer_hand.push(deck.pop().unwrap_or(Value::Null));
+    }
+    // bun uses a local `const rigged = false;` (not isRigged()); the value
+    // is identical, so share the helper. The rig branches stay ported below
+    // for fidelity even though they can never run.
+    let rigged = is_rigged();
+
+    if rigged {
+        // Break a player 21 with the first two-card non-21 completion.
+        if hand_value(&player_hand) == 21.0 {
+            if let Some(broken_idx) = deck
+                .iter()
+                .position(|c| hand_value(&[player_hand[0].clone(), c.clone()]) < 21.0)
+            {
+                let card = deck.remove(broken_idx);
+                deck.push(player_hand[1].clone());
+                player_hand[1] = card;
+            }
+        }
+        // Deal the dealer 21 when the player looks strong.
+        if hand_value(&dealer_hand) < 21.0 && hand_value(&player_hand) > 17.0 {
+            if let Some(win_idx) = deck
+                .iter()
+                .position(|c| hand_value(&[dealer_hand[0].clone(), c.clone()]) == 21.0)
+            {
+                let card = deck.remove(win_idx);
+                deck.push(dealer_hand[1].clone());
+                dealer_hand[1] = card;
+            }
+        }
+    }
+
+    state
+        .bj_games
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(
+            norm.to_string(),
+            BjGame {
+                deck,
+                player_hand: player_hand.clone(),
+                dealer_hand: dealer_hand.clone(),
+                bet,
+                email: email.to_string(),
+                rigged,
+            },
+        );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "playerHand": player_hand,
+            "dealerUpCard": dealer_hand[0],
+        }),
+    )
+}
+
+/// `POST /api/casino/blackjack/hit` (server.js:23400-23426). No body parse
+/// (the prelude skips it). A bust deletes the game and settles `BUST`
+/// prepaid — the response's `winAmt` is the literal 0, not the settle
+/// payout (insurance would refund coins the response still reports as 0).
+fn bj_hit(state: &Arc<AppState>, email: &str, norm: &str) -> axum::response::Response {
+    let mut games = state.bj_games.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(g) = games.get_mut(norm) else {
+        return resp(400, &json!({ "error": "no active game" }));
+    };
+    let mut card = g.deck.pop().unwrap_or(Value::Null);
+    if g.rigged {
+        // At 12+ with a safe card drawn, swap in the first card that busts.
+        let current_p = hand_value(&g.player_hand);
+        if current_p >= 12.0
+            && hand_value(&[g.player_hand.as_slice(), std::slice::from_ref(&card)].concat()) <= 21.0
+        {
+            if let Some(bust_idx) = g.deck.iter().position(|c| {
+                hand_value(&[g.player_hand.as_slice(), std::slice::from_ref(c)].concat()) > 21.0
+            }) {
+                let bust_card = g.deck.remove(bust_idx);
+                g.deck.push(card);
+                card = bust_card;
+            }
+        }
+    }
+    g.player_hand.push(card);
+    if hand_value(&g.player_hand) > 21.0 {
+        let (player_hand, dealer_hand, bet) = (g.player_hand.clone(), g.dealer_hand.clone(), g.bet);
+        games.remove(norm);
+        drop(games);
+        settle_casino_round(
+            state,
+            &Round { email, norm },
+            "Blackjack",
+            bet,
+            0.0,
+            "BUST",
+            (false, true),
+        );
+        return resp(
+            200,
+            &json!({
+                "ok": true,
+                "gameOver": true,
+                "playerHand": player_hand,
+                "status": "bust",
+                "dealerHand": dealer_hand,
+                "winAmt": jsval::num_value(0.0),
+            }),
+        );
+    }
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "gameOver": false,
+            "playerHand": g.player_hand,
+            "status": "active",
+        }),
+    )
+}
+
+/// The stand outcome ladder (server.js:23443-23452) — dealer bust or player
+/// higher pays double, a tie pushes the bet back, otherwise a loss.
+fn bj_outcome(dval: f64, pval: f64, bet: f64) -> (&'static str, f64) {
+    if dval > 21.0 || pval > dval {
+        ("win", bet * 2.0)
+    } else if dval == pval {
+        ("push", bet)
+    } else {
+        ("lose", 0.0)
+    }
+}
+
+/// `POST /api/casino/blackjack/stand` (server.js:23428-23459). No active
+/// game is a 200 `{ok, gameOver}` (unlike hit's 400).
+fn bj_stand(state: &Arc<AppState>, email: &str, norm: &str) -> axum::response::Response {
+    let mut games = state.bj_games.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(g) = games.get_mut(norm) else {
+        return resp(200, &json!({ "ok": true, "gameOver": true }));
+    };
+    let mut dval = hand_value(&g.dealer_hand);
+    let pval = hand_value(&g.player_hand);
+    if g.rigged {
+        // Dealer keeps drawing while it cannot beat the player.
+        while dval <= pval && dval < 21.0 {
+            let win_idx = g.deck.iter().position(|c| {
+                let v = hand_value(&[g.dealer_hand.as_slice(), std::slice::from_ref(c)].concat());
+                v >= pval && v <= 21.0
+            });
+            match win_idx {
+                Some(i) => g.dealer_hand.push(g.deck.remove(i)),
+                None => g.dealer_hand.push(g.deck.pop().unwrap_or(Value::Null)),
+            }
+            dval = hand_value(&g.dealer_hand);
+        }
+    } else {
+        while dval < 17.0 {
+            g.dealer_hand.push(g.deck.pop().unwrap_or(Value::Null));
+            dval = hand_value(&g.dealer_hand);
+        }
+    }
+    let (res, win_amt) = bj_outcome(dval, pval, g.bet);
+    let (player_hand, dealer_hand, bet) = (g.player_hand.clone(), g.dealer_hand.clone(), g.bet);
+    games.remove(norm);
+    drop(games);
+    let settled = settle_casino_round(
+        state,
+        &Round { email, norm },
+        "Blackjack",
+        bet,
+        win_amt,
+        res.to_uppercase().as_str(),
+        (false, true),
+    );
+    resp(
+        200,
+        &json!({
+            "ok": true,
+            "gameOver": true,
+            "playerHand": player_hand,
+            "dealerHand": dealer_hand,
+            "status": res,
+            "winAmt": jsval::num_value(settled.payout),
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -968,6 +1265,79 @@ mod tests {
             .filter(|((_, m), _)| *m >= 1.0)
             .count();
         assert_eq!(wins, 4); // 1.2x / 1.5x / 3x / 8x pay WIN
+    }
+
+    /// `getVal` — aces flex down from 11 while the total stays ≤ 21, faces
+    /// are 10, everything else parseInt (a missing `v` poisons to NaN).
+    #[test]
+    fn blackjack_hand_values_match_js() {
+        let hand = |vals: &[&str]| -> Vec<Value> {
+            vals.iter().map(|v| json!({ "s": "♠", "v": v })).collect()
+        };
+        assert_eq!(hand_value(&hand(&["A", "A"])), 12.0);
+        assert_eq!(hand_value(&hand(&["A", "K"])), 21.0);
+        assert_eq!(hand_value(&hand(&["A", "A", "A"])), 13.0); // 11 → 22-10
+        assert_eq!(hand_value(&hand(&["5", "A", "A"])), 17.0); // 5+11+1
+        assert_eq!(hand_value(&hand(&["10", "J"])), 20.0);
+        assert_eq!(hand_value(&hand(&["Q", "A", "4"])), 15.0); // 10+1+4
+        assert_eq!(hand_value(&hand(&["A", "2", "3", "4"])), 20.0);
+        assert!(hand_value(&hand(&["2", "x"])).is_nan()); // parseInt('x') NaN
+        assert_eq!(hand_value(&hand(&["A"])), 11.0);
+        // A bust that stays bust after aces flex: 10 + 10 + A + A = 22+2
+        assert_eq!(hand_value(&hand(&["10", "10", "A", "A"])), 22.0);
+    }
+
+    /// The deck is the exact 52-card {s,v} product in suit-major order
+    /// before the shuffle.
+    #[test]
+    fn blackjack_deck_is_52_cards() {
+        let deck = build_deck();
+        assert_eq!(deck.len(), 52);
+        let mut suits = std::collections::BTreeSet::new();
+        let mut vals = std::collections::BTreeSet::new();
+        for c in &deck {
+            suits.insert(jsval::string(&c["s"]));
+            vals.insert(jsval::string(&c["v"]));
+        }
+        assert_eq!(suits.len(), 4);
+        assert_eq!(vals.len(), 13);
+        assert_eq!(deck[0], json!({ "s": "♠", "v": "A" }));
+        assert_eq!(deck[51], json!({ "s": "♣", "v": "K" }));
+        // Every (s, v) pair unique.
+        let mut pairs = std::collections::BTreeSet::new();
+        for c in &deck {
+            pairs.insert((jsval::string(&c["s"]), jsval::string(&c["v"])));
+        }
+        assert_eq!(pairs.len(), 52);
+    }
+
+    /// The stand outcome ladder: dealer bust or higher player wins double,
+    /// a tie pushes, everything else loses.
+    #[test]
+    fn blackjack_stand_outcome_matrix() {
+        assert_eq!(bj_outcome(22.0, 18.0, 10.0), ("win", 20.0)); // dealer bust
+        assert_eq!(bj_outcome(17.0, 18.0, 10.0), ("win", 20.0)); // player higher
+        assert_eq!(bj_outcome(21.0, 21.0, 10.0), ("push", 10.0));
+        assert_eq!(bj_outcome(18.0, 17.0, 10.0), ("lose", 0.0));
+        assert_eq!(bj_outcome(21.0, 20.0, 10.0), ("lose", 0.0));
+    }
+
+    /// The dealer draws while under 17 and stops the moment it reaches it
+    /// (the loop recomputes after every card).
+    #[test]
+    fn blackjack_dealer_draws_to_17() {
+        let card = |v: &str| json!({ "s": "♥", "v": v });
+        let mut dealer = vec![card("10"), card("2")]; // 12
+        let mut deck: Vec<Value> = vec![card("2"), card("3"), card("4")];
+        loop {
+            if hand_value(&dealer) >= 17.0 {
+                break;
+            }
+            dealer.push(deck.pop().unwrap_or(Value::Null));
+        }
+        // 12 → +4 (16) → +3 (19): stops at 19, never drawing past 17.
+        assert_eq!(hand_value(&dealer), 19.0);
+        assert_eq!(deck.len(), 1);
     }
 
     /// `Number(x.toFixed(4))` money rounding through the shared helper.
