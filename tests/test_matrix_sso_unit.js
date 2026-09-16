@@ -421,8 +421,12 @@ try {
     }).toString(),
     redirect: 'manual'
   });
-  assert.equal(handoffRes.status, 302, 'Handoff must redirect to destination exchange');
-  const handoffLoc = new URL(handoffRes.headers.get('Location'));
+  assert.equal(handoffRes.status, 200, 'Handoff must finish same-origin so form-action does not block it');
+  assert.equal(handoffRes.headers.get('Location'), null, 'Form handoff must not issue a cross-origin HTTP redirect');
+  const handoffHtml = await handoffRes.text();
+  const handoffLocationMatch = handoffHtml.match(/location\.replace\(("(?:[^"\\]|\\.)*")\)/);
+  assert(handoffLocationMatch, 'Handoff HTML must continue with a top-level navigation');
+  const handoffLoc = new URL(JSON.parse(handoffLocationMatch[1]));
   assert.equal(handoffLoc.origin, 'https://sexypickleclub.com');
   assert.equal(handoffLoc.pathname, '/api/sso/exchange');
   assert.equal(handoffLoc.searchParams.get('token'), hopToken);
