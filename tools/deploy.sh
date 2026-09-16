@@ -18,6 +18,21 @@ else
     cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 fi
 
+# Auto-sync /usr/local/bin/deploy.sh from repo tools/deploy.sh and re-exec if running as root
+if [ "$(id -u)" -eq 0 ] && [ -f "$PROJECT_DIR/tools/deploy.sh" ]; then
+    if ! cmp -s "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh 2>/dev/null; then
+        echo "[deploy] Synchronizing /usr/local/bin/deploy.sh with repository..."
+        cp -f "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh.tmp
+        chmod +x /usr/local/bin/deploy.sh.tmp
+        mv -f /usr/local/bin/deploy.sh.tmp /usr/local/bin/deploy.sh 2>/dev/null || true
+        if [ "${DEPLOY_REEXEC:-0}" != "1" ]; then
+            echo "[deploy] Re-executing freshly updated /usr/local/bin/deploy.sh..."
+            export DEPLOY_REEXEC=1
+            exec /usr/local/bin/deploy.sh "$@"
+        fi
+    fi
+fi
+
 # 1. Fetch only NTFY_TOPIC for the deploy script's notifications
 NTFY_TOPIC=""
 DOPPLER_AVAILABLE=false
@@ -111,17 +126,15 @@ NEW_COMMIT=$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || echo "")
 
 # Keep /usr/local/bin/deploy.sh synchronized with repo if running as root
 if [ -f "$PROJECT_DIR/tools/deploy.sh" ] && [ "$(id -u)" -eq 0 ]; then
-    cp "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh.tmp && mv -f /usr/local/bin/deploy.sh.tmp /usr/local/bin/deploy.sh 2>/dev/null || true
-    chmod +x /usr/local/bin/deploy.sh 2>/dev/null || true
-
-    # If tools/deploy.sh was updated in this pull and we're not already re-execing, restart with the new script
-    if [ -n "$OLD_COMMIT" ] && [ -n "$NEW_COMMIT" ] && [ "$OLD_COMMIT" != "$NEW_COMMIT" ]; then
-        if git -C "$PROJECT_DIR" diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" 2>/dev/null | grep -q "tools/deploy.sh"; then
-            if [ "${DEPLOY_REEXEC:-0}" != "1" ]; then
-                echo "[deploy] tools/deploy.sh was updated in this release; re-executing latest deploy script..."
-                export DEPLOY_REEXEC=1
-                exec /usr/local/bin/deploy.sh "$@"
-            fi
+    if ! cmp -s "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh 2>/dev/null; then
+        echo "[deploy] Synchronizing /usr/local/bin/deploy.sh with repository after git pull..."
+        cp -f "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh.tmp
+        chmod +x /usr/local/bin/deploy.sh.tmp
+        mv -f /usr/local/bin/deploy.sh.tmp /usr/local/bin/deploy.sh 2>/dev/null || true
+        if [ "${DEPLOY_REEXEC:-0}" != "1" ]; then
+            echo "[deploy] Re-executing freshly updated /usr/local/bin/deploy.sh..."
+            export DEPLOY_REEXEC=1
+            exec /usr/local/bin/deploy.sh "$@"
         fi
     fi
 fi
