@@ -606,7 +606,7 @@ fn owner_members(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
 
 /// `userdataPath(idVal)` (server.js:2755-2761) — sha256(id)[0..32] dir under
 /// `USERDATA_DIR`; `null` on any filesystem failure → 503.
-fn userdata_path(id_val: &str) -> Option<std::path::PathBuf> {
+pub(crate) fn userdata_path(id_val: &str) -> Option<std::path::PathBuf> {
     let hex = crypto::sha256_hex(id_val.as_bytes());
     let dir = std::path::Path::new(USERDATA_DIR).join(&hex[..32]);
     std::fs::create_dir_all(&dir).ok()?;

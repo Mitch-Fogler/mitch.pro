@@ -976,6 +976,18 @@ impl RateLimiter {
         self.log.lock().unwrap_or_else(|e| e.into_inner()).clear();
     }
 
+    /// server.js:3477-3483 — the 5-minute rlLog sweeper: keep only hits from
+    /// the last hour (cutoff = now_secs − 3600) and drop keys left empty.
+    /// The timing table is deliberately untouched (the JS never sweeps it).
+    pub fn sweep_log(&self) {
+        let cutoff = now_millis() as f64 / 1000.0 - 3600.0;
+        let mut log = self.log.lock().unwrap_or_else(|e| e.into_inner());
+        log.retain(|_, ts| {
+            ts.retain(|t| *t > cutoff);
+            !ts.is_empty()
+        });
+    }
+
     /// `/api/admin/reset-ratelimit` — remove keys ending in `::<ep>` for any
     /// of `endpoints`; returns the number cleared.
     pub fn rl_reset_many(&self, endpoints: &[String]) -> usize {

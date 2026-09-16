@@ -264,7 +264,7 @@ pub(crate) fn send_security_action_code(
         &state.id_secret,
         norm_email,
     );
-    let html = make_verification_code_html(label, &code, 10.0, &target_email);
+    let html = make_verification_code_html(state, label, &code, 10.0, &target_email);
     send_email_bg(
         state,
         &target_email,
@@ -414,6 +414,7 @@ pub(crate) fn save_two_factor_config(state: &Arc<AppState>, norm_email: &str, pa
 /// `makeVerificationCodeHtml(label, code, expiryMinutes[, email])`
 /// (server.js:1764-1778), reusing the Step 8 dark shell.
 pub(crate) fn make_verification_code_html(
+    state: &Arc<AppState>,
     label: &str,
     code: &str,
     expiry_minutes: f64,
@@ -445,6 +446,7 @@ pub(crate) fn make_verification_code_html(
         safe_mins
     );
     html_base_template(
+        state,
         email,
         &format!("Confirm {safe_label} - mitch.pro"),
         &content,

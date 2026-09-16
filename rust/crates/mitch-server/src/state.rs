@@ -50,6 +50,12 @@ pub struct AppState {
     /// The delayed-alert scheduler itself lands with the Step 11 DM group;
     /// the cancel path is live so notification reads stay correct.
     pub matrix_pending_email_alerts: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `matrixUserLastSeen` (server.js:851-ish) — norm key -> last-seen ms.
+    /// Only the matrix WS layer writes it; that lands with the matrix port,
+    /// so the map starts empty and every matrix digest recipient looks
+    /// "offline" (the literal JS comparison in the digest worker keeps the
+    /// duration-vs-cutoff quirk, see workers_email.rs).
+    pub matrix_user_last_seen: std::sync::Mutex<std::collections::HashMap<String, i64>>,
     /// `pendingSecurityCodes` (server.js:2460) — `norm:action` -> code record.
     pub pending_security_codes:
         std::sync::Mutex<std::collections::HashMap<String, PendingSecurityCode>>,
@@ -322,6 +328,7 @@ impl AppState {
             cv_games: std::sync::Mutex::new(cv_games_map),
             cv_challenges: std::sync::Mutex::new(indexmap::IndexMap::new()),
             cv_chats: std::sync::Mutex::new(indexmap::IndexMap::new()),
+            matrix_user_last_seen: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 

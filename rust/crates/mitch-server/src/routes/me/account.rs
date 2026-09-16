@@ -86,6 +86,7 @@ fn change_email(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -
             },
         );
     let html = super::security::make_verification_code_html(
+        state,
         "Email Change Request",
         &code,
         30.0,

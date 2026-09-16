@@ -15,6 +15,7 @@ mod attachment;
 mod inbox;
 mod manage;
 mod notif;
+pub(crate) use attachment::clean_expired;
 pub(crate) use notif::notif_allowed;
 mod send;
 

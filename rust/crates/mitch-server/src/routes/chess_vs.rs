@@ -347,7 +347,7 @@ fn make_chess_corr_action_html(
     let content = format!(
         "\n    <h2 style=\"margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #fbbf24; text-align: center;\">♟ Chess Correspondence</h2>\n    <div style=\"background-color: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;\">\n      <p style=\"margin: 0 0 8px; font-size: 16px; font-weight: 700; color: #f4f4f5;\">{title}</p>\n      <p style=\"margin: 0; color: #cbd5e1; line-height: 1.6;\">{message_text}</p>\n    </div>\n    <div style=\"text-align: center; margin-bottom: 8px;\">\n      <a href=\"{game_url}\" style=\"display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.3);\">Go to Chess Board</a>\n    </div>\n  "
     );
-    crate::routes::admin::legacy::html_base_template(email, title, &content)
+    crate::routes::admin::legacy::html_base_template(state, email, title, &content)
 }
 
 fn notify_target(state: &Arc<AppState>, target: &str, title: &str, message: &str, url: &str) {

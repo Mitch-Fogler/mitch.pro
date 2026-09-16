@@ -381,6 +381,8 @@ async fn approve(state: &Arc<AppState>, body: &Value) -> Response {
             let link = format!("{}/claim.html?token={new_tok}", site_url_of(email, state));
             let subject = format!("Your {site_name} Access Has Been Approved");
             let html = super::legacy::make_access_status_html(
+                    state,
+
                 email,
                 "Your Access Has Been Approved",
                 &format!(
@@ -400,6 +402,8 @@ async fn approve(state: &Arc<AppState>, body: &Value) -> Response {
             let site_name = site_name(state);
             let subject = format!("Your {site_name} Access Request Was Not Approved");
             let html = super::legacy::make_access_status_html(
+                    state,
+
                 email,
                 "Access Request Update",
                 "Unfortunately, your access request was not approved at this time. If you think this is a mistake, you can submit an appeal.",
@@ -430,6 +434,8 @@ async fn approve(state: &Arc<AppState>, body: &Value) -> Response {
             let site_name = site_name(state);
             let subject = format!("Your {site_name} Access Request Was Not Approved");
             let html = super::legacy::make_access_status_html(
+                    state,
+
                 email,
                 "Access Request Denied",
                 &format!("Your access request was not approved.<br><br><strong>Reason:</strong> {reason}"),
@@ -485,6 +491,8 @@ async fn appeal(state: &Arc<AppState>, body: &Value) -> Response {
         let link = format!("{}/claim.html?token={new_tok}", site_url_of(email, state));
         let subject = format!("Your {site_name} Appeal Has Been Approved");
         let html = super::legacy::make_access_status_html(
+                state,
+
             email,
             "Appeal Approved",
             "Great news — your appeal has been approved and your access has been restored. Click the link below to claim your account. Save your token in case you need it later:",
@@ -557,6 +565,8 @@ async fn unsub(state: &Arc<AppState>, body: &Value) -> Response {
             .write_document(&unsub_file, &json!(set.into_iter().collect::<Vec<_>>()));
         let subject = format!("You've Been Unsubscribed from the {site_name} Newsletter");
         let html = super::legacy::make_access_status_html(
+                state,
+
             &email,
             "Unsubscribed Successfully",
             "You have been successfully unsubscribed from the newsletter. You won't receive any further emails.",
@@ -567,6 +577,8 @@ async fn unsub(state: &Arc<AppState>, body: &Value) -> Response {
     } else {
         let subject = format!("Your {site_name} Unsubscribe Request");
         let html = super::legacy::make_access_status_html(
+                state,
+
             &email,
             "Unsubscribe Request Not Processed",
             "Your request to unsubscribe from the newsletter was not processed. If you believe this is an error, please reply to this email.",

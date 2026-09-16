@@ -60,4 +60,9 @@ pub fn spawn(state: std::sync::Arc<crate::state::AppState>) {
             }
         });
     }
+
+    // Step 13 batch 1 — the four email workers (weekly digest, daily puzzle,
+    // clock warning, DM digest) plus the DM prune, e2e-attachment cleanup and
+    // rlLog sweep timers (server.js:5061-5064, 26352, 25227+, 3477-3483).
+    crate::workers_email::spawn(state);
 }

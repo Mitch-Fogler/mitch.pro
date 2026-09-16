@@ -637,7 +637,7 @@ fn save_index(
 /// `cleanExpiredE2eAttachments()` (server.js:6286) — drop and unlink every
 /// entry whose `expiresAt` has passed (or whose entry is falsy). All failures
 /// are swallowed (the JS wraps this in try/catch and only logs).
-fn clean_expired(state: &AppState) {
+pub(crate) fn clean_expired(state: &AppState) {
     clean_expired_in(&state.store, state.data_dir());
 }
 

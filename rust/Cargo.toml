@@ -41,6 +41,9 @@ ciborium = "0.2"
 serde_cbor = "0.11"
 p256 = { version = "0.13", features = ["ecdsa"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# Local-time Date math for the email workers' Monday/hour/dayKey gates
+# (mitch-lib jstime carries the same clock feature).
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [profile.release]
 opt-level = 2

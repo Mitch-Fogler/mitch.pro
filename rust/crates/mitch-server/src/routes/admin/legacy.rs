@@ -745,6 +745,7 @@ fn parse_query(search: &str) -> std::collections::HashMap<String, String> {
 
 /// `makeAccessStatusHtml(email, title, messageText, actionUrl, actionLabel)`.
 pub fn make_access_status_html(
+    state: &std::sync::Arc<crate::state::AppState>,
     email: &str,
     title: &str,
     message_text: &str,
@@ -761,27 +762,80 @@ pub fn make_access_status_html(
     let content = format!(
         "\n    <h2 style=\"margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #f4f4f5; text-align: center;\">{title}</h2>\n    <div style=\"background-color: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;\">\n      <p style=\"margin: 0; color: #cbd5e1; line-height: 1.6;\">{message_text}</p>\n    </div>\n    {action_html}\n  "
     );
-    html_base_template(email, title, &content)
+    html_base_template(state, email, title, &content)
+}
+
+/// `unsubscribeEmailKey(email)` (server.js:2029-2031) — String(email || '')
+/// lowercased then trimmed.
+fn unsubscribe_email_key(email: &str) -> String {
+    email.to_lowercase().trim().to_string()
+}
+
+/// `unsubscribeUrl(email)` (server.js:2033-2046) — a stable random 24-byte
+/// hex token per delivery address, persisted in data/unsubscribe_tokens.json
+/// (a DB-routed doc). Missing/falsy token → generate + persist
+/// (saveJsonSync → write_document); a non-object doc resets to {}.
+pub fn unsubscribe_url(state: &crate::state::AppState, email: &str) -> String {
+    let key = unsubscribe_email_key(email);
+    if key.is_empty() {
+        return String::new();
+    }
+    let path = state.cfg.data_dir.join("unsubscribe_tokens.json");
+    let stored = state.store.read_document(&path, serde_json::json!({}));
+    // JS: `if (!tokens || typeof tokens !== 'object' || Array.isArray(tokens)) tokens = {}`.
+    let map = match stored.as_object() {
+        Some(o) => o.clone(),
+        None => serde_json::Map::new(),
+    };
+    // JS: `let token = tokens[key]; if (!token) { … }` — missing, null and ''
+    // all regenerate.
+    if let Some(Value::String(t)) = map.get(&key) {
+        if !t.is_empty() {
+            return format!("{}/unsubscribe/{t}", state.cfg.alternate);
+        }
+    }
+    let token = mitch_lib::crypto::random_bytes_hex(24);
+    let mut out = map;
+    out.insert(key, Value::String(token.clone()));
+    let _ = state.store.write_document(&path, &Value::Object(out));
+    format!("{}/unsubscribe/{token}", state.cfg.alternate)
+}
+
+/// JS `s.replace(/\/$/, '')` — removes at most one trailing slash.
+fn strip_one_trailing_slash(s: &str) -> &str {
+    s.strip_suffix('/').unwrap_or(s)
 }
 
 /// `htmlBaseTemplate(email, subject, contentHtml)` — the shared dark email
-/// shell with the standard footer. (The JS resolves PRIMARY/ALT from
-/// data/site.json; those values are substituted by the caller-side site
-/// lookup.)
-pub fn html_base_template(_email: &str, subject: &str, content_html: &str) -> String {
-    let footer = r##"
-      <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;">
-        <p style="margin: 0 0 8px;">
-          Delivered by <a href="https://mitchdog.com" style="color: #64748b; text-decoration: underline; font-weight: 600;">mitchdog.com</a> | <a href="https://mitch.pro" style="color: #64748b; text-decoration: underline;">mitch.pro</a>
-        </p>
-        <p style="margin: 0;">
-          For support: email SUPPORT to <a href="mailto:support@mitch.pro" style="color: #64748b; text-decoration: none;">support@mitch.pro</a> or mitchell.fogler@student.rjuhsd.us
-        </p>
-        <p style="margin: 8px 0 0; font-size: 11px; color: #475569;">
-          2014 Capitol Ave #100, Sacramento, CA 95811
-        </p>
-      </div>
-    "##;
+/// shell with the standard footer, including the unsubscribe link for any
+/// real address (server.js:1689-1759). (The JS resolves PRIMARY/ALT from
+/// data/site.json; those values come from the SiteConfig here.)
+pub fn html_base_template(
+    state: &crate::state::AppState,
+    email: &str,
+    subject: &str,
+    content_html: &str,
+) -> String {
+    // JS: `s.primary.replace(/\/$/, '')` — one trailing slash only.
+    let alt = strip_one_trailing_slash(&state.cfg.alternate);
+    let primary = strip_one_trailing_slash(&state.cfg.primary);
+    let unsub = if email.contains('@') {
+        unsubscribe_url(state, email)
+    } else {
+        String::new()
+    };
+    // The exact template-literal whitespace: the interpolated block carries a
+    // trailing "\n        " and the surrounding line contributes its own.
+    let unsub_block = if unsub.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n        <p style=\"margin: 0 0 8px;\">\n          To opt-out of these communications, you can <a href=\"{unsub}\" style=\"color: #38bdf8; text-decoration: underline;\">unsubscribe from this list</a>.\n        </p>\n        "
+        )
+    };
+    let footer = format!(
+        "\n      <div style=\"margin-top: 32px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.08); font-size: 12px; color: #64748b; line-height: 1.5; text-align: center;\">\n        <p style=\"margin: 0 0 8px;\">\n          Delivered by <a href=\"{alt}\" style=\"color: #64748b; text-decoration: underline; font-weight: 600;\">mitchdog.com</a> | <a href=\"{primary}\" style=\"color: #64748b; text-decoration: underline;\">mitch.pro</a>\n        </p>\n        {unsub_block}\n        <p style=\"margin: 0;\">\n          For support: email SUPPORT to <a href=\"mailto:support@mitch.pro\" style=\"color: #64748b; text-decoration: none;\">support@mitch.pro</a> or mitchell.fogler@student.rjuhsd.us\n        </p>\n        <p style=\"margin: 8px 0 0; font-size: 11px; color: #475569;\">\n          2014 Capitol Ave #100, Sacramento, CA 95811\n        </p>\n      </div>\n    "
+    );
     let shell = r##"
 <!DOCTYPE html>
 <html lang="en" style="background:#06060c;">
@@ -831,7 +885,7 @@ pub fn html_base_template(_email: &str, subject: &str, content_html: &str) -> St
     shell
         .replace("@@SUBJECT@@", subject)
         .replace("@@CONTENT@@", content_html)
-        .replace("@@FOOTER@@", footer)
+        .replace("@@FOOTER@@", &footer)
         .trim()
         .to_string()
 }
