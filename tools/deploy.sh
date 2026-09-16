@@ -18,6 +18,13 @@ else
     cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
 fi
 
+# If invoked via /usr/local/bin/deploy.sh, directly dispatch to repo deploy.sh
+if [ "${DEPLOY_DISPATCHED:-0}" != "1" ] && [ -f "$PROJECT_DIR/tools/deploy.sh" ] && [ "${BASH_SOURCE[0]}" != "$PROJECT_DIR/tools/deploy.sh" ]; then
+    echo "[deploy] Dispatching execution to repository $PROJECT_DIR/tools/deploy.sh..."
+    export DEPLOY_DISPATCHED=1
+    exec /bin/bash "$PROJECT_DIR/tools/deploy.sh" "$@"
+fi
+
 # Auto-sync /usr/local/bin/deploy.sh from repo tools/deploy.sh and re-exec if running as root
 if [ "$(id -u)" -eq 0 ] && [ -f "$PROJECT_DIR/tools/deploy.sh" ]; then
     if ! cmp -s "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh 2>/dev/null; then

@@ -269,21 +269,21 @@ services:
     restart: unless-stopped
     volumes:
       - /usr/local/bin:/host_bin
-      - ./tools/deploy.sh:/repo_deploy.sh:ro
+      - ./tools:/repo_tools:ro
     command:
       - /bin/sh
       - -c
       - |
         trap "exit 0" TERM INT
-        if [ -f /repo_deploy.sh ]; then
-          cp -f /repo_deploy.sh /host_bin/deploy.sh.tmp
+        if [ -f /repo_tools/deploy.sh ]; then
+          cp -f /repo_tools/deploy.sh /host_bin/deploy.sh.tmp
           chmod 755 /host_bin/deploy.sh.tmp
           mv -f /host_bin/deploy.sh.tmp /host_bin/deploy.sh
           echo "[deploy-sync] Initialized /usr/local/bin/deploy.sh from repository"
         fi
         while true; do
-          if [ -f /repo_deploy.sh ] && ! cmp -s /repo_deploy.sh /host_bin/deploy.sh; then
-            cp -f /repo_deploy.sh /host_bin/deploy.sh.tmp
+          if [ -f /repo_tools/deploy.sh ] && ! cmp -s /repo_tools/deploy.sh /host_bin/deploy.sh; then
+            cp -f /repo_tools/deploy.sh /host_bin/deploy.sh.tmp
             chmod 755 /host_bin/deploy.sh.tmp
             mv -f /host_bin/deploy.sh.tmp /host_bin/deploy.sh
             echo "[deploy-sync] Synchronized /usr/local/bin/deploy.sh from repository"
