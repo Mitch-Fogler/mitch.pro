@@ -14028,10 +14028,17 @@ async function handleRequest(req, server) {
         const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
         dest.searchParams.set('token', token);
         dest.searchParams.set('back', back.toString());
-        return new Response(null, {
-          status: 302,
+        // Do not redirect the form submission across origins. Browsers apply
+        // form-action 'self' to the full redirect chain and block that 302.
+        // Finish the same-origin POST with HTML, then perform a normal top-level
+        // navigation, which is not governed by form-action.
+        const continueHtml =
+          '<!doctype html><meta charset="utf-8"><title>Signing in…</title>\n' +
+          '<script>location.replace(' + JSON.stringify(dest.toString()) + ');<\/script>\n';
+        return new Response(continueHtml, {
+          status: 200,
           headers: {
-            Location: dest.toString(),
+            'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-store',
             'Referrer-Policy': 'no-referrer'
           }

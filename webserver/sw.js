@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v41';
+const CACHE_NAME = 'mitch-pro-cache-v42';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',
@@ -53,12 +53,21 @@ function isHtmlRequest(request) {
 }
 
 self.addEventListener('fetch', (e) => {
+  // Cache Storage only supports GET. Let POST/PUT/etc. go directly to the
+  // network so form submissions and API calls can never reach cache.put().
+  if (e.request.method !== 'GET') return;
+
+  const requestUrl = new URL(e.request.url);
+  // A service worker controls its pages' cross-origin subrequests too. Never
+  // proxy those through our cache: doing so can turn CORP rejections into
+  // network-error responses returned by the worker.
+  if (requestUrl.origin !== self.location.origin) return;
+
   // Never intercept API or WebSocket requests
-  if (e.request.url.includes('/api/') || e.request.url.startsWith('ws')) {
+  if (requestUrl.pathname.startsWith('/api/') || e.request.url.startsWith('ws')) {
     return;
   }
 
-const requestUrl = new URL(e.request.url);
 // Let the admin broadcast video stream directly from the network. Service
 // Worker cache.put can fail on large authenticated/range media responses.
 if (requestUrl.pathname === '/media/admin-jumpscare-krupp-1935.webm') {
