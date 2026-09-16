@@ -368,7 +368,21 @@ try {
   }
   console.log('Games SSO redirect handoff passed');
 
-  console.log('--- 3d. Testing non-Matrix SSO hop uses same-origin handoff (CSP form-action safe) ---');
+  console.log('--- 3d. Testing homepage Play Games stays on the canonical host ---');
+  const canonicalGamePortalRes = await fetch(`${BASE_URL}/game-portal/`, {
+    headers: {
+      'Host': gameIdentityHost,
+      'Cookie': `studentId=${testSid}`
+    },
+    redirect: 'manual'
+  });
+  assert.equal(canonicalGamePortalRes.status, 200,
+    'The canonical homepage game button must render the portal without bouncing to the legacy host');
+  const canonicalGamePortalHtml = await canonicalGamePortalRes.text();
+  assert(canonicalGamePortalHtml.includes('id="game-grid"'), 'Homepage game button must load the game portal');
+  console.log('Homepage Play Games canonical-host flow passed');
+
+  console.log('--- 3e. Testing non-Matrix SSO hop uses same-origin handoff (CSP form-action safe) ---');
   const pickleBack = 'https://sexypickleclub.com/';
   const pickleHopRes = await fetch(`${BASE_URL}/api/sso/bridge?back=${encodeURIComponent(pickleBack)}`, {
     headers: {
