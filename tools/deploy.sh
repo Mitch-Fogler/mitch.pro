@@ -68,8 +68,16 @@ is_only_static() {
 }
 
 # 1. Determine which slot is currently active BEFORE touching git or files.
-# Check running Docker containers first (the runtime source of truth).
-if docker ps --filter "name=mitch-webserver-green" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q "mitch-webserver-green"; then
+# Check Caddyfile routing first (the true proxy source of truth).
+if grep -q "webserver-blue:6800" "$CADDYFILE_PATH" 2>/dev/null; then
+    ACTIVE_SLOT="blue"
+    INACTIVE_SLOT="green"
+    INACTIVE_PORT=6812
+elif grep -q "webserver-green:6800" "$CADDYFILE_PATH" 2>/dev/null; then
+    ACTIVE_SLOT="green"
+    INACTIVE_SLOT="blue"
+    INACTIVE_PORT=6811
+elif docker ps --filter "name=mitch-webserver-green" --filter "status=running" --format '{{.Names}}' 2>/dev/null | grep -q "mitch-webserver-green"; then
     ACTIVE_SLOT="green"
     INACTIVE_SLOT="blue"
     INACTIVE_PORT=6811
@@ -77,10 +85,6 @@ elif docker ps --filter "name=mitch-webserver-blue" --filter "status=running" --
     ACTIVE_SLOT="blue"
     INACTIVE_SLOT="green"
     INACTIVE_PORT=6812
-elif grep -q "webserver-green" "$CADDYFILE_PATH" 2>/dev/null; then
-    ACTIVE_SLOT="green"
-    INACTIVE_SLOT="blue"
-    INACTIVE_PORT=6811
 else
     ACTIVE_SLOT="blue"
     INACTIVE_SLOT="green"
@@ -109,6 +113,17 @@ NEW_COMMIT=$(git -C "$PROJECT_DIR" rev-parse HEAD 2>/dev/null || echo "")
 if [ -f "$PROJECT_DIR/tools/deploy.sh" ] && [ "$(id -u)" -eq 0 ]; then
     cp "$PROJECT_DIR/tools/deploy.sh" /usr/local/bin/deploy.sh.tmp && mv -f /usr/local/bin/deploy.sh.tmp /usr/local/bin/deploy.sh 2>/dev/null || true
     chmod +x /usr/local/bin/deploy.sh 2>/dev/null || true
+
+    # If tools/deploy.sh was updated in this pull and we're not already re-execing, restart with the new script
+    if [ -n "$OLD_COMMIT" ] && [ -n "$NEW_COMMIT" ] && [ "$OLD_COMMIT" != "$NEW_COMMIT" ]; then
+        if git -C "$PROJECT_DIR" diff --name-only "$OLD_COMMIT" "$NEW_COMMIT" 2>/dev/null | grep -q "tools/deploy.sh"; then
+            if [ "${DEPLOY_REEXEC:-0}" != "1" ]; then
+                echo "[deploy] tools/deploy.sh was updated in this release; re-executing latest deploy script..."
+                export DEPLOY_REEXEC=1
+                exec /usr/local/bin/deploy.sh "$@"
+            fi
+        fi
+    fi
 fi
 
 # 2b. Fast path: check if this update only modifies static webroot files or docs
@@ -201,13 +216,21 @@ run_docker_compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyf
 # verifies the public proxy path before the old slot is removed.
 echo "[deploy] Warming the newly routed application through Caddy..."
 WARMED=false
-for _ in 1 2 3 4 5; do
-    WARM_STATUS=$(curl -sSL --max-time 10 -o /dev/null -w "%{http_code}" -H "Host: mitchdog.com" "http://localhost:6800/enroll/" || echo "000")
-    if [ "$WARM_STATUS" = "200" ] || [ "$WARM_STATUS" = "308" ] || [ "$WARM_STATUS" = "302" ]; then
+for attempt in 1 2 3 4 5; do
+    WARM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:6800/api/health" || echo "000")
+    if [ "$WARM_STATUS" = "200" ]; then
         WARMED=true
+        echo "[deploy] Caddy successfully routed to webserver-$INACTIVE_SLOT (HTTP 200 via /api/health)!"
         break
     fi
-    sleep 1
+    WARM_STATUS_ENROLL=$(curl -sSL --max-time 5 -o /dev/null -w "%{http_code}" -H "Host: mitchdog.com" "http://127.0.0.1:6800/enroll/" || echo "000")
+    if [ "$WARM_STATUS_ENROLL" = "200" ] || [ "$WARM_STATUS_ENROLL" = "308" ] || [ "$WARM_STATUS_ENROLL" = "302" ]; then
+        WARMED=true
+        echo "[deploy] Caddy successfully routed to webserver-$INACTIVE_SLOT (HTTP $WARM_STATUS_ENROLL via /enroll/)!"
+        break
+    fi
+    echo "[deploy] Waiting for Caddy routing (Attempt $attempt/5)... (/api/health: $WARM_STATUS, /enroll/: $WARM_STATUS_ENROLL)"
+    sleep 2
 done
 if [ "$WARMED" = false ]; then
     echo "[deploy] Error: Caddy did not reach the new slot after reload. Aborting before stopping the old slot."
