@@ -9105,18 +9105,6 @@ async function handleRequest(req, server) {
   const botRedirect = blooketBotRedirect(url, method);
   if (botRedirect) return Response.redirect(botRedirect, 302);
 
-  if (method === 'GET' && /^\/game-portal(?:\/|\/index\.html)?$/.test(path)) {
-    const currentHost = requestHost(req).split(':')[0].toLowerCase();
-    const configuredSite = site();
-    let primaryHost = '';
-    try { primaryHost = new URL(configuredSite.primary).hostname.toLowerCase(); } catch {}
-    if (currentHost && currentHost === primaryHost && configuredSite.alternate && checkPasswordCookie(req)) {
-      const destination = configuredSite.alternate.replace(/\/+$/, '') + '/game-portal/' + url.search;
-      const bridge = configuredSite.primary.replace(/\/+$/, '') + '/api/sso/bridge?back=' + encodeURIComponent(destination);
-      return Response.redirect(bridge, 302);
-    }
-  }
-
   const csrfFailure = csrfFailureIfUnsafe(req, path, method);
   if (csrfFailure) return csrfFailure;
 
