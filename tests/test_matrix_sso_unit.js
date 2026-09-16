@@ -105,9 +105,12 @@ writeDocument(PASSWORDS_FILE, passwords);
 
 // Ensure moderator user is in moderators.json
 const MATRIX_NOTIFS_FILE = join(DATA_DIR, 'matrix_notifications.json');
+const MATRIX_EMAIL_SENT_FILE = join(DATA_DIR, 'matrix_email_sent.json');
 const origNotifs = readDocument(MATRIX_NOTIFS_FILE, {});
+const origEmailSent = readDocument(MATRIX_EMAIL_SENT_FILE, {});
 const origMods = readDocument(MODERATORS_FILE, []);
 const origReports = readDocument(CHAT_REPORTS_FILE, []);
+writeDocument(MATRIX_EMAIL_SENT_FILE, {});
 const mods = Array.from(new Set([...origMods, modNormEmail]));
 writeDocument(MODERATORS_FILE, mods);
 
@@ -417,8 +420,8 @@ try {
   const matrixPage = readFileSync(join(REPO_ROOT, 'webserver', 'matrix', 'index.html'), 'utf8');
   assert(matrixPage.includes('storedSessionIsValid(stored.token, stored.userId)'), 'Matrix must reuse a valid browser device session');
   assert(matrixPage.includes("navigator.locks.request('mitch-matrix-session'"), 'Concurrent tabs must serialize Matrix SSO');
-  assert(matrixPage.includes('mitch_plaintext_chat_v1'), 'Matrix must remove obsolete crypto storage');
-  assert(matrixPage.includes('index-BVlPv2dR.js?v=plaintext2'), 'Matrix bundle URL must invalidate the old encrypted client cache');
+  assert(!matrixPage.includes('removeLegacyCryptoStorage'), 'Matrix must preserve crypto storage for E2EE keys');
+  assert(matrixPage.includes('index-BVlPv2dR.js?v=e2ee1'), 'Matrix bundle URL must load updated E2EE client');
   assert(!matrixPage.includes('__MATRIX_SSO_TARGET__'), 'Matrix page must not depend on __MATRIX_SSO_TARGET__ redirect injection');
 
   const resMatrixHtml = await fetch(`${BASE_URL}/matrix/`);
@@ -746,6 +749,11 @@ try {
   const matrixNotifAfter = bellDataAfter.notifications.find(n => n.type === 'matrix' && n.matrixRoomId === '!official_general:mitch.pro');
   assert(!matrixNotifAfter, 'Cleared Matrix notification must no longer appear as unread');
 
+  // Verify 24h email alert throttling: email sent timestamp must be recorded in matrix_email_sent.json
+  const sentMap = readDocument(join(DATA_DIR, 'matrix_email_sent.json'), {});
+  assert(sentMap[adminNormEmail], 'Admin user must have sent timestamp recorded in matrix_email_sent.json for 24h throttle');
+  assert(Date.now() - sentMap[adminNormEmail] < 60_000, 'Sent timestamp must be recent');
+
   console.log('Matrix outbound message and invite notifications passed');
 
   // --- 17. Testing Matrix VoIP STUN/TURN Discovery ---
@@ -805,6 +813,7 @@ try {
   console.log('=== ALL MATRIX SSO & MODERATION UNIT TESTS PASSED SUCCESSFULLY! ===');
 } finally {
   writeDocument(MATRIX_NOTIFS_FILE, origNotifs);
+  writeDocument(MATRIX_EMAIL_SENT_FILE, origEmailSent);
   writeDocument(MODERATORS_FILE, origMods);
   writeDocument(CHAT_REPORTS_FILE, origReports);
   writeDocument(PASSWORDS_FILE, origPasswords);

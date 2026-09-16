@@ -223,6 +223,7 @@ const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
 const MATRIX_USERS_FILE      = join(DATA_DIR, 'matrix_users.json');
 const MATRIX_NOTIFICATIONS_FILE = join(DATA_DIR, 'matrix_notifications.json');
+const MATRIX_EMAIL_SENT_FILE    = join(DATA_DIR, 'matrix_email_sent.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
 const MODERATOR_PANEL_FILE   = join(DATA_DIR, 'moderator_panel.json');
@@ -8458,7 +8459,17 @@ async function getMatrixRoomInfoForNotifications(roomId, token) {
 
 const matrixUserLastSeen = new Map();
 const matrixPendingEmailAlerts = new Map();
-const matrixLastEmailSent = new Map();
+const MATRIX_EMAIL_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const matrixLastEmailSent = new Map(Object.entries(loadJson(MATRIX_EMAIL_SENT_FILE, {})));
+
+function recordMatrixEmailSent(memberNorm) {
+  const norm = normalizeEmail(memberNorm);
+  if (!norm) return;
+  matrixLastEmailSent.set(norm, Date.now());
+  try {
+    saveJson(MATRIX_EMAIL_SENT_FILE, Object.fromEntries(matrixLastEmailSent));
+  } catch (_) {}
+}
 
 function addMatrixNotification(targetNorm, notif) {
   if (!targetNorm) return null;
@@ -8585,19 +8596,20 @@ function sendMatrixEmailAlert(memberNorm, { title, senderName, roomTitle, previe
   });
 
   sendEmailBg(targetEmail, title, html);
-  matrixLastEmailSent.set(`${memberNorm}:${roomId}`, Date.now());
+  recordMatrixEmailSent(memberNorm);
   console.log(`[matrix-email-alert] Sent "${title}" to ${targetEmail}`);
 }
 
 function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, previewText, roomId, isCall, isInvite, notifTitle }) {
   if (!notifAllowed(memberNorm, 'digest')) return;
-  const key = `${memberNorm}:${roomId}`;
+  const norm = normalizeEmail(memberNorm);
+  if (!norm) return;
   const now = Date.now();
-  const lastSent = matrixLastEmailSent.get(key) || 0;
+  const lastSent = Number(matrixLastEmailSent.get(norm)) || 0;
+  if (now - lastSent < MATRIX_EMAIL_INTERVAL_MS) return;
 
   if (isCall || isInvite) {
-    if (now - lastSent < 300_000) return;
-    sendMatrixEmailAlert(memberNorm, {
+    sendMatrixEmailAlert(norm, {
       title: notifTitle,
       senderName: senderDisplayName,
       roomTitle,
@@ -8609,8 +8621,7 @@ function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, prev
     return;
   }
 
-  if (now - lastSent < 15 * 60 * 1000) return;
-
+  const key = `${norm}:${roomId}`;
   if (matrixPendingEmailAlerts.has(key)) {
     const item = matrixPendingEmailAlerts.get(key);
     item.previewText = previewText;
@@ -8621,12 +8632,14 @@ function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, prev
 
   const timer = setTimeout(() => {
     matrixPendingEmailAlerts.delete(key);
+    const sentRecently = Number(matrixLastEmailSent.get(norm)) || 0;
+    if (Date.now() - sentRecently < MATRIX_EMAIL_INTERVAL_MS) return;
     const all = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
-    const list = Array.isArray(all[memberNorm]) ? all[memberNorm] : [];
+    const list = Array.isArray(all[norm]) ? all[norm] : [];
     const hasUnread = list.some(n => !n.read && n.roomId === roomId);
-    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    const lastSeen = matrixUserLastSeen.get(norm) || 0;
     if (hasUnread && (Date.now() - lastSeen > 60_000)) {
-      sendMatrixEmailAlert(memberNorm, {
+      sendMatrixEmailAlert(norm, {
         title: notifTitle,
         senderName: senderDisplayName,
         roomTitle,

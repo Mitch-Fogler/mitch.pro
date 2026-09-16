@@ -328,7 +328,7 @@
           const script = document.createElement("script");
           script.type = "module";
           script.crossOrigin = "anonymous";
-          script.src = "/matrix/assets/index-BVlPv2dR.js?v=plaintext2";
+          script.src = "/matrix/assets/index-BVlPv2dR.js?v=e2ee1";
           document.head.appendChild(script);
         }
 
@@ -337,21 +337,6 @@
             token: localStorage.getItem("cinny_access_token") || '',
             userId: localStorage.getItem("cinny_user_id") || ''
           };
-        }
-
-        async function removeLegacyCryptoStorage() {
-          if (localStorage.getItem('mitch_plaintext_chat_v1') === '1') return;
-          try {
-            if (indexedDB.databases) {
-              const databases = await indexedDB.databases();
-              for (const database of databases) {
-                if (database.name && /crypto/i.test(database.name)) indexedDB.deleteDatabase(database.name);
-              }
-            } else {
-              indexedDB.deleteDatabase('crypto-store');
-            }
-          } catch (_) {}
-          localStorage.setItem('mitch_plaintext_chat_v1', '1');
         }
 
         function clearStoredSession() {
@@ -385,7 +370,6 @@
 
         async function initMitchSSO() {
           try {
-            await removeLegacyCryptoStorage();
             const statusRes = await fetch('/api/matrix/sso-status', {
               credentials: 'same-origin',
               cache: 'no-store'
@@ -546,29 +530,6 @@
             }
           }
         }
-
-        // Keep optional encryption controls out of the chat UI. Mitch.pro's
-        // rooms are intentionally plaintext for reliable school-device chat.
-        function hideEncryptionControls(root) {
-          const nodes = (root || document).querySelectorAll
-            ? (root || document).querySelectorAll('button, [role="button"], [role="menuitem"], label, h1, h2, h3, p, span')
-            : [];
-          for (const node of nodes) {
-            const text = String(node.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
-            if (text && (text.includes('enable encryption') || text.includes('enable e2e') || text === 'encryption')) {
-              const container = node.closest('button, [role="button"], [role="menuitem"], label') || node;
-              container.style.display = 'none';
-            }
-          }
-        }
-        hideEncryptionControls(document);
-        new MutationObserver((mutations) => {
-          for (const mutation of mutations) {
-            for (const added of mutation.addedNodes || []) {
-              if (added.nodeType === 1) hideEncryptionControls(added);
-            }
-          }
-        }).observe(document.documentElement, { childList: true, subtree: true });
 
         // Synchronize Matrix room reads to Mitch.pro notification bell
         function markCurrentRoomRead() {
