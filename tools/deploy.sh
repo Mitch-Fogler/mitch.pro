@@ -229,7 +229,7 @@ run_docker_compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyf
 # verifies the public proxy path before the old slot is removed.
 echo "[deploy] Warming the newly routed application through Caddy..."
 WARMED=false
-for attempt in 1 2 3 4 5; do
+for attempt in $(seq 1 10); do
     WARM_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:6800/api/health" || echo "000")
     if [ "$WARM_STATUS" = "200" ]; then
         WARMED=true
@@ -242,7 +242,7 @@ for attempt in 1 2 3 4 5; do
         echo "[deploy] Caddy successfully routed to webserver-$INACTIVE_SLOT (HTTP $WARM_STATUS_ENROLL via /enroll/)!"
         break
     fi
-    echo "[deploy] Waiting for Caddy routing (Attempt $attempt/5)... (/api/health: $WARM_STATUS, /enroll/: $WARM_STATUS_ENROLL)"
+    echo "[deploy] Waiting for Caddy routing (Attempt $attempt/10)... (/api/health: $WARM_STATUS, /enroll/: $WARM_STATUS_ENROLL)"
     sleep 2
 done
 if [ "$WARMED" = false ]; then
