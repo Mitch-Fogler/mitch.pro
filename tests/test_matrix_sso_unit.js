@@ -421,7 +421,7 @@ try {
   assert(matrixPage.includes('storedSessionIsValid(stored.token, stored.userId)'), 'Matrix must reuse a valid browser device session');
   assert(matrixPage.includes("navigator.locks.request('mitch-matrix-session'"), 'Concurrent tabs must serialize Matrix SSO');
   assert(!matrixPage.includes('removeLegacyCryptoStorage'), 'Matrix must preserve crypto storage for E2EE keys');
-  assert(matrixPage.includes('index-BVlPv2dR.js?v=e2ee1'), 'Matrix bundle URL must load updated E2EE client');
+  assert(matrixPage.includes('index-BVlPv2dR.js?v=e2ee2'), 'Matrix bundle URL must load updated E2EE client');
   assert(!matrixPage.includes('__MATRIX_SSO_TARGET__'), 'Matrix page must not depend on __MATRIX_SSO_TARGET__ redirect injection');
 
   const resMatrixHtml = await fetch(`${BASE_URL}/matrix/`);
