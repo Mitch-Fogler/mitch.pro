@@ -119,8 +119,4 @@ jobs:
             echo "[deploy-ci] Running full blue-green deployment..."
             sudo -u mitch git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
             sudo -u mitch git -C /home/mitch/server/bun pull origin master
-            if [ -f /home/mitch/server/bun/tools/deploy.sh ]; then
-              sudo cp /home/mitch/server/bun/tools/deploy.sh /usr/local/bin/deploy.sh
-              sudo chmod +x /usr/local/bin/deploy.sh
-            fi
             sudo /usr/local/bin/deploy.sh
