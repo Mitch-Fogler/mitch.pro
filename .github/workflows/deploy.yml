@@ -119,7 +119,4 @@ jobs:
             echo "[deploy-ci] Running full blue-green deployment..."
             sudo -u mitch git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
             sudo -u mitch git -C /home/mitch/server/bun pull origin master
-            docker stop mitch-deploy-sync 2>/dev/null || true
-            docker rm -f mitch-deploy-sync 2>/dev/null || true
-            docker run --rm -v /usr/local/bin:/host_bin -v /home/mitch/server/bun/tools:/repo_tools alpine sh -c "cp -f /repo_tools/deploy.sh /host_bin/deploy.sh && chmod 755 /host_bin/deploy.sh" || true
             sudo /usr/local/bin/deploy.sh
