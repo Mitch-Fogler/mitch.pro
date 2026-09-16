@@ -202,8 +202,8 @@ run_docker_compose exec -T reverse-proxy caddy reload --config /etc/caddy/Caddyf
 echo "[deploy] Warming the newly routed application through Caddy..."
 WARMED=false
 for _ in 1 2 3 4 5; do
-    WARM_STATUS=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" -H "Host: mitch.pro" "http://localhost:6800/enroll/" || echo "000")
-    if [ "$WARM_STATUS" = "200" ]; then
+    WARM_STATUS=$(curl -sSL --max-time 10 -o /dev/null -w "%{http_code}" -H "Host: mitchdog.com" "http://localhost:6800/enroll/" || echo "000")
+    if [ "$WARM_STATUS" = "200" ] || [ "$WARM_STATUS" = "308" ] || [ "$WARM_STATUS" = "302" ]; then
         WARMED=true
         break
     fi
