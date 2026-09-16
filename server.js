@@ -13914,6 +13914,9 @@ async function handleRequest(req, server) {
 
         const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
         const isMatrixPath = back.pathname === '/matrix' || back.pathname.startsWith('/matrix/');
+        const isGamePath = ['/games', '/game-portal', '/msn-games'].some(
+          prefix => back.pathname === prefix || back.pathname.startsWith(prefix + '/')
+        );
 
         // Already signed in here? Mint a token and hop straight across.
         // Matrix chat stays on the host the user opened (e.g. rjuhsd.school/matrix/).
@@ -13931,10 +13934,11 @@ async function handleRequest(req, server) {
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
               dest.searchParams.set('token', token);
               dest.searchParams.set('back', back.toString());
-              // Matrix does not need the legacy Secure Chat JWK handoff. A
-              // normal top-level redirect also works with the site's
-              // form-action CSP, unlike a cross-origin hidden form.
-              if (isMatrixPath) {
+              // Matrix and game destinations do not need the legacy Secure Chat
+              // JWK handoff. A normal top-level redirect also avoids stranding
+              // the user on the inline-script "Signing in" bridge page when a
+              // deployed CSP blocks that script.
+              if (isMatrixPath || isGamePath) {
                 return new Response(null, {
                   status: 302,
                   headers: {

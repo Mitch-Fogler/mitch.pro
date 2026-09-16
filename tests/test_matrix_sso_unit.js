@@ -347,7 +347,28 @@ try {
   assert.equal(sameOriginBridge.headers.get('Location'), schoolMatrixBack, 'Signed-in school Matrix must stay on rjuhsd.school');
   console.log('Matrix SSO same-origin school stay passed');
 
-  console.log('--- 3c. Testing non-Matrix SSO hop uses same-origin handoff (CSP form-action safe) ---');
+  console.log('--- 3c. Testing Games SSO avoids the inline-script bridge page ---');
+  const gameIdentityHost = new URL(siteConfig.primary || 'https://mitchdog.com').host;
+  for (const gamePath of ['/games/', '/game-portal/', '/msn-games/']) {
+    const gameBack = 'https://mitch.pro' + gamePath;
+    const gameBridgeRes = await fetch(`${BASE_URL}/api/sso/bridge?back=${encodeURIComponent(gameBack)}`, {
+      headers: {
+        'Host': gameIdentityHost,
+        'Cookie': `studentId=${testSid}`
+      },
+      redirect: 'manual'
+    });
+    assert.equal(gameBridgeRes.status, 302, `${gamePath} must redirect instead of rendering the Signing in page`);
+    const gameLocation = new URL(gameBridgeRes.headers.get('Location'));
+    assert.equal(gameLocation.origin, 'https://mitch.pro');
+    assert.equal(gameLocation.pathname, '/api/sso/exchange');
+    assert.equal(gameLocation.searchParams.get('back'), gameBack);
+    assert(gameLocation.searchParams.get('token'), `${gamePath} handoff must include a single-use token`);
+    assert.equal(gameBridgeRes.headers.get('Referrer-Policy'), 'no-referrer');
+  }
+  console.log('Games SSO redirect handoff passed');
+
+  console.log('--- 3d. Testing non-Matrix SSO hop uses same-origin handoff (CSP form-action safe) ---');
   const pickleBack = 'https://sexypickleclub.com/';
   const pickleHopRes = await fetch(`${BASE_URL}/api/sso/bridge?back=${encodeURIComponent(pickleBack)}`, {
     headers: {
