@@ -25,6 +25,7 @@ const PROFILES_FILE = join(DATA_DIR, 'profiles.json');
 const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const VM_EXTENSIONS_FILE = join(DATA_DIR, 'vm_extensions.json');
 const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
+const VM_DAILY_USAGE_FILE = join(DATA_DIR, 'vm_daily_usage.json');
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -82,9 +83,10 @@ passwords[publicNorm] = await Bun.password.hash('public_pass_123');
 passwords[adminNorm] = await Bun.password.hash('admin_pass_123');
 writeDocument(PASSWORDS_FILE, passwords);
 
-// Reset extensions and cooldowns for clean test run
+// Reset extensions, cooldowns, and daily usage for clean test run
 writeDocument(VM_EXTENSIONS_FILE, {});
 writeDocument(VM_COOLDOWNS_FILE, {});
+writeDocument(VM_DAILY_USAGE_FILE, {});
 
 // Create a test VM record for the student
 const testVmId = 'vm-test-student-991';
@@ -99,8 +101,8 @@ upsertVirtualMachine({
   hostname: 'student-991',
   operatingSystem: 'Linux Desktop',
   templateVmid: 9010,
-  cpuCores: 4,
-  memoryMb: 4096,
+  cpuCores: 6,
+  memoryMb: 16384,
   diskGb: 40,
   status: 'assigned',
   createdAt: Date.now(),
@@ -252,25 +254,65 @@ try {
 
   writeDocument(VM_COOLDOWNS_FILE, {});
 
-  // 7. Daily extension restriction (1 extension per 24 hours)
-  console.log('--- 7. Testing 1 30-min extension per day limit ---');
-  const exts = {};
-  exts[studentNorm] = { lastExtensionAt: Date.now() - (60 * 60 * 1000) };
-  writeDocument(VM_EXTENSIONS_FILE, exts);
+  writeDocument(VM_EXTENSIONS_FILE, {});
 
-  const resExtendBlocked = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/extend`, {
+  // 8. 6-Hour Daily Limit Enforcement
+  console.log('--- 8. Testing 6-hour daily VM limit enforcement ---');
+  const dayKey = new Date().toISOString().slice(0, 10);
+  const dailyUsage = {};
+  dailyUsage[studentNorm] = {};
+  dailyUsage[studentNorm][dayKey] = 6 * 3600; // 21,600 seconds used today
+  writeDocument(VM_DAILY_USAGE_FILE, dailyUsage);
+
+  const resDailyLimitStart = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/power`, {
     method: 'POST',
     headers: {
       'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
       'Origin': BASE_URL,
     },
-    body: '{}',
+    body: JSON.stringify({ action: 'start' }),
   });
-  assert.equal(resExtendBlocked.status, 400, 'Extension must be rejected with 400');
-  console.log('Daily extension restriction verified');
+  assert.equal(resDailyLimitStart.status, 429, 'Start when 6-hour daily limit reached must return 429');
+  const dailyLimitData = await resDailyLimitStart.json();
+  assert.equal(dailyLimitData.code, 'daily_limit_reached', 'Error code must be daily_limit_reached');
+  console.log('6-hour daily limit correctly blocked start with 429 daily_limit_reached');
 
-  // 8. rjuhsd.school domain isolation
-  console.log('--- 8. Testing rjuhsd.school domain isolation ---');
+  // 9. Admin Time Limit Exemption
+  console.log('--- 9. Testing admin VM time limit exemption ---');
+  // Admin is exempt from daily limit on start
+  const resAdminDailyBypass = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/power`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${adminSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ action: 'start' }),
+  });
+  assert.notEqual(resAdminDailyBypass.status, 429, 'Admin must bypass daily VM limit');
+  console.log('Admin daily limit bypass verified');
+
+  // Admin GET /api/vm/computers sees isExempt: true and null time limits
+  const resAdminList = await fetch(`${BASE_URL}/api/vm/computers`, {
+    headers: { 'Cookie': `studentId=${adminSid}` },
+  });
+  assert.equal(resAdminList.status, 200);
+  const adminListData = await resAdminList.json();
+  const adminComputer = adminListData.computers.find(c => c.id === testVmId);
+  if (adminComputer) {
+    assert.equal(adminComputer.lease.isExempt, true, 'Admin lease must have isExempt: true');
+    assert.equal(adminComputer.lease.remainingSeconds, null, 'Admin lease must have remainingSeconds: null');
+    assert.equal(adminComputer.lease.maxUptimeSeconds, null, 'Admin lease must have maxUptimeSeconds: null');
+    assert.equal(adminComputer.cpuCores, 6, 'Computer CPU cores must be 6');
+    assert.equal(adminComputer.memoryMb, 16384, 'Computer memoryMb must be 16384 (16 GB)');
+  }
+  console.log('Admin lease exemption verified: isExempt: true, remainingSeconds: null, 6 cores / 16 GB specs');
+
+  writeDocument(VM_DAILY_USAGE_FILE, {});
+
+  // 10. rjuhsd.school domain isolation
+  console.log('--- 10. Testing rjuhsd.school domain isolation ---');
   const rjuhsdBridgeRes = await fetch(`${BASE_URL}/api/sso/bridge?back=https%3A%2F%2Frjuhsd.school%2Fmatrix%2F`, {
     headers: {
       'Host': 'rjuhsd.school',
@@ -282,8 +324,8 @@ try {
   assert(rjuhsdLoc.startsWith('/enroll/?next='), 'Location must stay on rjuhsd.school enroll page, got: ' + rjuhsdLoc);
   console.log('rjuhsd.school stays on domain: passed (' + rjuhsdLoc + ')');
 
-  // 9. Matrix HTML button text
-  console.log('--- 9. Testing Matrix login button text ---');
+  // 11. Matrix HTML button text
+  console.log('--- 11. Testing Matrix login button text ---');
   const matrixHtmlRes = await fetch(`${BASE_URL}/matrix/`);
   assert.equal(matrixHtmlRes.status, 200);
   const matrixHtml = await matrixHtmlRes.text();
