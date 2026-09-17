@@ -1,5 +1,5 @@
 (() => {
-  if (window.__guestPreview || /\/(enroll|claim|password|privacy|agreement|use-agreement|unsubscribe|admin|moderator)(\/|\.html|$)/.test(location.pathname)) return;
+  if (window.__guestPreview || document.body?.classList.contains('sales-page') || document.querySelector('.sales-page') || /\/(enroll|claim|password|privacy|agreement|use-agreement|unsubscribe|admin|moderator|index-sales)(\/|\.html|$)/.test(location.pathname)) return;
   window.__guestPreview = true;
   let timer, dialog;
   async function start() {

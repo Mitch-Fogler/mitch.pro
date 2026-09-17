@@ -10664,6 +10664,9 @@ async function handleRequest(req, server) {
   // ── Password Enforcement (Unified) ──────────────────────────────────────────
   const cleanPath = (path.endsWith('/') && path !== '/') ? path.slice(0, -1) : path;
   const isExempt = cleanPath === '/enroll' ||
+                   cleanPath === '/index.html' ||
+                   cleanPath === '/index-sales' ||
+                   cleanPath === '/index-sales.html' ||
                    cleanPath === '/api/me/coins' ||
                    cleanPath === '/larp' ||
                    cleanPath === '/larp/rezero' ||
@@ -24825,6 +24828,7 @@ async function handleRequest(req, server) {
                                 '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index',
                                 '/games', '/games/index', '/game-portal', '/game-portal/index', '/msn-games', '/msn-games/index',
                                 '/matrix', '/matrix/index',
+                                '/index-sales', '/index-sales/index',
                                 '/rjuhsd', '/rjuhsd/index', '/sexypickleclub', '/sexypickleclub/index']);
     const pickleHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'sexypickleclub', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isPickleHost(req)) {
@@ -25017,7 +25021,7 @@ async function handleRequest(req, server) {
 	      const ban = bannedInfoForSid(sid);
 	      if (ban) return bannedResponse(ban);
 	      if (!checkPasswordCookie(req)) {
-	        if (path !== '/') return Response.redirect('/enroll/', 302);
+	        if (path !== '/' && path !== '/index.html' && path !== '/index-sales.html' && path !== '/index-sales') return Response.redirect('/enroll/', 302);
 	      }
 	    }
 	    if (path.endsWith('.html') && !existsSync(safeWebrootPath(path) || '')) {
@@ -25042,12 +25046,27 @@ async function handleRequest(req, server) {
 	    // Inject tracking into HTML pages
 	    if ((path.endsWith('.html') || path === '/' || (path.endsWith('/') && path.length > 1)) && path !== '/admin.html' && path !== '/roblox.html') {
 	      let filePath;
-	      if (path === '/') {
-	        filePath = join(WEBROOT, 'index.html');
+	      let isSalesPage = false;
+	      let setTrialCookie = false;
+	      if (path === '/' || path === '/index.html') {
+	        const cookies = getCookies(req);
+	        const sid = cookies['studentId'] || cookies['id'] || '';
+	        const isAuthenticated = !!sid && validId(sid) && !isRevoked(sid) && checkPasswordCookie(req, sid);
+	        const wantsTrial = url.searchParams.has('trial') || cookies['mitch_trial'] === '1';
+	        if (isAuthenticated || wantsTrial) {
+	          filePath = join(WEBROOT, 'index.html');
+	          if (url.searchParams.has('trial')) setTrialCookie = true;
+	        } else {
+	          filePath = join(WEBROOT, 'index-sales.html');
+	          isSalesPage = true;
+	        }
 	      }
 	      else if (path.endsWith('/')) filePath = safeWebrootPath(path.replace(/^\//, '') + 'index.html');
-
 	      else filePath = safeWebrootPath(path);
+
+	      if (filePath && filePath.endsWith('index-sales.html')) {
+	        isSalesPage = true;
+	      }
 
 	      if (filePath && existsSync(filePath) && !statSync(filePath).isDirectory()) {
 	        try {
@@ -25075,7 +25094,7 @@ async function handleRequest(req, server) {
           const pageCookies = getCookies(req);
           const pageSid = pageCookies['studentId'] || pageCookies['id'] || '';
           const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
-          if (!isRjuhsdHost(req) && !isPickleHost(req) && (!isEmbeddedGameRuntime || isStandaloneGamePortal)) {
+          if (!isSalesPage && !isRjuhsdHost(req) && !isPickleHost(req) && (!isEmbeddedGameRuntime || isStandaloneGamePortal)) {
             injectStr += '<link rel="stylesheet" href="/community-refresh.css?v=2">\n';
             if (!isAuthenticatedHtml) injectStr += '<script src="/guest-preview.js?v=1" defer></script>\n';
           }
@@ -25182,7 +25201,11 @@ async function handleRequest(req, server) {
             ? Buffer.concat([raw.slice(0, bi), agreeB, raw.slice(bi)])
             : Buffer.concat([raw, agreeB]);
         }
-        return new Response(raw, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        const respHeaders = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
+        if (setTrialCookie) {
+          respHeaders.append('Set-Cookie', setCookieHeader('mitch_trial', '1', req, 86400, false));
+        }
+        return new Response(raw, { headers: respHeaders });
         } catch {} // fall through to static serving
         }
         }
