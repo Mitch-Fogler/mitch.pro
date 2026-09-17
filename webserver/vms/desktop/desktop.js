@@ -289,4 +289,19 @@ $('uptime-close-btn')?.addEventListener('click', () => uptimeDialog?.close());
 $('uptime-extend-btn')?.addEventListener('click', extendSession);
 $('mobile-extend')?.addEventListener('click', () => { hideMenu(); openUptimeModal(); });
 
+function sendPresenceHeartbeat() {
+  if (disposed || !id || document.visibilityState !== 'visible') return;
+  fetch(`/api/vm/computers/${encodeURIComponent(id)}/heartbeat`, {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers,
+    body: '{}'
+  }).catch(() => {});
+}
+setInterval(sendPresenceHeartbeat, 30000);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') sendPresenceHeartbeat();
+});
+sendPresenceHeartbeat();
+
 connect();

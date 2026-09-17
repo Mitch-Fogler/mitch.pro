@@ -768,7 +768,10 @@ var _attempts = [], _LIMIT = 3, _WINDOW = 60000;
 function postLoginDestination() {
   var next = '';
   try { next = new URLSearchParams(window.location.search).get('next') || ''; } catch (_) {}
-  if (next && /^https:\/\/([a-z0-9-]+\.)*(mitch\.pro|rjuhsd\.school)(\/|$|\?)/i.test(next)) return next;
+  if (next) {
+    if (/^\/[^/\\]/.test(next) || next === '/') return next;
+    if (/^https:\/\/([a-z0-9-]+\.)*(mitch\.pro|rjuhsd\.school)(\/|$|\?)/i.test(next)) return next;
+  }
   return '/';
 }
 

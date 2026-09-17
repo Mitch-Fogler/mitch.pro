@@ -1,4 +1,16 @@
-import { canAccessVmRecord, validateDesktopSession, VmOperationGate } from '../lib/vm_security.js';
+import {
+  canAccessVmRecord,
+  validateDesktopSession,
+  VmOperationGate,
+  VM_MAX_CONCURRENT_RUNNING,
+  VM_EXTENSION_COOLDOWN_MS,
+  VM_COOLDOWN_DURATION_MS,
+  VM_OFFPAGE_INACTIVITY_MS,
+  isEligibleForFreeVm,
+  canUserExtend,
+  computeCooldownRemaining,
+  isVmInactive,
+} from '../lib/vm_security.js';
 import { ProxmoxDesktopService, ProxmoxServiceError } from '../lib/proxmox_desktop.js';
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -68,4 +80,61 @@ let unsafeLoginError = null;
 try { await guestService.enableFriendlyDesktopLogin(301, 'desktop\nroot'); } catch (error) { unsafeLoginError = error; }
 assert(unsafeLoginError?.code === 'INVALID_DESKTOP_LOGIN', 'desktop login setup must reject unsafe usernames');
 
-console.log('VM portal security and failure tests passed.');
+// --- Desktop Password Validation (min 8 chars, max 128 chars) ---
+const login8 = guestService.validateDesktopLogin('studentuser', '12345678');
+assert(login8.username === 'studentuser' && login8.password === '12345678', '8-character password must be accepted');
+const login128 = guestService.validateDesktopLogin('studentuser', 'A'.repeat(128));
+assert(login128.password.length === 128, '128-character password must be accepted');
+
+let shortPassError = null;
+try { guestService.validateDesktopLogin('studentuser', '1234567'); } catch (e) { shortPassError = e; }
+assert(shortPassError?.code === 'INVALID_DESKTOP_LOGIN', '7-character password must be rejected');
+
+let longPassError = null;
+try { guestService.validateDesktopLogin('studentuser', 'A'.repeat(129)); } catch (e) { longPassError = e; }
+assert(longPassError?.code === 'INVALID_DESKTOP_LOGIN', '129-character password must be rejected');
+
+let badCharError = null;
+try { guestService.validateDesktopLogin('studentuser', 'password\n123'); } catch (e) { badCharError = e; }
+assert(badCharError?.code === 'INVALID_DESKTOP_LOGIN', 'password with newline must be rejected');
+
+// --- Free VM Eligibility Policy ---
+assert(isEligibleForFreeVm('john.doe@student.rjuhsd.us'), '@student.rjuhsd.us email must be eligible for free VM');
+assert(isEligibleForFreeVm('student@student.mitch.pro'), '@student.mitch.pro email must be eligible for free VM');
+assert(!isEligibleForFreeVm('user@gmail.com'), 'normal public email must not be eligible by default');
+assert(!isEligibleForFreeVm('teacher@rjuhsd.us'), 'staff @rjuhsd.us email must not be eligible unless premium or admin');
+assert(isEligibleForFreeVm('user@gmail.com', { isPremium: true }), 'premium users must be eligible for free VM');
+assert(isEligibleForFreeVm('admin@mitch.pro', { isAdmin: true }), 'admins must always be eligible for free VM');
+assert(!isEligibleForFreeVm(''), 'empty email must not be eligible');
+assert(!isEligibleForFreeVm(null), 'null email must not be eligible');
+
+// --- 24-hour Extension Limit (1 extension per day) ---
+const now = Date.now();
+assert(canUserExtend(null, { isAdmin: false, now }), 'user with no prior extension must be allowed to extend');
+assert(!canUserExtend(now - (60 * 1000), { isAdmin: false, now }), 'user with extension 1 minute ago must be denied');
+assert(!canUserExtend(now - (23 * 60 * 60 * 1000), { isAdmin: false, now }), 'user with extension 23 hours ago must be denied');
+assert(canUserExtend(now - (24 * 60 * 60 * 1000), { isAdmin: false, now }), 'user with extension 24 hours ago must be allowed');
+assert(canUserExtend(now - (25 * 60 * 60 * 1000), { isAdmin: false, now }), 'user with extension 25 hours ago must be allowed');
+assert(canUserExtend(now - 1000, { isAdmin: true, now }), 'admin can always extend regardless of cooldown');
+
+// --- 30-minute Cooldown After Session End ---
+assert(computeCooldownRemaining(now + 1800 * 1000, { isAdmin: false, now }) === 1800, 'cooldown should report 1800 seconds remaining');
+assert(computeCooldownRemaining(now + 60 * 1000, { isAdmin: false, now }) === 60, 'cooldown should report 60 seconds remaining');
+assert(computeCooldownRemaining(now - 1000, { isAdmin: false, now }) === 0, 'expired cooldown should report 0 seconds remaining');
+assert(computeCooldownRemaining(null, { isAdmin: false, now }) === 0, 'no cooldown should report 0 seconds remaining');
+assert(computeCooldownRemaining(now + 1800 * 1000, { isAdmin: true, now }) === 0, 'admin should have 0 cooldown remaining');
+
+// --- 10-minute Off-Page Inactivity Detection ---
+assert(!isVmInactive(now - (9 * 60 * 1000), { now }), 'activity 9 minutes ago must not be considered inactive');
+assert(isVmInactive(now - (10 * 60 * 1000), { now }), 'activity 10 minutes ago must be considered inactive');
+assert(isVmInactive(now - (15 * 60 * 1000), { now }), 'activity 15 minutes ago must be considered inactive');
+assert(!isVmInactive(null, { now }), 'null presence must not be marked inactive');
+
+// --- Capacity Limit ---
+assert(VM_MAX_CONCURRENT_RUNNING === 6, 'max concurrent running VMs must be 6');
+assert(VM_COOLDOWN_DURATION_MS === 30 * 60 * 1000, 'cooldown duration must be 30 minutes');
+assert(VM_EXTENSION_COOLDOWN_MS === 24 * 60 * 60 * 1000, 'extension cooldown must be 24 hours');
+assert(VM_OFFPAGE_INACTIVITY_MS === 10 * 60 * 1000, 'offpage inactivity timeout must be 10 minutes');
+
+console.log('VM portal security, policy, and failure tests passed.');
+
