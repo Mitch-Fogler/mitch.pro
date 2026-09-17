@@ -28,8 +28,16 @@
     </section>
 
     <section id="empty-state" class="state-panel is-hidden">
-      <div class="empty-icon" aria-hidden="true">⌁</div>
-      <div><strong>No computer assigned yet</strong><p>An administrator can create or assign one for you.</p></div>
+      <div class="empty-icon" aria-hidden="true">🖥️</div>
+      <div id="empty-create-box">
+        <strong>Get Your Free Computer</strong>
+        <p>Available to RJUHSD students (@student.rjuhsd.us) and Mitch.pro Premium members.</p>
+        <button type="button" id="create-vm-btn" class="primary-button" style="margin-top: 14px;">Set Password &amp; Create Computer</button>
+      </div>
+      <div id="empty-unauthorized-box" class="is-hidden">
+        <strong>No computer assigned yet</strong>
+        <p>An administrator can create or assign one for you, or sign in with a @student.rjuhsd.us email or Premium account.</p>
+      </div>
     </section>
 
     <section id="error-state" class="state-panel is-hidden" aria-live="assertive">
@@ -48,6 +56,46 @@
       <div class="dialog-actions">
         <button value="cancel" class="quiet-button">Cancel</button>
         <button value="confirm" id="confirm-action" class="danger-button">Continue</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="provision-dialog" class="confirm-dialog">
+    <form id="provision-form" method="dialog">
+      <p class="eyebrow" id="provision-eyebrow">Personal Computer</p>
+      <h2 id="provision-title">Set Computer Password</h2>
+
+      <div id="recreate-warning" class="is-hidden" style="background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 8px; padding: 12px; margin: 12px 0; color: #fca5a5; text-align: left;">
+        <strong>⚠️ PERMANENT DATA LOSS WARNING</strong>
+        <p style="margin: 6px 0 0 0; font-size: 0.88rem; line-height: 1.4;">
+          This will <strong>permanently delete</strong> your current computer and create a brand new one.
+          All files, documents, and data will be <strong>lost forever</strong> and cannot be recovered!
+        </p>
+      </div>
+
+      <div style="background: rgba(234, 179, 8, 0.12); border: 1px solid #eab308; border-radius: 8px; padding: 12px; margin: 12px 0 16px 0; font-size: 0.85rem; line-height: 1.4; color: #fde047; text-align: left;">
+        <strong>Important: Save your password!</strong>
+        <div style="margin-top: 4px;">
+          Your password cannot be changed without knowing this password. If you lose it, you will have to delete and recreate your computer, and all your files will be lost.
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; text-align: left;">
+        <label style="font-size: 0.85rem; color: #94a3b8; display: flex; flex-direction: column; gap: 4px;">
+          <span>Password (minimum 8 characters)</span>
+          <input type="password" id="provision-password" minlength="8" maxlength="128" required autocomplete="new-password" style="padding: 9px 12px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; color: #fff;">
+        </label>
+        <label style="font-size: 0.85rem; color: #94a3b8; display: flex; flex-direction: column; gap: 4px;">
+          <span>Confirm Password</span>
+          <input type="password" id="provision-confirm-password" minlength="8" maxlength="128" required autocomplete="new-password" style="padding: 9px 12px; border-radius: 8px; background: #0f172a; border: 1px solid #334155; color: #fff;">
+        </label>
+      </div>
+
+      <p id="provision-status" class="form-status" style="color: #f87171; font-size: 0.88rem; margin: 0 0 12px 0; min-height: 1.2em;" role="status"></p>
+
+      <div class="dialog-actions">
+        <button type="button" id="provision-cancel" class="quiet-button">Cancel</button>
+        <button type="submit" id="provision-submit" class="primary-button">Create Computer</button>
       </div>
     </form>
   </dialog>

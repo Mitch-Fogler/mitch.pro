@@ -32,7 +32,19 @@ import {
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
 import { RJUHSD_ORIGIN, bellScheduleRedirect, blooketBotRedirect } from './lib/site_redirects.js';
 import { ProxmoxDesktopService, ProxmoxServiceError } from './lib/proxmox_desktop.js';
-import { canAccessVmRecord, validateDesktopSession, VmOperationGate } from './lib/vm_security.js';
+import {
+  canAccessVmRecord,
+  validateDesktopSession,
+  VmOperationGate,
+  VM_MAX_CONCURRENT_RUNNING,
+  VM_EXTENSION_COOLDOWN_MS,
+  VM_COOLDOWN_DURATION_MS,
+  VM_OFFPAGE_INACTIVITY_MS,
+  isEligibleForFreeVm as isEligibleForFreeVmPolicy,
+  canUserExtend as canUserExtendPolicy,
+  computeCooldownRemaining,
+  isVmInactive,
+} from './lib/vm_security.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
 import { matrixMessageBlocked } from './lib/matrix_word_filter.js';
 import { guestPreview } from './lib/guest_preview.js';
@@ -1575,6 +1587,10 @@ const RATE_LIMITS = {
   '/api/vm/computers':             [60,  60],
   '/api/vm/power':                 [6,   60],
   '/api/vm/desktop-session':       [12,  60],
+  '/api/vm/extend':                [10,  60],
+  '/api/vm/heartbeat':             [120, 60],
+  '/api/vm/my-computer/create':    [5,   60],
+  '/api/vm/my-computer/recreate':  [5,   60],
   '/api/admin/vms':                [30,  60],
   '/api/admin/profile-reports/resolve': [20, 60],
   '/api/presence/heartbeat':       [60,  60],
@@ -13987,6 +14003,12 @@ async function handleRequest(req, server) {
         // If not, mitch.pro's bridge redirects them to /enroll/ to sign in.
         let loginOrigin = selfOrigin;
         if (!isMitchSsoHost(requestHost(req))) {
+          if (isRjuhsdHost(req)) {
+            return new Response(null, {
+              status: 302,
+              headers: { Location: '/enroll/?next=' + encodeURIComponent(back.toString()) }
+            });
+          }
           const s = site();
           loginOrigin = (s.alternate || s.primary || MITCH_ORIGIN).replace(/\/+$/, '');
           return new Response(null, {
@@ -18436,15 +18458,182 @@ async function handleRequest(req, server) {
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
         updateVirtualMachineRuntime(record.id, { ipAddress: runtime.ipAddress });
-        return publicVmRecord(record, runtime);
+        return publicVmRecord(record, runtime, actor);
       } catch {
-        return publicVmRecord(record, { state: 'unavailable' });
+        return publicVmRecord(record, { state: 'unavailable' }, actor);
       }
     }));
-    return jsonResp(200, { computers, serviceAvailable: proxmoxDesktop.configured });
+    return jsonResp(200, {
+      computers,
+      serviceAvailable: proxmoxDesktop.configured,
+      isEligible: isEligibleForFreeVm(actor.email, actor.isAdmin),
+    });
   }
 
-  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend))?$/);
+  if (path === '/api/vm/my-computer/create' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/vm/my-computer/create'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+    if (!isEligibleForFreeVm(actor.email, actor.isAdmin)) {
+      return jsonResp(403, { error: 'Free computers are available to RJUHSD students (@student.rjuhsd.us) and Premium members.' });
+    }
+    const existing = getVirtualMachinesForOwner(actor.email).filter(r => r.status !== 'unassigned');
+    if (existing.length > 0) {
+      return jsonResp(409, { error: 'You already have a computer assigned. Use the recreate option if you want to start fresh.' });
+    }
+    if (!actor.isAdmin) {
+      const cooldownRemaining = getVmCooldownRemaining(actor.email, actor.isAdmin);
+      if (cooldownRemaining > 0) {
+        const mins = Math.ceil(cooldownRemaining / 60);
+        return jsonResp(429, { error: `Computer is cooling down. You can start/create a computer in ${mins} minute${mins === 1 ? '' : 's'}.`, code: 'vm_cooldown_active' });
+      }
+      const runningNonAdmin = await countRunningNonAdminVms();
+      if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
+        return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
+      }
+    }
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const lockKey = `create-${actor.email}`;
+    if (vmPowerRequests.has(lockKey)) return jsonResp(409, { error: 'A computer is already being created for your account.' });
+    vmPowerRequests.set(lockKey, { startedAt: Date.now() });
+    let desktopLogin;
+    let baseUser = (actor.email.split('@')[0] || 'student').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!/^[a-z]/.test(baseUser)) baseUser = 'u' + baseUser;
+    baseUser = baseUser.slice(0, 30);
+    if (['root', 'daemon', 'nobody', 'ubuntu'].includes(baseUser)) baseUser = 'u' + baseUser;
+    const requestedUsername = String(body.desktopUsername || baseUser).trim().toLowerCase();
+    try {
+      desktopLogin = proxmoxDesktop.validateDesktopLogin(requestedUsername, body.desktopPassword);
+    } catch {
+      vmPowerRequests.delete(lockKey);
+      return jsonResp(400, { error: 'Choose a password of 8 to 128 characters.', code: 'invalid_desktop_login' });
+    }
+    const templateVmid = Number(proxmoxDesktop.templateVmids[0] || 9010);
+    let pendingRecord = { ownerEmail: actor.email, vmid: null, id: '' };
+    try {
+      const vmid = await proxmoxDesktop.nextAvailableVmid(PVE_VMID_MIN, PVE_VMID_MAX, listVirtualMachines({ includeUnassigned: true }).map(r => r.vmid));
+      const hostname = `student-${vmid}`;
+      pendingRecord = reserveVirtualMachine({
+        id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
+        node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
+        hostname, operatingSystem: 'Linux Desktop',
+        templateVmid, cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
+      });
+      if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
+      const created = await proxmoxDesktop.cloneDesktop({
+        templateVmid, vmid, hostname, cpuCores: 4, memoryMb: 4096, diskGb: 40,
+        desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
+      });
+      const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
+      vmPagePresence.set(record.id, { lastSeen: Date.now() });
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_CREATED', success: true });
+      return jsonResp(201, { success: true, computer: publicVmRecord(record, { state: 'starting' }, actor) });
+    } catch (error) {
+      console.error('[my-computer/create] Error:', error);
+      if (pendingRecord?.id) updateVirtualMachineRuntime(pendingRecord.id, { status: 'provisioning-failed' });
+      vmAudit({ actorEmail: actor.email, record: pendingRecord, action: 'VM_CREATED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+      const friendly = friendlyVmError(error);
+      return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+    } finally {
+      if (desktopLogin) desktopLogin.password = '';
+      body.desktopPassword = '';
+      vmPowerRequests.delete(lockKey);
+    }
+  }
+
+  if (path === '/api/vm/my-computer/recreate' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/vm/my-computer/recreate'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+    if (!isEligibleForFreeVm(actor.email, actor.isAdmin)) {
+      return jsonResp(403, { error: 'Free computers are available to RJUHSD students (@student.rjuhsd.us) and Premium members.' });
+    }
+    if (!actor.isAdmin) {
+      const runningNonAdmin = await countRunningNonAdminVms();
+      if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
+        return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
+      }
+    }
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const lockKey = `recreate-${actor.email}`;
+    if (vmPowerRequests.has(lockKey) || vmPowerRequests.has(`create-${actor.email}`)) return jsonResp(409, { error: 'A computer operation is already in progress for your account.' });
+    vmPowerRequests.set(lockKey, { startedAt: Date.now() });
+
+    let desktopLogin;
+    let baseUser = (actor.email.split('@')[0] || 'student').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!/^[a-z]/.test(baseUser)) baseUser = 'u' + baseUser;
+    baseUser = baseUser.slice(0, 30);
+    if (['root', 'daemon', 'nobody', 'ubuntu'].includes(baseUser)) baseUser = 'u' + baseUser;
+    const requestedUsername = String(body.desktopUsername || baseUser).trim().toLowerCase();
+    try {
+      desktopLogin = proxmoxDesktop.validateDesktopLogin(requestedUsername, body.desktopPassword);
+    } catch {
+      vmPowerRequests.delete(lockKey);
+      return jsonResp(400, { error: 'Choose a password of 8 to 128 characters.', code: 'invalid_desktop_login' });
+    }
+
+    // 1. Delete existing computer(s) owned by user
+    const existingRecords = getVirtualMachinesForOwner(actor.email);
+    for (const old of existingRecords) {
+      try {
+        await proxmoxDesktop.deleteGuest(old, { force: true });
+      } catch (err) {
+        console.warn(`[recreate] Note: Proxmox delete for ${old.id} returned:`, err?.message || err);
+      }
+      deleteVirtualMachine(old.id);
+      revokeVmDesktopConnections(old.id);
+      clearVmLease(old.id);
+      vmPagePresence.delete(old.id);
+      vmAudit({ actorEmail: actor.email, record: old, action: 'VM_DELETED_FOR_RECREATE', success: true });
+    }
+
+    try {
+      const vmApps = loadJson(VM_APPS_FILE, {});
+      if (vmApps[actor.email]) {
+        delete vmApps[actor.email];
+        saveJson(VM_APPS_FILE, vmApps);
+      }
+    } catch (_) {}
+
+    clearVmCooldown(actor.email);
+
+    // 2. Clone new computer
+    const templateVmid = Number(proxmoxDesktop.templateVmids[0] || 9010);
+    let pendingRecord = { ownerEmail: actor.email, vmid: null, id: '' };
+    try {
+      const vmid = await proxmoxDesktop.nextAvailableVmid(PVE_VMID_MIN, PVE_VMID_MAX, listVirtualMachines({ includeUnassigned: true }).map(r => r.vmid));
+      const hostname = `student-${vmid}`;
+      pendingRecord = reserveVirtualMachine({
+        id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
+        node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
+        hostname, operatingSystem: 'Linux Desktop',
+        templateVmid, cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
+      });
+      if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
+      const created = await proxmoxDesktop.cloneDesktop({
+        templateVmid, vmid, hostname, cpuCores: 4, memoryMb: 4096, diskGb: 40,
+        desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
+      });
+      const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
+      vmPagePresence.set(record.id, { lastSeen: Date.now() });
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_RECREATED', success: true });
+      return jsonResp(201, { success: true, computer: publicVmRecord(record, { state: 'starting' }, actor) });
+    } catch (error) {
+      console.error('[my-computer/recreate] Error cloning new desktop:', error);
+      if (pendingRecord?.id) updateVirtualMachineRuntime(pendingRecord.id, { status: 'provisioning-failed' });
+      vmAudit({ actorEmail: actor.email, record: pendingRecord, action: 'VM_RECREATED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+      const friendly = friendlyVmError(error);
+      return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+    } finally {
+      if (desktopLogin) desktopLogin.password = '';
+      body.desktopPassword = '';
+      vmPowerRequests.delete(lockKey);
+    }
+  }
+
+  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend|heartbeat))?$/);
   if (vmComputerMatch) {
     const actor = authenticatedVmActor(req);
     if (!actor) return jsonResp(401, { error: 'Sign in to access your computer.' });
@@ -18460,15 +18649,24 @@ async function handleRequest(req, server) {
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
         updateVirtualMachineRuntime(record.id, { ipAddress: runtime.ipAddress });
-        return jsonResp(200, { computer: publicVmRecord(record, runtime) });
+        return jsonResp(200, { computer: publicVmRecord(record, runtime, actor) });
       } catch (error) {
         const friendly = friendlyVmError(error);
         return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
       }
     }
 
+    if (operation === 'heartbeat' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/heartbeat'); if (rl) return rl;
+      vmPagePresence.set(record.id, { lastSeen: Date.now() });
+      return jsonResp(200, { success: true, lastSeen: Date.now() });
+    }
+
     if (operation === 'extend' && method === 'POST') {
       const rl = checkRateLimit(req, '/api/vm/extend'); if (rl) return rl;
+      if (!canUserExtendToday(actor.email, actor.isAdmin)) {
+        return jsonResp(400, { error: 'Only one 30-minute extension is allowed per day.', code: 'daily_extension_limit_reached' });
+      }
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
         if (runtime.state !== 'running') {
@@ -18483,6 +18681,7 @@ async function handleRequest(req, server) {
         lease.extendedAt = Date.now();
         lease.lastSeenUptime = runtime.uptime;
         vmLeases.set(record.id, lease);
+        recordUserExtension(actor.email);
         const updatedLease = getVmLease(record.id, runtime.uptime);
         vmAudit({
           actorEmail: actor.email,
@@ -18508,11 +18707,48 @@ async function handleRequest(req, server) {
       const action = String(body.action || '').trim().toLowerCase();
       if (!['start', 'shutdown', 'restart', 'force-stop'].includes(action)) return jsonResp(400, { error: 'Invalid power action.' });
       if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
+      
+      // Cooldown check for start/restart
+      if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
+        const cooldownRemaining = getVmCooldownRemaining(record.ownerEmail, actor.isAdmin);
+        if (cooldownRemaining > 0) {
+          vmPowerGate.release(record.id);
+          const mins = Math.ceil(cooldownRemaining / 60);
+          return jsonResp(429, {
+            error: `Computer is cooling down. You can start it again in ${mins} minute${mins === 1 ? '' : 's'}.`,
+            code: 'vm_cooldown_active',
+            cooldownRemainingSeconds: cooldownRemaining,
+          });
+        }
+      }
+
+      // Max 6 running VMs capacity check (admins don't count)
+      if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
+        try {
+          const runtime = await proxmoxDesktop.getStatus(record);
+          if (runtime?.state !== 'running') {
+            const runningNonAdmin = await countRunningNonAdminVms();
+            if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
+              vmPowerGate.release(record.id);
+              return jsonResp(409, {
+                error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`,
+                code: 'capacity_limit_reached',
+              });
+            }
+          }
+        } catch {}
+      }
+
       try {
         const task = await proxmoxDesktop.power(record, action);
         clearVmLease(record.id);
+        if (action === 'start') {
+          vmPagePresence.set(record.id, { lastSeen: Date.now() });
+        }
         if (action === 'shutdown' || action === 'force-stop') {
           revokeVmDesktopConnections(record.id);
+          triggerVmCooldown(record.ownerEmail, 'user_power_off');
+          vmPagePresence.delete(record.id);
         }
         void proxmoxDesktop.waitForTask(record.node, task, 180_000).then(() => {
           vmAudit({ actorEmail: actor.email, record, action: action === 'restart' ? 'VM_RESTARTED' : action === 'start' ? 'VM_STARTED' : 'VM_STOPPED', success: true });
@@ -18576,22 +18812,50 @@ async function handleRequest(req, server) {
       serviceError = friendlyVmError(error).error;
     }
     const assignedVmids = new Set(records.filter(item => item.status !== 'unassigned').map(item => item.vmid));
+    const now = Date.now();
+    const activeSessions = [];
+    for (const ws of vmDesktopSockets) {
+      if (ws.readyState === 1 && ws.data?.recordId) {
+        activeSessions.push({
+          recordId: ws.data.recordId,
+          vmid: ws.data.vmid,
+          actorEmail: ws.data.actorEmail,
+          ownerEmail: ws.data.ownerEmail,
+          connectedAt: ws.data.connectedAt || now,
+          durationSeconds: Math.floor((now - (ws.data.connectedAt || now)) / 1000),
+        });
+      }
+    }
     const recordViews = await Promise.all(records.map(async record => {
       let runtime = null;
       try { runtime = await proxmoxDesktop.getStatus(record); } catch {}
-      return { ...publicVmRecord(record, runtime), ownerEmail: record.ownerEmail, vmid: record.vmid, node: record.node, guestType: record.guestType, assignmentStatus: record.status };
+      const activeUsers = activeSessions.filter(s => s.recordId === record.id);
+      return {
+        ...publicVmRecord(record, runtime, actor),
+        ownerEmail: record.ownerEmail,
+        vmid: record.vmid,
+        node: record.node,
+        guestType: record.guestType,
+        assignmentStatus: record.status,
+        activeUsers,
+        isCurrentlyInUse: activeUsers.length > 0,
+      };
     }));
     const profiles = loadJson(PROFILES_FILE, {});
     const users = Object.keys(loadPasswords()).sort().map(email => ({
       email,
       name: profiles[normalizeEmail(email)]?.displayName || profiles[normalizeEmail(email)]?.nickname || defaultUsernameForEmail(email),
     }));
+    const runningNonAdminCount = await countRunningNonAdminVms();
     return jsonResp(200, {
       computers: recordViews,
       availableGuests: guests.filter(guest => !guest.template && guest.type === 'qemu' && !assignedVmids.has(guest.vmid)),
       templates: guests.filter(guest => guest.template && guest.type === 'qemu' && proxmoxDesktop.templateVmids.includes(guest.vmid)),
       users, capacity, serviceAvailable: proxmoxDesktop.configured && !serviceError, serviceError,
       audit: listVmAuditLogs(100),
+      activeSessions,
+      runningNonAdminCount,
+      maxRunningNonAdminLimit: VM_MAX_CONCURRENT_RUNNING,
     });
   }
 
@@ -18656,7 +18920,7 @@ async function handleRequest(req, server) {
     if (!proxmoxDesktop.templateVmids.includes(templateVmid)) return jsonResp(400, { error: 'Choose an available desktop template.' });
     let desktopLogin;
     try { desktopLogin = proxmoxDesktop.validateDesktopLogin(body.desktopUsername, body.desktopPassword); }
-    catch { return jsonResp(400, { error: 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' }); }
+    catch { return jsonResp(400, { error: 'Choose a desktop username and a password of 8 to 128 characters.', code: 'invalid_desktop_login' }); }
     const cpuCores = Math.max(2, Math.min(Math.round(Number(body.cpuCores) || 4), 8));
     const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 4096), 16384));
     const diskGb = Math.max(40, Math.min(Math.round(Number(body.diskGb) || 40), 256));
@@ -24691,7 +24955,7 @@ async function handleRequest(req, server) {
           const ban = bannedInfoForSid(sid);
           if (ban) return bannedResponse(ban);
           if (!checkPasswordCookie(req)) {
-            return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(RJUHSD_ORIGIN + rel), 302);
+            return Response.redirect('/enroll/?next=' + encodeURIComponent(rel), 302);
           }
         }
         try {
@@ -25080,7 +25344,9 @@ Bun.serve({
       if (ws.data && ws.data.isProxmoxVnc) {
         try {
           if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
+          ws.data.connectedAt = Date.now();
           vmDesktopSockets.add(ws);
+          vmPagePresence.set(ws.data.recordId, { lastSeen: Date.now() });
           const upstream = new WebSocket(ws.data.upstreamUrl, {
             headers: { Authorization: ws.data.upstreamAuthorization },
             tls: ws.data.upstreamTlsOptions,
@@ -25171,6 +25437,7 @@ Bun.serve({
         }
       }
       if (ws.data && ws.data.isProxmoxVnc) {
+        vmPagePresence.set(ws.data.recordId, { lastSeen: Date.now() });
         if (Date.now() - (ws.data.lastAuthorizationCheck || 0) > 1000) {
           ws.data.lastAuthorizationCheck = Date.now();
           if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
@@ -25329,6 +25596,7 @@ Bun.serve({
         }
       }
       if (ws.data && ws.data.isProxmoxVnc) {
+        if (ws.data.recordId) vmPagePresence.set(ws.data.recordId, { lastSeen: Date.now() });
         vmDesktopSockets.delete(ws);
         ws.data.pendingVnc = [];
         try { ws.data.upstreamVnc?.close(); } catch (e) {}
@@ -25647,7 +25915,96 @@ const VM_DESKTOP_SESSION_TTL_MS = 75_000;
 const VM_BASE_MAX_UPTIME_SECONDS = 3600; // 1 hour maximum base uptime
 const VM_MAX_EXTENSION_SECONDS = 1800;   // 30 minutes maximum extension
 const VM_TOTAL_MAX_UPTIME_SECONDS = VM_BASE_MAX_UPTIME_SECONDS + VM_MAX_EXTENSION_SECONDS; // 5400 seconds (90 min)
+const VM_EXTENSIONS_FILE = join(DATA_DIR, 'vm_extensions.json');
+const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
 const vmLeases = new Map();
+const vmPagePresence = new Map(); // recordId -> { lastSeen: number }
+
+function isEligibleForFreeVm(email, isAdmin = false) {
+  if (!email) return false;
+  const norm = normalizeEmail(email);
+  return isEligibleForFreeVmPolicy(norm, { isAdmin, isPremium: isPremiumEmail(norm) });
+}
+
+async function countRunningNonAdminVms() {
+  if (!proxmoxDesktop.configured) return 0;
+  try {
+    const guests = await proxmoxDesktop.listGuests();
+    let count = 0;
+    for (const guest of (guests || [])) {
+      if (guest.template || (guest.status !== 'running' && guest.status !== 'paused')) continue;
+      const record = getVirtualMachineByVmid(guest.vmid);
+      let ownerEmail = record?.ownerEmail;
+      if (!ownerEmail) {
+        for (const [email, entry] of activeFreeVms.entries()) {
+          if (entry.vmid === guest.vmid) { ownerEmail = email; break; }
+        }
+      }
+      if (!ownerEmail) {
+        try {
+          const appsData = loadJson(VM_APPS_FILE, {});
+          for (const [email, app] of Object.entries(appsData)) {
+            if (app.vmid === guest.vmid) { ownerEmail = app.email || email; break; }
+          }
+        } catch {}
+      }
+      if (ownerEmail && isAdminEmail(ownerEmail)) {
+        continue;
+      }
+      count++;
+    }
+    return count;
+  } catch (err) {
+    console.error('[vm] Error counting running non-admin VMs:', err);
+    return 0;
+  }
+}
+
+function canUserExtendToday(email, isAdmin = false) {
+  if (isAdmin) return true;
+  const norm = normalizeEmail(email);
+  const exts = loadJson(VM_EXTENSIONS_FILE, {});
+  const lastAt = exts[norm]?.lastExtensionAt;
+  return canUserExtendPolicy(lastAt, { isAdmin });
+}
+
+function recordUserExtension(email) {
+  const norm = normalizeEmail(email);
+  const exts = loadJson(VM_EXTENSIONS_FILE, {});
+  exts[norm] = { lastExtensionAt: Date.now() };
+  saveJson(VM_EXTENSIONS_FILE, exts);
+}
+
+function getVmCooldownRemaining(email, isAdmin = false) {
+  if (isAdmin) return 0;
+  const norm = normalizeEmail(email);
+  const cooldowns = loadJson(VM_COOLDOWNS_FILE, {});
+  const until = cooldowns[norm]?.cooldownUntil;
+  return computeCooldownRemaining(until, { isAdmin });
+}
+
+function triggerVmCooldown(email, reason = 'session_ended') {
+  if (!email) return;
+  const norm = normalizeEmail(email);
+  if (isAdminEmail(norm)) return;
+  const cooldowns = loadJson(VM_COOLDOWNS_FILE, {});
+  cooldowns[norm] = {
+    cooldownUntil: Date.now() + VM_COOLDOWN_DURATION_MS,
+    triggeredAt: Date.now(),
+    reason,
+  };
+  saveJson(VM_COOLDOWNS_FILE, cooldowns);
+}
+
+function clearVmCooldown(email) {
+  if (!email) return;
+  const norm = normalizeEmail(email);
+  const cooldowns = loadJson(VM_COOLDOWNS_FILE, {});
+  if (cooldowns[norm]) {
+    delete cooldowns[norm];
+    saveJson(VM_COOLDOWNS_FILE, cooldowns);
+  }
+}
 
 function getVmLease(recordId, currentUptime = 0) {
   const normalizedUptime = Math.max(0, Math.floor(Number(currentUptime) || 0));
@@ -25743,7 +26100,7 @@ function friendlyVmError(error) {
     if (error.code === 'STOPPED') return { status: 409, error: 'Your computer is currently offline. Start it and try again.', code: 'computer_offline' };
     if (error.code === 'TIMEOUT' || error.code === 'TASK_TIMEOUT') return { status: 504, error: 'Your computer is still starting. Try again in a moment.', code: 'computer_starting' };
     if (error.code === 'INVALID_ACTION' || error.code === 'INVALID_VM' || error.code === 'INVALID_TEMPLATE') return { status: 400, error: error.message || 'That computer request is not valid.', code: 'invalid_request' };
-    if (error.code === 'INVALID_DESKTOP_LOGIN') return { status: 400, error: error.message || 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' };
+    if (error.code === 'INVALID_DESKTOP_LOGIN') return { status: 400, error: error.message || 'Choose a desktop username and a password of 8 to 128 characters.', code: 'invalid_desktop_login' };
     if (error.code === 'NO_CAPACITY') return { status: 409, error: 'No computer slots are available right now.', code: 'no_capacity' };
     if (error.code === 'NO_GRAPHICAL_DESKTOP') return { status: 409, error: 'This machine does not have a graphical desktop.', code: 'desktop_unavailable' };
     if (error.code === 'GUEST_SETUP_FAILED') return { status: 504, error: error.message || 'The graphical desktop did not finish starting.', code: 'guest_setup_failed' };
@@ -25754,7 +26111,7 @@ function friendlyVmError(error) {
   return { status: 502, error: error?.message || 'Your computer could not be reached.', code: error?.code || 'computer_unreachable' };
 }
 
-function publicVmRecord(record, runtime = null) {
+function publicVmRecord(record, runtime = null, actor = null) {
   const isRunning = runtime?.state === 'running';
   const lease = isRunning ? getVmLease(record.id, runtime.uptime) : {
     extended: false,
@@ -25763,6 +26120,12 @@ function publicVmRecord(record, runtime = null) {
     canExtend: true,
     currentUptime: 0,
   };
+  const dailyExtensionUsed = !canUserExtendToday(record.ownerEmail, actor?.isAdmin);
+  if (dailyExtensionUsed) {
+    lease.canExtend = false;
+    lease.dailyExtensionUsed = true;
+  }
+  const cooldownRemainingSeconds = getVmCooldownRemaining(record.ownerEmail, actor?.isAdmin);
   return {
     id: record.id,
     name: record.friendlyName || 'My Computer',
@@ -25782,6 +26145,7 @@ function publicVmRecord(record, runtime = null) {
     desktopAvailable: record.guestType === 'qemu',
     createdAt: record.createdAt,
     lease,
+    cooldownRemainingSeconds,
   };
 }
 
@@ -25880,6 +26244,7 @@ async function enforceVmMaxUptimeWorker() {
               console.error(`[vm-watchdog] Force stop failed for ${record.id}:`, stopErr?.message || stopErr);
             }
           }
+          if (record.ownerEmail) triggerVmCooldown(record.ownerEmail, 'max_uptime_reached');
         } else {
           try {
             await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
@@ -25890,6 +26255,49 @@ async function enforceVmMaxUptimeWorker() {
           }
         }
         vmLeases.delete(recordKey);
+        vmPagePresence.delete(recordKey);
+      } else {
+        // Check 10-minute off-page inactivity limit
+        let hasOpenSocket = false;
+        for (const ws of vmDesktopSockets) {
+          if (ws.readyState === 1 && ws.data?.recordId === recordKey) {
+            hasOpenSocket = true;
+            vmPagePresence.set(recordKey, { lastSeen: Date.now() });
+            break;
+          }
+        }
+        if (!hasOpenSocket) {
+          const presence = vmPagePresence.get(recordKey);
+          const lastSeen = presence?.lastSeen || (Date.now() - (guest.uptime * 1000));
+          if (isVmInactive(lastSeen)) {
+            const inactiveMs = Date.now() - lastSeen;
+            console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) inactive/off-page for ${Math.round(inactiveMs / 60000)}m. Automatically shutting down...`);
+            if (record) {
+              vmAudit({
+                actorEmail: 'system',
+                record,
+                action: 'VM_SHUTDOWN_INACTIVITY',
+                success: true,
+                details: { inactiveSeconds: Math.floor(inactiveMs / 1000) },
+              });
+              revokeVmDesktopConnections(record.id);
+              try {
+                await proxmoxDesktop.power(record, 'shutdown');
+              } catch (err) {
+                try { await proxmoxDesktop.power(record, 'force-stop'); } catch {}
+              }
+              if (record.ownerEmail) triggerVmCooldown(record.ownerEmail, 'inactivity_10m');
+            } else {
+              try {
+                await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
+              } catch {
+                try { await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop'); } catch {}
+              }
+            }
+            vmLeases.delete(recordKey);
+            vmPagePresence.delete(recordKey);
+          }
+        }
       }
     }
   } catch (err) {
@@ -26033,6 +26441,13 @@ async function getVmConnectionIpForEmail(email) {
     const appsData = loadJson(VM_APPS_FILE, {});
     const app = appsData[norm];
     if (app && app.status === 'approved' && app.vmid) vmid = Number(app.vmid);
+  }
+
+  if (!vmid) {
+    const userRecords = getVirtualMachinesForOwner(norm);
+    if (userRecords.length > 0 && userRecords[0].vmid) {
+      vmid = Number(userRecords[0].vmid);
+    }
   }
 
   if (!isVmIdInRange(vmid)) return '';
