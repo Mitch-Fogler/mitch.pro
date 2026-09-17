@@ -75,6 +75,24 @@ guestService.request = async (method, path, params) => {
 await guestService.guestExec(301, ['/usr/bin/id', 'desktop']);
 assert(JSON.stringify(guestCalls[0].params.command) === '["/usr/bin/id","desktop"]', 'guest commands must use the Proxmox repeated-parameter array encoding');
 
+// --- Guest Agent Ping & Provisioning Tests ---
+const pingCalls = [];
+const pingService = new ProxmoxDesktopService({ host: 'localhost', node: 'node-a', legacyToken: 'token' });
+pingService.request = async (method, path, params) => {
+  pingCalls.push({ method, path, params });
+  if (method === 'POST' && path.endsWith('/agent/ping')) return {};
+  throw new Error(`Unexpected request: ${method} ${path}`);
+};
+await pingService.waitForGuestAgent(301, 5000);
+assert(pingCalls.length === 1 && pingCalls[0].method === 'POST', 'guest agent ping must use POST method (GET returns 501 on Proxmox VE)');
+assert(pingCalls[0].path === '/nodes/node-a/qemu/301/agent/ping', 'guest agent ping must target the correct VM node and vmid');
+
+let pingTimeoutError = null;
+const failingPingService = new ProxmoxDesktopService({ host: 'localhost', node: 'node-a', legacyToken: 'token' });
+failingPingService.request = async () => { throw new Error('Unreachable'); };
+try { await failingPingService.waitForGuestAgent(301, 100); } catch (e) { pingTimeoutError = e; }
+assert(pingTimeoutError instanceof ProxmoxServiceError && pingTimeoutError.code === 'GUEST_SETUP_FAILED', 'unreachable guest agent ping must time out with GUEST_SETUP_FAILED');
+
 let setupCommand = null;
 guestService.waitForGuestAgent = async () => {};
 guestService.guestExec = async (_vmid, command, inputData) => { setupCommand = { command, inputData }; };
@@ -83,6 +101,14 @@ assert(setupCommand.command.join(' ') === '/bin/sh -s', 'desktop setup must run 
 assert(setupCommand.inputData.includes('user=desktop') && setupCommand.inputData.includes('AutomaticLogin=$user'), 'desktop setup must enable automatic graphical login for the validated user');
 assert(setupCommand.inputData.includes('idle-delay 0'), 'desktop setup must keep browser desktops awake');
 assert(setupCommand.inputData.includes('lock-enabled false'), 'desktop setup must not strand users at an idle lock screen');
+assert(setupCommand.inputData.includes('getent group "$user"'), 'desktop setup must check for existing groups before useradd');
+
+// Test password provisioning in enableFriendlyDesktopLogin
+await guestService.enableFriendlyDesktopLogin(301, 'studentuser', 'SuperSecret123!');
+assert(setupCommand.inputData.includes('chpasswd'), 'desktop setup must set user password when provided');
+const expectedB64 = Buffer.from('SuperSecret123!', 'utf8').toString('base64');
+assert(setupCommand.inputData.includes(`pass_b64="${expectedB64}"`), 'desktop setup must safely base64 encode the user password');
+
 let unsafeLoginError = null;
 try { await guestService.enableFriendlyDesktopLogin(301, 'desktop\nroot'); } catch (error) { unsafeLoginError = error; }
 assert(unsafeLoginError?.code === 'INVALID_DESKTOP_LOGIN', 'desktop login setup must reject unsafe usernames');
