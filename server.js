@@ -37,9 +37,16 @@ import {
   validateDesktopSession,
   VmOperationGate,
   VM_MAX_CONCURRENT_RUNNING,
+  VM_DAILY_MAX_SECONDS,
   VM_EXTENSION_COOLDOWN_MS,
   VM_COOLDOWN_DURATION_MS,
   VM_OFFPAGE_INACTIVITY_MS,
+  VM_DEFAULT_CPU_CORES,
+  VM_DEFAULT_MEMORY_MB,
+  VM_DEFAULT_BALLOON_MB,
+  getRemainingDailyVmSeconds,
+  isDailyVmLimitReached,
+  getVmDayKey,
   isEligibleForFreeVm as isEligibleForFreeVmPolicy,
   canUserExtend as canUserExtendPolicy,
   computeCooldownRemaining,
@@ -18486,6 +18493,14 @@ async function handleRequest(req, server) {
       return jsonResp(409, { error: 'You already have a computer assigned. Use the recreate option if you want to start fresh.' });
     }
     if (!actor.isAdmin) {
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email));
+      if (dailyRemaining <= 0) {
+        return jsonResp(429, {
+          error: 'Daily limit reached: you have used your maximum 6 hours of computer time for today. Your daily limit will reset tomorrow.',
+          code: 'daily_limit_reached',
+          dailyRemainingSeconds: 0,
+        });
+      }
       const cooldownRemaining = getVmCooldownRemaining(actor.email, actor.isAdmin);
       if (cooldownRemaining > 0) {
         const mins = Math.ceil(cooldownRemaining / 60);
@@ -18521,11 +18536,11 @@ async function handleRequest(req, server) {
         id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
         node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
         hostname, operatingSystem: 'Linux Desktop',
-        templateVmid, cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
+        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
       });
       if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
       const created = await proxmoxDesktop.cloneDesktop({
-        templateVmid, vmid, hostname, cpuCores: 4, memoryMb: 4096, diskGb: 40,
+        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40,
         desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
       });
       const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
@@ -18554,6 +18569,14 @@ async function handleRequest(req, server) {
       return jsonResp(403, { error: 'Free computers are available to RJUHSD students (@student.rjuhsd.us) and Premium members.' });
     }
     if (!actor.isAdmin) {
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email));
+      if (dailyRemaining <= 0) {
+        return jsonResp(429, {
+          error: 'Daily limit reached: you have used your maximum 6 hours of computer time for today. Your daily limit will reset tomorrow.',
+          code: 'daily_limit_reached',
+          dailyRemainingSeconds: 0,
+        });
+      }
       const runningNonAdmin = await countRunningNonAdminVms();
       if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
         return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
@@ -18612,11 +18635,11 @@ async function handleRequest(req, server) {
         id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
         node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
         hostname, operatingSystem: 'Linux Desktop',
-        templateVmid, cpuCores: 4, memoryMb: 4096, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
+        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
       });
       if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
       const created = await proxmoxDesktop.cloneDesktop({
-        templateVmid, vmid, hostname, cpuCores: 4, memoryMb: 4096, diskGb: 40,
+        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40,
         desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
       });
       const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
@@ -18667,15 +18690,26 @@ async function handleRequest(req, server) {
 
     if (operation === 'extend' && method === 'POST') {
       const rl = checkRateLimit(req, '/api/vm/extend'); if (rl) return rl;
+      if (actor.isAdmin || isAdminEmail(record.ownerEmail)) {
+        return jsonResp(200, {
+          success: true,
+          message: 'Admins have unlimited session time.',
+          lease: { isExempt: true, remainingSeconds: null, maxUptimeSeconds: null, canExtend: false },
+        });
+      }
       if (!canUserExtendToday(actor.email, actor.isAdmin)) {
         return jsonResp(400, { error: 'Only one 30-minute extension is allowed per day.', code: 'daily_extension_limit_reached' });
+      }
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail));
+      if (dailyRemaining <= 0) {
+        return jsonResp(400, { error: 'Daily computer limit reached (6 hours maximum).', code: 'daily_limit_reached' });
       }
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
         if (runtime.state !== 'running') {
           return jsonResp(400, { error: 'Computer must be running to extend session.' });
         }
-        const leaseInfo = getVmLease(record.id, runtime.uptime);
+        const leaseInfo = getVmLease(record.id, runtime.uptime, { isAdmin: actor.isAdmin, ownerEmail: record.ownerEmail });
         if (leaseInfo.extended || !leaseInfo.canExtend) {
           return jsonResp(400, { error: 'Maximum extension already applied (30 minutes maximum).', code: 'extension_limit_reached' });
         }
@@ -18685,7 +18719,7 @@ async function handleRequest(req, server) {
         lease.lastSeenUptime = runtime.uptime;
         vmLeases.set(record.id, lease);
         recordUserExtension(actor.email);
-        const updatedLease = getVmLease(record.id, runtime.uptime);
+        const updatedLease = getVmLease(record.id, runtime.uptime, { isAdmin: actor.isAdmin, ownerEmail: record.ownerEmail });
         vmAudit({
           actorEmail: actor.email,
           record,
@@ -18709,13 +18743,23 @@ async function handleRequest(req, server) {
       if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
       const action = String(body.action || '').trim().toLowerCase();
       if (!['start', 'shutdown', 'restart', 'force-stop'].includes(action)) return jsonResp(400, { error: 'Invalid power action.' });
-      if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
-      
+
+      // Daily runtime limit check for start/restart
+      if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
+        const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail));
+        if (dailyRemaining <= 0) {
+          return jsonResp(429, {
+            error: 'Daily limit reached: you have used your maximum 6 hours of computer time for today. Your daily limit will reset tomorrow.',
+            code: 'daily_limit_reached',
+            dailyRemainingSeconds: 0,
+          });
+        }
+      }
+
       // Cooldown check for start/restart
       if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
         const cooldownRemaining = getVmCooldownRemaining(record.ownerEmail, actor.isAdmin);
         if (cooldownRemaining > 0) {
-          vmPowerGate.release(record.id);
           const mins = Math.ceil(cooldownRemaining / 60);
           return jsonResp(429, {
             error: `Computer is cooling down. You can start it again in ${mins} minute${mins === 1 ? '' : 's'}.`,
@@ -18724,6 +18768,8 @@ async function handleRequest(req, server) {
           });
         }
       }
+
+      if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
 
       // Max 6 running VMs capacity check (admins don't count)
       if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
@@ -18924,8 +18970,8 @@ async function handleRequest(req, server) {
     let desktopLogin;
     try { desktopLogin = proxmoxDesktop.validateDesktopLogin(body.desktopUsername, body.desktopPassword); }
     catch { return jsonResp(400, { error: 'Choose a desktop username and a password of 8 to 128 characters.', code: 'invalid_desktop_login' }); }
-    const cpuCores = Math.max(2, Math.min(Math.round(Number(body.cpuCores) || 4), 8));
-    const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 4096), 16384));
+    const cpuCores = Math.max(2, Math.min(Math.round(Number(body.cpuCores) || 6), 16));
+    const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 16384), 32768));
     const diskGb = Math.max(40, Math.min(Math.round(Number(body.diskGb) || 40), 256));
     const hostname = String(body.hostname || `computer-${ownerEmail.split('@')[0]}`).trim();
     vmPowerRequests.set('admin-create', { startedAt: Date.now() });
@@ -25935,13 +25981,33 @@ const vmDesktopSockets = new Set();
 const vmPowerRequests = new Map();
 const vmPowerGate = new VmOperationGate(5000);
 const VM_DESKTOP_SESSION_TTL_MS = 75_000;
-const VM_BASE_MAX_UPTIME_SECONDS = 3600; // 1 hour maximum base uptime
+const VM_BASE_MAX_UPTIME_SECONDS = 6 * 3600; // 6 hours maximum daily uptime
 const VM_MAX_EXTENSION_SECONDS = 1800;   // 30 minutes maximum extension
-const VM_TOTAL_MAX_UPTIME_SECONDS = VM_BASE_MAX_UPTIME_SECONDS + VM_MAX_EXTENSION_SECONDS; // 5400 seconds (90 min)
+const VM_TOTAL_MAX_UPTIME_SECONDS = 6 * 3600; // 6 hours hard cap per day
 const VM_EXTENSIONS_FILE = join(DATA_DIR, 'vm_extensions.json');
 const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
+const VM_DAILY_USAGE_FILE = join(DATA_DIR, 'vm_daily_usage.json');
 const vmLeases = new Map();
 const vmPagePresence = new Map(); // recordId -> { lastSeen: number }
+
+function getUserDailyVmUsage(email, dayKey = getVmDayKey()) {
+  if (!email) return 0;
+  const norm = normalizeEmail(email);
+  const usage = loadJson(VM_DAILY_USAGE_FILE, {});
+  return Math.max(0, Number(usage[norm]?.[dayKey]) || 0);
+}
+
+function recordDailyVmUsage(email, secondsToAdd, dayKey = getVmDayKey()) {
+  if (!email || secondsToAdd <= 0) return 0;
+  const norm = normalizeEmail(email);
+  const usage = loadJson(VM_DAILY_USAGE_FILE, {});
+  if (!usage[norm]) usage[norm] = {};
+  const current = Math.max(0, Number(usage[norm][dayKey]) || 0);
+  const updated = current + Math.max(0, Math.floor(secondsToAdd));
+  usage[norm][dayKey] = updated;
+  saveJson(VM_DAILY_USAGE_FILE, usage);
+  return updated;
+}
 
 function isEligibleForFreeVm(email, isAdmin = false) {
   if (!email) return false;
@@ -26029,30 +26095,60 @@ function clearVmCooldown(email) {
   }
 }
 
-function getVmLease(recordId, currentUptime = 0) {
+function getVmLease(recordId, currentUptime = 0, { isAdmin = false, ownerEmail = '' } = {}) {
   const normalizedUptime = Math.max(0, Math.floor(Number(currentUptime) || 0));
+
+  if (isAdmin || (ownerEmail && isAdminEmail(ownerEmail))) {
+    return {
+      isExempt: true,
+      extended: false,
+      maxUptimeSeconds: null,
+      remainingSeconds: null,
+      dailyRemainingSeconds: null,
+      canExtend: false,
+      currentUptime: normalizedUptime,
+    };
+  }
+
   let lease = vmLeases.get(recordId);
   if (!lease) {
     lease = {
       extended: false,
       startedAt: Date.now() - (normalizedUptime * 1000),
       lastSeenUptime: normalizedUptime,
+      trackedUptime: 0,
     };
     vmLeases.set(recordId, lease);
   } else if (normalizedUptime > 0 && lease.lastSeenUptime > 60 && normalizedUptime < (lease.lastSeenUptime - 60)) {
     lease.extended = false;
     lease.startedAt = Date.now() - (normalizedUptime * 1000);
+    lease.trackedUptime = 0;
   }
   lease.lastSeenUptime = normalizedUptime;
 
+  // Track daily usage delta
+  if (ownerEmail && !isAdmin) {
+    if (lease.trackedUptime == null) lease.trackedUptime = 0;
+    if (normalizedUptime > lease.trackedUptime) {
+      const delta = normalizedUptime - lease.trackedUptime;
+      recordDailyVmUsage(ownerEmail, delta);
+      lease.trackedUptime = normalizedUptime;
+    }
+  }
+
+  const usedToday = ownerEmail ? getUserDailyVmUsage(ownerEmail) : 0;
+  const dailyRemainingSeconds = getRemainingDailyVmSeconds(usedToday, { isAdmin: false });
   const maxUptimeSeconds = lease.extended ? VM_TOTAL_MAX_UPTIME_SECONDS : VM_BASE_MAX_UPTIME_SECONDS;
-  const remainingSeconds = Math.max(0, maxUptimeSeconds - normalizedUptime);
-  const canExtend = !lease.extended && remainingSeconds > 0;
+  const sessionRemaining = Math.max(0, maxUptimeSeconds - normalizedUptime);
+  const remainingSeconds = Math.min(sessionRemaining, dailyRemainingSeconds);
+  const canExtend = !lease.extended && remainingSeconds > 0 && dailyRemainingSeconds > remainingSeconds;
 
   return {
+    isExempt: false,
     extended: Boolean(lease.extended),
     maxUptimeSeconds,
     remainingSeconds,
+    dailyRemainingSeconds,
     canExtend,
     currentUptime: normalizedUptime,
   };
@@ -26136,19 +26232,23 @@ function friendlyVmError(error) {
 
 function publicVmRecord(record, runtime = null, actor = null) {
   const isRunning = runtime?.state === 'running';
-  const lease = isRunning ? getVmLease(record.id, runtime.uptime) : {
+  const isAdmin = Boolean(actor?.isAdmin || (record?.ownerEmail && isAdminEmail(record.ownerEmail)));
+  const ownerEmail = record?.ownerEmail || actor?.email || '';
+  const lease = isRunning ? getVmLease(record.id, runtime.uptime, { isAdmin, ownerEmail }) : {
+    isExempt: isAdmin,
     extended: false,
-    maxUptimeSeconds: VM_BASE_MAX_UPTIME_SECONDS,
-    remainingSeconds: VM_BASE_MAX_UPTIME_SECONDS,
-    canExtend: true,
+    maxUptimeSeconds: isAdmin ? null : VM_BASE_MAX_UPTIME_SECONDS,
+    remainingSeconds: isAdmin ? null : Math.min(VM_BASE_MAX_UPTIME_SECONDS, getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail))),
+    dailyRemainingSeconds: isAdmin ? null : getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail)),
+    canExtend: !isAdmin && getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail)) > 0,
     currentUptime: 0,
   };
-  const dailyExtensionUsed = !canUserExtendToday(record.ownerEmail, actor?.isAdmin);
+  const dailyExtensionUsed = !isAdmin && !canUserExtendToday(record.ownerEmail, actor?.isAdmin);
   if (dailyExtensionUsed) {
     lease.canExtend = false;
     lease.dailyExtensionUsed = true;
   }
-  const cooldownRemainingSeconds = getVmCooldownRemaining(record.ownerEmail, actor?.isAdmin);
+  const cooldownRemainingSeconds = getVmCooldownRemaining(record.ownerEmail, isAdmin);
   return {
     id: record.id,
     name: record.friendlyName || 'My Computer',
@@ -26244,17 +26344,40 @@ async function enforceVmMaxUptimeWorker() {
     for (const guest of (guests || [])) {
       if (guest.template || guest.status !== 'running') continue;
       const record = getVirtualMachineByVmid(guest.vmid);
+      let ownerEmail = record?.ownerEmail;
+      if (!ownerEmail) {
+        for (const [email, entry] of activeFreeVms.entries()) {
+          if (entry.vmid === guest.vmid) { ownerEmail = email; break; }
+        }
+      }
+      if (!ownerEmail) {
+        try {
+          const appsData = loadJson(VM_APPS_FILE, {});
+          for (const [email, app] of Object.entries(appsData)) {
+            if (app.vmid === guest.vmid) { ownerEmail = app.email || email; break; }
+          }
+        } catch {}
+      }
+      // Admins are exempt from VM time limits
+      if (ownerEmail && isAdminEmail(ownerEmail)) {
+        continue;
+      }
       const recordKey = record ? record.id : `vmid-${guest.vmid}`;
-      const lease = getVmLease(recordKey, guest.uptime);
-      if (lease.remainingSeconds <= 0) {
-        console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) reached max uptime (${guest.uptime}s / ${lease.maxUptimeSeconds}s). Automatically shutting down...`);
+      const lease = getVmLease(recordKey, guest.uptime, {
+        isAdmin: false,
+        ownerEmail: ownerEmail || '',
+      });
+      if (lease.isExempt) continue;
+      if (lease.remainingSeconds != null && lease.remainingSeconds <= 0) {
+        const isDailyLimit = (lease.dailyRemainingSeconds != null && lease.dailyRemainingSeconds <= 0);
+        console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) reached ${isDailyLimit ? 'daily limit (6h)' : 'max uptime'} (${guest.uptime}s / ${lease.maxUptimeSeconds}s). Automatically shutting down...`);
         if (record) {
           vmAudit({
             actorEmail: 'system',
             record,
-            action: 'VM_SHUTDOWN_TIMEOUT',
+            action: isDailyLimit ? 'VM_SHUTDOWN_DAILY_LIMIT' : 'VM_SHUTDOWN_TIMEOUT',
             success: true,
-            details: { uptime: guest.uptime, maxUptimeSeconds: lease.maxUptimeSeconds, extended: lease.extended },
+            details: { uptime: guest.uptime, maxUptimeSeconds: lease.maxUptimeSeconds, extended: lease.extended, dailyRemainingSeconds: lease.dailyRemainingSeconds },
           });
           revokeVmDesktopConnections(record.id);
           try {
@@ -26267,7 +26390,7 @@ async function enforceVmMaxUptimeWorker() {
               console.error(`[vm-watchdog] Force stop failed for ${record.id}:`, stopErr?.message || stopErr);
             }
           }
-          if (record.ownerEmail) triggerVmCooldown(record.ownerEmail, 'max_uptime_reached');
+          if (record.ownerEmail) triggerVmCooldown(record.ownerEmail, isDailyLimit ? 'daily_limit_reached' : 'max_uptime_reached');
         } else {
           try {
             await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
@@ -26701,9 +26824,9 @@ async function cloneUserVm(email, tier, vmid, password) {
     }
 
     // 2. Configure VM settings (Memory Ballooning, CPU Cores, and Cloud-Init Password)
-    const memMax = tier === 'paid' ? 8192 : (tier === 'premium' ? 4096 : 1024);
-    const memMin = tier === 'paid' ? 3072 : (tier === 'premium' ? 2048 : 512);
-    const cores = tier === 'paid' ? 4 : (tier === 'premium' ? 2 : 1);
+    const memMax = tier === 'paid' || tier === 'premium' ? 16384 : 4096;
+    const memMin = tier === 'paid' || tier === 'premium' ? 4096 : 2048;
+    const cores = tier === 'paid' || tier === 'premium' ? 6 : 2;
 
     const configUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/config`;
     const configRes = await fetch(configUrl, {

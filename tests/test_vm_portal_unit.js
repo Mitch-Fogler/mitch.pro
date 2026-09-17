@@ -3,9 +3,16 @@ import {
   validateDesktopSession,
   VmOperationGate,
   VM_MAX_CONCURRENT_RUNNING,
+  VM_DAILY_MAX_SECONDS,
   VM_EXTENSION_COOLDOWN_MS,
   VM_COOLDOWN_DURATION_MS,
   VM_OFFPAGE_INACTIVITY_MS,
+  VM_DEFAULT_CPU_CORES,
+  VM_DEFAULT_MEMORY_MB,
+  VM_DEFAULT_BALLOON_MB,
+  getRemainingDailyVmSeconds,
+  isDailyVmLimitReached,
+  getVmDayKey,
   isEligibleForFreeVm,
   canUserExtend,
   computeCooldownRemaining,
@@ -135,6 +142,28 @@ assert(VM_MAX_CONCURRENT_RUNNING === 6, 'max concurrent running VMs must be 6');
 assert(VM_COOLDOWN_DURATION_MS === 30 * 60 * 1000, 'cooldown duration must be 30 minutes');
 assert(VM_EXTENSION_COOLDOWN_MS === 24 * 60 * 60 * 1000, 'extension cooldown must be 24 hours');
 assert(VM_OFFPAGE_INACTIVITY_MS === 10 * 60 * 1000, 'offpage inactivity timeout must be 10 minutes');
+
+// --- 6-Hour Daily Max and Admin Exemption ---
+assert(VM_DAILY_MAX_SECONDS === 6 * 3600, 'daily max VM seconds must be 6 hours (21600 seconds)');
+assert(VM_DEFAULT_CPU_CORES === 6, 'default CPU cores must be 6');
+assert(VM_DEFAULT_MEMORY_MB === 16384, 'default memory must be 16384 MB (16 GB)');
+assert(VM_DEFAULT_BALLOON_MB === 4096, 'default balloon memory must be 4096 MB (4 GB)');
+
+assert(getRemainingDailyVmSeconds(0) === 21600, '0 used seconds must leave 21600 seconds remaining');
+assert(getRemainingDailyVmSeconds(3600) === 18000, '1 hour used must leave 5 hours remaining');
+assert(getRemainingDailyVmSeconds(21600) === 0, '6 hours used must leave 0 seconds remaining');
+assert(getRemainingDailyVmSeconds(25000) === 0, 'over 6 hours used must leave 0 seconds remaining');
+assert(getRemainingDailyVmSeconds(21600, { isAdmin: true }) === Infinity, 'admin must have Infinity remaining seconds');
+assert(getRemainingDailyVmSeconds(50000, { isAdmin: true }) === Infinity, 'admin must have Infinity remaining seconds regardless of usage');
+
+assert(!isDailyVmLimitReached(0), '0 used must not reach daily limit');
+assert(!isDailyVmLimitReached(21599), '21599s used must not reach daily limit');
+assert(isDailyVmLimitReached(21600), '21600s used must reach daily limit');
+assert(isDailyVmLimitReached(30000), '30000s used must reach daily limit');
+assert(!isDailyVmLimitReached(21600, { isAdmin: true }), 'admin must not be subject to daily limit');
+assert(!isDailyVmLimitReached(99999, { isAdmin: true }), 'admin must not be subject to daily limit even with high usage');
+
+assert(getVmDayKey(new Date('2026-09-17T12:00:00Z').getTime()) === '2026-09-17', 'getVmDayKey must return YYYY-MM-DD');
 
 console.log('VM portal security, policy, and failure tests passed.');
 

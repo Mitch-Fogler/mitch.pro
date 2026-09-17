@@ -24,10 +24,12 @@
     const cpuLoad = Math.max(0, Math.min(100, Math.round(Number(vm.cpuUsage || 0) * 100)));
     const memoryLoad = percent(vm.memoryUsed, vm.memoryTotal);
     const diskLoad = percent(vm.diskUsed, vm.diskTotal);
+    const isExempt = Boolean(vm.lease?.isExempt);
     const remSeconds = vm.lease?.remainingSeconds != null ? vm.lease.remainingSeconds : null;
     const remDisplay = remSeconds != null ? uptime(remSeconds) : null;
     const dailyUsed = Boolean(vm.lease?.dailyExtensionUsed);
-    const canExtend = running && !busy && vm.lease?.canExtend && !vm.lease?.extended && !dailyUsed;
+    const dailyLimitReached = !isExempt && vm.lease?.remainingSeconds === 0;
+    const canExtend = !isExempt && running && !busy && vm.lease?.canExtend && !vm.lease?.extended && !dailyUsed;
     const inCooldown = !running && Number(vm.cooldownRemainingSeconds) > 0;
     const cooldownMins = inCooldown ? Math.ceil(Number(vm.cooldownRemainingSeconds) / 60) : 0;
     const previewTag = open ? 'a' : 'div';
@@ -46,7 +48,7 @@
         <div class="machine-facts">
           <span><small>Address</small><strong title="${esc(vm.ipAddress)}">${esc(vm.ipAddress || (running ? 'Connecting…' : 'Not available'))}</strong></span>
           <span><small>Uptime</small><strong>${uptime(vm.uptime)}</strong></span>
-          ${running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : ''}
+          ${isExempt ? `<span><small>Time Limit</small><strong style="color:#4ade80;">Unlimited</strong></span>` : (running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : '')}
           ${inCooldown ? `<span><small>Cooldown</small><strong style="color:#f87171;">${cooldownMins}m left</strong></span>` : ''}
         </div>
         <div class="resource-grid">
@@ -55,7 +57,7 @@
           <div class="resource"><span><small>Storage</small><b>${bytes(vm.diskTotal)}</b></span><em>${diskLoad}%</em><i><b style="width:${diskLoad}%"></b></i></div>
         </div>
         <div class="computer-actions">
-          ${!running ? `<button class="primary-button" data-action="start" ${busy || inCooldown || vm.status !== 'stopped' ? 'disabled' : ''}>${inCooldown ? `Cooldown (${cooldownMins}m)` : (operation || 'Start Computer')}</button>` : ''}
+          ${!running ? `<button class="primary-button" data-action="start" ${busy || inCooldown || vm.status !== 'stopped' || dailyLimitReached ? 'disabled' : ''}>${dailyLimitReached ? 'Daily Limit Reached (6h)' : inCooldown ? `Cooldown (${cooldownMins}m)` : (operation || 'Start Computer')}</button>` : ''}
           ${canExtend ? `<button class="control-button" data-action="extend" ${busy ? 'disabled' : ''}><span aria-hidden="true">+</span> Extend 30m</button>` : (running && dailyUsed ? `<button class="control-button" disabled title="Only 1 30-minute extension allowed per day"><span aria-hidden="true">+</span> Extend 30m (Used)</button>` : '')}
           <button class="control-button" data-action="restart" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">↻</span> Restart</button>
           <button class="control-button danger-control" data-action="shutdown" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">⏻</span> Shut Down</button>
