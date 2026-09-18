@@ -183,6 +183,6 @@
   grid.addEventListener('click', event => { const button = event.target.closest('button[data-action]'); if (button && !button.disabled) power(button.closest('[data-id]').dataset.id, button.dataset.action); });
   $('refresh-button').addEventListener('click', load);
   load();
-  const timer = setInterval(() => { if (!document.hidden && !dialog.open && !provDialog?.open && !pending.size) load(); }, 15000);
+  const timer = setInterval(() => { if (!document.hidden && !dialog.open && !provDialog?.open && !pending.size) load(); }, 60000);
   window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
 })();

@@ -9,7 +9,7 @@ let rfb = null, generation = 0, controller = null, reconnectTimer = null, connec
 let reconnectAttempts = 0, connected = false, connecting = false, disposed = false, powerBusy = false;
 let leaseState = { remainingSeconds: 21600, maxUptimeSeconds: 21600, canExtend: true, extended: false, isExempt: false };
 let hasWarned10m = false, hasWarned3m = false;
-let uptimeInterval = null, leaseSyncInterval = null;
+let uptimeInterval = null;
 const uptimePillText = $('uptime-pill-text'), uptimeBtn = $('uptime-button');
 const uptimeDialog = $('uptime-dialog');
 
@@ -157,7 +157,6 @@ function closeConnection() {
   generation++; controller?.abort(); controller = null;
   clearTimeout(reconnectTimer); clearTimeout(connectTimer);
   clearInterval(uptimeInterval); uptimeInterval = null;
-  clearInterval(leaseSyncInterval); leaseSyncInterval = null;
   const old = rfb; rfb = null; connected = false; connecting = false;
   if (old) { try { old.disconnect(); } catch {} }
 }
@@ -231,11 +230,6 @@ async function connect() {
           }
         }, 1000);
       }
-      if (!leaseSyncInterval) {
-        leaseSyncInterval = setInterval(() => {
-          if (connected) syncLease();
-        }, 60000);
-      }
     });
     client.addEventListener('disconnect', event => interrupted(token, event.detail.clean));
     client.addEventListener('securityfailure', () => {
@@ -308,20 +302,5 @@ $('uptime-dismiss-btn')?.addEventListener('click', () => uptimeDialog?.close());
 $('uptime-close-btn')?.addEventListener('click', () => uptimeDialog?.close());
 $('uptime-extend-btn')?.addEventListener('click', extendSession);
 $('mobile-extend')?.addEventListener('click', () => { hideMenu(); openUptimeModal(); });
-
-function sendPresenceHeartbeat() {
-  if (disposed || !id || document.visibilityState !== 'visible') return;
-  fetch(`/api/vm/computers/${encodeURIComponent(id)}/heartbeat`, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers,
-    body: '{}'
-  }).catch(() => {});
-}
-setInterval(sendPresenceHeartbeat, 30000);
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') sendPresenceHeartbeat();
-});
-sendPresenceHeartbeat();
 
 connect();
