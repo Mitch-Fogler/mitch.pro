@@ -10,6 +10,7 @@ import {
   VM_DEFAULT_CPU_CORES,
   VM_DEFAULT_MEMORY_MB,
   VM_DEFAULT_BALLOON_MB,
+  VM_DEFAULT_DISK_GB,
   getRemainingDailyVmSeconds,
   isDailyVmLimitReached,
   getVmDayKey,
@@ -186,8 +187,9 @@ assert(VM_OFFPAGE_INACTIVITY_MS === 10 * 60 * 1000, 'offpage inactivity timeout 
 // --- 6-Hour Daily Max and Admin Exemption ---
 assert(VM_DAILY_MAX_SECONDS === 6 * 3600, 'daily max VM seconds must be 6 hours (21600 seconds)');
 assert(VM_DEFAULT_CPU_CORES === 6, 'default CPU cores must be 6');
-assert(VM_DEFAULT_MEMORY_MB === 65536, 'default memory must be 65536 MB (64 GB)');
+assert(VM_DEFAULT_MEMORY_MB === 16384, 'default memory must be 16384 MB (16 GB)');
 assert(VM_DEFAULT_BALLOON_MB === 4096, 'default balloon memory must be 4096 MB (4 GB)');
+assert(VM_DEFAULT_DISK_GB === 64, 'default disk must be 64 GB');
 
 assert(getRemainingDailyVmSeconds(0) === 21600, '0 used seconds must leave 21600 seconds remaining');
 assert(getRemainingDailyVmSeconds(3600) === 18000, '1 hour used must leave 5 hours remaining');

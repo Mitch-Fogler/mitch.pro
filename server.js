@@ -44,6 +44,7 @@ import {
   VM_DEFAULT_CPU_CORES,
   VM_DEFAULT_MEMORY_MB,
   VM_DEFAULT_BALLOON_MB,
+  VM_DEFAULT_DISK_GB,
   getRemainingDailyVmSeconds,
   isDailyVmLimitReached,
   getVmDayKey,
@@ -18545,11 +18546,11 @@ async function handleRequest(req, server) {
         id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
         node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
         hostname, operatingSystem: 'Linux Desktop',
-        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
+        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB, status: 'provisioning', createdAt: Date.now(),
       });
       if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
       const created = await proxmoxDesktop.cloneDesktop({
-        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40,
+        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB,
         desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
       });
       const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
@@ -18644,11 +18645,11 @@ async function handleRequest(req, server) {
         id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
         node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
         hostname, operatingSystem: 'Linux Desktop',
-        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40, status: 'provisioning', createdAt: Date.now(),
+        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB, status: 'provisioning', createdAt: Date.now(),
       });
       if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
       const created = await proxmoxDesktop.cloneDesktop({
-        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: 40,
+        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB,
         desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
       });
       const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
@@ -19044,7 +19045,7 @@ async function handleRequest(req, server) {
         guestType: 'qemu', friendlyName: String(body.friendlyName || 'My Computer').trim().slice(0, 60) || 'My Computer',
         hostname: guest.name, operatingSystem: String(body.operatingSystem || 'Linux Mint Cinnamon').trim().slice(0, 80),
         templateVmid: null, cpuCores: Number(config?.cores || guest.cpuCores || 4),
-        memoryMb: Number(config?.memory || guest.memoryMb || 4096), diskGb: guest.diskGb || 40,
+        memoryMb: Number(config?.memory || guest.memoryMb || 16384), diskGb: guest.diskGb || 64,
         status: 'assigned', createdAt: record?.createdAt || Date.now(),
       });
       vmAudit({ actorEmail: actor.email, record, action: 'VM_ASSIGNED', success: true });
@@ -19085,8 +19086,8 @@ async function handleRequest(req, server) {
     try { desktopLogin = proxmoxDesktop.validateDesktopLogin(body.desktopUsername, body.desktopPassword); }
     catch { return jsonResp(400, { error: 'Choose a desktop username and a password of 8 to 128 characters.', code: 'invalid_desktop_login' }); }
     const cpuCores = Math.max(2, Math.min(Math.round(Number(body.cpuCores) || 6), 16));
-    const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 65536), 65536));
-    const diskGb = Math.max(40, Math.min(Math.round(Number(body.diskGb) || 40), 256));
+    const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 16384), 65536));
+    const diskGb = Math.max(40, Math.min(Math.round(Number(body.diskGb) || 64), 256));
     const hostname = String(body.hostname || `computer-${ownerEmail.split('@')[0]}`).trim();
     vmPowerRequests.set('admin-create', { startedAt: Date.now() });
     let pendingRecord = { ownerEmail, vmid: null, id: '' };
@@ -26938,7 +26939,7 @@ async function cloneUserVm(email, tier, vmid, password) {
     }
 
     // 2. Configure VM settings (Memory Ballooning, CPU Cores, and Cloud-Init Password)
-    const memMax = tier === 'paid' || tier === 'premium' ? 65536 : 4096;
+    const memMax = tier === 'paid' || tier === 'premium' ? 16384 : 4096;
     const memMin = tier === 'paid' || tier === 'premium' ? 4096 : 2048;
     const cores = tier === 'paid' || tier === 'premium' ? 6 : 2;
 
