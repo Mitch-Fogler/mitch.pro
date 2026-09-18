@@ -585,6 +585,9 @@ function showPopup(src) {
 }
 
 function openAboutBlank(target) {
+  if (!target) return;
+  target = String(target).trim();
+  if (!/^https?:\/\//i.test(target) && !target.startsWith('/') && !target.startsWith('about:')) target = 'https://' + target;
   var w = window.open('', '_blank', 'width=10000000,height=10000000');
   if (!w) {
     window.location.href = target;

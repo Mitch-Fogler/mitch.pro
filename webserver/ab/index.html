@@ -286,6 +286,8 @@
 
     function openBlank(target) {
       if (!target) return alert("Enter a URL first!");
+      target = target.trim();
+      if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
       const w = window.open("", "_blank", "width=1000,height=700");
       if (!w) return alert("Popup blocked! Allow popups for this site.");
       const html = `<!doctype html>
