@@ -47,37 +47,3 @@ button,a{font:inherit}
 .uptime-dialog-actions button:hover{border-color:var(--line-strong);background:rgba(255,255,255,.09);transform:translateY(-1px)}
 .uptime-dialog-actions .primary{border-color:#eff1f4;background:#eff1f4;color:#111}
 .uptime-dialog-actions .primary:hover{background:#fff}
-
-.security-key-button svg{stroke:#38bdf8}
-.security-key-button:not(:disabled):hover{border-color:rgba(56,189,248,.5);box-shadow:0 0 14px rgba(56,189,248,.18)}
-.security-key-dialog{width:min(500px,calc(100% - 24px));padding:0;border:1px solid var(--line-strong);border-radius:19px;background:#171b23;color:var(--text);box-shadow:0 30px 90px rgba(0,0,0,.72)}
-.security-key-dialog::backdrop{background:rgba(0,0,0,.76);backdrop-filter:blur(5px)}
-.security-key-dialog-content{position:relative;padding:26px 22px;text-align:center}
-.dialog-close-x{position:absolute;top:12px;right:14px;display:flex;width:32px;height:32px;align-items:center;justify-content:center;border:0;border-radius:8px;background:transparent;color:var(--muted);font-size:22px;line-height:1;cursor:pointer}
-.dialog-close-x:hover{background:rgba(255,255,255,.08);color:var(--text)}
-.security-key-icon-wrap{display:grid;width:56px;height:56px;margin:0 auto 14px;place-items:center;border-radius:50%;background:rgba(56,189,248,.12);border:1px solid rgba(56,189,248,.3);transition:all .3s}
-.security-key-icon-wrap svg{width:28px;height:28px;stroke:#38bdf8;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.security-key-icon-wrap.verified{background:rgba(34,197,94,.16);border-color:rgba(34,197,94,.4)}
-.security-key-icon-wrap.verified svg{stroke:#4ade80}
-.security-key-dialog h2{margin:0 0 6px;font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
-.security-key-dialog p{margin:0 0 14px;color:var(--muted);font-size:.93rem;line-height:1.45}
-.security-key-status-box{display:flex;align-items:center;justify-content:center;gap:11px;margin:14px 0 16px;padding:12px 16px;border:1px solid var(--line);border-radius:12px;background:#0c0f15;font-size:.92rem;font-weight:600;color:#e2e8f0;transition:all .2s}
-.security-key-status-box.verified{border-color:rgba(34,197,94,.4);background:rgba(34,197,94,.08);color:#4ade80}
-.security-key-status-box.error{border-color:rgba(239,68,68,.4);background:rgba(239,68,68,.08);color:#fca5a5}
-.security-key-sensor-indicator{display:inline-block;width:12px;height:12px;border-radius:50%;background:#38bdf8;box-shadow:0 0 0 0 rgba(56,189,248,.7);animation:sensorPulse 1.6s infinite}
-.security-key-status-box.verified .security-key-sensor-indicator{background:#4ade80;animation:none;box-shadow:0 0 8px #4ade80}
-.security-key-status-box.error .security-key-sensor-indicator{background:#ef4444;animation:none}
-@keyframes sensorPulse{0%{box-shadow:0 0 0 0 rgba(56,189,248,.7)}70%{box-shadow:0 0 0 10px rgba(56,189,248,0)}100%{box-shadow:0 0 0 0 rgba(56,189,248,0)}}
-.security-key-otp-wrap{margin:16px 0 18px;text-align:left}
-.security-key-otp-wrap label{display:block;margin-bottom:6px;font-size:.84rem;color:var(--muted);font-weight:600}
-.security-key-input-row{display:flex;gap:8px}
-.security-key-input-row input{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#090b10;color:var(--text);font:inherit}
-.security-key-input-row input:focus{outline:2px solid #38bdf8;border-color:transparent}
-.security-key-hint{display:block;margin-top:6px;font-size:.76rem;color:var(--muted);line-height:1.35}
-.security-key-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:6px}
-.security-key-actions button{display:inline-flex;min-height:38px;align-items:center;justify-content:center;gap:7px;padding:8px 16px;border:1px solid var(--line);border-radius:11px;background:rgba(255,255,255,.05);color:var(--text);font-weight:700;cursor:pointer;transition:all .15s}
-.security-key-actions button:hover{border-color:var(--line-strong);background:rgba(255,255,255,.09);transform:translateY(-1px)}
-.security-key-actions button svg{width:16px;height:16px;fill:currentColor}
-.security-key-actions .primary{border-color:#eff1f4;background:#eff1f4;color:#111}
-.security-key-actions .primary:hover{background:#fff}
-
