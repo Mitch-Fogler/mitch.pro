@@ -105,8 +105,8 @@ upsertVirtualMachine({
   operatingSystem: 'Linux Desktop',
   templateVmid: 9010,
   cpuCores: 6,
-  memoryMb: 65536,
-  diskGb: 40,
+  memoryMb: 16384,
+  diskGb: 64,
   status: 'assigned',
   createdAt: Date.now(),
 });
@@ -309,8 +309,8 @@ try {
     operatingSystem: 'Linux Desktop',
     templateVmid: 9010,
     cpuCores: 6,
-    memoryMb: 65536,
-    diskGb: 40,
+    memoryMb: 16384,
+    diskGb: 64,
     status: 'assigned',
     createdAt: Date.now(),
   });
@@ -327,8 +327,9 @@ try {
     assert.equal(adminComputer.lease.remainingSeconds, null, 'Admin lease must have remainingSeconds: null');
     assert.equal(adminComputer.lease.maxUptimeSeconds, null, 'Admin lease must have maxUptimeSeconds: null');
     assert.equal(adminComputer.cpuCores, 6, 'Computer CPU cores must be 6');
-    assert.equal(adminComputer.memoryMb, 65536, 'Computer memoryMb must be 65536 (64 GB)');
-    console.log('Admin lease exemption verified: isExempt: true, remainingSeconds: null, 6 cores / 64 GB specs');
+    assert.equal(adminComputer.memoryMb, 16384, 'Computer memoryMb must be 16384 (16 GB)');
+    assert.equal(adminComputer.diskGb, 64, 'Computer diskGb must be 64 (64 GB)');
+    console.log('Admin lease exemption verified: isExempt: true, remainingSeconds: null, 6 cores / 16 GB RAM / 64 GB disk specs');
   } finally {
     deleteVirtualMachine(testAdminVmId);
   }
@@ -349,8 +350,8 @@ try {
     operatingSystem: 'Linux Desktop',
     templateVmid: 9010,
     cpuCores: 6,
-    memoryMb: 65536,
-    diskGb: 40,
+    memoryMb: 16384,
+    diskGb: 64,
     status: 'assigned',
     createdAt: Date.now(),
   });
