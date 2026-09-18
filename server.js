@@ -25704,7 +25704,6 @@ setTimeout(() => {
 
   initPortalSshKey();
   cleanupAllEphemeralVms();
-  shutdownAllRunningVmsOnStartup();
   migrateLegacyVmOwnership();
   cleanupVmDesktopSessions();
   setInterval(cleanupVmDesktopSessions, 5000);
@@ -26309,42 +26308,6 @@ function vmDesktopSocketAuthorized(ws) {
 function revokeVmDesktopConnections(recordId) {
   for (const [id, session] of vmDesktopSessions) if (session.recordId === recordId) vmDesktopSessions.delete(id);
   for (const ws of vmDesktopSockets) if (ws.data.recordId === recordId) ws.close(1008, 'Desktop access changed');
-}
-
-async function shutdownAllRunningVmsOnStartup() {
-  console.log('[startup] Checking for running VMs to shut down on server start...');
-  try {
-    if (!proxmoxDesktop.configured) {
-      console.log('[startup] Proxmox service not configured; skipping startup VM shutdown.');
-      return;
-    }
-    const guests = await proxmoxDesktop.listGuests();
-    const running = (guests || []).filter(g => !g.template && (g.status === 'running' || g.status === 'paused'));
-    if (running.length === 0) {
-      console.log('[startup] No running VMs found on Proxmox.');
-      return;
-    }
-    console.log(`[startup] Found ${running.length} running VM(s) to shut down on startup:`, running.map(g => `${g.vmid} (${g.name})`).join(', '));
-    await Promise.allSettled(running.map(async guest => {
-      try {
-        console.log(`[startup] Initiating graceful shutdown for VM ${guest.vmid} (${guest.name})...`);
-        await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
-      } catch (err) {
-        console.warn(`[startup] Graceful shutdown failed for VM ${guest.vmid}, attempting force-stop:`, err?.message || err);
-        try {
-          await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop');
-        } catch (stopErr) {
-          console.error(`[startup] Failed to stop VM ${guest.vmid}:`, stopErr?.message || stopErr);
-        }
-      }
-    }));
-    vmDesktopSessions.clear();
-    vmDesktopSockets.clear();
-    vmLeases.clear();
-    console.log('[startup] Finished shutting down all running VMs on startup.');
-  } catch (err) {
-    console.error('[startup] Error shutting down running VMs on startup:', err);
-  }
 }
 
 async function enforceVmMaxUptimeWorker() {
