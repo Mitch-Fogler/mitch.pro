@@ -11899,7 +11899,7 @@ async function handleRequest(req, server) {
     const session = vmDesktopSessions.get(sessionId);
     if (!session || session.used || session.expiresAt <= Date.now()) return jsonResp(401, { error: 'Desktop connection expired.' });
     const record = getVirtualMachineById(session.recordId);
-    const sessionCheck = validateDesktopSession(session, actor, record);
+    const sessionCheck = validateDesktopSession(session, actor, record, Date.now(), isAdminEmail);
     if (!sessionCheck.ok) return jsonResp(sessionCheck.status, { error: sessionCheck.status === 401 ? 'Desktop connection expired.' : 'You do not have permission to access this computer.' });
     session.used = true;
     vmDesktopSessions.delete(sessionId);
@@ -18888,6 +18888,7 @@ async function handleRequest(req, server) {
         assignmentStatus: record.status,
         activeUsers,
         isCurrentlyInUse: activeUsers.length > 0,
+        canAccess: vmRecordAllowedForActor(record, actor),
       };
     }));
     const profiles = loadJson(PROFILES_FILE, {});
@@ -26211,7 +26212,7 @@ function vmSameOriginRequest(req) {
 }
 
 function vmRecordAllowedForActor(record, actor) {
-  return canAccessVmRecord(record, actor);
+  return canAccessVmRecord(record, actor, isAdminEmail);
 }
 
 function friendlyVmError(error) {

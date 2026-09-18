@@ -234,7 +234,7 @@ async function connect() {
       if (!leaseSyncInterval) {
         leaseSyncInterval = setInterval(() => {
           if (connected) syncLease();
-        }, 20000);
+        }, 60000);
       }
     });
     client.addEventListener('disconnect', event => interrupted(token, event.detail.clean));
