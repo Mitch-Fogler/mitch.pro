@@ -4357,6 +4357,7 @@ const canvasHeatmap = new Map(); // "x,y" -> ts
 
 // In-memory canvas cache for performance
 let canvasPixels = loadJson(CANVAS_PIXELS_FILE, {});
+let canvasPixelsDirty = false;
 let canvasChunks = new Map(); // "cx,cy" -> { "wx,wy": pixelData }
 let canvasBanned = loadJson(CANVAS_BANNED_FILE, {});
 let canvasLocks  = loadJson(CANVAS_LOCKS_FILE, {});
@@ -4522,6 +4523,7 @@ function setCanvasPixel(x, y, data, zoneId = null) {
   }
   const key = `${x},${y}`;
   canvasPixels[key] = data;
+  canvasPixelsDirty = true;
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
   const ck = `${cx},${cy}`;
   if (!canvasChunks.has(ck)) canvasChunks.set(ck, {});
@@ -4569,6 +4571,7 @@ function deleteCanvasPixel(x, y, painter = '', email = '', zoneId = null) {
   }
   const key = `${x},${y}`;
   delete canvasPixels[key];
+  canvasPixelsDirty = true;
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
   const ck = `${cx},${cy}`;
   if (canvasChunks.has(ck)) delete canvasChunks.get(ck)[key];
@@ -4588,8 +4591,12 @@ function deleteCanvasPixel(x, y, painter = '', email = '', zoneId = null) {
   }
 }
 
-function saveCanvasPixels() { saveJson(CANVAS_PIXELS_FILE, canvasPixels); }
-setInterval(saveCanvasPixels, 30000); // Save every 30s
+function saveCanvasPixels() {
+  if (!canvasPixelsDirty) return;
+  canvasPixelsDirty = false;
+  saveJson(CANVAS_PIXELS_FILE, canvasPixels);
+}
+setInterval(saveCanvasPixels, 60000); // Save every 60s if dirty
 
 function saveCanvasBans(data) {
   canvasBanned = data || {};
