@@ -26,6 +26,7 @@ const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const VM_EXTENSIONS_FILE = join(DATA_DIR, 'vm_extensions.json');
 const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
 const VM_DAILY_USAGE_FILE = join(DATA_DIR, 'vm_daily_usage.json');
+const GENERATIONS_FILE = join(DATA_DIR, 'generations.json');
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -62,7 +63,9 @@ const publicSid = makeEmailId(publicNorm, 0);
 // 3. Admin User
 const adminEmail = 'admin@mitch.pro';
 const adminNorm = normalizeEmail(adminEmail);
-const adminSid = makeEmailId(adminNorm, 0);
+const adminGens = readDocument(GENERATIONS_FILE, {});
+const adminGen = (adminGens[adminNorm] && typeof adminGens[adminNorm] === 'object') ? (adminGens[adminNorm].gen || 0) : (adminGens[adminNorm] || 0);
+const adminSid = makeEmailId(adminNorm, adminGen);
 
 // Register test users in data files
 const names = { ...readDocument(NAMES_FILE, {}) };
@@ -293,21 +296,73 @@ try {
   assert.notEqual(resAdminDailyBypass.status, 429, 'Admin must bypass daily VM limit');
   console.log('Admin daily limit bypass verified');
 
-  // Admin GET /api/vm/computers sees isExempt: true and null time limits
-  const resAdminList = await fetch(`${BASE_URL}/api/vm/computers`, {
-    headers: { 'Cookie': `studentId=${adminSid}` },
+  const testAdminVmId = 'vm-test-admin-990';
+  upsertVirtualMachine({
+    id: testAdminVmId,
+    ownerEmail: adminNorm,
+    ownerUserId: 'uid_admin',
+    vmid: 990,
+    node: 'pve-node-1',
+    guestType: 'qemu',
+    friendlyName: 'Admin VM',
+    hostname: 'admin-990',
+    operatingSystem: 'Linux Desktop',
+    templateVmid: 9010,
+    cpuCores: 6,
+    memoryMb: 16384,
+    diskGb: 40,
+    status: 'assigned',
+    createdAt: Date.now(),
   });
-  assert.equal(resAdminList.status, 200);
-  const adminListData = await resAdminList.json();
-  const adminComputer = adminListData.computers.find(c => c.id === testVmId);
-  if (adminComputer) {
+  try {
+    // Admin GET /api/vm/computers sees isExempt: true and null time limits
+    const resAdminList = await fetch(`${BASE_URL}/api/vm/computers`, {
+      headers: { 'Cookie': `studentId=${adminSid}` },
+    });
+    assert.equal(resAdminList.status, 200);
+    const adminListData = await resAdminList.json();
+    const adminComputer = adminListData.computers.find(c => c.id === testAdminVmId);
+    assert(adminComputer, 'Admin computer must be returned in GET /api/vm/computers');
     assert.equal(adminComputer.lease.isExempt, true, 'Admin lease must have isExempt: true');
     assert.equal(adminComputer.lease.remainingSeconds, null, 'Admin lease must have remainingSeconds: null');
     assert.equal(adminComputer.lease.maxUptimeSeconds, null, 'Admin lease must have maxUptimeSeconds: null');
     assert.equal(adminComputer.cpuCores, 6, 'Computer CPU cores must be 6');
     assert.equal(adminComputer.memoryMb, 16384, 'Computer memoryMb must be 16384 (16 GB)');
+    console.log('Admin lease exemption verified: isExempt: true, remainingSeconds: null, 6 cores / 16 GB specs');
+  } finally {
+    deleteVirtualMachine(testAdminVmId);
   }
-  console.log('Admin lease exemption verified: isExempt: true, remainingSeconds: null, 6 cores / 16 GB specs');
+
+  // Admin-on-admin isolation: admin cannot access another admin's VM
+  console.log('--- Testing admin-on-admin VM access restriction ---');
+  const otherAdminEmail = 'lillian.loaiza@student.rjuhsd.us';
+  const otherAdminVmId = 'vm-test-other-admin-992';
+  upsertVirtualMachine({
+    id: otherAdminVmId,
+    ownerEmail: otherAdminEmail,
+    ownerUserId: 'uid_other_admin',
+    vmid: 992,
+    node: 'pve-node-1',
+    guestType: 'qemu',
+    friendlyName: 'Other Admin VM',
+    hostname: 'other-admin-992',
+    operatingSystem: 'Linux Desktop',
+    templateVmid: 9010,
+    cpuCores: 6,
+    memoryMb: 16384,
+    diskGb: 40,
+    status: 'assigned',
+    createdAt: Date.now(),
+  });
+  try {
+    const resAdminOnAdmin = await fetch(`${BASE_URL}/api/vm/computers/${otherAdminVmId}`, {
+      headers: { 'Cookie': `studentId=${adminSid}` },
+    });
+    assert.equal(resAdminOnAdmin.status, 403, 'Admin must not access another admin VM');
+    console.log('Admin-on-admin restriction verified: 403 Forbidden');
+  } finally {
+    deleteVirtualMachine(otherAdminVmId);
+  }
 
   writeDocument(VM_DAILY_USAGE_FILE, {});
 

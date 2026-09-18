@@ -30,6 +30,20 @@ assert(!canAccessVmRecord(vmB, actorA), 'User A must not access User B computer'
 assert(canAccessVmRecord(vmB, { ...actorA, isAdmin: true }), 'admins must be able to support assigned computers');
 assert(!canAccessVmRecord(null, actorA), 'nonexistent computer must be denied');
 
+const vmAdmin2 = { id: 'vm-c', ownerEmail: 'admin2@example.com', vmid: 303, node: 'node-a', guestType: 'qemu' };
+const actorAdmin1 = { sid: 'sid-admin1', email: 'admin1@example.com', isAdmin: true };
+const isTestAdmin = email => email === 'admin1@example.com' || email === 'admin2@example.com';
+
+assert(!canAccessVmRecord(vmAdmin2, actorAdmin1, isTestAdmin), 'admin must not access another admin computer');
+assert(canAccessVmRecord(vmAdmin2, { ...actorAdmin1, email: 'admin2@example.com' }, isTestAdmin), 'admin owner must access their own computer');
+assert(canAccessVmRecord(vmB, actorAdmin1, isTestAdmin), 'admin must access regular user computer');
+
+const vmAdminWithFlag = { id: 'vm-d', ownerEmail: 'admin2@example.com', ownerIsAdmin: true, vmid: 304, node: 'node-a', guestType: 'qemu' };
+assert(!canAccessVmRecord(vmAdminWithFlag, actorAdmin1), 'admin must not access another admin computer with ownerIsAdmin flag');
+
+const sessionAdminToAdmin = { sid: 'sid-admin1', actorEmail: 'admin1@example.com', recordId: 'vm-c', vmid: 303, node: 'node-a', expiresAt: 2000, used: false };
+assert(validateDesktopSession(sessionAdminToAdmin, actorAdmin1, vmAdmin2, 1000, isTestAdmin).status === 403, 'session from admin to another admin computer must be forbidden');
+
 const goodSession = { sid: 'sid-a', actorEmail: 'a@example.com', recordId: 'vm-a', vmid: 301, node: 'node-a', expiresAt: 2000, used: false };
 assert(validateDesktopSession(goodSession, actorA, vmA, 1000).ok, 'valid desktop connection must be accepted');
 assert(validateDesktopSession(goodSession, actorA, vmA, 2001).status === 401, 'expired desktop connection must be rejected');
