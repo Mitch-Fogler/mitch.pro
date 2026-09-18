@@ -12,14 +12,6 @@ let hasWarned10m = false, hasWarned3m = false;
 let uptimeInterval = null;
 const uptimePillText = $('uptime-pill-text'), uptimeBtn = $('uptime-button');
 const uptimeDialog = $('uptime-dialog');
-const secKeyBtn = $('security-key-button'), mobileSecKeyBtn = $('mobile-security-key');
-const secKeyDialog = $('security-key-dialog');
-const secKeyStatusText = $('security-key-status-text'), secKeyStatusBox = $('security-key-status-box');
-const secKeyIconWrap = $('security-key-icon-wrap');
-const secKeyOtpInput = $('security-key-otp-input'), secKeySendBtn = $('security-key-send-btn');
-const secKeyTouchBtn = $('security-key-touch-btn'), secKeyUnlockBtn = $('security-key-unlock-btn');
-const secKeyCancelBtn = $('security-key-cancel-btn'), secKeyCloseX = $('security-key-close-x');
-let secKeyCeremonyRunning = false;
 
 function formatUptime(seconds) {
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -165,8 +157,6 @@ function closeConnection() {
   generation++; controller?.abort(); controller = null;
   clearTimeout(reconnectTimer); clearTimeout(connectTimer);
   clearInterval(uptimeInterval); uptimeInterval = null;
-  secKeyCeremonyRunning = false;
-  if (secKeyDialog?.open) secKeyDialog.close();
   const old = rfb; rfb = null; connected = false; connecting = false;
   if (old) { try { old.disconnect(); } catch {} }
 }
@@ -313,157 +303,5 @@ $('uptime-close-btn')?.addEventListener('click', () => uptimeDialog?.close());
 $('uptime-extend-btn')?.addEventListener('click', extendSession);
 $('mobile-extend')?.addEventListener('click', () => { hideMenu(); openUptimeModal(); });
 
-function openSecurityKeyModal() {
-  hideMenu();
-  if (!secKeyDialog) return;
-  secKeyStatusBox.className = 'security-key-status-box';
-  secKeyIconWrap.className = 'security-key-icon-wrap';
-  secKeyStatusText.textContent = 'Prompting for physical security key touch…';
-  if (secKeyOtpInput) secKeyOtpInput.value = '';
-  if (!secKeyDialog.open) secKeyDialog.showModal();
-  secKeyOtpInput?.focus();
-  triggerSecurityKeyTouch();
-}
-
-async function triggerSecurityKeyTouch() {
-  if (secKeyCeremonyRunning) return;
-  secKeyCeremonyRunning = true;
-  secKeyStatusBox.className = 'security-key-status-box';
-  secKeyIconWrap.className = 'security-key-icon-wrap';
-  secKeyStatusText.textContent = 'Touch your physical security key (YubiKey / Passkey) now…';
-
-  try {
-    const optsData = await request(`/api/vm/computers/${encodeURIComponent(id)}/security-key`);
-    if (!optsData?.options) throw new Error(optsData?.error || 'Could not initiate security key authentication.');
-
-    let assertion = null;
-    if (window.SimpleWebAuthnBrowser?.startAuthentication) {
-      assertion = await SimpleWebAuthnBrowser.startAuthentication({ optionsJSON: optsData.options });
-    } else if (navigator.credentials?.get) {
-      const challengeBuf = Uint8Array.from(atob(optsData.options.challenge.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-      const allowCreds = (optsData.options.allowCredentials || []).map(c => ({
-        id: Uint8Array.from(atob(c.id.replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0)),
-        type: 'public-key',
-        transports: c.transports,
-      }));
-      const cred = await navigator.credentials.get({
-        publicKey: {
-          challenge: challengeBuf,
-          rpId: optsData.options.rpId || location.hostname,
-          allowCredentials: allowCreds.length ? allowCreds : undefined,
-          userVerification: optsData.options.userVerification || 'preferred',
-          timeout: 60000,
-        }
-      });
-      if (cred) {
-        assertion = {
-          id: cred.id,
-          rawId: btoa(String.fromCharCode(...new Uint8Array(cred.rawId))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
-          response: {
-            authenticatorData: btoa(String.fromCharCode(...new Uint8Array(cred.response.authenticatorData))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
-            clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(cred.response.clientDataJSON))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
-            signature: btoa(String.fromCharCode(...new Uint8Array(cred.response.signature))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
-            userHandle: cred.response.userHandle ? btoa(String.fromCharCode(...new Uint8Array(cred.response.userHandle))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '') : null,
-          },
-          type: cred.type,
-        };
-      }
-    } else {
-      throw new Error('WebAuthn / Security keys are not supported in this browser.');
-    }
-
-    if (!assertion) throw new Error('No response received from security key.');
-
-    const verifyData = await request(`/api/vm/computers/${encodeURIComponent(id)}/security-key`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(assertion),
-    });
-
-    if (verifyData.success) {
-      secKeyStatusBox.className = 'security-key-status-box verified';
-      secKeyIconWrap.className = 'security-key-icon-wrap verified';
-      secKeyStatusText.textContent = verifyData.message || 'Security key verified! 2FA unlocked.';
-      showNotice(verifyData.message || 'Security key verified! 2FA unlocked.');
-      setTimeout(() => {
-        secKeyDialog?.close();
-        if (connected) rfb?.focus();
-      }, 1200);
-    } else {
-      throw new Error(verifyData.error || 'Security key verification failed.');
-    }
-  } catch (err) {
-    if (err.name === 'NotAllowedError') {
-      secKeyStatusBox.className = 'security-key-status-box';
-      secKeyStatusText.textContent = 'Touch cancelled or timed out. Tap button to try again.';
-    } else {
-      secKeyStatusBox.className = 'security-key-status-box error';
-      secKeyStatusText.textContent = err.message || 'Security key authentication failed.';
-    }
-  } finally {
-    secKeyCeremonyRunning = false;
-  }
-}
-
-function sendSecurityKeyOtp(raw) {
-  const text = String(raw || secKeyOtpInput?.value || '').trim();
-  if (!text) return;
-  if (connected) {
-    sendText(text);
-    rfb?.sendKey(0xff0d); // Enter
-  }
-  void request(`/api/vm/computers/${encodeURIComponent(id)}/security-key`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ action: 'yubikey-otp', otp: text }),
-  }).catch(() => {});
-  if (secKeyOtpInput) secKeyOtpInput.value = '';
-  showNotice('Security key code sent to computer.');
-  secKeyDialog?.close();
-  if (connected) rfb?.focus();
-}
-
-async function unlockDesktopScreen() {
-  secKeyStatusBox.className = 'security-key-status-box';
-  secKeyStatusText.textContent = 'Sending session unlock command to computer…';
-  try {
-    const data = await request(`/api/vm/computers/${encodeURIComponent(id)}/security-key`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ action: 'unlock-session' }),
-    });
-    secKeyStatusBox.className = 'security-key-status-box verified';
-    secKeyStatusText.textContent = data.message || 'Desktop session unlocked.';
-    showNotice(data.message || 'Desktop session unlocked.');
-    setTimeout(() => {
-      secKeyDialog?.close();
-      if (connected) rfb?.focus();
-    }, 1000);
-  } catch (err) {
-    secKeyStatusBox.className = 'security-key-status-box error';
-    secKeyStatusText.textContent = err.message || 'Could not unlock session.';
-  }
-}
-
-secKeyBtn?.addEventListener('click', openSecurityKeyModal);
-mobileSecKeyBtn?.addEventListener('click', openSecurityKeyModal);
-secKeyTouchBtn?.addEventListener('click', triggerSecurityKeyTouch);
-secKeyUnlockBtn?.addEventListener('click', unlockDesktopScreen);
-secKeySendBtn?.addEventListener('click', () => sendSecurityKeyOtp());
-secKeyCloseX?.addEventListener('click', () => secKeyDialog?.close());
-secKeyCancelBtn?.addEventListener('click', () => secKeyDialog?.close());
-secKeyOtpInput?.addEventListener('keydown', e => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    sendSecurityKeyOtp();
-  }
-});
-document.addEventListener('keydown', event => {
-  if ((event.ctrlKey && event.altKey && event.key?.toLowerCase() === 'k') ||
-      (event.altKey && event.key?.toLowerCase() === 'k')) {
-    event.preventDefault();
-    if (connected) openSecurityKeyModal();
-  }
-});
-
 connect();
+

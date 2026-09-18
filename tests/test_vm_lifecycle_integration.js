@@ -388,48 +388,6 @@ try {
   assert(matrixHtml.includes('Login with mitch.pro'), 'Matrix login button must say "Login with mitch.pro"');
   console.log('Matrix login button text verified: "Login with mitch.pro"');
 
-  // 12. Security Key Passthrough endpoint tests
-  console.log('--- 12. Testing Security Key Passthrough endpoint ---');
-  const secKeyForbiddenRes = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/security-key`, {
-    headers: { 'Cookie': `studentId=${publicSid}` },
-  });
-  assert.equal(secKeyForbiddenRes.status, 403, 'Unauthorized user must get 403 for security-key');
-
-  const secKeyGetRes = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/security-key`, {
-    headers: { 'Cookie': `studentId=${studentSid}` },
-  });
-  assert.equal(secKeyGetRes.status, 200, 'Authorized user must get 200 for security-key options');
-  const secKeyGetData = await secKeyGetRes.json();
-  assert(secKeyGetData.success, 'GET security-key must succeed');
-  assert(secKeyGetData.options?.challenge, 'GET security-key must return options with a challenge');
-
-  const secKeyUnlockRes = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/security-key`, {
-    method: 'POST',
-    headers: { 'Cookie': `studentId=${studentSid}`, 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1', 'Origin': BASE_URL },
-    body: JSON.stringify({ action: 'unlock-session' }),
-  });
-  assert.equal(secKeyUnlockRes.status, 200, 'unlock-session action must return 200');
-  const secKeyUnlockData = await secKeyUnlockRes.json();
-  assert(secKeyUnlockData.success, 'unlock-session action must report success');
-
-  const testOtp = 'cccccc' + 'c'.repeat(38);
-  const secKeyOtpRes = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/security-key`, {
-    method: 'POST',
-    headers: { 'Cookie': `studentId=${studentSid}`, 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1', 'Origin': BASE_URL },
-    body: JSON.stringify({ action: 'yubikey-otp', otp: testOtp }),
-  });
-  assert.equal(secKeyOtpRes.status, 200, 'Valid YubiKey OTP must return 200');
-  const secKeyOtpData = await secKeyOtpRes.json();
-  assert(secKeyOtpData.verified, 'YubiKey OTP must be verified');
-
-  const secKeyBadOtpRes = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/security-key`, {
-    method: 'POST',
-    headers: { 'Cookie': `studentId=${studentSid}`, 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1', 'Origin': BASE_URL },
-    body: JSON.stringify({ action: 'yubikey-otp', otp: 'bad-otp!' }),
-  });
-  assert.equal(secKeyBadOtpRes.status, 400, 'Invalid YubiKey OTP must return 400');
-  console.log('Security Key Passthrough endpoint verified: GET options, unlock-session, and YubiKey OTP passed');
-
   console.log('=== ALL VM LIFECYCLE & POLICY INTEGRATION TESTS PASSED! ===');
 } finally {
   serverProc.kill();
