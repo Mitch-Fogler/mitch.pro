@@ -123,6 +123,8 @@ await guestService.enableFriendlyDesktopLogin(301, 'studentuser', 'SuperSecret12
 assert(setupCommand.inputData.includes('chpasswd'), 'desktop setup must set user password when provided');
 const expectedB64 = Buffer.from('SuperSecret123!', 'utf8').toString('base64');
 assert(setupCommand.inputData.includes(`pass_b64="${expectedB64}"`), 'desktop setup must safely base64 encode the user password');
+assert(setupCommand.inputData.includes('systemd-networkd-wait-online.service'), 'desktop setup must mask networkd-wait-online service');
+assert(setupCommand.inputData.includes('modprobe virtio_rng'), 'desktop setup must ensure virtio-rng kernel module is loaded');
 
 let unsafeLoginError = null;
 try { await guestService.enableFriendlyDesktopLogin(301, 'desktop\nroot'); } catch (error) { unsafeLoginError = error; }
@@ -206,6 +208,39 @@ assert(!isDailyVmLimitReached(21600, { isAdmin: true }), 'admin must not be subj
 assert(!isDailyVmLimitReached(99999, { isAdmin: true }), 'admin must not be subject to daily limit even with high usage');
 
 assert(getVmDayKey(new Date('2026-09-17T12:00:00Z').getTime()) === '2026-09-17', 'getVmDayKey must return YYYY-MM-DD');
+
+// --- VM Boot Optimizations (VirtIO RNG, host CPU, VirtIO VGA) ---
+const optService = new ProxmoxDesktopService({ host: 'localhost', node: 'node-a', legacyToken: 'token', templateVmids: [9010] });
+const optPuts = [];
+let mockConfig = { cpu: 'kvm64', vga: 'std' };
+optService.request = async (method, path, params) => {
+  if (method === 'GET' && path.endsWith('/config')) return { ...mockConfig };
+  if (method === 'PUT' && path.endsWith('/config')) {
+    optPuts.push(params);
+    mockConfig = { ...mockConfig, ...params };
+    return {};
+  }
+  if (method === 'POST' && path.endsWith('/status/start')) return { upid: 'UPID:start' };
+  throw new Error(`Unexpected request: ${method} ${path}`);
+};
+
+const applied = await optService.ensureOptimizedVmConfig(401);
+assert(applied.cpu === 'host', 'optimization must set cpu to host');
+assert(applied.rng0 === 'source=/dev/urandom', 'optimization must set rng0 to /dev/urandom');
+assert(applied.vga === 'virtio', 'optimization must upgrade vga to virtio');
+assert(optPuts.length === 1, 'PUT config must have been invoked once');
+
+// Redundant call should use cache and skip PUT
+const cachedApplied = await optService.ensureOptimizedVmConfig(401);
+assert(cachedApplied === null, 'cached call must return null without re-querying');
+assert(optPuts.length === 1, 'PUT config must not be invoked again for cached VMID');
+
+// Power start on unoptimized VM should trigger ensureOptimizedVmConfig
+optService.optimizedVmids.clear();
+mockConfig = { cpu: 'kvm64' };
+await optService.power({ vmid: 402, node: 'node-a', guestType: 'qemu' }, 'start');
+assert(optPuts.length === 2, 'power start must trigger config optimization on QEMU guest');
+assert(optPuts[1].cpu === 'host' && optPuts[1].rng0 === 'source=/dev/urandom' && optPuts[1].vga === 'virtio', 'power start must apply all boot optimizations');
 
 console.log('VM portal security, policy, and failure tests passed.');
 
