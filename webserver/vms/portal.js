@@ -32,6 +32,8 @@
     const canExtend = !isExempt && running && !busy && vm.lease?.canExtend && !vm.lease?.extended && !dailyUsed;
     const inCooldown = !running && Number(vm.cooldownRemainingSeconds) > 0;
     const cooldownMins = inCooldown ? Math.ceil(Number(vm.cooldownRemainingSeconds) / 60) : 0;
+    const adminAllowed = Boolean(vm.adminAccessAllowed);
+    const adminRequested = Boolean(vm.adminAccessRequested);
     const previewTag = open ? 'a' : 'div';
     const previewLink = open ? ` href="/vms/desktop/?id=${encodeURIComponent(vm.id)}" aria-label="Open ${esc(vm.name || 'My Computer')}"` : '';
     return `<article class="computer-card" data-id="${esc(vm.id)}">
@@ -50,17 +52,20 @@
           <span><small>Uptime</small><strong>${uptime(vm.uptime)}</strong></span>
           ${isExempt ? `<span><small>Time Limit</small><strong style="color:#4ade80;">Unlimited</strong></span>` : (running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : '')}
           ${inCooldown ? `<span><small>Cooldown</small><strong style="color:#f87171;">${cooldownMins}m left</strong></span>` : ''}
+          <span><small>Admin Access</small><strong style="color:${adminAllowed ? '#4ade80' : '#94a3b8'};">${adminAllowed ? 'Allowed' : 'Disallowed'}</strong></span>
         </div>
         <div class="resource-grid">
           <div class="resource"><span><small>CPU</small><b>${esc(vm.cpuCores || '—')} cores</b></span><em>${cpuLoad}%</em><i><b style="width:${cpuLoad}%"></b></i></div>
           <div class="resource"><span><small>Memory</small><b>${bytes(vm.memoryTotal)}</b></span><em>${memoryLoad}%</em><i><b style="width:${memoryLoad}%"></b></i></div>
           <div class="resource"><span><small>Storage</small><b>${bytes(vm.diskTotal)}</b></span><em>${diskLoad}%</em><i><b style="width:${diskLoad}%"></b></i></div>
         </div>
+        ${adminRequested && !adminAllowed ? `<div class="admin-request-banner" style="background:rgba(234,179,8,.12);border:1px solid #eab308;border-radius:10px;padding:10px 14px;margin:14px 0 0;display:flex;align-items:center;justify-content:space-between;gap:10px;"><span style="font-size:0.85rem;color:#fde047;">⚠️ Administrator requested access to your computer for support.</span><button class="primary-button" style="min-height:32px;padding:5px 12px;font-size:0.82rem;" data-action="grant-admin-access">Allow Access</button></div>` : ''}
         <div class="computer-actions">
           ${!running ? `<button class="primary-button" data-action="start" ${busy || inCooldown || vm.status !== 'stopped' || dailyLimitReached ? 'disabled' : ''}>${dailyLimitReached ? 'Daily Limit Reached (6h)' : inCooldown ? `Cooldown (${cooldownMins}m)` : (operation || 'Start Computer')}</button>` : ''}
           ${canExtend ? `<button class="control-button" data-action="extend" ${busy ? 'disabled' : ''}><span aria-hidden="true">+</span> Extend 30m</button>` : (running && dailyUsed ? `<button class="control-button" disabled title="Only 1 30-minute extension allowed per day"><span aria-hidden="true">+</span> Extend 30m (Used)</button>` : '')}
           <button class="control-button" data-action="restart" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">↻</span> Restart</button>
           <button class="control-button danger-control" data-action="shutdown" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">⏻</span> Shut Down</button>
+          <button class="control-button" data-action="toggle-admin-access" title="${adminAllowed ? 'Revoke administrator access to this computer' : 'Allow administrators to access this computer for support'}"><span aria-hidden="true">${adminAllowed ? '🔒' : '🔓'}</span> ${adminAllowed ? 'Revoke Admin' : 'Allow Admin'}</button>
           <button class="control-button danger-control" data-action="recreate" ${busy ? 'disabled' : ''} title="Delete this computer and create a fresh one"><span aria-hidden="true">⚠️</span> Delete &amp; Recreate Computer</button>
         </div>
       </div></article>`;
@@ -180,9 +185,59 @@
     }
   });
 
-  grid.addEventListener('click', event => { const button = event.target.closest('button[data-action]'); if (button && !button.disabled) power(button.closest('[data-id]').dataset.id, button.dataset.action); });
+  async function toggleAdminAccess(id, forceAllow = false) {
+    const vm = computers.find(item => item.id === id);
+    if (!vm) return;
+    const targetState = forceAllow ? true : !vm.adminAccessAllowed;
+    try {
+      $('refresh-status').textContent = targetState ? 'Granting administrator access...' : 'Revoking administrator access...';
+      const response = await fetch(`/api/vm/computers/${encodeURIComponent(id)}/admin-access`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body: JSON.stringify({ allow: targetState }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || 'Failed to update admin access.');
+      $('refresh-status').textContent = data.message || (targetState ? 'Administrator access granted.' : 'Administrator access revoked.');
+      load();
+    } catch (err) {
+      $('refresh-status').textContent = err.message || 'Could not update admin access.';
+    }
+  }
+
+  function checkUrlAction() {
+    try {
+      const params = new URLSearchParams(location.search);
+      if (params.get('action') === 'allow-admin') {
+        const id = params.get('id');
+        if (id) {
+          history.replaceState(null, '', location.pathname);
+          toggleAdminAccess(id, true);
+        }
+      }
+    } catch (_) {}
+  }
+
+  grid.addEventListener('click', event => {
+    const button = event.target.closest('button[data-action]');
+    if (!button || button.disabled) return;
+    const action = button.dataset.action;
+    const cardEl = button.closest('[data-id]');
+    const id = cardEl?.dataset.id;
+    if (!id) return;
+    if (action === 'grant-admin-access') {
+      toggleAdminAccess(id, true);
+      return;
+    }
+    if (action === 'toggle-admin-access') {
+      toggleAdminAccess(id);
+      return;
+    }
+    power(id, action);
+  });
   $('refresh-button').addEventListener('click', load);
-  load();
+  load().then(checkUrlAction);
   const timer = setInterval(() => { if (!document.hidden && !dialog.open && !provDialog?.open && !pending.size) load(); }, 60000);
   window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
 })();

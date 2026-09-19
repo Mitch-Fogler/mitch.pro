@@ -3270,6 +3270,29 @@ function addAdminNotification(targetEmail, title, message, adminEmail, batchId =
   return notice;
 }
 
+function addVmAdminNotification(targetEmail, title, message, adminEmail, url = '') {
+  const norm = normalizeEmail(targetEmail);
+  if (!norm) return null;
+  const gifts = loadJson(COIN_GIFTS_FILE, {});
+  if (!Array.isArray(gifts[norm])) gifts[norm] = [];
+  const notice = {
+    id: randomBytes(12).toString('hex'),
+    kind: 'vm_admin_access',
+    title: title || 'Computer Access Alert',
+    message,
+    from: adminEmail || 'admin',
+    source: 'mitchdog.com',
+    url: url || notificationUrl('/vms/'),
+    batchId: '',
+    ts: Date.now(),
+    read: false,
+  };
+  gifts[norm].unshift(notice);
+  gifts[norm] = gifts[norm].slice(0, 50);
+  saveJson(COIN_GIFTS_FILE, gifts);
+  return notice;
+}
+
 function pushAdminNotification(targetEmail, title, message) {
   if (!VAPID_PUBLIC) return;
   const subs = loadPushSubscriptions();
@@ -11910,6 +11933,10 @@ async function handleRequest(req, server) {
     const record = getVirtualMachineById(session.recordId);
     const sessionCheck = validateDesktopSession(session, actor, record, Date.now(), isAdminEmail);
     if (!sessionCheck.ok) return jsonResp(sessionCheck.status, { error: sessionCheck.status === 401 ? 'Desktop connection expired.' : 'You do not have permission to access this computer.' });
+    const isAdminUsingOtherVm = Boolean(actor.isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(actor.email));
+    if (isAdminUsingOtherVm && !isVmAdminAccessAllowed(record.id)) {
+      return jsonResp(403, { error: 'The owner has not allowed administrator access to this computer.' });
+    }
     session.used = true;
     vmDesktopSessions.delete(sessionId);
     const success = server.upgrade(req, {
@@ -18517,6 +18544,7 @@ async function handleRequest(req, server) {
       }
       const runningNonAdmin = await countRunningNonAdminVms();
       if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
+        await notifyCapacityFullOnAttempt(actor.email, 'create a computer');
         return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
       }
     }
@@ -18588,6 +18616,7 @@ async function handleRequest(req, server) {
       }
       const runningNonAdmin = await countRunningNonAdminVms();
       if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
+        await notifyCapacityFullOnAttempt(actor.email, 'recreate a computer');
         return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
       }
     }
@@ -18668,7 +18697,7 @@ async function handleRequest(req, server) {
     }
   }
 
-  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend|heartbeat))?$/);
+  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend|heartbeat|admin-access|request-admin-access))?$/);
   if (vmComputerMatch) {
     const actor = authenticatedVmActor(req);
     if (!actor) return jsonResp(401, { error: 'Sign in to access your computer.' });
@@ -18679,6 +18708,49 @@ async function handleRequest(req, server) {
     if (method === 'POST' && !vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
     if (operation && record.status === 'provisioning') return jsonResp(409, { error: 'Your computer is still being prepared.', code: 'computer_starting' });
     if (operation && record.status === 'provisioning-failed') return jsonResp(409, { error: 'This computer needs administrator attention before it can be opened.', code: 'setup_incomplete' });
+
+    if (operation === 'admin-access') {
+      if (method === 'GET') {
+        const isOwner = normalizeEmail(record.ownerEmail) === normalizeEmail(actor.email);
+        if (!isOwner && !actor.isAdmin) return jsonResp(403, { error: 'Permission denied.' });
+        return jsonResp(200, {
+          allowed: isVmAdminAccessAllowed(record.id),
+          requested: isVmAdminAccessRequested(record.id),
+          grant: getVmAdminGrant(record.id),
+        });
+      }
+      if (method === 'POST') {
+        const rl = checkRateLimit(req, '/api/vm/admin-access'); if (rl) return rl;
+        const isOwner = normalizeEmail(record.ownerEmail) === normalizeEmail(actor.email);
+        if (!isOwner) return jsonResp(403, { error: 'Only the computer owner can grant or revoke admin access.' });
+        if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+        const allow = Boolean(body.allow !== undefined ? body.allow : body.allowed);
+        setVmAdminAccess(record.id, record.ownerEmail, allow, actor.email);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: allow ? 'ADMIN_ACCESS_ALLOWED' : 'ADMIN_ACCESS_REVOKED',
+          success: true,
+          details: { allowed: allow, ownerEmail: record.ownerEmail }
+        });
+        return jsonResp(200, {
+          success: true,
+          allowed: allow,
+          message: allow ? 'Administrator access granted.' : 'Administrator access revoked.',
+        });
+      }
+      return jsonResp(405, { error: 'Method not allowed.' });
+    }
+
+    if (operation === 'request-admin-access' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/request-admin-access'); if (rl) return rl;
+      if (!actor.isAdmin) return jsonResp(403, { error: 'Only administrators can request computer access.' });
+      if (normalizeEmail(record.ownerEmail) === normalizeEmail(actor.email)) {
+        return jsonResp(200, { success: true, message: 'You are the owner of this computer.' });
+      }
+      requestVmAdminAccess(record, actor.email);
+      return jsonResp(200, { success: true, requested: true, message: 'Access request sent to the computer owner.' });
+    }
 
     if (!operation && method === 'GET') {
       try {
@@ -18753,6 +18825,18 @@ async function handleRequest(req, server) {
       const action = String(body.action || '').trim().toLowerCase();
       if (!['start', 'shutdown', 'restart', 'force-stop'].includes(action)) return jsonResp(400, { error: 'Invalid power action.' });
 
+      const isAdminUsingOtherVm = Boolean(actor.isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(actor.email));
+      if (isAdminUsingOtherVm) {
+        if (!isVmAdminAccessAllowed(record.id)) {
+          requestVmAdminAccess(record, actor.email);
+          return jsonResp(403, {
+            error: 'The owner has not allowed administrator access to this computer. An access request has been sent to their notification center.',
+            code: 'admin_access_not_allowed',
+            accessRequested: true,
+          });
+        }
+      }
+
       // Daily runtime limit check for start/restart
       if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
         const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail));
@@ -18778,23 +18862,41 @@ async function handleRequest(req, server) {
         }
       }
 
-      if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
-
-      // Max 6 running VMs capacity check (admins don't count)
-      if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
+      // Max 6 running VMs capacity check
+      if (action === 'start' || action === 'restart') {
+        let isRunning = false;
         try {
           const runtime = await proxmoxDesktop.getStatus(record);
-          if (runtime?.state !== 'running') {
-            const runningNonAdmin = await countRunningNonAdminVms();
-            if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
-              vmPowerGate.release(record.id);
+          isRunning = (runtime?.state === 'running');
+        } catch {
+          isRunning = false;
+        }
+        if (!isRunning) {
+          const runningNonAdmin = await countRunningNonAdminVms();
+          if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
+            await notifyCapacityFullOnAttempt(actor.email, `start computer ${record.friendlyName || record.hostname || record.id}`);
+            if (!actor.isAdmin) {
               return jsonResp(409, {
                 error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`,
                 code: 'capacity_limit_reached',
               });
             }
           }
-        } catch {}
+        }
+      }
+
+      if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
+
+      if (isAdminUsingOtherVm) {
+        console.log(`[vm-audit] Admin ${actor.email} used VM ${record.id} (${record.friendlyName || record.hostname}) owned by ${record.ownerEmail}. Action: power-${action}`);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: 'ADMIN_VM_USED',
+          success: true,
+          details: { operation: `power-${action}`, targetUser: record.ownerEmail, vmid: record.vmid, hostname: record.hostname }
+        });
+        notifyOwnerAdminUsedVm(record, actor.email, `power action: ${action}`);
       }
 
       try {
@@ -18824,6 +18926,28 @@ async function handleRequest(req, server) {
 
     if (operation === 'desktop-session' && method === 'POST') {
       const rl = checkRateLimit(req, '/api/vm/desktop-session'); if (rl) return rl;
+      const isAdminUsingOtherVm = Boolean(actor.isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(actor.email));
+      if (isAdminUsingOtherVm) {
+        if (!isVmAdminAccessAllowed(record.id)) {
+          requestVmAdminAccess(record, actor.email);
+          return jsonResp(403, {
+            error: 'The owner has not allowed administrator access to this computer. An access request has been sent to their notification center.',
+            code: 'admin_access_not_allowed',
+            accessRequested: true,
+          });
+        }
+      }
+      if (isAdminUsingOtherVm) {
+        console.log(`[vm-audit] Admin ${actor.email} used VM ${record.id} (${record.friendlyName || record.hostname}) owned by ${record.ownerEmail}. Action: desktop-session`);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: 'ADMIN_VM_USED',
+          success: true,
+          details: { operation: 'desktop-session', targetUser: record.ownerEmail, vmid: record.vmid, hostname: record.hostname }
+        });
+        notifyOwnerAdminUsedVm(record, actor.email, 'opened desktop session');
+      }
       cleanupVmDesktopSessions();
       try {
         const consoleSession = await proxmoxDesktop.createConsole(record);
@@ -19397,6 +19521,18 @@ async function handleRequest(req, server) {
             detail: g.message || '',
             ts: g.ts || 0,
             url: g.url || notificationUrl('/'),
+          });
+          continue;
+        }
+        if (g.kind === 'vm_admin_access') {
+          notices.push({
+            type: 'vm_admin_access',
+            id: String(g.id),
+            title: g.title || 'Computer Access Alert',
+            body: g.message || '',
+            detail: `Administrator: ${g.from || 'admin'}`,
+            ts: g.ts || 0,
+            url: g.url || notificationUrl('/vms/'),
           });
           continue;
         }
@@ -25423,6 +25559,23 @@ Bun.serve({
       if (ws.data && ws.data.isProxmoxVnc) {
         try {
           if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
+          const isAdminUsingOther = Boolean(isAdminId(ws.data.sid) && ws.data.ownerEmail && normalizeEmail(ws.data.ownerEmail) !== normalizeEmail(ws.data.actorEmail));
+          if (isAdminUsingOther && !isVmAdminAccessAllowed(ws.data.recordId)) {
+            ws.close(1008, 'Administrator access not permitted by owner');
+            return;
+          }
+          if (isAdminUsingOther) {
+            const r = getVirtualMachineById(ws.data.recordId);
+            console.log(`[vm-audit] Admin ${ws.data.actorEmail} connected to desktop console on VM ${ws.data.recordId} owned by ${ws.data.ownerEmail}`);
+            vmAudit({
+              actorEmail: ws.data.actorEmail,
+              record: r || { id: ws.data.recordId, ownerEmail: ws.data.ownerEmail, vmid: ws.data.vmid },
+              action: 'ADMIN_VM_USED',
+              success: true,
+              details: { operation: 'desktop-stream', targetUser: ws.data.ownerEmail, vmid: ws.data.vmid }
+            });
+            if (r) notifyOwnerAdminUsedVm(r, ws.data.actorEmail, 'connected to desktop console');
+          }
           ws.data.connectedAt = Date.now();
           vmDesktopSockets.add(ws);
           vmPagePresence.set(ws.data.recordId, { lastSeen: Date.now() });
@@ -25996,6 +26149,132 @@ const VM_TOTAL_MAX_UPTIME_SECONDS = 6 * 3600; // 6 hours hard cap per day
 const VM_EXTENSIONS_FILE = join(DATA_DIR, 'vm_extensions.json');
 const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
 const VM_DAILY_USAGE_FILE = join(DATA_DIR, 'vm_daily_usage.json');
+const VM_ADMIN_GRANTS_FILE = join(DATA_DIR, 'vm_admin_grants.json');
+const lastCapacityNtfy = new Map();
+const lastAdminUsageNotice = new Map();
+const lastAdminRequestNotice = new Map();
+
+function getVmAdminGrant(recordId) {
+  if (!recordId) return { allowed: false, requested: false };
+  const grants = loadJson(VM_ADMIN_GRANTS_FILE, {});
+  return grants[String(recordId)] || { allowed: false, requested: false };
+}
+
+function isVmAdminAccessAllowed(recordId) {
+  if (!recordId) return false;
+  return Boolean(getVmAdminGrant(recordId)?.allowed);
+}
+
+function isVmAdminAccessRequested(recordId) {
+  if (!recordId) return false;
+  return Boolean(getVmAdminGrant(recordId)?.requested);
+}
+
+function setVmAdminAccess(recordId, ownerEmail, allowed, actorEmail = '') {
+  if (!recordId) return;
+  const grants = loadJson(VM_ADMIN_GRANTS_FILE, {});
+  const id = String(recordId);
+  const current = grants[id] || {};
+  grants[id] = {
+    ...current,
+    allowed: Boolean(allowed),
+    allowedAt: allowed ? Date.now() : (current.allowedAt || null),
+    revokedAt: allowed ? null : Date.now(),
+    allowedBy: actorEmail || current.allowedBy || '',
+    ownerEmail: normalizeEmail(ownerEmail || current.ownerEmail || ''),
+    requested: allowed ? false : Boolean(current.requested),
+  };
+  saveJson(VM_ADMIN_GRANTS_FILE, grants);
+  if (!allowed) {
+    revokeVmDesktopConnections(recordId);
+  }
+}
+
+function requestVmAdminAccess(record, adminEmail) {
+  if (!record?.id || !record?.ownerEmail) return;
+  const owner = normalizeEmail(record.ownerEmail);
+  const admin = normalizeEmail(adminEmail);
+  if (!owner || owner === admin) return;
+
+  const grants = loadJson(VM_ADMIN_GRANTS_FILE, {});
+  const current = grants[record.id] || {};
+  grants[record.id] = {
+    ...current,
+    allowed: Boolean(current.allowed),
+    requested: true,
+    requestedAt: Date.now(),
+    requestedBy: admin,
+    ownerEmail: owner,
+  };
+  saveJson(VM_ADMIN_GRANTS_FILE, grants);
+
+  const key = `${owner}:${record.id}:${admin}`;
+  const now = Date.now();
+  const last = lastAdminRequestNotice.get(key) || 0;
+  if (now - last < 15 * 60 * 1000) return;
+  lastAdminRequestNotice.set(key, now);
+
+  const vmName = record.friendlyName || record.hostname || 'your computer';
+  addVmAdminNotification(
+    owner,
+    'Admin Access Request',
+    `Administrator ${admin} requested access to your computer "${vmName}". You can allow or revoke access in your Computer settings.`,
+    admin,
+    `/vms/?action=allow-admin&id=${encodeURIComponent(record.id)}`
+  );
+
+  vmAudit({
+    actorEmail: admin,
+    record,
+    action: 'ADMIN_ACCESS_REQUESTED',
+    success: true,
+    details: { requestedBy: admin, ownerEmail: owner }
+  });
+}
+
+function notifyOwnerAdminUsedVm(record, adminEmail, operation = 'accessed') {
+  if (!record?.ownerEmail) return;
+  const owner = normalizeEmail(record.ownerEmail);
+  const admin = normalizeEmail(adminEmail);
+  if (!owner || owner === admin) return;
+
+  const key = `${owner}:${record.id}:${operation}`;
+  const now = Date.now();
+  const last = lastAdminUsageNotice.get(key) || 0;
+  if (now - last < 5 * 60 * 1000) return;
+  lastAdminUsageNotice.set(key, now);
+
+  const vmName = record.friendlyName || record.hostname || 'your computer';
+  addVmAdminNotification(
+    owner,
+    'Admin Used Your Computer',
+    `Administrator ${admin} accessed your computer "${vmName}" (${operation}).`,
+    admin,
+    `/vms/?id=${encodeURIComponent(record.id)}`
+  );
+}
+
+async function notifyCapacityFullOnAttempt(userEmail, actionDesc = 'use a computer') {
+  const norm = normalizeEmail(userEmail || 'unknown');
+  const now = Date.now();
+  const lastTime = lastCapacityNtfy.get(norm) || 0;
+  if (now - lastTime < 60_000) return;
+  lastCapacityNtfy.set(norm, now);
+
+  const title = 'VM Capacity Alert';
+  const msg = `VM capacity full (${VM_MAX_CONCURRENT_RUNNING}/${VM_MAX_CONCURRENT_RUNNING}): ${norm} attempted to ${actionDesc}.`;
+  console.log(`[vm-ntfy] ${title}: ${msg}`);
+  if (process.env.NODE_ENV === 'test') {
+    try {
+      const logFile = join(DATA_DIR, 'test_vm_ntfy_log.json');
+      const list = loadJson(logFile, []);
+      list.push({ title, message: msg, priority: 'high', timestamp: now, user: norm });
+      saveJson(logFile, list);
+    } catch {}
+  }
+  await ntfy(msg, { title, priority: 'high' });
+}
+
 const vmLeases = new Map();
 const vmPagePresence = new Map(); // recordId -> { lastSeen: number }
 
@@ -26025,6 +26304,14 @@ function isEligibleForFreeVm(email, isAdmin = false) {
 }
 
 async function countRunningNonAdminVms() {
+  if (process.env.NODE_ENV === 'test') {
+    try {
+      const mock = loadJson(join(DATA_DIR, 'test_vm_mock.json'), null);
+      if (mock && typeof mock.runningNonAdminCount === 'number') {
+        return mock.runningNonAdminCount;
+      }
+    } catch {}
+  }
   if (!proxmoxDesktop.configured) return 0;
   try {
     const guests = await proxmoxDesktop.listGuests();
@@ -26278,6 +26565,8 @@ function publicVmRecord(record, runtime = null, actor = null) {
     createdAt: record.createdAt,
     lease,
     cooldownRemainingSeconds,
+    adminAccessAllowed: isVmAdminAccessAllowed(record.id),
+    adminAccessRequested: isVmAdminAccessRequested(record.id),
   };
 }
 
@@ -26302,7 +26591,11 @@ function vmDesktopSocketAuthorized(ws) {
   } else if (process.env.NODE_ENV !== 'test') return false;
   const record = getVirtualMachineById(data.recordId);
   if (!record || record.ownerEmail !== data.ownerEmail || record.vmid !== data.vmid || record.node !== data.node) return false;
-  return vmRecordAllowedForActor(record, { email: data.actorEmail, isAdmin: isAdminId(data.sid) });
+  const isAdmin = isAdminId(data.sid);
+  if (isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(data.actorEmail)) {
+    if (!isVmAdminAccessAllowed(record.id)) return false;
+  }
+  return vmRecordAllowedForActor(record, { email: data.actorEmail, isAdmin });
 }
 
 function revokeVmDesktopConnections(recordId) {

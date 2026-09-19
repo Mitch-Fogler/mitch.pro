@@ -18,6 +18,12 @@ import {
   canUserExtend,
   computeCooldownRemaining,
   isVmInactive,
+  isVmAdminAccessAllowed,
+  isVmAdminAccessRequested,
+  shouldNotifyCapacityAlert,
+  formatCapacityFullAlert,
+  formatAdminUsageNotice,
+  formatAdminAccessRequest,
 } from '../lib/vm_security.js';
 import { ProxmoxDesktopService, ProxmoxServiceError } from '../lib/proxmox_desktop.js';
 
@@ -42,8 +48,20 @@ assert(canAccessVmRecord(vmB, actorAdmin1, isTestAdmin), 'admin must access regu
 const vmAdminWithFlag = { id: 'vm-d', ownerEmail: 'admin2@example.com', ownerIsAdmin: true, vmid: 304, node: 'node-a', guestType: 'qemu' };
 assert(!canAccessVmRecord(vmAdminWithFlag, actorAdmin1), 'admin must not access another admin computer with ownerIsAdmin flag');
 
+// Admin grant requirement tests
+assert(!canAccessVmRecord(vmB, actorAdmin1, { isAdminEmail: isTestAdmin, requireAdminGrant: true }), 'admin must not access user computer without grant');
+assert(!canAccessVmRecord({ ...vmB, adminAccessAllowed: false }, actorAdmin1, { isAdminEmail: isTestAdmin, requireAdminGrant: true }), 'admin must not access user computer with adminAccessAllowed: false');
+assert(canAccessVmRecord({ ...vmB, adminAccessAllowed: true }, actorAdmin1, { isAdminEmail: isTestAdmin, requireAdminGrant: true }), 'admin must access user computer when adminAccessAllowed: true');
+assert(canAccessVmRecord(vmB, actorAdmin1, { isAdminEmail: isTestAdmin, requireAdminGrant: true, isGrantAllowed: id => id === vmB.id }), 'admin must access user computer when isGrantAllowed returns true');
+assert(!canAccessVmRecord(vmB, actorAdmin1, { isAdminEmail: isTestAdmin, requireAdminGrant: true, isGrantAllowed: () => false }), 'admin must not access user computer when isGrantAllowed returns false');
+assert(canAccessVmRecord(vmA, actorA, { requireAdminGrant: true }), 'owner can access their own computer regardless of grant setting');
+
 const sessionAdminToAdmin = { sid: 'sid-admin1', actorEmail: 'admin1@example.com', recordId: 'vm-c', vmid: 303, node: 'node-a', expiresAt: 2000, used: false };
 assert(validateDesktopSession(sessionAdminToAdmin, actorAdmin1, vmAdmin2, 1000, isTestAdmin).status === 403, 'session from admin to another admin computer must be forbidden');
+
+const sessionAdminToUser = { sid: 'sid-admin1', actorEmail: 'admin1@example.com', recordId: 'vm-b', vmid: 302, node: 'node-a', expiresAt: 2000, used: false };
+assert(validateDesktopSession(sessionAdminToUser, actorAdmin1, vmB, 1000, { isAdminEmail: isTestAdmin, requireAdminGrant: true }).status === 403, 'session from admin without grant must be 403');
+assert(validateDesktopSession(sessionAdminToUser, actorAdmin1, { ...vmB, adminAccessAllowed: true }, 1000, { isAdminEmail: isTestAdmin, requireAdminGrant: true }).ok, 'session from admin with grant must be ok');
 
 const goodSession = { sid: 'sid-a', actorEmail: 'a@example.com', recordId: 'vm-a', vmid: 301, node: 'node-a', expiresAt: 2000, used: false };
 assert(validateDesktopSession(goodSession, actorA, vmA, 1000).ok, 'valid desktop connection must be accepted');
@@ -241,6 +259,44 @@ mockConfig = { cpu: 'kvm64' };
 await optService.power({ vmid: 402, node: 'node-a', guestType: 'qemu' }, 'start');
 assert(optPuts.length === 2, 'power start must trigger config optimization on QEMU guest');
 assert(optPuts[1].cpu === 'host' && optPuts[1].rng0 === 'source=/dev/urandom' && optPuts[1].vga === 'std,memory=64', 'power start must apply all boot optimizations');
+
+// --- Admin Access Grants and Notifications Unit Tests ---
+const testGrants = {
+  'vm-101': { allowed: true, requested: false, ownerEmail: 'user1@example.com' },
+  'vm-102': { allowed: false, requested: true, ownerEmail: 'user2@example.com' },
+};
+assert(isVmAdminAccessAllowed('vm-101', testGrants), 'vm-101 must have admin access allowed');
+assert(!isVmAdminAccessAllowed('vm-102', testGrants), 'vm-102 must not have admin access allowed');
+assert(!isVmAdminAccessAllowed('vm-999', testGrants), 'unlisted VM must not have admin access allowed');
+assert(!isVmAdminAccessAllowed(null, testGrants), 'null VMID must not have admin access allowed');
+
+assert(!isVmAdminAccessRequested('vm-101', testGrants), 'vm-101 must not have access requested');
+assert(isVmAdminAccessRequested('vm-102', testGrants), 'vm-102 must have access requested');
+assert(!isVmAdminAccessRequested('vm-999', testGrants), 'unlisted VM must not have access requested');
+
+// --- Capacity Alert Debounce and Formatting ---
+const lastCapacityMap = new Map();
+const t0 = 1000000;
+assert(shouldNotifyCapacityAlert('user@example.com', t0, lastCapacityMap, 60000), 'first capacity attempt must notify');
+assert(!shouldNotifyCapacityAlert('user@example.com', t0 + 10000, lastCapacityMap, 60000), 'attempt within 60s cooldown must not notify');
+assert(!shouldNotifyCapacityAlert('USER@EXAMPLE.COM', t0 + 30000, lastCapacityMap, 60000), 'case-insensitive attempt within cooldown must not notify');
+assert(shouldNotifyCapacityAlert('other@example.com', t0 + 10000, lastCapacityMap, 60000), 'different user must notify');
+assert(shouldNotifyCapacityAlert('user@example.com', t0 + 60001, lastCapacityMap, 60000), 'attempt after 60s cooldown must notify');
+
+const capAlert = formatCapacityFullAlert('student@rjuhsd.us', 'start computer My PC', 6);
+assert(capAlert.title === 'VM Capacity Alert', 'title must be VM Capacity Alert');
+assert(capAlert.message.includes('6/6'), 'message must indicate 6/6 capacity full');
+assert(capAlert.message.includes('student@rjuhsd.us'), 'message must include user email');
+assert(capAlert.priority === 'high', 'priority must be high');
+
+const usageNotice = formatAdminUsageNotice('admin@mitch.pro', 'My PC', 'power-restart');
+assert(usageNotice.title === 'Admin Used Your Computer', 'title must be Admin Used Your Computer');
+assert(usageNotice.message.includes('admin@mitch.pro'), 'message must include admin email');
+assert(usageNotice.message.includes('power-restart'), 'message must include operation');
+
+const reqNotice = formatAdminAccessRequest('admin@mitch.pro', 'My PC');
+assert(reqNotice.title === 'Admin Access Request', 'title must be Admin Access Request');
+assert(reqNotice.message.includes('admin@mitch.pro'), 'message must include admin email');
 
 console.log('VM portal security, policy, and failure tests passed.');
 

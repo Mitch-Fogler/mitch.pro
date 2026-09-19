@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { configureDataStore, readDocument, writeDocument, upsertVirtualMachine, deleteVirtualMachine } from '../lib/data_store.js';
 
@@ -26,7 +26,12 @@ const PASSWORDS_FILE = join(DATA_DIR, 'passwords.json');
 const VM_EXTENSIONS_FILE = join(DATA_DIR, 'vm_extensions.json');
 const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
 const VM_DAILY_USAGE_FILE = join(DATA_DIR, 'vm_daily_usage.json');
+const VM_ADMIN_GRANTS_FILE = join(DATA_DIR, 'vm_admin_grants.json');
+const COIN_GIFTS_FILE = join(DATA_DIR, 'coin_gifts.json');
 const GENERATIONS_FILE = join(DATA_DIR, 'generations.json');
+const PASSPHRASE_FILE = join(DATA_DIR, 'admin_passphrase.json');
+const TEST_MOCK_FILE = join(DATA_DIR, 'test_vm_mock.json');
+const TEST_NTFY_LOG_FILE = join(DATA_DIR, 'test_vm_ntfy_log.json');
 
 function normalizeEmail(email) {
   if (!email) return '';
@@ -86,10 +91,24 @@ passwords[publicNorm] = await Bun.password.hash('public_pass_123');
 passwords[adminNorm] = await Bun.password.hash('admin_pass_123');
 writeDocument(PASSWORDS_FILE, passwords);
 
+const originalPassphrases = { ...readDocument(PASSPHRASE_FILE, {}) };
+const passphrases = { ...originalPassphrases };
+passphrases[adminNorm] = {
+  hash: await Bun.password.hash('testpass123'),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
+  setBy: adminEmail,
+};
+writeDocument(PASSPHRASE_FILE, passphrases);
+
 // Reset extensions, cooldowns, and daily usage for clean test run
 writeDocument(VM_EXTENSIONS_FILE, {});
 writeDocument(VM_COOLDOWNS_FILE, {});
 writeDocument(VM_DAILY_USAGE_FILE, {});
+writeDocument(VM_ADMIN_GRANTS_FILE, {});
+writeDocument(COIN_GIFTS_FILE, {});
+writeDocument(TEST_MOCK_FILE, {});
+writeDocument(TEST_NTFY_LOG_FILE, []);
 
 // Create a test VM record for the student
 const testVmId = 'vm-test-student-991';
@@ -242,6 +261,47 @@ try {
   assert(cdData.cooldownRemainingSeconds > 0, 'Cooldown remaining seconds must be reported');
   console.log('Cooldown active: correctly blocked with 429');
 
+  // Admin consent gate tests
+  console.log('--- Testing admin consent gate for user VM ---');
+  const resAdminPowerBlocked = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/power`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${adminSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ action: 'start' }),
+  });
+  assert.equal(resAdminPowerBlocked.status, 403, 'Admin must be blocked without owner permission');
+  const blockData = await resAdminPowerBlocked.json();
+  assert.equal(blockData.code, 'admin_access_not_allowed', 'Error code must be admin_access_not_allowed');
+  console.log('Admin access gate without permission verified: 403 Forbidden');
+
+  // Verify owner received access request in in-app notification center
+  const resOwnerNotifs1 = await fetch(`${BASE_URL}/api/me/notifications`, {
+    headers: { 'Cookie': `studentId=${studentSid}` },
+  });
+  assert.equal(resOwnerNotifs1.status, 200);
+  const ownerNotifs1 = await resOwnerNotifs1.json();
+  const requestNotice = (ownerNotifs1.notifications || []).find(n => n.type === 'vm_admin_access' && (n.title || '').includes('Request'));
+  assert(requestNotice, 'Owner must receive access request notification in notification center');
+  console.log('Owner in-app notification center received access request (no email sent)');
+
+  // Owner grants permission
+  const resGrant = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/admin-access`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ allow: true }),
+  });
+  assert.equal(resGrant.status, 200);
+  const grantData = await resGrant.json();
+  assert.equal(grantData.allowed, true, 'Admin access must be allowed');
+  console.log('Owner granted admin access verified: 200 OK');
+
   // Admin bypasses cooldown
   const resAdminPower = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/power`, {
     method: 'POST',
@@ -253,7 +313,69 @@ try {
     body: JSON.stringify({ action: 'start' }),
   });
   assert.notEqual(resAdminPower.status, 429, 'Admin must not be blocked by user cooldown');
+  assert.notEqual(resAdminPower.status, 403, 'Admin must not be blocked after grant');
   console.log('Admin cooldown bypass verified');
+
+  // Verify owner received in-app notification that admin used their computer
+  const resOwnerNotifs2 = await fetch(`${BASE_URL}/api/me/notifications`, {
+    headers: { 'Cookie': `studentId=${studentSid}` },
+  });
+  const ownerNotifs2 = await resOwnerNotifs2.json();
+  const usedNotice = (ownerNotifs2.notifications || []).find(n => n.type === 'vm_admin_access' && (n.title || '').includes('Used'));
+  assert(usedNotice, 'Owner must receive notice when admin uses VM');
+  console.log('Owner notification center received admin usage alert (in-app, no email)');
+
+  // Verify audit log has ADMIN_VM_USED
+  const resOverview = await fetch(`${BASE_URL}/api/admin/vms/overview`, {
+    headers: {
+      'Cookie': `studentId=${adminSid}`,
+      'X-Admin-Passphrase': 'testpass123',
+    },
+  });
+  console.log('resOverview status:', resOverview.status);
+  assert.equal(resOverview.status, 200, 'Admin overview must succeed with valid passphrase');
+  const overviewData = await resOverview.json();
+  const auditUsed = (overviewData.audit || []).find(a => a.action === 'ADMIN_VM_USED' && a.ownerEmail === studentNorm);
+  assert(auditUsed, 'Audit log must record ADMIN_VM_USED for admin using user VM');
+  console.log('Audit log verified: ADMIN_VM_USED recorded');
+
+  // Owner revokes permission
+  const resRevoke = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/admin-access`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ allow: false }),
+  });
+  assert.equal(resRevoke.status, 200);
+  const revokeData = await resRevoke.json();
+  assert.equal(revokeData.allowed, false, 'Admin access must be revoked');
+
+  // Admin blocked again after revocation
+  const resAdminBlockedAgain = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/power`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${adminSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ action: 'start' }),
+  });
+  assert.equal(resAdminBlockedAgain.status, 403, 'Admin must be blocked after revocation');
+  console.log('Admin access revocation verified: 403 Forbidden');
+
+  // Re-grant for remaining daily limit tests
+  await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/admin-access`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ allow: true }),
+  });
 
   writeDocument(VM_COOLDOWNS_FILE, {});
 
@@ -365,6 +487,56 @@ try {
     deleteVirtualMachine(otherAdminVmId);
   }
 
+  // 9b. Capacity full NTFY alert when user attempts to use a VM
+  console.log('--- Testing NTFY capacity full alert on attempt ---');
+  // Clear cooldown and daily usage so student attempt reaches capacity check
+  writeDocument(VM_COOLDOWNS_FILE, {});
+  writeDocument(VM_DAILY_USAGE_FILE, {});
+  writeDocument(TEST_NTFY_LOG_FILE, []);
+  // Simulate capacity full (6 running non-admin VMs)
+  writeDocument(TEST_MOCK_FILE, { runningNonAdminCount: 6 });
+
+  // Student attempts to start their VM while capacity is full
+  const resStudentCapFull = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/power`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ action: 'start' }),
+  });
+  assert.equal(resStudentCapFull.status, 409, 'Power start must return 409 when capacity full');
+  const capFullData = await resStudentCapFull.json();
+  assert.equal(capFullData.code, 'capacity_limit_reached', 'Error code must be capacity_limit_reached');
+
+  // Verify NTFY alert was triggered with high priority
+  const ntfyLogs = readDocument(TEST_NTFY_LOG_FILE, []);
+  assert.equal(ntfyLogs.length, 1, 'NTFY capacity alert must be triggered exactly once');
+  assert.equal(ntfyLogs[0].title, 'VM Capacity Alert', 'NTFY title must be "VM Capacity Alert"');
+  assert.equal(ntfyLogs[0].priority, 'high', 'NTFY priority must be "high"');
+  assert(ntfyLogs[0].message.includes('6/6'), 'NTFY message must state 6/6 capacity full');
+  assert(ntfyLogs[0].message.includes(studentNorm), 'NTFY message must include student email');
+  console.log('NTFY capacity full alert verified (high priority, debounced)');
+
+  // Immediate second attempt within 60s cooldown must NOT trigger a second NTFY
+  const resStudentCapFull2 = await fetch(`${BASE_URL}/api/vm/computers/${testVmId}/power`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ action: 'start' }),
+  });
+  assert.equal(resStudentCapFull2.status, 409);
+  const ntfyLogs2 = readDocument(TEST_NTFY_LOG_FILE, []);
+  assert.equal(ntfyLogs2.length, 1, 'NTFY capacity alert must be debounced within 60s cooldown');
+  console.log('NTFY capacity alert debounce verified (no duplicate alert)');
+
+  // Reset capacity mock
+  writeDocument(TEST_MOCK_FILE, { runningNonAdminCount: 0 });
+
   writeDocument(VM_DAILY_USAGE_FILE, {});
 
   // 10. rjuhsd.school domain isolation
@@ -392,4 +564,7 @@ try {
 } finally {
   serverProc.kill();
   deleteVirtualMachine(testVmId);
+  writeDocument(PASSPHRASE_FILE, originalPassphrases);
+  try { unlinkSync(TEST_MOCK_FILE); } catch {}
+  try { unlinkSync(TEST_NTFY_LOG_FILE); } catch {}
 }
