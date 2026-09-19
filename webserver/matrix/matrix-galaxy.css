@@ -920,27 +920,82 @@ pre::-webkit-scrollbar-thumb:hover,
     border-radius: 10px !important;
   }
 
-  /* Composer input container on mobile */
+  /* Composer input container on mobile — maximized width, clean single row */
   .ay20pp9,
   .coabsl0 {
-    margin: 6px 8px max(8px, env(safe-area-inset-bottom, 8px)) 8px !important;
-    padding: 6px 10px !important;
+    margin: 4px 6px max(6px, env(safe-area-inset-bottom, 6px)) 6px !important;
+    padding: 4px 6px !important;
     border-radius: 20px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: flex-end !important;
+    gap: 4px !important;
+    width: calc(100% - 12px) !important;
+    max-width: calc(100% - 12px) !important;
+    box-sizing: border-box !important;
   }
 
-  /* Prevent iOS Safari automatic zoom on inputs by setting font-size to 16px */
+  /* Text input wrappers: expand to fill all horizontal room */
+  .coabsl0 > div:has(.coabsl2),
+  .coabsl0 > div:nth-child(2),
+  .coabsl0 .coabsl2,
+  .coabsl2 {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+  }
+
+  /* Prevent iOS Safari automatic zoom on inputs and give roomy text field */
   textarea,
   input,
-  input[type="text"] {
+  input[type="text"],
+  .coabsl3,
+  [data-editable-name="RoomInput"] {
     font-size: 16px !important;
+    line-height: 1.35 !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    padding: 6px 4px !important;
+    word-break: break-word !important;
   }
 
-  /* Action buttons in composer (attach, emoji, send) */
+  /* Action button containers: compact flex row */
+  .coabsl0 .coabsl1,
+  .coabsl1 {
+    display: flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Action buttons in composer: compact 32px targets so textbox gets 75%+ of the screen */
   .ay20pp9 button,
   .coabsl0 button {
-    min-width: 38px !important;
-    min-height: 38px !important;
+    min-width: unset !important;
+    width: 32px !important;
+    height: 32px !important;
+    max-width: 32px !important;
+    max-height: 32px !important;
+    padding: 4px !important;
+    flex-shrink: 0 !important;
     touch-action: manipulation !important;
+  }
+
+  /* On mobile: hide non-essential buttons (Alphabet formatting and separate Sticker button) */
+  /* This prevents the 5-icon squeeze that crushed the textbox down to 3 letters */
+  .coabsl0 .coabsl1:last-child > button:first-child,
+  .coabsl0 button:has(svg path[d*="M3 18L7 5H9L13 18H11.5"]),
+  .coabsl0 button:has(svg path[d*="M14 3H3V21H21V10H14V3Z"]),
+  .coabsl0 button[aria-label*="Format" i],
+  .coabsl0 button[aria-label*="Sticker" i] {
+    display: none !important;
+  }
+
+  /* Highlight send button on mobile */
+  .coabsl0 button:has(svg path[d*="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"]),
+  .coabsl0 .coabsl1:last-child > button:last-child {
+    color: var(--t-ac, #b86cff) !important;
   }
 
 

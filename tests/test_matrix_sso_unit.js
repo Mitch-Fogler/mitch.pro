@@ -106,11 +106,14 @@ writeDocument(PASSWORDS_FILE, passwords);
 // Ensure moderator user is in moderators.json
 const MATRIX_NOTIFS_FILE = join(DATA_DIR, 'matrix_notifications.json');
 const MATRIX_EMAIL_SENT_FILE = join(DATA_DIR, 'matrix_email_sent.json');
+const MATRIX_ROOM_SETTINGS_FILE = join(DATA_DIR, 'matrix_room_settings.json');
 const origNotifs = readDocument(MATRIX_NOTIFS_FILE, {});
 const origEmailSent = readDocument(MATRIX_EMAIL_SENT_FILE, {});
+const origRoomSettings = readDocument(MATRIX_ROOM_SETTINGS_FILE, {});
 const origMods = readDocument(MODERATORS_FILE, []);
 const origReports = readDocument(CHAT_REPORTS_FILE, []);
 writeDocument(MATRIX_EMAIL_SENT_FILE, {});
+writeDocument(MATRIX_ROOM_SETTINGS_FILE, {});
 const mods = Array.from(new Set([...origMods, modNormEmail]));
 writeDocument(MODERATORS_FILE, mods);
 
@@ -120,6 +123,12 @@ let mockPowerLevels = { users: { '@mitch_admin:mitch.pro': 100 }, users_default:
 const kickedUsers = [];
 const bannedUsers = [];
 const redactedEvents = [];
+let mockDevices = [
+  { device_id: 'DEV_CURRENT', last_seen_ts: Date.now() },
+  { device_id: 'DEV_OLD_1', last_seen_ts: Date.now() - (10 * 24 * 60 * 60 * 1000) },
+  { device_id: 'DEV_OLD_2', last_seen_ts: 0 }
+];
+const deletedDeviceIds = [];
 
 const mockConduit = Bun.serve({
   port: MOCK_CONDUIT_PORT,
@@ -218,6 +227,16 @@ const mockConduit = Bun.serve({
       return Response.json({ event_id: '$ev_msg_' + Date.now() });
     }
     if (path.endsWith('/invite')) {
+      return Response.json({});
+    }
+    if (path === '/_matrix/client/v3/devices') {
+      return Response.json({ devices: mockDevices });
+    }
+    if (path === '/_matrix/client/v3/delete_devices' && method === 'POST') {
+      const b = await req.json().catch(() => ({}));
+      const toDel = new Set(b.devices || []);
+      mockDevices = mockDevices.filter(d => !toDel.has(d.device_id));
+      deletedDeviceIds.push(...toDel);
       return Response.json({});
     }
     return Response.json({ error: 'not found' }, { status: 404 });
@@ -849,10 +868,190 @@ try {
   assert.equal(resCallConfig.status, 200, 'Element Call config.json must return 200');
   console.log('Element Call runtime assets passed');
 
+  // --- 21. Testing Matrix Slowmode configuration & enforcement ---
+  console.log('--- 21. Testing Matrix Slowmode configuration & enforcement ---');
+  // Non-admin cannot set slowmode
+  const resSlowForbidden = await fetch(`${BASE_URL}/api/matrix/moderation/slowmode`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${testSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ seconds: 5 })
+  });
+  assert.equal(resSlowForbidden.status, 403, 'Non-admin setting slowmode must return 403');
+
+  // Admin sets slowmode to 5 seconds
+  const slowTestRoom = '!slowmode_test_room:mitch.pro';
+  const resSlowSet = await fetch(`${BASE_URL}/api/matrix/moderation/slowmode`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roomId: slowTestRoom, seconds: 5 })
+  });
+  assert.equal(resSlowSet.status, 200, 'Admin setting slowmode must return 200');
+  const slowSetData = await resSlowSet.json();
+  assert.equal(slowSetData.slowmodeSeconds, 5, 'Slowmode seconds must match 5');
+
+  // Member sends first message: succeeds
+  const resMsg1 = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/${encodeURIComponent(slowTestRoom)}/send/m.room.message/txn_slow_1`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Slowmode message 1' })
+  });
+  assert.equal(resMsg1.status, 200, 'First message from member should succeed');
+
+  // Member sends second message immediately: must be rejected with 429 M_LIMIT_EXCEEDED
+  const resMsg2 = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/${encodeURIComponent(slowTestRoom)}/send/m.room.message/txn_slow_2`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Slowmode message 2' })
+  });
+  assert.equal(resMsg2.status, 429, 'Immediate second message must be rejected with 429');
+  const slowErrData = await resMsg2.json();
+  assert.equal(slowErrData.errcode, 'M_LIMIT_EXCEEDED', 'Must return M_LIMIT_EXCEEDED');
+  assert(slowErrData.retry_after_ms > 0, 'Must include retry_after_ms');
+  assert(resMsg2.headers.get('Retry-After'), 'Must include Retry-After header');
+
+  // Admin sending message is exempt from slowmode
+  const resMsgAdmin = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/${encodeURIComponent(slowTestRoom)}/send/m.room.message/txn_admin_slow`, {
+    method: 'PUT',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Authorization': 'Bearer tok_admin', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Admin message bypasses slowmode' })
+  });
+  assert.equal(resMsgAdmin.status, 200, 'Admin message must bypass slowmode');
+
+  // Admin disables slowmode (0 seconds)
+  const resSlowReset = await fetch(`${BASE_URL}/api/matrix/moderation/slowmode`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roomId: slowTestRoom, seconds: 0 })
+  });
+  assert.equal(resSlowReset.status, 200);
+  console.log('Matrix Slowmode configuration & 429 rate limiting passed');
+
+  // --- 22. Testing Matrix User Muting & Unmuting ---
+  console.log('--- 22. Testing Matrix User Muting & Unmuting ---');
+  // Non-admin cannot mute
+  const resMuteForbidden = await fetch(`${BASE_URL}/api/matrix/moderation/mute-user`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${testSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: '@matrixtestuser:mitch.pro', durationSeconds: 60 })
+  });
+  assert.equal(resMuteForbidden.status, 403, 'Non-admin muting user must return 403');
+
+  // Admin mutes user
+  const resMute = await fetch(`${BASE_URL}/api/matrix/moderation/mute-user`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: '@matrixtestuser:mitch.pro', durationSeconds: 60, reason: 'Spamming test' })
+  });
+  assert.equal(resMute.status, 200, 'Admin muting user must return 200');
+  const muteData = await resMute.json();
+  assert.equal(muteData.muted, true);
+
+  // Muted user attempts to send message: rejected with 403 M_FORBIDDEN
+  const resMutedSend = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/send/m.room.message/txn_muted`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Blocked muted message' })
+  });
+  assert.equal(resMutedSend.status, 403, 'Muted user send must return 403');
+  const muteErrData = await resMutedSend.json();
+  assert.equal(muteErrData.errcode, 'M_FORBIDDEN', 'Muted error code must be M_FORBIDDEN');
+  assert(muteErrData.error.includes('muted'), 'Error message must state user is muted');
+
+  // Overview includes muted user
+  const resMuteOverview = await fetch(`${BASE_URL}/api/matrix/moderation/overview`, {
+    headers: { 'Cookie': `studentId=${adminSid}` }
+  });
+  const overviewData = await resMuteOverview.json();
+  assert(overviewData.mutedUsers.some(m => m.userId === '@matrixtestuser:mitch.pro'), 'Muted user must be in overview');
+
+  // Admin unmutes user
+  const resUnmute = await fetch(`${BASE_URL}/api/matrix/moderation/unmute-user`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId: '@matrixtestuser:mitch.pro' })
+  });
+  assert.equal(resUnmute.status, 200, 'Admin unmuting user must return 200');
+
+  // User can send message again after unmute
+  const resUnmutedSend = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/send/m.room.message/txn_unmuted`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Unmuted message works' })
+  });
+  assert.equal(resUnmutedSend.status, 200, 'Unmuted user sending message should succeed');
+  console.log('Matrix User Muting & Unmuting passed');
+
+  // --- 23. Testing Matrix Room Lockdown ---
+  console.log('--- 23. Testing Matrix Room Lockdown ---');
+  // Non-admin cannot lock down room
+  const resLockForbidden = await fetch(`${BASE_URL}/api/matrix/moderation/mute-room`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${testSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ muted: true })
+  });
+  assert.equal(resLockForbidden.status, 403, 'Non-admin locking room must return 403');
+
+  // Admin locks down room
+  const resLock = await fetch(`${BASE_URL}/api/matrix/moderation/mute-room`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ muted: true })
+  });
+  assert.equal(resLock.status, 200);
+
+  // Member send rejected during lockdown
+  const resLockSend = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/send/m.room.message/txn_locked`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Should be blocked by lockdown' })
+  });
+  assert.equal(resLockSend.status, 403, 'Member message must be rejected in lockdown');
+
+  // Admin send succeeds during lockdown
+  const resLockAdminSend = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/send/m.room.message/txn_admin_locked`, {
+    method: 'PUT',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Authorization': 'Bearer tok_admin', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Admin announcement during lockdown' })
+  });
+  assert.equal(resLockAdminSend.status, 200, 'Admin send must succeed during lockdown');
+
+  // Admin unlocks room
+  const resUnlock = await fetch(`${BASE_URL}/api/matrix/moderation/mute-room`, {
+    method: 'POST',
+    headers: { 'Cookie': `studentId=${adminSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ muted: false })
+  });
+  assert.equal(resUnlock.status, 200);
+
+  // Member send succeeds again
+  const resUnlockedSend = await fetch(`${BASE_URL}/_matrix/client/v3/rooms/!official_general:mitch.pro/send/m.room.message/txn_unlocked`, {
+    method: 'PUT',
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ msgtype: 'm.text', body: 'Unlocked room message' })
+  });
+  assert.equal(resUnlockedSend.status, 200, 'Member send must succeed after unlocking room');
+  console.log('Matrix Room Lockdown passed');
+
+  // --- 24. Testing Matrix Stale Device Pruning ---
+  console.log('--- 24. Testing Matrix Stale Device Pruning ---');
+  const resPrune = await fetch(`${BASE_URL}/api/matrix/devices/prune-stale`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer tok_matrixtestuser', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ currentDeviceId: 'DEV_CURRENT', maxAgeDays: 7 })
+  });
+  assert.equal(resPrune.status, 200, 'Pruning stale devices must return 200');
+  const pruneData = await resPrune.json();
+  assert.equal(pruneData.ok, true);
+  assert.equal(pruneData.prunedCount, 2, 'Should prune 2 stale devices');
+  assert.equal(pruneData.remainingCount, 1, 'Should retain 1 active current device');
+  assert(deletedDeviceIds.includes('DEV_OLD_1') && deletedDeviceIds.includes('DEV_OLD_2'), 'Both old devices must be deleted');
+  console.log('Matrix Stale Device Pruning passed');
+
   console.log('=== ALL MATRIX SSO & MODERATION UNIT TESTS PASSED SUCCESSFULLY! ===');
 } finally {
   writeDocument(MATRIX_NOTIFS_FILE, origNotifs);
   writeDocument(MATRIX_EMAIL_SENT_FILE, origEmailSent);
+  writeDocument(MATRIX_ROOM_SETTINGS_FILE, origRoomSettings);
   writeDocument(MODERATORS_FILE, origMods);
   writeDocument(CHAT_REPORTS_FILE, origReports);
   writeDocument(PASSWORDS_FILE, origPasswords);
