@@ -43,6 +43,60 @@
       <article><span>Running Fleet</span><strong id="running-vms-count">—</strong><small>max 6 non-admin</small></article>
     </section>
 
+    <section class="panel analytics-panel" id="analytics-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Telemetry &amp; Activity</p>
+          <h2>Fleet Usage &amp; Uptime (Today)</h2>
+        </div>
+        <div class="analytics-badges">
+          <span class="stat-pill" id="top-user-pill">Top user: <strong id="top-user-display">—</strong></span>
+          <span class="stat-pill">Fleet uptime: <strong id="fleet-total-hours">—</strong></span>
+          <span class="stat-pill">Peak concurrent: <strong id="fleet-peak-concurrent">—</strong></span>
+        </div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-header">
+          <div class="chart-title-group">
+            <span class="chart-subtitle">Hourly Concurrency &amp; User Sessions Throughout Day</span>
+          </div>
+          <div class="chart-legend">
+            <span><i class="legend-running"></i> Running Computers</span>
+            <span><i class="legend-active"></i> Active Sessions</span>
+          </div>
+        </div>
+        <div class="chart-container" id="chart-container">
+          <canvas id="usage-chart" height="180"></canvas>
+          <div id="chart-tooltip" class="chart-tooltip" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="leaderboard-section">
+        <div class="leaderboard-header">
+          <h3 style="margin: 0; font-size: 1rem; color: #f1f5f9;">🏆 Uptime Leaderboard</h3>
+          <small class="leaderboard-hint" style="color: var(--muted); font-size: 0.8rem;">Ranked by today's computer uptime (not anonymous)</small>
+        </div>
+        <div class="leaderboard-table-wrapper" style="margin-top: 10px;">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th style="width: 50px;">Rank</th>
+                <th>User</th>
+                <th>Computer</th>
+                <th>Today's Uptime</th>
+                <th>All-Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+              <tr><td colspan="6" class="empty">Loading uptime leaderboard…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
     <section class="admin-grid">
       <article class="panel create-panel">
         <div class="panel-head"><div><p class="eyebrow">Provision</p><h2>Create a computer</h2></div><span class="badge">Linux desktop</span></div>

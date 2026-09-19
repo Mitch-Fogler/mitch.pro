@@ -24,7 +24,16 @@ import {
   formatCapacityFullAlert,
   formatAdminUsageNotice,
   formatAdminAccessRequest,
+  formatUptimeDuration,
 } from '../lib/vm_security.js';
+import {
+  recordVmUsageSample,
+  listVmUsageSamples,
+  getVmUsageTimeline,
+  pruneOldVmUsageSamples,
+} from '../lib/data_store.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { ProxmoxDesktopService, ProxmoxServiceError } from '../lib/proxmox_desktop.js';
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
@@ -297,6 +306,85 @@ assert(usageNotice.message.includes('power-restart'), 'message must include oper
 const reqNotice = formatAdminAccessRequest('admin@mitch.pro', 'My PC');
 assert(reqNotice.title === 'Admin Access Request', 'title must be Admin Access Request');
 assert(reqNotice.message.includes('admin@mitch.pro'), 'message must include admin email');
+
+// --- Uptime Duration Formatting ---
+assert(formatUptimeDuration(0) === '0m', '0 seconds must format to 0m');
+assert(formatUptimeDuration(59) === '0m', '59 seconds must format to 0m');
+assert(formatUptimeDuration(60) === '1m', '60 seconds must format to 1m');
+assert(formatUptimeDuration(150) === '2m', '150 seconds must format to 2m');
+assert(formatUptimeDuration(3600) === '1h 0m', '3600 seconds must format to 1h 0m');
+assert(formatUptimeDuration(7320) === '2h 2m', '7320 seconds must format to 2h 2m');
+assert(formatUptimeDuration(-100) === '0m', 'negative duration must format to 0m');
+
+// --- VM Usage Logging and Timeline (Not Anonymous) ---
+const testDayKey = `test-${Date.now()}`;
+recordVmUsageSample({
+  ts: new Date('2026-09-19T02:15:00Z').getTime(),
+  dayKey: testDayKey,
+  hour: 2,
+  minute: 15,
+  ownerEmail: 'alice@example.com',
+  vmRecordId: 'vm-alice-1',
+  vmid: 501,
+  vmName: "Alice's Machine",
+  uptimeSeconds: 1200,
+  activeUsers: 'alice@example.com',
+  isRunning: 1,
+});
+
+recordVmUsageSample({
+  ts: new Date('2026-09-19T02:15:00Z').getTime(),
+  dayKey: testDayKey,
+  hour: 2,
+  minute: 15,
+  ownerEmail: 'bob@example.com',
+  vmRecordId: 'vm-bob-1',
+  vmid: 502,
+  vmName: "Bob's Workstation",
+  uptimeSeconds: 3600,
+  activeUsers: '',
+  isRunning: 1,
+});
+
+recordVmUsageSample({
+  ts: new Date('2026-09-19T02:45:00Z').getTime(),
+  dayKey: testDayKey,
+  hour: 2,
+  minute: 45,
+  ownerEmail: 'bob@example.com',
+  vmRecordId: 'vm-bob-1',
+  vmid: 502,
+  vmName: "Bob's Workstation",
+  uptimeSeconds: 5400,
+  activeUsers: 'bob@example.com',
+  isRunning: 1,
+});
+
+const samples = listVmUsageSamples(testDayKey, 100);
+assert(samples.length === 3, 'should record 3 samples for test day');
+assert(samples[0].ownerEmail === 'alice@example.com', 'sample must record non-anonymous owner email');
+assert(samples[0].vmName === "Alice's Machine", 'sample must record VM name');
+assert(samples[0].isRunning === true, 'sample must record running state');
+assert(samples[0].activeUsers.includes('alice@example.com'), 'active users must be parsed into array');
+
+const timeline = getVmUsageTimeline(testDayKey);
+assert(timeline.dayKey === testDayKey, 'timeline dayKey must match');
+assert(timeline.hours.length === 24, 'timeline must have 24 hours');
+assert(timeline.hours[2].peakRunning === 2, 'hour 2 peak running should be 2 concurrent VMs');
+assert(timeline.hours[2].activeSessionsPeak === 1, 'hour 2 peak active sessions should be 1');
+const hour2Users = timeline.hours[2].users;
+assert(hour2Users.some(u => u.email === 'alice@example.com'), 'hour 2 must include alice (not anonymous)');
+assert(hour2Users.some(u => u.email === 'bob@example.com'), 'hour 2 must include bob (not anonymous)');
+assert(timeline.peakConcurrentToday === 2, 'peak concurrent today should be 2');
+
+// Pruning test: calling pruneOldVmUsageSamples should execute without error
+pruneOldVmUsageSamples(30);
+
+// --- Inactivity Notification Policy Verification ---
+const serverCode = readFileSync(join(import.meta.dir, '../server.js'), 'utf8');
+assert(!serverCode.includes('setInterval(nudgeWorker,'), 'nudgeWorker interval must be removed');
+assert(serverCode.includes('premiumMaintenanceWorker'), 'premium expiration maintenance worker must be preserved');
+assert(serverCode.includes("Our records show you haven't logged in to mitch.pro for 5 days"), 'premium inactivity email must be preserved');
 
 console.log('VM portal security, policy, and failure tests passed.');
 
