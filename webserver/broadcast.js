@@ -631,6 +631,7 @@
       group_dm: '&#9783;',
       coin_gift: '&#9733;',
       admin_notice: '&#9888;',
+      vm_admin_access: '&#128187;',
       matrix: '&#128172;',
       matrix_call: '&#128222;',
       matrix_invite: '&#128233;'
@@ -663,7 +664,7 @@
 
   async function markNotificationRead(n, navigating) {
     if (!n) return;
-    var body = (n.type === 'coin_gift' || n.type === 'admin_notice')
+    var body = (n.type === 'coin_gift' || n.type === 'admin_notice' || n.type === 'vm_admin_access')
       ? { coinGiftIds: [n.id] }
       : n.type === 'group_dm'
         ? { groupIds: [n.groupId] }
