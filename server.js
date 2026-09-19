@@ -28,6 +28,10 @@ import {
   updateVirtualMachineRuntime,
   appendVmAuditLog,
   listVmAuditLogs,
+  recordVmUsageSample,
+  listVmUsageSamples,
+  getVmUsageTimeline,
+  pruneOldVmUsageSamples,
 } from './lib/data_store.js';
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
 import { RJUHSD_ORIGIN, bellScheduleRedirect, blooketBotRedirect } from './lib/site_redirects.js';
@@ -52,6 +56,7 @@ import {
   canUserExtend as canUserExtendPolicy,
   computeCooldownRemaining,
   isVmInactive,
+  formatUptimeDuration,
 } from './lib/vm_security.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
 import { matrixMessageBlocked } from './lib/matrix_word_filter.js';
@@ -4288,69 +4293,8 @@ function sendPremiumEmailOffer(targetEmail) {
 
 let isNudgeRunning = false;
 async function nudgeWorker() {
-  if (isNudgeRunning) return;
-  isNudgeRunning = true;
-  try {
-    const logs   = loadJson(SESSION_LOG_FILE, []);
-    const names  = loadJson(NAMES_FILE, {});
-    const tokens = loadJson(TOKENS_FILE, {});
-
-    const latestUid = {};
-    for (const entry of logs) {
-      const uid   = String(entry.id || '');
-      const tsStr = entry.timestamp || '';
-      if (!uid || !tsStr) continue;
-      try {
-        const ts = Date.parse(tsStr) / 1000;
-        if (!latestUid[uid] || ts > latestUid[uid]) latestUid[uid] = ts;
-      } catch {}
-    }
-
-    const latestByEmail = {};
-    for (const [uid, ts] of Object.entries(latestUid)) {
-      const label = names[uid] || '';
-      if (label.includes('@')) {
-        const lower = label.toLowerCase();
-        if (!latestByEmail[lower] || ts > latestByEmail[lower]) latestByEmail[lower] = ts;
-      }
-    }
-
-    const threshold = Date.now() / 1000 - NUDGE_DAYS * 86400;
-    const nudged    = loadNudge();
-    const toSend    = [];
-
-    for (const d of Object.values(tokens)) {
-      if (!d.claimed_domains && !d.used) continue;
-      const email = (d.email || '').trim();
-      if (!email) continue;
-      const lower = email.toLowerCase();
-      if (nudged[lower]) continue;
-      const claimedTs = d.claimed_domains
-        ? Math.min(...Object.values(d.claimed_domains))
-        : (d.used_at || d.created_at || 0);
-      if (Date.now() / 1000 - claimedTs < NUDGE_DAYS * 86400) continue;
-      const last = latestByEmail[lower];
-      if (last === undefined || last < threshold) toSend.push(email);
-    }
-
-    for (const email of toSend) {
-      try {
-        const r = spawnSync(process.execPath, [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
-                            { timeout: 30_000, encoding: 'utf8' });
-        if (r.status === 0) {
-          nudged[email.toLowerCase()] = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-          console.log(`[nudge] sent to ${email}`);
-        } else {
-          console.log(`[nudge] failed ${email}: ${(r.stderr || r.stdout || '').slice(0, 80)}`);
-        }
-      } catch (e) { console.log(`[nudge] error ${email}: ${e}`); }
-    }
-
-    if (toSend.length) saveNudge(nudged);
-  } catch (e) { console.log(`[nudge] worker error: ${e}`); }
-  finally {
-    isNudgeRunning = false;
-  }
+  // Disabled: login inactivity reminders have been removed per user policy (unless premium expiration warning).
+  return;
 }
 
 // ── IMAP watcher ──────────────────────────────────────────────────────────────
@@ -19030,6 +18974,8 @@ async function handleRequest(req, server) {
       name: profiles[normalizeEmail(email)]?.displayName || profiles[normalizeEmail(email)]?.nickname || defaultUsernameForEmail(email),
     }));
     const runningNonAdminCount = await countRunningNonAdminVms();
+    const dayKey = url.searchParams.get('day') || getVmDayKey();
+    const usageStats = await getVmFleetUsageStats(dayKey, records, activeSessions, recordViews);
     return jsonResp(200, {
       computers: recordViews,
       availableGuests: guests.filter(guest => !guest.template && guest.type === 'qemu' && !assignedVmids.has(guest.vmid)),
@@ -19039,7 +18985,18 @@ async function handleRequest(req, server) {
       activeSessions,
       runningNonAdminCount,
       maxRunningNonAdminLimit: VM_MAX_CONCURRENT_RUNNING,
+      usageStats,
     });
+  }
+
+  if (path === '/api/admin/vms/stats' && method === 'GET') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    const dayKey = url.searchParams.get('day') || getVmDayKey();
+    const usageStats = await getVmFleetUsageStats(dayKey);
+    return jsonResp(200, { ok: true, usageStats });
   }
 
   if (path === '/api/admin/vms/assign' && method === 'POST') {
@@ -25844,10 +25801,12 @@ setTimeout(() => {
   scheduleDailySummary();
   setInterval(premiumMaintenanceWorker, 6 * 3600 * 1000); 
   premiumMaintenanceWorker(); 
-  setInterval(nudgeWorker, 600_000); 
+  setInterval(sampleVmUsageWorker, 60_000); // Sample VM usage every minute throughout the day
+  sampleVmUsageWorker();
 
   setInterval(purgeExpiredVmsWorker, 3600_000); // Check VM soft-deletes hourly
-  purgeExpiredVmsWorker(); 
+  purgeExpiredVmsWorker();
+  try { pruneOldVmUsageSamples(30); } catch {} 
 
   setInterval(pruneInactiveFreeVmsWorker, 300_000); // Check VM inactive free VMs every 5 mins
   pruneInactiveFreeVmsWorker(); 
@@ -26297,6 +26256,211 @@ function recordDailyVmUsage(email, secondsToAdd, dayKey = getVmDayKey()) {
   return updated;
 }
 
+async function getVmFleetUsageStats(dayKey = getVmDayKey(), records = null, activeSessions = null, recordViews = null) {
+  const resolvedDayKey = dayKey || getVmDayKey();
+  if (!records) records = listVirtualMachines({ includeUnassigned: true });
+  if (!activeSessions) {
+    const now = Date.now();
+    activeSessions = [];
+    for (const ws of vmDesktopSockets) {
+      if (ws.readyState === 1 && ws.data?.recordId) {
+        activeSessions.push({
+          recordId: ws.data.recordId,
+          vmid: ws.data.vmid,
+          actorEmail: ws.data.actorEmail,
+          ownerEmail: ws.data.ownerEmail,
+          connectedAt: ws.data.connectedAt || now,
+        });
+      }
+    }
+  }
+
+  const timeline = getVmUsageTimeline(resolvedDayKey);
+  const dailyUsage = loadJson(VM_DAILY_USAGE_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+
+  // Build user email set across records, dailyUsage, and timeline
+  const userEmails = new Set();
+  for (const r of records) if (r.ownerEmail) userEmails.add(normalizeEmail(r.ownerEmail));
+  for (const u of Object.keys(dailyUsage)) if (u) userEmails.add(normalizeEmail(u));
+  for (const h of timeline.hours) {
+    for (const u of h.users) if (u.email) userEmails.add(normalizeEmail(u.email));
+  }
+
+  const recordsByOwner = new Map();
+  for (const r of records) {
+    if (r.ownerEmail) {
+      recordsByOwner.set(normalizeEmail(r.ownerEmail), r);
+    }
+  }
+
+  const activeByRecord = new Map();
+  for (const s of activeSessions) {
+    if (!activeByRecord.has(s.recordId)) activeByRecord.set(s.recordId, []);
+    activeByRecord.get(s.recordId).push(s.actorEmail || s.ownerEmail);
+  }
+
+  const rankings = [];
+  let totalFleetSecondsToday = 0;
+
+  for (const email of userEmails) {
+    const norm = normalizeEmail(email);
+    const profile = profiles[norm] || {};
+    const record = recordsByOwner.get(norm);
+    const userDailyRecord = dailyUsage[norm] || {};
+
+    let todaySeconds = Math.max(0, Number(userDailyRecord[resolvedDayKey]) || 0);
+
+    // Also check max uptime from timeline samples for today
+    let maxTimelineUptime = 0;
+    let timelineSampleCount = 0;
+    for (const h of timeline.hours) {
+      const u = h.users.find(entry => normalizeEmail(entry.email) === norm);
+      if (u) {
+        timelineSampleCount += u.samples;
+        if (u.maxUptimeSeconds > maxTimelineUptime) maxTimelineUptime = u.maxUptimeSeconds;
+      }
+    }
+    if (maxTimelineUptime > todaySeconds) {
+      todaySeconds = maxTimelineUptime;
+    }
+
+    // All-time seconds: sum of all days in daily usage
+    let allTimeSeconds = 0;
+    if (typeof userDailyRecord === 'object') {
+      for (const [day, secs] of Object.entries(userDailyRecord)) {
+        allTimeSeconds += Math.max(0, Number(secs) || 0);
+      }
+    }
+    if (todaySeconds > allTimeSeconds) allTimeSeconds = todaySeconds;
+
+    totalFleetSecondsToday += todaySeconds;
+
+    const activeUsers = record ? (activeByRecord.get(record.id) || []) : [];
+    const isInUse = activeUsers.length > 0;
+    const view = recordViews ? recordViews.find(v => v.id === record?.id) : null;
+    const isRunning = Boolean(view?.status === 'running' || isInUse);
+
+    rankings.push({
+      email: norm,
+      displayName: profile.displayName || profile.nickname || defaultUsernameForEmail(norm),
+      vmName: record?.friendlyName || record?.hostname || (record ? `VM ${record.vmid}` : 'My Computer'),
+      vmRecordId: record?.id || '',
+      vmid: record?.vmid || null,
+      todaySeconds,
+      todayFormatted: formatUptimeDuration(todaySeconds),
+      allTimeSeconds,
+      allTimeFormatted: formatUptimeDuration(allTimeSeconds),
+      isRunning,
+      isInUse,
+      activeUsers,
+      activeUsersCount: activeUsers.length,
+      samplesToday: timelineSampleCount,
+    });
+  }
+
+  // Sort rankings: most uptime today first; if tied, all-time uptime
+  rankings.sort((a, b) => (b.todaySeconds - a.todaySeconds) || (b.allTimeSeconds - a.allTimeSeconds));
+  rankings.forEach((item, idx) => {
+    item.rank = idx + 1;
+  });
+
+  const topUser = rankings.length > 0 && rankings[0].todaySeconds > 0 ? rankings[0] : (rankings[0] || null);
+  const peakRunningToday = Math.max(timeline.peakConcurrentToday, rankings.filter(r => r.isRunning).length);
+  const activeUsersToday = rankings.filter(r => r.todaySeconds > 0).length;
+
+  return {
+    dayKey: resolvedDayKey,
+    hourlyTimeline: timeline.hours,
+    rankings,
+    summary: {
+      topUser,
+      peakRunningToday,
+      totalFleetSecondsToday,
+      totalFleetHoursToday: (totalFleetSecondsToday / 3600).toFixed(1),
+      activeUsersToday,
+      totalTrackedUsers: rankings.length,
+    },
+  };
+}
+
+async function sampleVmUsageWorker() {
+  try {
+    const dayKey = getVmDayKey();
+    const now = Date.now();
+    const d = new Date(now);
+    const hour = d.getHours();
+    const minute = d.getMinutes();
+
+    const activeSocketsByRecord = new Map();
+    for (const ws of vmDesktopSockets) {
+      if (ws.readyState === 1 && ws.data?.recordId) {
+        const recId = ws.data.recordId;
+        if (!activeSocketsByRecord.has(recId)) activeSocketsByRecord.set(recId, []);
+        activeSocketsByRecord.get(recId).push(ws.data.actorEmail || ws.data.ownerEmail);
+      }
+    }
+
+    const records = listVirtualMachines({ includeUnassigned: true });
+    let guests = [];
+    if (proxmoxDesktop.configured) {
+      try {
+        guests = await proxmoxDesktop.listGuests();
+      } catch {}
+    }
+    const guestsByVmid = new Map((guests || []).map(g => [g.vmid, g]));
+
+    let testMock = null;
+    if (process.env.NODE_ENV === 'test') {
+      try {
+        testMock = loadJson(join(DATA_DIR, 'test_vm_mock.json'), null);
+      } catch {}
+    }
+
+    for (const record of records) {
+      if (!record.ownerEmail) continue;
+      const guest = guestsByVmid.get(record.vmid);
+      let isRunning = false;
+      let uptime = 0;
+
+      if (guest && (guest.status === 'running' || guest.status === 'paused')) {
+        isRunning = true;
+        uptime = Number(guest.uptime) || 0;
+      } else {
+        const presence = vmPagePresence.get(record.id);
+        if (presence && (now - presence.lastSeen < 15 * 60 * 1000)) {
+          isRunning = true;
+        }
+      }
+      const activeUsers = activeSocketsByRecord.get(record.id) || [];
+      if (activeUsers.length > 0) isRunning = true;
+
+      if (testMock && testMock.sampleAsRunning && testMock.sampleAsRunning.includes(record.id)) {
+        isRunning = true;
+        uptime = testMock.uptimeSeconds || 3600;
+      }
+
+      if (isRunning) {
+        recordVmUsageSample({
+          ts: now,
+          dayKey,
+          hour,
+          minute,
+          ownerEmail: record.ownerEmail,
+          vmRecordId: record.id,
+          vmid: record.vmid,
+          vmName: record.friendlyName || record.hostname || record.id,
+          uptimeSeconds: uptime,
+          activeUsers: activeUsers.join(','),
+          isRunning: 1,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[vm-usage] Error in sampleVmUsageWorker:', err);
+  }
+}
+
 function isEligibleForFreeVm(email, isAdmin = false) {
   if (!email) return false;
   const norm = normalizeEmail(email);
@@ -26429,6 +26593,15 @@ function getVmLease(recordId, currentUptime = 0, { isAdmin = false, ownerEmail =
       const delta = normalizedUptime - lease.trackedUptime;
       recordDailyVmUsage(ownerEmail, delta);
       lease.trackedUptime = normalizedUptime;
+      const rec = getVirtualMachineById(recordId);
+      recordVmUsageSample({
+        ownerEmail,
+        vmRecordId: recordId,
+        vmid: rec?.vmid || null,
+        vmName: rec?.friendlyName || rec?.hostname || 'My Computer',
+        uptimeSeconds: normalizedUptime,
+        isRunning: 1,
+      });
     }
   }
 

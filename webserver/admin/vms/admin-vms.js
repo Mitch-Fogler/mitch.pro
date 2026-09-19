@@ -115,6 +115,231 @@
     const rows = overview.audit || [];
     $('audit-list').innerHTML = rows.length ? rows.map(row => `<div class="audit-row"><time>${esc(new Date(row.ts).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' }))}</time><strong>${esc(String(row.action || '').replaceAll('_', ' '))}</strong><span>${esc(row.actorEmail)}${row.ownerEmail ? ` &rarr; ${esc(row.ownerEmail)}` : ''}</span><span class="${row.success ? '' : 'failed'}">${row.success ? 'Success' : 'Failed'}</span></div>`).join('') : '<p class="empty">No activity yet.</p>';
   }
+
+  let activeHoverHour = -1;
+
+  function renderUsageStats() {
+    const stats = overview?.usageStats || {};
+    const summary = stats.summary || {};
+    const timeline = stats.hourlyTimeline || [];
+    const rankings = stats.rankings || [];
+
+    if ($('top-user-display')) {
+      if (summary.topUser && summary.topUser.todaySeconds > 0) {
+        $('top-user-display').textContent = `${summary.topUser.displayName || summary.topUser.email} (${summary.topUser.todayFormatted})`;
+        $('top-user-display').title = summary.topUser.email;
+      } else if (summary.topUser) {
+        $('top-user-display').textContent = `${summary.topUser.displayName || summary.topUser.email} (0m)`;
+      } else {
+        $('top-user-display').textContent = 'None yet';
+      }
+    }
+    if ($('fleet-total-hours')) {
+      $('fleet-total-hours').textContent = `${summary.totalFleetHoursToday || '0.0'} hrs`;
+    }
+    if ($('fleet-peak-concurrent')) {
+      $('fleet-peak-concurrent').textContent = `${summary.peakRunningToday || 0} / 6`;
+    }
+
+    drawUsageChart(timeline);
+
+    const tbody = $('leaderboard-body');
+    if (!tbody) return;
+
+    if (!rankings.length) {
+      tbody.innerHTML = '<tr><td colspan="6" class="empty">No computer usage recorded yet today.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rankings.map(u => {
+      const rankClass = u.rank === 1 ? 'rank-1' : u.rank === 2 ? 'rank-2' : u.rank === 3 ? 'rank-3' : '';
+      const rankEmoji = u.rank === 1 ? '🥇' : u.rank === 2 ? '🥈' : u.rank === 3 ? '🥉' : `#${u.rank}`;
+      const pctOfDay = Math.min(100, Math.round((u.todaySeconds / (6 * 3600)) * 100));
+      const statusBadge = u.isInUse
+        ? `<span class="badge" style="background:#15803d;color:#f0fdf4;font-weight:700;">👤 In Use</span>`
+        : u.isRunning
+          ? `<span class="badge" style="background:#0369a1;color:#f0f9ff;font-weight:700;">🟢 Running</span>`
+          : `<span class="badge" style="background:var(--soft);color:var(--muted);">Offline</span>`;
+
+      return `<tr>
+        <td><span class="rank-badge ${rankClass}">${rankEmoji}</span></td>
+        <td><strong>${esc(u.displayName)}</strong><small title="${esc(u.email)}">${esc(u.email)}</small></td>
+        <td><strong>${esc(u.vmName)}</strong>${u.vmid ? `<small>VMID ${u.vmid}</small>` : ''}</td>
+        <td>
+          <div class="uptime-bar-wrap">
+            <span>${esc(u.todayFormatted)}</span>
+            <div class="uptime-bar" title="${pctOfDay}% of 6h daily limit"><i style="width:${pctOfDay}%"></i></div>
+          </div>
+        </td>
+        <td><span style="color:var(--muted);font-variant-numeric:tabular-nums;">${esc(u.allTimeFormatted)}</span></td>
+        <td>${statusBadge}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function drawUsageChart(timeline) {
+    const canvas = $('usage-chart');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0) return;
+
+    canvas.width = rect.width * dpr;
+    canvas.height = (rect.height || 180) * dpr;
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = rect.height || 180;
+    const padding = { top: 20, right: 20, bottom: 30, left: 35 };
+    const chartW = w - padding.left - padding.right;
+    const chartH = h - padding.top - padding.bottom;
+
+    ctx.clearRect(0, 0, w, h);
+
+    let maxVal = 6;
+    for (const item of (timeline || [])) {
+      if (item.peakRunning > maxVal) maxVal = item.peakRunning;
+    }
+    maxVal = Math.max(maxVal, 6);
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px Inter, ui-sans-serif, system-ui, sans-serif';
+    ctx.textAlign = 'right';
+
+    const ySteps = 3;
+    for (let i = 0; i <= ySteps; i++) {
+      const val = Math.round((maxVal / ySteps) * i);
+      const y = padding.top + chartH - (val / maxVal) * chartH;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(w - padding.right, y);
+      ctx.stroke();
+      ctx.fillText(String(val), padding.left - 8, y + 3);
+    }
+
+    const colW = chartW / 24;
+
+    (timeline || []).forEach((slot, i) => {
+      const x = padding.left + i * colW;
+      const isHovered = (activeHoverHour === i);
+
+      if (isHovered) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.07)';
+        ctx.fillRect(x, padding.top, colW, chartH);
+      }
+
+      const runVal = Math.min(slot.peakRunning || 0, maxVal);
+      const runBarH = (runVal / maxVal) * chartH;
+      const runY = padding.top + chartH - runBarH;
+
+      const actVal = Math.min(slot.activeSessionsPeak || 0, maxVal);
+      const actBarH = (actVal / maxVal) * chartH;
+      const actY = padding.top + chartH - actBarH;
+
+      if (runVal > 0) {
+        ctx.fillStyle = isHovered ? '#7dd3fc' : '#38bdf8';
+        const barWidth = Math.max(4, colW - 4);
+        const barX = x + 2;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(barX, runY, barWidth, runBarH, [3, 3, 0, 0]);
+        else ctx.rect(barX, runY, barWidth, runBarH);
+        ctx.fill();
+      }
+
+      if (actVal > 0) {
+        ctx.fillStyle = '#4ade80';
+        const actWidth = Math.max(2, (colW - 4) * 0.5);
+        const actX = x + 2 + ((colW - 4) - actWidth) / 2;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(actX, actY, actWidth, actBarH, [2, 2, 0, 0]);
+        else ctx.rect(actX, actY, actWidth, actBarH);
+        ctx.fill();
+      }
+
+      if (i % 3 === 0 || i === 23) {
+        ctx.fillStyle = isHovered ? '#f1f5f9' : '#64748b';
+        ctx.textAlign = 'center';
+        ctx.fillText(slot.label, x + colW / 2, h - 10);
+      }
+    });
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.beginPath();
+    ctx.moveTo(padding.left, padding.top + chartH);
+    ctx.lineTo(w - padding.right, padding.top + chartH);
+    ctx.stroke();
+  }
+
+  function setupChartInteraction() {
+    const canvas = $('usage-chart');
+    const tooltip = $('chart-tooltip');
+    if (!canvas || !tooltip) return;
+
+    canvas.addEventListener('mousemove', e => {
+      const timeline = overview?.usageStats?.hourlyTimeline;
+      if (!timeline) return;
+      const rect = canvas.getBoundingClientRect();
+      const paddingLeft = 35;
+      const paddingRight = 20;
+      const chartW = rect.width - paddingLeft - paddingRight;
+      const mouseX = e.clientX - rect.left - paddingLeft;
+
+      if (mouseX < 0 || mouseX > chartW) {
+        activeHoverHour = -1;
+        tooltip.style.display = 'none';
+        drawUsageChart(timeline);
+        return;
+      }
+
+      const hour = Math.floor((mouseX / chartW) * 24);
+      if (hour < 0 || hour >= 24) return;
+
+      activeHoverHour = hour;
+      drawUsageChart(timeline);
+
+      const slot = timeline[hour];
+      if (!slot) return;
+
+      let userLines = '';
+      if (slot.users && slot.users.length) {
+        userLines = '<div style="margin-top:6px;border-top:1px solid rgba(255,255,255,.12);padding-top:5px;">' +
+          slot.users.map(u => `<span class="user-item">👤 <strong>${esc(u.email)}</strong> (${esc(u.vmName || 'Computer')})</span>`).join('') +
+          '</div>';
+      } else {
+        userLines = '<div style="margin-top:4px;color:#94a3b8;font-size:0.72rem;">No running computers</div>';
+      }
+
+      tooltip.innerHTML = `<strong>${esc(slot.fullLabel)} – ${esc(slot.label)}</strong>` +
+        `<div>Running: <strong style="color:#38bdf8;">${slot.peakRunning || 0}</strong> &middot; Sessions: <strong style="color:#4ade80;">${slot.activeSessionsPeak || 0}</strong></div>` +
+        userLines;
+
+      tooltip.style.display = 'block';
+      const tipX = Math.min(e.clientX - rect.left + 15, rect.width - 260);
+      const tipY = Math.max(10, e.clientY - rect.top - 40);
+      tooltip.style.left = `${Math.max(10, tipX)}px`;
+      tooltip.style.top = `${tipY}px`;
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      activeHoverHour = -1;
+      tooltip.style.display = 'none';
+      if (overview?.usageStats?.hourlyTimeline) {
+        drawUsageChart(overview.usageStats.hourlyTimeline);
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      if (overview?.usageStats?.hourlyTimeline) {
+        drawUsageChart(overview.usageStats.hourlyTimeline);
+      }
+    });
+  }
+
   async function load() {
     if (loading) return;
     loading = true; $('refresh-button').disabled = true;
@@ -122,7 +347,7 @@
       overview = await api('/api/admin/vms/overview');
       $('service-state').className = `service-state ${overview.serviceAvailable ? 'online' : 'offline'}`;
       $('service-state').querySelector('span').textContent = overview.serviceAvailable ? 'Computer service online' : 'Computer service unavailable';
-      renderCapacity(); renderForms(); renderFleet(); renderAudit();
+      renderCapacity(); renderForms(); renderFleet(); renderAudit(); renderUsageStats();
     } catch (error) { $('service-state').className = 'service-state offline'; $('service-state').querySelector('span').textContent = error.message; }
     finally { loading = false; $('refresh-button').disabled = false; }
   }
@@ -225,6 +450,7 @@
     }
   });
   $('refresh-button').addEventListener('click', load);
+  setupChartInteraction();
   load();
   const timer = setInterval(() => { if (!document.hidden && !creating && !assigning && !pending.size) load(); }, 20000);
   window.addEventListener('pagehide', () => { clearInterval(timer); $('create-password').value = ''; }, { once: true });
