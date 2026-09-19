@@ -556,29 +556,32 @@
         }
       })();
 
-      // ── Automatic Verification Modal Dismissal ───────────────────
+      // ── Stale Matrix Session Hygiene (E2EE Key Health) ────────────
       (function() {
-        function dismissVerificationModals() {
-          const dialogs = document.querySelectorAll('div[role="dialog"], [data-dialog="true"]');
-          for (const d of dialogs) {
-            const text = d.textContent || '';
-            if (text.includes('Device Verification') || text.includes('Setup Device Verification') || text.includes('Reset Device Verification')) {
-              const btns = d.querySelectorAll('button');
-              for (const b of btns) {
-                const bText = (b.textContent || '').trim().toLowerCase();
-                const aria = (b.getAttribute('aria-label') || '').toLowerCase();
-                if (bText === 'cancel' || bText === 'close' || bText === 'done' || aria === 'close' || b.querySelector('svg')) {
-                  b.click();
-                  break;
-                }
-              }
+        async function pruneStaleMatrixDevices() {
+          const token = localStorage.getItem('cinny_access_token');
+          const currentDeviceId = localStorage.getItem('cinny_device_id');
+          if (!token) return;
+          const lastPrune = Number(localStorage.getItem('mitch_matrix_last_prune')) || 0;
+          if (Date.now() - lastPrune < 24 * 60 * 60 * 1000) return;
+
+          try {
+            const res = await fetch('/api/matrix/devices/prune-stale', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'X-Matrix-Device-Id': currentDeviceId || ''
+              },
+              credentials: 'same-origin',
+              body: JSON.stringify({ currentDeviceId, maxAgeDays: 7 })
+            });
+            if (res.ok) {
+              localStorage.setItem('mitch_matrix_last_prune', String(Date.now()));
             }
-          }
+          } catch (_) {}
         }
-        if (window.MutationObserver) {
-          const obs = new MutationObserver(dismissVerificationModals);
-          obs.observe(document.documentElement, { childList: true, subtree: true });
-        }
+        setTimeout(pruneStaleMatrixDevices, 8000);
       })();
     </script>
     <div id="root"></div>

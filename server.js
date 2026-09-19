@@ -249,6 +249,7 @@ const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
 const MATRIX_USERS_FILE      = join(DATA_DIR, 'matrix_users.json');
 const MATRIX_NOTIFICATIONS_FILE = join(DATA_DIR, 'matrix_notifications.json');
 const MATRIX_EMAIL_SENT_FILE    = join(DATA_DIR, 'matrix_email_sent.json');
+const MATRIX_ROOM_SETTINGS_FILE  = join(DATA_DIR, 'matrix_room_settings.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
 const MODERATOR_PANEL_FILE   = join(DATA_DIR, 'moderator_panel.json');
@@ -2871,6 +2872,7 @@ const PUBLIC_API_PATHS = new Set([
   '/api/matrix/sso-login',
   '/api/matrix/sso-status',
   '/api/matrix/report-room',
+  '/api/matrix/devices/prune-stale',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -5689,6 +5691,11 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/matrix/moderation/kick',
   '/api/matrix/moderation/ban',
   '/api/matrix/moderation/redact',
+  '/api/matrix/moderation/slowmode',
+  '/api/matrix/moderation/mute-user',
+  '/api/matrix/moderation/unmute-user',
+  '/api/matrix/moderation/mute-room',
+  '/api/matrix/devices/prune-stale',
   '/api/matrix/report-room',
 ]);
 
@@ -8123,6 +8130,101 @@ async function syncMatrixUserToOfficialRooms(userId, userToken, targetPowerLevel
   }
 }
 
+// ── Matrix Room Settings & Moderation Helpers ────────────────────────────────
+const matrixRoomLastMessageTimes = new Map(); // key: `${roomId}:${senderKey}` -> timestamp (ms)
+
+function loadMatrixRoomSettings() {
+  return loadJson(MATRIX_ROOM_SETTINGS_FILE, {});
+}
+
+function saveMatrixRoomSettings(data) {
+  saveJson(MATRIX_ROOM_SETTINGS_FILE, data);
+}
+
+function getMatrixRoomSettings(roomId) {
+  const all = loadMatrixRoomSettings();
+  const room = all[roomId] || {};
+  return {
+    slowmodeSeconds: Number(room.slowmodeSeconds) || 0,
+    roomMuted: Boolean(room.roomMuted),
+    mutedUsers: room.mutedUsers || {}
+  };
+}
+
+function isUserMutedInMatrixRoom(roomId, userIdentifiers = []) {
+  const settings = getMatrixRoomSettings(roomId);
+  if (!settings || !settings.mutedUsers) return null;
+  const now = Date.now();
+  let changed = false;
+
+  for (const rawId of userIdentifiers) {
+    if (!rawId) continue;
+    const lower = String(rawId).toLowerCase().trim();
+    const cleanUser = lower.startsWith('@') ? lower : `@${lower}:mitch.pro`;
+    const entry = settings.mutedUsers[cleanUser] || settings.mutedUsers[lower];
+    if (entry) {
+      if (entry.expiresAt && entry.expiresAt <= now) {
+        delete settings.mutedUsers[cleanUser];
+        delete settings.mutedUsers[lower];
+        changed = true;
+        continue;
+      }
+      if (changed) {
+        const all = loadMatrixRoomSettings();
+        all[roomId] = settings;
+        saveMatrixRoomSettings(all);
+      }
+      return entry;
+    }
+  }
+
+  if (changed) {
+    const all = loadMatrixRoomSettings();
+    all[roomId] = settings;
+    saveMatrixRoomSettings(all);
+  }
+  return null;
+}
+
+function checkMatrixSlowmode(roomId, senderKey, slowmodeSeconds) {
+  if (!slowmodeSeconds || slowmodeSeconds <= 0) return 0;
+  const key = `${roomId}:${senderKey}`;
+  const lastTime = matrixRoomLastMessageTimes.get(key) || 0;
+  const elapsed = (Date.now() - lastTime) / 1000;
+  if (elapsed < slowmodeSeconds) {
+    return Math.max(1, Math.ceil(slowmodeSeconds - elapsed));
+  }
+  return 0;
+}
+
+function recordMatrixMessageSent(roomId, senderKey) {
+  if (!roomId || !senderKey) return;
+  const key = `${roomId}:${senderKey}`;
+  matrixRoomLastMessageTimes.set(key, Date.now());
+  if (matrixRoomLastMessageTimes.size > 20000) {
+    const oldestKey = matrixRoomLastMessageTimes.keys().next().value;
+    matrixRoomLastMessageTimes.delete(oldestKey);
+  }
+}
+
+async function isMatrixStaffMember(req, roomId, account = null) {
+  try {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (sid && (isAdminId(sid) || isAnyAdminId(sid))) return true;
+
+    const acc = account || await resolveMatrixAccount(req).catch(() => null);
+    if (acc) {
+      if (acc.uid && (isAdminId(acc.uid) || isAnyAdminId(acc.uid))) return true;
+      if (acc.normEmail) {
+        const adminNorms = new Set(siteAdminEmails().map(e => normalizeEmail(e)));
+        if (adminNorms.has(acc.normEmail) || isModeratorEmail(acc.normEmail)) return true;
+      }
+    }
+  } catch (_) {}
+  return false;
+}
+
 async function loginOrRegisterMatrixUser(uid, desiredUsername, displayName) {
   const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
   let assignedUser = matrixUsers[uid];
@@ -8234,7 +8336,11 @@ async function resolveMatrixAccount(req, parsedBody = null) {
     const norm = resolveLoginIdentifier(localPart) || resolveLoginIdentifier(raw);
     if (norm) {
       const uid = getUidForEmail(norm);
-      if (uid) return { uid, normEmail: norm };
+      if (uid) {
+        const assigned = matrixUsers[uid];
+        const userId = assigned ? `@${assigned}:mitch.pro` : (localPart ? `@${localPart}:mitch.pro` : '');
+        return { uid, normEmail: norm, userId };
+      }
     }
 
     // 2. Try looking up assigned matrix username in MATRIX_USERS_FILE
@@ -8242,7 +8348,7 @@ async function resolveMatrixAccount(req, parsedBody = null) {
       if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === raw.toLowerCase()) {
         const email = emailFromSid(u);
         const normEmail = email ? normalizeEmail(email) : '';
-        if (normEmail) return { uid: u, normEmail };
+        if (normEmail) return { uid: u, normEmail, userId: `@${name}:mitch.pro` };
       }
     }
 
@@ -8251,7 +8357,10 @@ async function resolveMatrixAccount(req, parsedBody = null) {
     for (const [normEmail, p] of Object.entries(profiles)) {
       if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
         const uid = getUidForEmail(normEmail);
-        if (uid) return { uid, normEmail };
+        if (uid) {
+          const assigned = matrixUsers[uid] || p.username;
+          return { uid, normEmail, userId: `@${assigned}:mitch.pro` };
+        }
       }
     }
   }
@@ -8287,8 +8396,8 @@ async function resolveMatrixAccount(req, parsedBody = null) {
           norm = resolveLoginIdentifier(uname) || '';
           if (!matchedUid && norm) matchedUid = getUidForEmail(norm);
         }
-        if (matchedUid && norm) {
-          const account = { uid: matchedUid, normEmail: norm, userId: matrixUserId };
+        if (matrixUserId) {
+          const account = { uid: matchedUid || '', normEmail: norm || '', userId: matrixUserId };
           matrixTokenToAccount.set(token, account);
           if (matrixTokenToAccount.size > 5000) {
             const firstKey = matrixTokenToAccount.keys().next().value;
@@ -8307,7 +8416,8 @@ async function resolveMatrixAccount(req, parsedBody = null) {
     const email = emailFromSid(sid);
     if (email) {
       const normEmail = normalizeEmail(email);
-      return { uid: sid, normEmail };
+      const assigned = matrixUsers[sid];
+      return { uid: sid, normEmail, userId: assigned ? `@${assigned}:mitch.pro` : '' };
     }
   }
 
@@ -9277,6 +9387,104 @@ async function handleRequest(req, server) {
       }
     }
 
+    let sendMatchRoomId = null;
+    let sendMatchSenderKey = null;
+    let isChatSendEvent = false;
+
+    if (sendMatch) {
+      const targetRoomId = decodeURIComponent(sendMatch[1]);
+      const eventType = decodeURIComponent(sendMatch[2]);
+      isChatSendEvent = eventType === 'm.room.message' ||
+        eventType === 'm.room.encrypted' ||
+        eventType === 'm.reaction' ||
+        eventType === 'm.sticker' ||
+        eventType.startsWith('org.matrix.msc2677.reaction');
+
+      if (isChatSendEvent) {
+        sendMatchRoomId = targetRoomId;
+        let parsedPayload = null;
+        if (capturedBodyText) {
+          try { parsedPayload = JSON.parse(capturedBodyText); } catch (_) {}
+        }
+        const senderAccount = await resolveMatrixAccount(req, parsedPayload).catch(() => null);
+        const senderIds = [];
+        const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+        if (senderAccount) {
+          if (senderAccount.userId) senderIds.push(senderAccount.userId);
+          if (senderAccount.normEmail) senderIds.push(senderAccount.normEmail);
+          if (senderAccount.uid) {
+            senderIds.push(senderAccount.uid);
+            if (matrixUsers[senderAccount.uid]) {
+              senderIds.push(`@${matrixUsers[senderAccount.uid]}:mitch.pro`);
+            }
+          }
+        }
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (sid) {
+          senderIds.push(sid);
+          const email = emailFromSid(sid);
+          if (email) senderIds.push(normalizeEmail(email));
+          if (matrixUsers[sid]) {
+            senderIds.push(`@${matrixUsers[sid]}:mitch.pro`);
+          }
+        }
+        const authHeader = req.headers.get('authorization') || '';
+        sendMatchSenderKey = senderIds[0] || (authHeader ? authHeader.replace(/^Bearer\s+/i, '').slice(0, 32) : (ip || 'anonymous'));
+
+        const isStaff = await isMatrixStaffMember(req, targetRoomId, senderAccount);
+
+        if (!isStaff) {
+          const roomSettings = getMatrixRoomSettings(targetRoomId);
+
+          // 1. Room lockdown check
+          if (roomSettings.roomMuted) {
+            return jsonResp(403, {
+              errcode: 'M_FORBIDDEN',
+              error: 'This room is currently in lockdown mode. Only administrators and moderators may speak.'
+            }, {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+            });
+          }
+
+          // 2. User mute check
+          const muteInfo = isUserMutedInMatrixRoom(targetRoomId, senderIds);
+          if (muteInfo) {
+            const reasonPart = muteInfo.reason ? `: ${muteInfo.reason}` : '';
+            const remainingSec = muteInfo.expiresAt ? Math.max(1, Math.ceil((muteInfo.expiresAt - Date.now()) / 1000)) : null;
+            const expiryPart = remainingSec ? ` (Mute expires in ${remainingSec}s)` : ' (Indefinite mute)';
+            return jsonResp(403, {
+              errcode: 'M_FORBIDDEN',
+              error: `You are muted in this room${reasonPart}.${expiryPart}`
+            }, {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+            });
+          }
+
+          // 3. Slowmode check
+          if (roomSettings.slowmodeSeconds > 0) {
+            const waitSec = checkMatrixSlowmode(targetRoomId, sendMatchSenderKey, roomSettings.slowmodeSeconds);
+            if (waitSec > 0) {
+              return jsonResp(429, {
+                errcode: 'M_LIMIT_EXCEEDED',
+                error: `Slowmode is enabled (${roomSettings.slowmodeSeconds}s). Please wait ${waitSec}s before sending another message.`,
+                retry_after_ms: waitSec * 1000
+              }, {
+                'Retry-After': String(waitSec),
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+              });
+            }
+          }
+        }
+      }
+    }
+
     // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
     const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report(?:\/([^/]+))?$/);
     if (reportMatch && capturedBodyText !== null) {
@@ -9447,10 +9655,11 @@ async function handleRequest(req, server) {
         const clone = upstreamRes.clone();
         const loginData = await clone.json();
         if (loginData.access_token && (translatedAccount || loginData.user_id)) {
-          const acc = translatedAccount || {
-            userId: loginData.user_id,
-            uid: getUidForEmail(loginData.user_id.replace(/^@/, '').split(':')[0]),
-            normEmail: resolveLoginIdentifier(loginData.user_id.replace(/^@/, '').split(':')[0]) || ''
+          const acc = {
+            ...(translatedAccount || {}),
+            userId: loginData.user_id || (translatedAccount && translatedAccount.userId) || '',
+            uid: (translatedAccount && translatedAccount.uid) || (loginData.user_id ? getUidForEmail(loginData.user_id.replace(/^@/, '').split(':')[0]) : ''),
+            normEmail: (translatedAccount && translatedAccount.normEmail) || (loginData.user_id ? (resolveLoginIdentifier(loginData.user_id.replace(/^@/, '').split(':')[0]) || '') : '')
           };
           matrixTokenToAccount.set(loginData.access_token, acc);
         }
@@ -9475,6 +9684,9 @@ async function handleRequest(req, server) {
 
     // Trigger Mitch.pro notifications for Matrix messages, calls & room invites
     if (upstreamRes.ok) {
+      if (sendMatch && isChatSendEvent && sendMatchRoomId && sendMatchSenderKey) {
+        recordMatrixMessageSent(sendMatchRoomId, sendMatchSenderKey);
+      }
       if (sendMatch && capturedBodyText) {
         const roomId = decodeURIComponent(sendMatch[1]);
         const eventType = decodeURIComponent(sendMatch[2]);
@@ -13473,11 +13685,40 @@ async function handleRequest(req, server) {
           .slice(-50)
           .reverse();
 
+        const roomSettings = getMatrixRoomSettings(roomId);
+        const now = Date.now();
+        const activeMutedUsers = [];
+        let mutesChanged = false;
+        if (roomSettings.mutedUsers) {
+          for (const [mId, mInfo] of Object.entries(roomSettings.mutedUsers)) {
+            if (mInfo && mInfo.expiresAt && mInfo.expiresAt <= now) {
+              delete roomSettings.mutedUsers[mId];
+              mutesChanged = true;
+            } else if (mInfo) {
+              activeMutedUsers.push({
+                userId: mInfo.userId || mId,
+                reason: mInfo.reason || '',
+                mutedBy: mInfo.mutedBy || '',
+                mutedAt: mInfo.mutedAt || 0,
+                expiresAt: mInfo.expiresAt || null
+              });
+            }
+          }
+          if (mutesChanged) {
+            const allSettings = loadMatrixRoomSettings();
+            allSettings[roomId] = roomSettings;
+            saveMatrixRoomSettings(allSettings);
+          }
+        }
+
         return jsonResp(200, {
           ok: true,
           officialRoom: '#general:mitch.pro',
           roomId,
           staff,
+          slowmodeSeconds: roomSettings.slowmodeSeconds || 0,
+          roomMuted: Boolean(roomSettings.roomMuted),
+          mutedUsers: activeMutedUsers,
           recentReports: matrixReports
         });
       } catch (err) {
@@ -13665,6 +13906,321 @@ async function handleRequest(req, server) {
       } catch (err) {
         console.error('[matrix-moderation] redact error:', err?.message || err);
         return jsonResp(500, { ok: false, error: err?.message || 'Failed to redact message' });
+      }
+    }
+
+    // POST /api/matrix/moderation/slowmode
+    if (path === '/api/matrix/moderation/slowmode' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const seconds = Math.max(0, parseInt(body.seconds, 10) || 0);
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      rSettings.slowmodeSeconds = seconds;
+      allSettings[roomId] = rSettings;
+      saveMatrixRoomSettings(allSettings);
+
+      const adminEmail = emailFromSid(sid) || 'admin';
+      logAdminAction(adminEmail, 'matrix_set_slowmode', {
+        roomId,
+        slowmodeSeconds: seconds
+      });
+
+      return jsonResp(200, { ok: true, roomId, slowmodeSeconds: seconds });
+    }
+
+    // POST /api/matrix/moderation/mute-user
+    if (path === '/api/matrix/moderation/mute-user' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+
+      const durationSeconds = body.durationSeconds ? Math.max(0, parseInt(body.durationSeconds, 10) || 0) : 0;
+      const reason = String(body.reason || 'Muted by administrator').slice(0, 300);
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const adminEmail = emailFromSid(sid) || 'admin';
+      const expiresAt = durationSeconds > 0 ? Date.now() + (durationSeconds * 1000) : null;
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      rSettings.mutedUsers = rSettings.mutedUsers || {};
+      rSettings.mutedUsers[targetUserId] = {
+        userId: targetUserId,
+        reason,
+        mutedBy: adminEmail,
+        mutedAt: Date.now(),
+        expiresAt
+      };
+      allSettings[roomId] = rSettings;
+      saveMatrixRoomSettings(allSettings);
+
+      // Also set room power level to -1 in Conduit so standard Matrix clients enforce mute
+      try {
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          plData.users = plData.users || {};
+          plData.users[targetUserId] = -1;
+          await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+            body: JSON.stringify(plData)
+          });
+        }
+      } catch (_) {}
+
+      logAdminAction(adminEmail, 'matrix_mute_user', {
+        roomId,
+        userId: targetUserId,
+        durationSeconds,
+        reason,
+        expiresAt
+      });
+
+      return jsonResp(200, { ok: true, roomId, userId: targetUserId, muted: true, expiresAt });
+    }
+
+    // POST /api/matrix/moderation/unmute-user
+    if (path === '/api/matrix/moderation/unmute-user' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const adminEmail = emailFromSid(sid) || 'admin';
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      if (rSettings.mutedUsers) {
+        delete rSettings.mutedUsers[targetUserId];
+        delete rSettings.mutedUsers[targetUserId.replace(/^@/, '').split(':')[0]];
+        allSettings[roomId] = rSettings;
+        saveMatrixRoomSettings(allSettings);
+      }
+
+      // Reset room power level in Conduit
+      try {
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          if (plData.users && plData.users[targetUserId] === -1) {
+            delete plData.users[targetUserId];
+            await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+              body: JSON.stringify(plData)
+            });
+          }
+        }
+      } catch (_) {}
+
+      logAdminAction(adminEmail, 'matrix_unmute_user', {
+        roomId,
+        userId: targetUserId
+      });
+
+      return jsonResp(200, { ok: true, roomId, userId: targetUserId, muted: false });
+    }
+
+    // POST /api/matrix/moderation/mute-room
+    if (path === '/api/matrix/moderation/mute-room' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const roomMuted = Boolean(body.muted);
+      const adminEmail = emailFromSid(sid) || 'admin';
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      rSettings.roomMuted = roomMuted;
+      allSettings[roomId] = rSettings;
+      saveMatrixRoomSettings(allSettings);
+
+      // Sync Conduit room power levels events_default
+      try {
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          plData.events_default = roomMuted ? 50 : 0;
+          await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+            body: JSON.stringify(plData)
+          });
+        }
+      } catch (_) {}
+
+      logAdminAction(adminEmail, 'matrix_mute_room', {
+        roomId,
+        roomMuted
+      });
+
+      return jsonResp(200, { ok: true, roomId, roomMuted });
+    }
+
+    // POST /api/matrix/devices/prune-stale
+    if (path === '/api/matrix/devices/prune-stale' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      let parsed = {};
+      try { parsed = await req.json(); } catch (_) {}
+
+      const authHeader = req.headers.get('authorization') || '';
+      let userToken = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : '';
+      let currentDeviceId = parsed.currentDeviceId || req.headers.get('x-matrix-device-id') || '';
+      const maxAgeDays = typeof parsed.maxAgeDays === 'number' ? parsed.maxAgeDays : 7;
+      const pruneAllExceptCurrent = parsed.pruneAllExceptCurrent === true;
+
+      let targetUid = null;
+      let targetUsername = '';
+
+      if (validId(sid)) {
+        targetUid = sid;
+        const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+        targetUsername = matrixUsers[targetUid] || '';
+      }
+
+      if (userToken) {
+        try {
+          const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+            headers: { 'Authorization': `Bearer ${userToken}` }
+          });
+          if (whoRes.ok) {
+            const who = await whoRes.json();
+            if (who.device_id && !currentDeviceId) currentDeviceId = who.device_id;
+            if (who.user_id && !targetUsername) targetUsername = who.user_id.replace(/^@/, '').split(':')[0];
+          }
+        } catch (_) {}
+      } else if (targetUid && targetUsername) {
+        try {
+          const conduitPass = getMatrixPasswordForUid(targetUid);
+          const loginRes = await callConduit('/_matrix/client/v3/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'm.login.password',
+              identifier: { type: 'm.id.user', user: targetUsername },
+              password: conduitPass,
+              initial_device_display_name: 'Mitch.pro Prune Session'
+            })
+          });
+          if (loginRes.ok) {
+            const loginData = await loginRes.json();
+            userToken = loginData.access_token || '';
+            if (!currentDeviceId) currentDeviceId = loginData.device_id || '';
+          }
+        } catch (_) {}
+      }
+
+      if (!userToken) {
+        return jsonResp(401, { error: 'Authentication required to prune devices' });
+      }
+
+      try {
+        const devRes = await callConduit('/_matrix/client/v3/devices', {
+          headers: { 'Authorization': `Bearer ${userToken}` }
+        });
+        if (!devRes.ok) {
+          const errData = await devRes.json().catch(() => ({}));
+          throw new Error(errData?.error || 'Failed to list user devices');
+        }
+        const devData = await devRes.json();
+        const devices = Array.isArray(devData.devices) ? devData.devices : [];
+
+        const now = Date.now();
+        const maxAgeMs = Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
+        const toDelete = [];
+
+        for (const dev of devices) {
+          const dId = dev.device_id;
+          if (!dId) continue;
+          if (currentDeviceId && dId === currentDeviceId) continue;
+          if (pruneAllExceptCurrent) {
+            toDelete.push(dId);
+            continue;
+          }
+          const lastSeen = Number(dev.last_seen_ts) || 0;
+          if (!lastSeen || (now - lastSeen) > maxAgeMs) {
+            toDelete.push(dId);
+          }
+        }
+
+        if (toDelete.length > 0) {
+          let delRes = await callConduit('/_matrix/client/v3/delete_devices', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${userToken}`
+            },
+            body: JSON.stringify({ devices: toDelete })
+          });
+
+          if (delRes.status === 401 && targetUid) {
+            const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+            const assigned = targetUsername || matrixUsers[targetUid];
+            const conduitPass = getMatrixPasswordForUid(targetUid);
+            delRes = await callConduit('/_matrix/client/v3/delete_devices', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${userToken}`
+              },
+              body: JSON.stringify({
+                devices: toDelete,
+                auth: {
+                  type: 'm.login.password',
+                  identifier: { type: 'm.id.user', user: assigned },
+                  password: conduitPass
+                }
+              })
+            });
+          }
+
+          if (!delRes.ok && delRes.status !== 200) {
+            const delErr = await delRes.json().catch(() => ({}));
+            throw new Error(delErr?.error || 'Failed to delete stale devices');
+          }
+        }
+
+        return jsonResp(200, {
+          ok: true,
+          prunedCount: toDelete.length,
+          prunedDevices: toDelete,
+          remainingCount: devices.length - toDelete.length
+        });
+      } catch (err) {
+        console.error('[matrix-devices] Prune stale error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to prune devices' });
       }
     }
 
