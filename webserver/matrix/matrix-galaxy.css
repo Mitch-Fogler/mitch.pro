@@ -349,20 +349,100 @@ pre {
   padding: 1px 6px !important;
 }
 
-/* ── Composer & Textarea ─────────────────────────────────────────── */
+/* ── Composer & Textarea (Spacious, Roomy, Clean) ─────────────────── */
 .ay20pp9,
 .coabsl0 {
   background: var(--t-bg2) !important;
   border: 1px solid var(--t-bd) !important;
-  border-radius: 16px !important;
+  border-radius: 20px !important;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
   transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 4px 10px !important;
 }
 
 .ay20pp9:has(textarea:focus),
 .coabsl0:focus-within {
   border-color: var(--t-bda) !important;
   box-shadow: 0 4px 24px var(--t-gls), 0 0 0 1px var(--t-bda) !important;
+}
+
+/* Flex row containing before [+], input [text], after [... 😊 ➤] */
+.coabsl0 > div:has(.coabsl2),
+.coabsl0 > div:first-child {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  gap: 6px !important;
+}
+
+/* Text input scroll wrapper takes 100% of remaining horizontal space */
+.coabsl0 .coabsl2,
+.coabsl2 {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+}
+
+/* The actual editable text field — roomy, easy to click, multiline-safe */
+.coabsl3,
+[data-editable-name="RoomInput"] {
+  min-height: 34px !important;
+  max-height: 40vh !important;
+  font-size: 15px !important;
+  line-height: 1.45 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  padding: 6px 10px !important;
+  word-break: break-word !important;
+  box-sizing: border-box !important;
+  font-family: var(--t-font) !important;
+  color: var(--t-fg) !important;
+  outline: none !important;
+}
+
+/* Action button containers: compact flex row */
+.coabsl0 .coabsl1,
+.coabsl1 {
+  display: flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  flex-shrink: 0 !important;
+  padding: 0 !important;
+}
+
+/* Composer buttons (+ on left, ... / emoji / send on right) */
+.ay20pp9 button,
+.coabsl0 button {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px !important;
+  min-height: 34px !important;
+  padding: 5px !important;
+  border-radius: 10px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  touch-action: manipulation !important;
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease !important;
+}
+
+.ay20pp9 button:hover,
+.coabsl0 button:hover {
+  transform: scale(1.06) !important;
+}
+
+/* 3-dots button active state when formatting toolbar is open */
+.coabsl0 button[aria-pressed="true"] {
+  background: var(--t-gls, rgba(180, 94, 255, 0.16)) !important;
+  color: var(--t-ac, #b86cff) !important;
 }
 
 textarea {
@@ -982,13 +1062,10 @@ pre::-webkit-scrollbar-thumb:hover,
     touch-action: manipulation !important;
   }
 
-  /* On mobile: hide non-essential buttons (Alphabet formatting and separate Sticker button) */
-  /* This prevents the 5-icon squeeze that crushed the textbox down to 3 letters */
-  .coabsl0 .coabsl1:last-child > button:first-child,
+  /* On mobile: hide legacy redundant buttons if present */
   .coabsl0 button:has(svg path[d*="M3 18L7 5H9L13 18H11.5"]),
   .coabsl0 button:has(svg path[d*="M14 3H3V21H21V10H14V3Z"]),
-  .coabsl0 button[aria-label*="Format" i],
-  .coabsl0 button[aria-label*="Sticker" i] {
+  .coabsl0 button[aria-label="Stickers" i] {
     display: none !important;
   }
 
