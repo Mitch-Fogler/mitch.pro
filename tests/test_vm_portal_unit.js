@@ -227,7 +227,7 @@ optService.request = async (method, path, params) => {
 const applied = await optService.ensureOptimizedVmConfig(401);
 assert(applied.cpu === 'host', 'optimization must set cpu to host');
 assert(applied.rng0 === 'source=/dev/urandom', 'optimization must set rng0 to /dev/urandom');
-assert(applied.vga === 'virtio', 'optimization must upgrade vga to virtio');
+assert(applied.vga === 'std,memory=64', 'optimization must set vga to std,memory=64');
 assert(optPuts.length === 1, 'PUT config must have been invoked once');
 
 // Redundant call should use cache and skip PUT
@@ -240,7 +240,7 @@ optService.optimizedVmids.clear();
 mockConfig = { cpu: 'kvm64' };
 await optService.power({ vmid: 402, node: 'node-a', guestType: 'qemu' }, 'start');
 assert(optPuts.length === 2, 'power start must trigger config optimization on QEMU guest');
-assert(optPuts[1].cpu === 'host' && optPuts[1].rng0 === 'source=/dev/urandom' && optPuts[1].vga === 'virtio', 'power start must apply all boot optimizations');
+assert(optPuts[1].cpu === 'host' && optPuts[1].rng0 === 'source=/dev/urandom' && optPuts[1].vga === 'std,memory=64', 'power start must apply all boot optimizations');
 
 console.log('VM portal security, policy, and failure tests passed.');
 
