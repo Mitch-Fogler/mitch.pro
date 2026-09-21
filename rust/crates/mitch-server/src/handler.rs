@@ -329,6 +329,19 @@ pub async fn handle(
         }
     }
 
+    // 3b1. LiveKit HTTP surface — server.js:9637-9698. The JS runs the
+    // /livekit* OPTIONS preflight and the token endpoints (9636) BEFORE the
+    // maintenance (10500), ban (10525) and password (10557) gates, so this
+    // must dispatch before the gates below: anonymous token generation
+    // succeeds (live-verified divergence bun 200 / rust 302 otherwise).
+    if path.starts_with("/livekit") {
+        if let Some(resp) = crate::routes::livekit::handle_http(
+            &state, &method, &path, headers, &search, body_bytes,
+        ) {
+            return resp;
+        }
+    }
+
     // 3b2. IP ban gate — server.js:7677-7684, immediately after getRealIp.
     // Bans apply to every path except the appeal set.
     {
@@ -521,8 +534,61 @@ pub async fn handle(
         }
     }
 
+    // 4b3. WS bridge upgrades — server.js:11725-12000, the upgrade block
+    // after the password gate: /livekit/rtc (11725), /ssh/ws (11738), the
+    // /vnc/ws 410 (11792), and /api/blooket-bot/ws (11797). A matching path
+    // without an upgrade header falls through, exactly like the JS.
+    let is_upgrade = headers
+        .get("upgrade")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.to_lowercase())
+        .as_deref()
+        == Some("websocket");
+    // The two arms are an else-if chain so the conditional move of
+    // `ws_upgrade` in the first arm can't poison the second — rustc cannot
+    // reason about the disjointness of the string conditions. Safe because
+    // handle_rtc_upgrade returns Some for every /livekit/rtc path.
+    if is_upgrade && path.starts_with("/livekit/rtc") {
+        if let Some(resp) =
+            crate::routes::livekit::handle_rtc_upgrade(&state, &path, &search, ws_upgrade)
+        {
+            return resp;
+        }
+    } else if is_upgrade && path == "/ssh/ws" {
+        if let Some(resp) =
+            crate::routes::ssh_ws::handle_ws_upgrade(&state, &path, headers, ws_upgrade)
+        {
+            return resp;
+        }
+        // The JS falls through on an upgrade failure — reach the static/404
+        // handling below.
+    } else if is_upgrade && path == "/vnc/ws" {
+        // server.js:11792-11794 — the legacy noVNC bridge is gone.
+        return crate::routes::me::json_response(
+            410,
+            serde_json::json!({ "error": "This desktop connection method is no longer available." }),
+        );
+    } else if is_upgrade && path == "/api/blooket-bot/ws" {
+        if let Some(resp) =
+            crate::routes::blooket::handle_ws_upgrade(&state, &path, &search, headers, ws_upgrade)
+        {
+            return resp;
+        }
+        // The JS falls through on an upgrade failure — reach the /api/ 404
+        // below rather than the static pages.
+    }
+
     // 4c. API route dispatch — the ported route groups (plan Step 7+).
     if path.starts_with("/api/") {
+        // Blooket-bot premium endpoints (server.js:11834-11992).
+        if path.starts_with("/api/blooket-bot/") {
+            if let Some(resp) =
+                crate::routes::blooket::handle(&state, &method, &path, headers, body_bytes, &search)
+                    .await
+            {
+                return resp;
+            }
+        }
         // Captcha proxy (solve/submit/stats/token/next/puzzle/images).
         if let Some(resp) = crate::routes::proxy::captcha_proxy(
             &state, &method, &path, headers, &search, body_bytes,

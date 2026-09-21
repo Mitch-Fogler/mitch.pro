@@ -450,16 +450,32 @@ mod tests {
     use super::*;
 
     fn temp_store(name: &str) -> (DataStore, std::path::PathBuf) {
-        let dir = std::env::temp_dir().join(format!(
-            "dm-test-{name}-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(dir.join("data")).unwrap();
-        let store = DataStore::open(&dir, &dir.join("data")).unwrap();
-        (store, dir.join("data"))
+        // Under full parallel load this box's tmpfs intermittently fails the
+        // WAL setup inside DataStore::open with SQLITE_IOERR_READ. Retry on a
+        // fresh dir — the tests are deterministic, an I/O error is never a
+        // real assertion failure.
+        let mut last_err = None;
+        for attempt in 0..5u32 {
+            let dir = std::env::temp_dir().join(format!(
+                "dm-test-{name}-{}-{attempt}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(dir.join("data")).unwrap();
+            match DataStore::open(&dir, &dir.join("data")) {
+                Ok(store) => return (store, dir.join("data")),
+                Err(e) => {
+                    last_err = Some(e);
+                    let _ = std::fs::remove_dir_all(&dir);
+                    std::thread::sleep(std::time::Duration::from_millis(
+                        50 * u64::from(attempt + 1),
+                    ));
+                }
+            }
+        }
+        panic!("temp_store open failed after retries: {:?}", last_err);
     }
 
     #[test]

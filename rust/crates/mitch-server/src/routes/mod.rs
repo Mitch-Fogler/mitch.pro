@@ -8,6 +8,7 @@
 
 pub mod admin;
 pub mod battleship;
+pub mod blooket;
 pub mod canvas;
 pub mod casino;
 pub mod chess_vs;
@@ -16,11 +17,13 @@ pub mod e2e;
 pub mod friends;
 pub mod games;
 pub mod jeopardy;
+pub mod livekit;
 pub mod me;
 pub mod members;
 pub mod misc;
 pub mod pickle;
 pub mod proxy;
 pub mod push;
+pub mod ssh_ws;
 pub mod team;
 pub mod vm;

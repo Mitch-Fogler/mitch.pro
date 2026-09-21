@@ -2221,6 +2221,7 @@ name = "mitch-server"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "chrono",
  "form_urlencoded",
  "futures-util",
@@ -2235,6 +2236,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "url",

@@ -16,7 +16,7 @@
 mod account;
 mod cosmetics;
 pub(crate) mod notifications;
-mod security;
+pub(crate) mod security;
 
 use crate::state::AppState;
 use axum::http::{HeaderMap, Method};

@@ -160,6 +160,20 @@ pub struct AppState {
     pub cv_challenges: std::sync::Mutex<indexmap::IndexMap<String, serde_json::Value>>,
     /// `cvChats` (server.js:855) — gameId → messages; in-memory only.
     pub cv_chats: std::sync::Mutex<indexmap::IndexMap<String, serde_json::Value>>,
+    /// `activeFreeVms` (server.js:25512) — normalized email → free-VM entry
+    /// ({vmid, startedAt, lastActive, ...} as raw JSON). Written by the
+    /// Step 13 batch 3 provisioning endpoints; read by the SSH/VNC
+    /// authorization slice (`getVmConnectionIpForEmail`).
+    pub active_free_vms: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    /// `blooketQueue` (server.js:1263) — FIFO of connected-but-queued
+    /// blooket-bot clients, in connect order.
+    pub blooket_queue: std::sync::Mutex<Vec<crate::routes::blooket::BlooketQueued>>,
+    /// `blooketActive` (server.js:1264) — normalized email → active bot
+    /// session, in admission order (the JS Map preserves it).
+    pub blooket_active:
+        std::sync::Mutex<indexmap::IndexMap<String, crate::routes::blooket::BlooketActive>>,
+    /// `blooketPinLocks` (server.js:1265) — game PIN → locking admin email.
+    pub blooket_pin_locks: std::sync::Mutex<indexmap::IndexMap<String, String>>,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -329,6 +343,10 @@ impl AppState {
             cv_challenges: std::sync::Mutex::new(indexmap::IndexMap::new()),
             cv_chats: std::sync::Mutex::new(indexmap::IndexMap::new()),
             matrix_user_last_seen: std::sync::Mutex::new(std::collections::HashMap::new()),
+            active_free_vms: std::sync::Mutex::new(std::collections::HashMap::new()),
+            blooket_queue: std::sync::Mutex::new(Vec::new()),
+            blooket_active: std::sync::Mutex::new(indexmap::IndexMap::new()),
+            blooket_pin_locks: std::sync::Mutex::new(indexmap::IndexMap::new()),
         }
     }
 
