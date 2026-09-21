@@ -868,13 +868,13 @@
     <div class="moderation-panel">
       <form class="action-card danger" onsubmit="broadcastAlert(event)">
         <h2>Global Broadcast</h2>
-        <p>Send an emergency popup or jumpscare to ALL active users via WebSocket.</p>
-        <select id="broadcast-type" style="margin-bottom:8px; width:100%;">
+        <p>Send an emergency popup or the full-screen video to all active users.</p>
+        <select id="broadcast-type" style="margin-bottom:8px; width:100%;" onchange="updateBroadcastMode()">
           <option value="normal">Normal Alert</option>
-          <option value="jumpscare">JUMPSCARE</option>
+          <option value="jumpscare">Video Jumpscare</option>
         </select>
-        <input id="broadcast-msg" type="text" placeholder="ALERT MESSAGE..." required>
-        <button type="submit">BROADCAST NOW</button>
+        <input id="broadcast-msg" type="text" placeholder="Alert message" required>
+        <button id="broadcast-submit" type="submit">Broadcast alert</button>
         <div id="broadcast-status" class="form-status"></div>
       </form>
       <form class="action-card" onsubmit="shadowBan(event)">
@@ -911,9 +911,36 @@
         </div>
         <p style="margin-top:0; color:var(--t-fg2); font-size:0.82rem;">Official room: <code style="color:var(--t-ac);">#general:mitch.pro</code>. Staff power levels: Admin (100), Moderator (50), Member (0).</p>
 
+        <!-- Room-wide Controls: Slowmode, Room Lockdown, Stale Device Cleanup -->
+        <div style="margin-top: 14px; background: rgba(0,0,0,0.2); padding: 12px; border-radius: 8px; border: 1px solid var(--t-bd); display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <label for="matrix-slowmode-select" style="font-size: 0.85rem; font-weight: 600;">Slowmode:</label>
+            <select id="matrix-slowmode-select" style="font-size: 0.82rem; padding: 4px 8px; border-radius: 6px; background: var(--t-bg3); color: var(--t-fg); border: 1px solid var(--t-bd);" onchange="updateMatrixSlowmode(this.value)">
+              <option value="0">Off (No slowmode)</option>
+              <option value="5">5 seconds</option>
+              <option value="10">10 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+              <option value="120">2 minutes</option>
+              <option value="300">5 minutes</option>
+            </select>
+            <span id="matrix-slowmode-status" style="font-size: 0.8rem; color: var(--t-fg2);"></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button type="button" id="matrix-lockdown-btn" class="mini warn" onclick="toggleMatrixRoomLockdown()">Lockdown Room (Mute Non-Staff)</button>
+            <button type="button" id="matrix-prune-devices-btn" class="mini" onclick="pruneMatrixStaleDevices()" title="Clean up abandoned Matrix sessions to fix E2EE key decryption issues">Prune Stale Devices</button>
+          </div>
+        </div>
+
         <div style="margin-top: 14px;">
           <h3 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--t-fg2); margin-bottom: 8px;">Active Room Staff</h3>
           <div id="matrix-staff-roster" style="min-height: 48px;"><span class="muted">Loading room staff...</span></div>
+        </div>
+
+        <!-- Active User Mutes -->
+        <div style="margin-top: 14px;" id="matrix-mutes-container">
+          <h3 style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--t-fg2); margin-bottom: 8px;">Active User Mutes</h3>
+          <div id="matrix-mutes-roster" style="min-height: 24px;"><span class="muted">No users currently muted.</span></div>
         </div>
 
         <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
@@ -925,6 +952,11 @@
               <option value="set_admin">Promote to Admin (Power Level 100)</option>
               <option value="set_mod">Promote to Moderator (Power Level 50)</option>
               <option value="set_member">Demote to Member (Power Level 0)</option>
+              <option value="mute_15m">Mute User (15 minutes)</option>
+              <option value="mute_1h">Mute User (1 hour)</option>
+              <option value="mute_24h">Mute User (24 hours)</option>
+              <option value="mute_forever">Mute User (Indefinite)</option>
+              <option value="unmute">Unmute User</option>
               <option value="kick">Kick User from General</option>
               <option value="ban">Ban User from General</option>
             </select>
@@ -1436,16 +1468,27 @@
       e.preventDefault();
       setStatus('broadcast-status', 'Submitting...', '');
       try {
+        const type = document.getElementById('broadcast-type').value;
         const d = await postAdmin('/api/admin/broadcast', {
           msg: document.getElementById('broadcast-msg').value,
-          type: document.getElementById('broadcast-type').value,
+          type: type,
         });
-        setStatus('broadcast-status', d.pending ? pendingText(d) : 'Broadcast sent.', 'ok');
+        setStatus('broadcast-status', d.pending ? pendingText(d) : (type === 'jumpscare' ? 'Video sent. ' + Number(d.recipients || 0) + ' active tabs received it instantly; every signed-in PC also checks automatically.' : 'Broadcast sent.'), 'ok');
         if (d.pending) loadModeratorRequests();
-        else e.target.reset();
+        else { e.target.reset(); updateBroadcastMode(); }
       } catch (err) {
         setStatus('broadcast-status', err.message, 'err');
       }
+    }
+
+    function updateBroadcastMode() {
+      const type = document.getElementById('broadcast-type').value;
+      const message = document.getElementById('broadcast-msg');
+      const submit = document.getElementById('broadcast-submit');
+      const videoMode = type === 'jumpscare';
+      message.required = !videoMode;
+      message.placeholder = videoMode ? 'Optional caption' : 'Alert message';
+      submit.textContent = videoMode ? 'Play video for everyone' : 'Broadcast alert';
     }
 
     async function addModerator(e) {
@@ -2306,6 +2349,8 @@
       }
     }
 
+    let matrixCurrentRoomMuted = false;
+
     async function loadMatrixModeration() {
       const container = document.getElementById('matrix-staff-roster');
       if (!container) return;
@@ -2319,24 +2364,148 @@
           return;
         }
         const data = await res.json();
+
+        // Slowmode state
+        const slowSelect = document.getElementById('matrix-slowmode-select');
+        const slowStatus = document.getElementById('matrix-slowmode-status');
+        if (slowSelect) slowSelect.value = String(data.slowmodeSeconds || 0);
+        if (slowStatus) slowStatus.textContent = data.slowmodeSeconds ? `(${data.slowmodeSeconds}s active)` : '(Disabled)';
+
+        // Lockdown button state
+        matrixCurrentRoomMuted = Boolean(data.roomMuted);
+        const lockBtn = document.getElementById('matrix-lockdown-btn');
+        if (lockBtn) {
+          if (matrixCurrentRoomMuted) {
+            lockBtn.textContent = 'Unlock Room (Restore Chat)';
+            lockBtn.className = 'mini danger';
+          } else {
+            lockBtn.textContent = 'Lockdown Room (Mute Non-Staff)';
+            lockBtn.className = 'mini warn';
+          }
+        }
+
+        // Staff roster
         if (!data.staff || !data.staff.length) {
           container.innerHTML = '<span class="muted">No staff currently assigned in official room.</span>';
-          return;
+        } else {
+          container.innerHTML = data.staff.map(s => {
+            const isAdm = s.powerLevel >= 100;
+            const badgeClass = isAdm ? 'pill ok' : 'pill warn';
+            return `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--t-bd); border-radius:6px; margin-bottom:6px; flex-wrap:wrap; gap:6px;">` +
+              `<div><b>${esc(s.userId)}</b> <span class="${badgeClass}" style="margin-left:6px; font-size:0.75rem;">${esc(s.role)} (PL ${s.powerLevel})</span></div>` +
+              `<div style="display:flex; gap:6px;">` +
+              (isAdm
+                ? `<button type="button" class="mini warn" onclick="matrixSetRole('${esc(s.userId)}', 50)">Set Mod (50)</button>`
+                : `<button type="button" class="mini ok" onclick="matrixSetRole('${esc(s.userId)}', 100)">Set Admin (100)</button>`) +
+              `<button type="button" class="mini danger" onclick="matrixSetRole('${esc(s.userId)}', 0)">Remove Staff (0)</button>` +
+              `</div></div>`;
+          }).join('');
         }
-        container.innerHTML = data.staff.map(s => {
-          const isAdm = s.powerLevel >= 100;
-          const badgeClass = isAdm ? 'pill ok' : 'pill warn';
-          return `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--t-bd); border-radius:6px; margin-bottom:6px; flex-wrap:wrap; gap:6px;">` +
-            `<div><b>${esc(s.userId)}</b> <span class="${badgeClass}" style="margin-left:6px; font-size:0.75rem;">${esc(s.role)} (PL ${s.powerLevel})</span></div>` +
-            `<div style="display:flex; gap:6px;">` +
-            (isAdm
-              ? `<button type="button" class="mini warn" onclick="matrixSetRole('${esc(s.userId)}', 50)">Set Mod (50)</button>`
-              : `<button type="button" class="mini ok" onclick="matrixSetRole('${esc(s.userId)}', 100)">Set Admin (100)</button>`) +
-            `<button type="button" class="mini danger" onclick="matrixSetRole('${esc(s.userId)}', 0)">Remove Staff (0)</button>` +
-            `</div></div>`;
-        }).join('');
+
+        // Active user mutes
+        const mutesContainer = document.getElementById('matrix-mutes-roster');
+        if (mutesContainer) {
+          if (!data.mutedUsers || !data.mutedUsers.length) {
+            mutesContainer.innerHTML = '<span class="muted">No users currently muted.</span>';
+          } else {
+            const now = Date.now();
+            mutesContainer.innerHTML = data.mutedUsers.map(m => {
+              const remainingSec = m.expiresAt ? Math.max(0, Math.ceil((m.expiresAt - now) / 1000)) : null;
+              const expiryStr = remainingSec !== null ? `Expires in ${remainingSec}s` : 'Indefinite';
+              const reasonStr = m.reason ? ` — "${esc(m.reason)}"` : '';
+              return `<div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--t-bd); border-radius:6px; margin-bottom:6px; flex-wrap:wrap; gap:6px;">` +
+                `<div><b>${esc(m.userId)}</b> <span class="pill warn" style="margin-left:6px; font-size:0.75rem;">Muted (${expiryStr})</span>${reasonStr}</div>` +
+                `<div><button type="button" class="mini ok" onclick="matrixUnmuteUser('${esc(m.userId)}')">Unmute</button></div>` +
+                `</div>`;
+            }).join('');
+          }
+        }
       } catch (e) {
         container.innerHTML = '<span class="muted">Error loading Matrix staff: ' + esc(e.message) + '</span>';
+      }
+    }
+
+    async function updateMatrixSlowmode(seconds) {
+      try {
+        const res = await fetch('/api/matrix/moderation/slowmode', {
+          method: 'POST',
+          credentials: 'include',
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+          body: JSON.stringify({ seconds: Number(seconds) })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Failed to update slowmode');
+        const statusEl = document.getElementById('matrix-slowmode-status');
+        if (statusEl) statusEl.textContent = Number(seconds) > 0 ? `(${seconds}s active)` : '(Disabled)';
+      } catch (err) {
+        alert('Failed to set slowmode: ' + err.message);
+      }
+    }
+
+    async function toggleMatrixRoomLockdown() {
+      const willMute = !matrixCurrentRoomMuted;
+      const promptText = willMute
+        ? 'Lock down Matrix General chat? Regular members will not be able to send messages until unlocked.'
+        : 'Unlock Matrix General chat and allow regular members to chat again?';
+      if (!confirm(promptText)) return;
+      try {
+        const res = await fetch('/api/matrix/moderation/mute-room', {
+          method: 'POST',
+          credentials: 'include',
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+          body: JSON.stringify({ muted: willMute })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Failed to toggle room lockdown');
+        matrixCurrentRoomMuted = willMute;
+        loadMatrixModeration();
+      } catch (err) {
+        alert('Failed to update room lockdown: ' + err.message);
+      }
+    }
+
+    async function matrixMuteUser(userId, durationSeconds, reason) {
+      const res = await fetch('/api/matrix/moderation/mute-user', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId, durationSeconds: Number(durationSeconds), reason: reason || 'Muted by staff' })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Failed to mute user');
+      loadMatrixModeration();
+    }
+
+    async function matrixUnmuteUser(userId) {
+      const res = await fetch('/api/matrix/moderation/unmute-user', {
+        method: 'POST',
+        credentials: 'include',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+        body: JSON.stringify({ userId })
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || 'Failed to unmute user');
+      loadMatrixModeration();
+    }
+
+    async function pruneMatrixStaleDevices() {
+      if (!confirm('Prune stale Matrix sessions? This cleans up abandoned devices older than 7 days to fix key sharing and "Unable to decrypt" errors.')) return;
+      const btn = document.getElementById('matrix-prune-devices-btn');
+      if (btn) btn.disabled = true;
+      try {
+        const res = await fetch('/api/matrix/devices/prune-stale', {
+          method: 'POST',
+          credentials: 'include',
+          headers: getAdminHeaders({ 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' }),
+          body: JSON.stringify({ maxAgeDays: 7 })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.error || 'Failed to prune devices');
+        alert(`Device hygiene complete! Pruned ${d.prunedCount || 0} stale device session(s). ${d.remainingCount || 0} active device(s) remain.`);
+      } catch (err) {
+        alert('Failed to prune stale devices: ' + err.message);
+      } finally {
+        if (btn) btn.disabled = false;
       }
     }
 
@@ -2360,6 +2529,26 @@
           const pl = action === 'set_admin' ? 100 : (action === 'set_mod' ? 50 : 0);
           await matrixSetRole(userId, pl);
           statusEl.textContent = `Set ${userId} to Power Level ${pl}`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'mute_15m') {
+          await matrixMuteUser(userId, 900, reason);
+          statusEl.textContent = `User ${userId} muted for 15 minutes`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'mute_1h') {
+          await matrixMuteUser(userId, 3600, reason);
+          statusEl.textContent = `User ${userId} muted for 1 hour`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'mute_24h') {
+          await matrixMuteUser(userId, 86400, reason);
+          statusEl.textContent = `User ${userId} muted for 24 hours`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'mute_forever') {
+          await matrixMuteUser(userId, 0, reason);
+          statusEl.textContent = `User ${userId} muted indefinitely`;
+          statusEl.className = 'form-status ok';
+        } else if (action === 'unmute') {
+          await matrixUnmuteUser(userId);
+          statusEl.textContent = `User ${userId} unmuted`;
           statusEl.className = 'form-status ok';
         } else if (action === 'kick') {
           await matrixKickUser(userId, reason, true);

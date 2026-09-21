@@ -45,3 +45,27 @@ a.desktop-preview:hover .desktop-window{transform:perspective(900px) rotateX(0) 
 @media(max-width:560px){.computer-shell{width:calc(100% - 18px);padding-top:79px}.computer-hero{margin-bottom:16px}.computer-heading{gap:10px}.computer-heading-mark{width:41px;height:41px;border-radius:12px}.computer-heading-mark svg{width:19px}.computer-hero h1{font-size:2.2rem}.quiet-button{width:42px;height:42px;padding:0}.quiet-button span{display:none}.desktop-preview{min-height:226px;padding:44px 14px 37px}.desktop-window{width:94%;border-radius:13px}.window-bar{height:27px}.window-content{height:calc(100% - 27px)}.desktop-emblem{width:52px;height:52px;border-radius:16px;font-size:1.1rem}.desktop-dock{bottom:8px;padding:5px 7px}.desktop-dock i{width:15px;height:15px}.status-pill{top:12px;left:12px}.computer-details{padding:20px 17px}.computer-title-row{display:block}.computer-title-row .primary-button{width:100%;margin-top:18px}.machine-facts{margin-top:20px}.resource span{display:block}.resource span b{display:block;margin-top:2px}.computer-actions{display:grid;grid-template-columns:1fr 1fr}.computer-actions .primary-button{grid-column:1/-1;margin:0}.control-button{padding:10px 7px}}
 @media(max-height:760px) and (min-width:821px){.computer-shell{padding-top:88px}.computer-card{min-height:460px}.desktop-preview{padding-top:45px;padding-bottom:48px}.computer-details{padding-top:29px;padding-bottom:29px}.machine-facts{margin-top:20px}.computer-actions{padding-top:18px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
+.upgrade-control{border-color:rgba(234,179,8,.4);background:rgba(234,179,8,.1);color:#fde047}
+.upgrade-control:hover{border-color:#eab308;background:rgba(234,179,8,.2);color:#fff}
+.upgrade-dialog{width:min(640px,calc(100% - 30px));max-height:90vh;padding:0;border:1px solid var(--cloud-line);border-radius:22px;background:#141720;color:var(--cloud-text);box-shadow:0 35px 100px rgba(0,0,0,.75);overflow-y:auto}
+.upgrade-dialog::backdrop{background:rgba(4,5,7,.8);backdrop-filter:blur(8px)}
+.upgrade-dialog-content{padding:28px}
+.upgrade-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.upgrade-header h2{margin:2px 0 0;font-size:1.6rem;letter-spacing:-.03em}
+.user-coin-badge{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid rgba(234,179,8,.35);border-radius:999px;background:linear-gradient(135deg,rgba(234,179,8,.15),rgba(234,179,8,.05));color:#fde047;font-weight:800;font-size:.9rem}
+.upgrade-tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:20px;border-bottom:1px solid var(--cloud-line)}
+.upgrade-tab{padding:8px 14px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--cloud-muted);font-weight:700;font-size:.85rem;cursor:pointer;white-space:nowrap;transition:all .15s ease}
+.upgrade-tab:hover{color:var(--cloud-text);background:var(--cloud-soft)}
+.upgrade-tab.active{color:#fff;background:rgba(255,255,255,.1);border-color:var(--cloud-line-strong)}
+.upgrade-tier-list{display:flex;flex-direction:column;gap:10px}
+.upgrade-tier-card{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 18px;border:1px solid var(--cloud-line);border-radius:14px;background:rgba(255,255,255,.025);transition:all .15s ease}
+.upgrade-tier-card:hover{background:rgba(255,255,255,.05);border-color:var(--cloud-line-strong)}
+.upgrade-tier-card.is-current{border-color:rgba(101,212,154,.4);background:rgba(101,212,154,.06)}
+.upgrade-tier-info{display:flex;flex-direction:column;gap:2px}
+.upgrade-tier-title{font-weight:800;font-size:1rem;color:var(--cloud-text)}
+.upgrade-tier-sub{font-size:.8rem;color:var(--cloud-muted)}
+.upgrade-tier-cost{display:inline-flex;align-items:center;gap:4px;font-size:.88rem;color:#fde047;font-weight:700}
+.upgrade-tier-action{display:flex;align-items:center;gap:10px}
+.current-tier-pill{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:8px;background:rgba(101,212,154,.15);color:var(--cloud-ok);font-size:.8rem;font-weight:800}
+.upgrade-notice{margin-top:20px;padding:12px 16px;border:1px solid rgba(255,255,255,.08);border-radius:12px;background:rgba(255,255,255,.02);font-size:.84rem;color:var(--cloud-muted);line-height:1.45}
+.form-status{min-height:1.3em;font-size:.88rem;margin:12px 0 0}

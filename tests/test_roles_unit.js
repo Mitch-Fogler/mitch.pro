@@ -8,6 +8,7 @@ const rolesEnd = source.indexOf('function blogContributorEmails()', rolesStart);
 const context = {
   loadJson: () => ({ owners: ['admin@mitch.pro'], admins: ['regular.admin@student.rjuhsd.us'] }),
   ADMINS_FILE: 'admins.json',
+  TESTERS_FILE: 'testers.json',
   devTestAccessEnabled: () => false,
   DEV_TEST_EMAIL: 'admin@mitch.pro',
 };
@@ -19,4 +20,6 @@ if (!context.isOwnerEmail(tyler)) throw new Error('Co-owner must receive owner a
 if (!context.isAdminEmail(tyler)) throw new Error('Co-owner must receive full admin access');
 if (!context.siteAdminEmails().includes(context.normalizeEmail(tyler))) throw new Error('Co-owner must be in the privileged identity set');
 if (context.isOwnerEmail('regular.admin@student.rjuhsd.us')) throw new Error('Admin must not be promoted to owner');
+if (typeof context.isTesterEmail !== 'function') throw new Error('isTesterEmail must be defined');
+if (typeof context.testerEmails !== 'function') throw new Error('testerEmails must be defined');
 console.log('Role tests passed.');

@@ -26,13 +26,46 @@ import {
   unassignVirtualMachine,
   deleteVirtualMachine,
   updateVirtualMachineRuntime,
+  updateVirtualMachineSpecs,
   appendVmAuditLog,
   listVmAuditLogs,
+  recordVmUsageSample,
+  listVmUsageSamples,
+  getVmUsageTimeline,
+  pruneOldVmUsageSamples,
 } from './lib/data_store.js';
 import { loadJson, saveJson, saveJsonSync } from './lib/jsonStore.js';
 import { RJUHSD_ORIGIN, bellScheduleRedirect, blooketBotRedirect } from './lib/site_redirects.js';
 import { ProxmoxDesktopService, ProxmoxServiceError } from './lib/proxmox_desktop.js';
-import { canAccessVmRecord, validateDesktopSession, VmOperationGate } from './lib/vm_security.js';
+import {
+  canAccessVmRecord,
+  validateDesktopSession,
+  VmOperationGate,
+  VM_MAX_CONCURRENT_RUNNING,
+  VM_FLEET_MAX_CORES,
+  VM_FLEET_MAX_MEMORY_MB,
+  VM_MAX_UPGRADE_CPU_CORES,
+  VM_MAX_UPGRADE_MEMORY_MB,
+  VM_MAX_UPGRADE_DISK_GB,
+  VM_UPGRADE_CATALOG,
+  checkFleetResourceCapacity,
+  VM_DAILY_MAX_SECONDS,
+  VM_EXTENSION_COOLDOWN_MS,
+  VM_COOLDOWN_DURATION_MS,
+  VM_OFFPAGE_INACTIVITY_MS,
+  VM_DEFAULT_CPU_CORES,
+  VM_DEFAULT_MEMORY_MB,
+  VM_DEFAULT_BALLOON_MB,
+  VM_DEFAULT_DISK_GB,
+  getRemainingDailyVmSeconds,
+  isDailyVmLimitReached,
+  getVmDayKey,
+  isEligibleForFreeVm as isEligibleForFreeVmPolicy,
+  canUserExtend as canUserExtendPolicy,
+  computeCooldownRemaining,
+  isVmInactive,
+  formatUptimeDuration,
+} from './lib/vm_security.js';
 import { rpForHost, makeChallengeStore, publicCredentialView, guessCredentialName } from './lib/webauthn.js';
 import { matrixMessageBlocked } from './lib/matrix_word_filter.js';
 import { guestPreview } from './lib/guest_preview.js';
@@ -223,8 +256,11 @@ const SEARCH_INTENT_FILE     = join(DATA_DIR, 'search_intent.json');
 const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
 const MATRIX_USERS_FILE      = join(DATA_DIR, 'matrix_users.json');
 const MATRIX_NOTIFICATIONS_FILE = join(DATA_DIR, 'matrix_notifications.json');
+const MATRIX_EMAIL_SENT_FILE    = join(DATA_DIR, 'matrix_email_sent.json');
+const MATRIX_ROOM_SETTINGS_FILE  = join(DATA_DIR, 'matrix_room_settings.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
+const TESTERS_FILE           = join(DATA_DIR, 'testers.json');
 const MODERATOR_PANEL_FILE   = join(DATA_DIR, 'moderator_panel.json');
 const MODERATOR_REQUESTS_FILE = join(DATA_DIR, 'moderator_requests.json');
 const GENERATIONS_FILE       = join(DATA_DIR, 'generations.json');
@@ -1254,6 +1290,36 @@ function loadGlobalGameStats() {
 }
 
 const allSockets = new Set();
+const ADMIN_BROADCAST_TTL_MS = 5 * 60 * 1000;
+let latestAdminBroadcast = null;
+
+function activeAdminBroadcast(now = Date.now()) {
+  if (!latestAdminBroadcast || latestAdminBroadcast.expiresAt <= now) {
+    latestAdminBroadcast = null;
+    return null;
+  }
+  return latestAdminBroadcast;
+}
+
+function publishAdminBroadcast(type, message) {
+  const now = Date.now();
+  const event = {
+    broadcastId: `${now.toString(36)}-${randomBytes(6).toString('hex')}`,
+    type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast',
+    message: String(message || ''),
+    createdAt: now,
+    expiresAt: now + ADMIN_BROADCAST_TTL_MS,
+  };
+  latestAdminBroadcast = event;
+  const socketPayload = JSON.stringify(event);
+  let recipients = 0;
+  for (const ws of allSockets) {
+    if (ws.data?.isBroadcast && ws.readyState === 1) {
+      try { ws.send(socketPayload); recipients++; } catch {}
+    }
+  }
+  return { recipients, broadcastId: event.broadcastId, expiresAt: event.expiresAt };
+}
 
 // Sexy Pickle Club presence ("in the barrel right now"). Heartbeats from the
 // Barrel page keep this fresh; in-memory only, so a fresh boot is an empty room.
@@ -1552,6 +1618,12 @@ const RATE_LIMITS = {
   '/api/vm/computers':             [60,  60],
   '/api/vm/power':                 [6,   60],
   '/api/vm/desktop-session':       [12,  60],
+  '/api/vm/extend':                [10,  60],
+  '/api/vm/heartbeat':             [120, 60],
+  '/api/vm/my-computer/create':    [5,   60],
+  '/api/vm/my-computer/recreate':  [5,   60],
+  '/api/vm/upgrades':              [30,  60],
+  '/api/vm/upgrade':               [15,  60],
   '/api/admin/vms':                [30,  60],
   '/api/admin/profile-reports/resolve': [20, 60],
   '/api/presence/heartbeat':       [60,  60],
@@ -2818,6 +2890,8 @@ const PUBLIC_API_PATHS = new Set([
   '/api/backgrounds/list',
   '/api/matrix/sso-login',
   '/api/matrix/sso-status',
+  '/api/matrix/report-room',
+  '/api/matrix/devices/prune-stale',
 ]);
 
 function cookiePathAttrs(req = null, maxAge = Math.floor(AUTH_SESSION_TTL_MS / 1000), httpOnly = true) {
@@ -3073,7 +3147,17 @@ const ACHIEVEMENT_DEFINITIONS = {
   'jeopardy_2': { name: 'Jeopardy Legend', desc: 'Win 10 Jeopardy games', bonus: 500, goal: 10, stat: 'jeopardy_wins' }
 };
 
-function loadCoins() { return coinsCache; }
+function loadCoins() {
+  if (process.env.NODE_ENV === 'test') {
+    try {
+      const fromDisk = loadJson(COINS_FILE, {});
+      if (fromDisk && typeof fromDisk === 'object') {
+        coinsCache = { ...fromDisk };
+      }
+    } catch {}
+  }
+  return coinsCache;
+}
 function saveCoins(c) { coinsCache = c; saveJson(COINS_FILE, c); }
 function getCoins(email) { if (!email) return 0; return loadCoins()[normalizeEmail(email)] || 0; }
 function addCoins(email, amount, reason = '') {
@@ -3213,6 +3297,29 @@ function addAdminNotification(targetEmail, title, message, adminEmail, batchId =
     source: 'mitchdog.com',
     url: url || notificationUrl('/'),
     batchId,
+    ts: Date.now(),
+    read: false,
+  };
+  gifts[norm].unshift(notice);
+  gifts[norm] = gifts[norm].slice(0, 50);
+  saveJson(COIN_GIFTS_FILE, gifts);
+  return notice;
+}
+
+function addVmAdminNotification(targetEmail, title, message, adminEmail, url = '') {
+  const norm = normalizeEmail(targetEmail);
+  if (!norm) return null;
+  const gifts = loadJson(COIN_GIFTS_FILE, {});
+  if (!Array.isArray(gifts[norm])) gifts[norm] = [];
+  const notice = {
+    id: randomBytes(12).toString('hex'),
+    kind: 'vm_admin_access',
+    title: title || 'Computer Access Alert',
+    message,
+    from: adminEmail || 'admin',
+    source: 'mitchdog.com',
+    url: url || notificationUrl('/vms/'),
+    batchId: '',
     ts: Date.now(),
     read: false,
   };
@@ -4217,69 +4324,8 @@ function sendPremiumEmailOffer(targetEmail) {
 
 let isNudgeRunning = false;
 async function nudgeWorker() {
-  if (isNudgeRunning) return;
-  isNudgeRunning = true;
-  try {
-    const logs   = loadJson(SESSION_LOG_FILE, []);
-    const names  = loadJson(NAMES_FILE, {});
-    const tokens = loadJson(TOKENS_FILE, {});
-
-    const latestUid = {};
-    for (const entry of logs) {
-      const uid   = String(entry.id || '');
-      const tsStr = entry.timestamp || '';
-      if (!uid || !tsStr) continue;
-      try {
-        const ts = Date.parse(tsStr) / 1000;
-        if (!latestUid[uid] || ts > latestUid[uid]) latestUid[uid] = ts;
-      } catch {}
-    }
-
-    const latestByEmail = {};
-    for (const [uid, ts] of Object.entries(latestUid)) {
-      const label = names[uid] || '';
-      if (label.includes('@')) {
-        const lower = label.toLowerCase();
-        if (!latestByEmail[lower] || ts > latestByEmail[lower]) latestByEmail[lower] = ts;
-      }
-    }
-
-    const threshold = Date.now() / 1000 - NUDGE_DAYS * 86400;
-    const nudged    = loadNudge();
-    const toSend    = [];
-
-    for (const d of Object.values(tokens)) {
-      if (!d.claimed_domains && !d.used) continue;
-      const email = (d.email || '').trim();
-      if (!email) continue;
-      const lower = email.toLowerCase();
-      if (nudged[lower]) continue;
-      const claimedTs = d.claimed_domains
-        ? Math.min(...Object.values(d.claimed_domains))
-        : (d.used_at || d.created_at || 0);
-      if (Date.now() / 1000 - claimedTs < NUDGE_DAYS * 86400) continue;
-      const last = latestByEmail[lower];
-      if (last === undefined || last < threshold) toSend.push(email);
-    }
-
-    for (const email of toSend) {
-      try {
-        const r = spawnSync(process.execPath, [emailScript(email), email, NUDGE_SUBJECT, NUDGE_BODY],
-                            { timeout: 30_000, encoding: 'utf8' });
-        if (r.status === 0) {
-          nudged[email.toLowerCase()] = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
-          console.log(`[nudge] sent to ${email}`);
-        } else {
-          console.log(`[nudge] failed ${email}: ${(r.stderr || r.stdout || '').slice(0, 80)}`);
-        }
-      } catch (e) { console.log(`[nudge] error ${email}: ${e}`); }
-    }
-
-    if (toSend.length) saveNudge(nudged);
-  } catch (e) { console.log(`[nudge] worker error: ${e}`); }
-  finally {
-    isNudgeRunning = false;
-  }
+  // Disabled: login inactivity reminders have been removed per user policy (unless premium expiration warning).
+  return;
 }
 
 // ── IMAP watcher ──────────────────────────────────────────────────────────────
@@ -4310,6 +4356,7 @@ const canvasHeatmap = new Map(); // "x,y" -> ts
 
 // In-memory canvas cache for performance
 let canvasPixels = loadJson(CANVAS_PIXELS_FILE, {});
+let canvasPixelsDirty = false;
 let canvasChunks = new Map(); // "cx,cy" -> { "wx,wy": pixelData }
 let canvasBanned = loadJson(CANVAS_BANNED_FILE, {});
 let canvasLocks  = loadJson(CANVAS_LOCKS_FILE, {});
@@ -4475,6 +4522,7 @@ function setCanvasPixel(x, y, data, zoneId = null) {
   }
   const key = `${x},${y}`;
   canvasPixels[key] = data;
+  canvasPixelsDirty = true;
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
   const ck = `${cx},${cy}`;
   if (!canvasChunks.has(ck)) canvasChunks.set(ck, {});
@@ -4522,6 +4570,7 @@ function deleteCanvasPixel(x, y, painter = '', email = '', zoneId = null) {
   }
   const key = `${x},${y}`;
   delete canvasPixels[key];
+  canvasPixelsDirty = true;
   const cx = Math.floor(x / 64), cy = Math.floor(y / 64);
   const ck = `${cx},${cy}`;
   if (canvasChunks.has(ck)) delete canvasChunks.get(ck)[key];
@@ -4541,8 +4590,12 @@ function deleteCanvasPixel(x, y, painter = '', email = '', zoneId = null) {
   }
 }
 
-function saveCanvasPixels() { saveJson(CANVAS_PIXELS_FILE, canvasPixels); }
-setInterval(saveCanvasPixels, 30000); // Save every 30s
+function saveCanvasPixels() {
+  if (!canvasPixelsDirty) return;
+  canvasPixelsDirty = false;
+  saveJson(CANVAS_PIXELS_FILE, canvasPixels);
+}
+setInterval(saveCanvasPixels, 60000); // Save every 60s if dirty
 
 function saveCanvasBans(data) {
   canvasBanned = data || {};
@@ -5476,7 +5529,7 @@ const RJUHSD_SCHOOLS = {
   antelope:       { name: 'Antelope High School',       url: 'https://antelope.rjuhsd.us' },
   oakmont:        { name: 'Oakmont High School',        url: 'https://oakmont.rjuhsd.us' },
 };
-const MITCH_ORIGIN  = 'https://mitch.pro';
+const MITCH_ORIGIN  = 'https://mitchdog.com';
 
 function isRjuhsdHost(req) {
   const h = String(requestHost(req)).toLowerCase().split(':')[0];
@@ -5667,6 +5720,12 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/matrix/moderation/kick',
   '/api/matrix/moderation/ban',
   '/api/matrix/moderation/redact',
+  '/api/matrix/moderation/slowmode',
+  '/api/matrix/moderation/mute-user',
+  '/api/matrix/moderation/unmute-user',
+  '/api/matrix/moderation/mute-room',
+  '/api/matrix/devices/prune-stale',
+  '/api/matrix/report-room',
 ]);
 
 function csrfFailureIfUnsafe(req, path, method) {
@@ -5949,6 +6008,7 @@ function checkPasswordCookie(req, providedSid = null) {
 const requestTimings = {}; // key -> { lastTime, intervals: [] }
 
 function detectNonHumanTiming(key) {
+  if (process.env.NODE_ENV === 'test') return false;
   const now = Date.now();
   if (!requestTimings[key]) {
     requestTimings[key] = { lastTime: now, intervals: [] };
@@ -6432,6 +6492,25 @@ function isAdminEmail(email) {
   return siteAdminEmails().some(adminEmail => normalizeEmail(adminEmail) === norm);
 }
 
+function testerEmails() {
+  const adminCfg = loadAdminConfig().testers || [];
+  const raw = loadJson(TESTERS_FILE, []);
+  const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.keys(raw) : []);
+  return [...new Set([...list, ...adminCfg].map(normalizeEmail).filter(Boolean))];
+}
+
+function isTesterEmail(email) {
+  if (!email) return false;
+  const norm = normalizeEmail(email);
+  return testerEmails().includes(norm);
+}
+
+function isTesterId(sid) {
+  if (!sid) return false;
+  const email = emailFromSid(sid);
+  return email ? isTesterEmail(email) : false;
+}
+
 function blogContributorEmails() {
   const raw = loadJson(BLOG_CONTRIBUTORS_FILE, []);
   if (Array.isArray(raw)) return raw.filter(Boolean);
@@ -6834,6 +6913,7 @@ const MODERATOR_ACTION_BY_URL = {
   '/api/admin/content/mirror': 'content_mirror',
   '/api/admin/content/featured': 'content_featured',
   '/api/admin/moderators': 'moderator_role',
+  '/api/admin/testers': 'tester_role',
   '/api/admin/moderator-panel': 'moderator_panel',
 };
 
@@ -7090,17 +7170,12 @@ function executeModeratorApprovedAction(action, rawPayload, approverEmail, reque
     return { ok: true, multiplier };
   }
   if (action === 'broadcast') {
-    const msg = payload.msg;
-    if (!msg) adminActionError(400, 'message required');
     const type = payload.type === 'jumpscare' ? 'jumpscare' : 'normal';
-    const socketPayload = JSON.stringify({ type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast', message: msg });
-    for (const ws of allSockets) {
-      if (ws.data && ws.data.isBroadcast) {
-        try { ws.send(socketPayload); } catch {}
-      }
-    }
+    const msg = String(payload.msg || '').trim().slice(0, 500);
+    if (type === 'normal' && !msg) adminActionError(400, 'message required');
+    const delivery = publishAdminBroadcast(type, msg);
     logAdminAction(actor, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg, requestedBy: requesterEmail });
-    return { ok: true };
+    return { ok: true, ...delivery };
   }
   if (action === 'shadow_ban') {
     const target = normalizeEmail(payload.email);
@@ -7251,7 +7326,10 @@ const DEFAULT_SHOP_CATALOG = [
   { id: 'double_down_ticket', name: 'Double Down Ticket (30m)', section: 'Utility', type: 'utility', costType: 'double_down_ticket', cost: 500, desc: 'Active for 30 minutes. Doubles the payout of any casino game wins!' },
   { id: 'bad_beat_insurance', name: 'Bad Beat Insurance (30m)', section: 'Utility', type: 'utility', costType: 'bad_beat_insurance', cost: 300, desc: 'Active for 30 minutes. Refunds your entire bet if you lose any casino game round.' },
   { id: 'happy_hour_extension', name: 'Happy Hour Extension (15m)', section: 'Utility', type: 'utility', costType: 'happy_hour_extension', cost: 250, desc: 'Extends your active Personal Happy Hour by an additional 15 minutes. Requires active Happy Hour to purchase.' },
-  { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' }
+  { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' },
+  { id: 'loaded_dice', name: 'Loaded Lucky Dice (30m)', section: 'Casino Exploits', type: 'utility', costType: 'loaded_dice', cost: 600, desc: 'Exploit casino physics! Forces guaranteed winning rolls, spins, coinflips, and jackpots across all casino games for 30 minutes.' },
+  { id: 'casino_glitch_chip', name: 'Quantum Glitch Chip (20m)', section: 'Casino Exploits', type: 'utility', costType: 'casino_glitch_chip', cost: 1000, desc: 'Exploit memory overflow in payout contracts! Multiplies all casino winnings by an insane 5X for 20 minutes.' },
+  { id: 'infinite_luck_charm', name: 'Infinite Coins Exploit Charm (30m)', section: 'Casino Exploits', type: 'utility', costType: 'infinite_luck_charm', cost: 1500, desc: 'The ultimate casino exploit! Combines Loaded Dice auto-wins, 10X glitch payout multiplier, VIP unlimited max betting, and 100% loss refund for 30 minutes.' }
 ];
 let SHOP_CATALOG = [...DEFAULT_SHOP_CATALOG];
 try {
@@ -7480,6 +7558,9 @@ function buildInventory(email) {
       happyHourUntil: stats.personal_happy_hour_until || 0,
       doubleDownUntil: stats.double_down_until || 0,
       badBeatInsuranceUntil: stats.bad_beat_insurance_until || 0,
+      loadedDiceUntil: stats.loaded_dice_until || 0,
+      casinoGlitchUntil: stats.casino_glitch_until || 0,
+      infiniteLuckUntil: stats.infinite_luck_until || 0,
       slotsFreeSpins: stats.slots_free_spins || 0,
       streakFreezes: daily.streakFreezes || 0
     }
@@ -7494,7 +7575,7 @@ function ownsShopItem(email, item, inventory = buildInventory(email)) {
     const stats = loadUserStats();
     return (stats[normalizeEmail(email)]?.vip_casino_until || 0) > Date.now();
   }
-  if (item.costType === 'streak_freeze' || item.costType === 'happy_hour_ticket') {
+  if (['streak_freeze', 'happy_hour_ticket', 'happy_hour_extension', 'double_down_ticket', 'bad_beat_insurance', 'slots_free_spin', 'loaded_dice', 'casino_glitch_chip', 'infinite_luck_charm'].includes(item.costType)) {
     return false;
   }
   const cfg = SHOP_TYPE_CONFIG[item.costType];
@@ -7519,7 +7600,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=5" defer></script>';
+  const tag = '<script src="/broadcast.js?v=8" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -7864,7 +7945,7 @@ function getMatrixPasswordForUid(uid) {
 }
 
 const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY || 'mitchlivekit';
-const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || (ID_SECRET ? createHmac('sha256', ID_SECRET).update('livekit-secret').digest('hex') : 'mitch-secret-livekit-matrix-key-2026');
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET || 'mitch-secret-livekit-matrix-key-2026';
 
 function generateLiveKitToken({ identity, name, roomName }) {
   const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
@@ -7891,21 +7972,6 @@ function generateLiveKitToken({ identity, name, roomName }) {
 
 
 function matrixSsoTargetOrigin() {
-  const s = site();
-  const alt = (s && s.alternate) ? String(s.alternate).trim() : '';
-  if (alt) {
-    try {
-      const u = new URL(alt);
-      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
-    } catch {}
-  }
-  const prim = (s && s.primary) ? String(s.primary).trim() : '';
-  if (prim) {
-    try {
-      const u = new URL(prim);
-      if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin;
-    } catch {}
-  }
   return 'https://mitchdog.com';
 }
 
@@ -7990,122 +8056,258 @@ async function getSystemAdminMatrixToken() {
   return systemAdminMatrixToken;
 }
 
+const OFFICIAL_MATRIX_ROOMS = [
+  { alias: 'general', name: 'General', topic: 'Welcome to Mitch.pro Official Matrix Chat!' },
+  { alias: 'tech', name: 'Tech', topic: 'Technology, software development, coding, and projects' },
+  { alias: 'biking', name: 'Biking', topic: 'Cycling, bikes, trails, maintenance, and gear' },
+  { alias: 'gaming', name: 'Gaming', topic: 'Video games, arcade high scores, speedruns, and tips' },
+  { alias: 'computers', name: 'Computers', topic: 'PC hardware, Linux, VMs, custom builds, and setups' },
+  { alias: 'random', name: 'Random', topic: 'Off-topic discussions, casual chat, and memes' },
+];
+
+const officialRoomIdCache = new Map();
+
+async function ensureOfficialRoom(roomDef) {
+  const alias = roomDef.alias;
+  if (officialRoomIdCache.has(alias)) return officialRoomIdCache.get(alias);
+  const fullAlias = `#${alias}:mitch.pro`;
+
+  // 1. Check directory alias
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent(fullAlias));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialRoomIdCache.set(alias, dirData.room_id);
+        if (alias === 'general') officialGeneralRoomId = dirData.room_id;
+        return dirData.room_id;
+      }
+    }
+  } catch (_) {}
+
+  // 2. Create room with version 10
+  try {
+    const adminToken = await getSystemAdminMatrixToken();
+    const createRes = await callConduit('/_matrix/client/v3/createRoom', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${adminToken}`
+      },
+      body: JSON.stringify({
+        room_version: '10',
+        name: roomDef.name,
+        topic: roomDef.topic,
+        room_alias_name: alias,
+        visibility: 'public',
+        preset: 'public_chat',
+        initial_state: [
+          {
+            type: 'm.room.history_visibility',
+            state_key: '',
+            content: { history_visibility: 'world_readable' }
+          },
+          {
+            type: 'm.room.guest_access',
+            state_key: '',
+            content: { guest_access: 'can_join' }
+          }
+        ]
+      })
+    });
+    const createData = await createRes.json();
+    if (createRes.ok && createData.room_id) {
+      officialRoomIdCache.set(alias, createData.room_id);
+      if (alias === 'general') officialGeneralRoomId = createData.room_id;
+      return createData.room_id;
+    }
+  } catch (_) {}
+
+  // 3. Re-query directory in case alias already existed
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent(fullAlias));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialRoomIdCache.set(alias, dirData.room_id);
+        if (alias === 'general') officialGeneralRoomId = dirData.room_id;
+        return dirData.room_id;
+      }
+    }
+  } catch (_) {}
+
+  return null;
+}
+
 async function ensureOfficialGeneralRoom() {
+  const id = await ensureOfficialRoom(OFFICIAL_MATRIX_ROOMS[0]);
+  if (id) return id;
   if (officialGeneralRoomId) return officialGeneralRoomId;
-
-  // 1. Check if directory alias exists
-  try {
-    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
-    if (dirRes.ok) {
-      const dirData = await dirRes.json();
-      if (dirData.room_id) {
-        officialGeneralRoomId = dirData.room_id;
-        return officialGeneralRoomId;
-      }
-    }
-  } catch (_) {}
-
-  // 2. Create room with version 10 (allows power levels modification)
-  const adminToken = await getSystemAdminMatrixToken();
-  const createRes = await callConduit('/_matrix/client/v3/createRoom', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${adminToken}`
-    },
-    body: JSON.stringify({
-      room_version: '10',
-      name: 'General',
-      topic: 'Welcome to Mitch.pro Official Matrix Chat!',
-      room_alias_name: 'general',
-      visibility: 'public',
-      preset: 'public_chat',
-      initial_state: [
-        {
-          type: 'm.room.history_visibility',
-          state_key: '',
-          content: { history_visibility: 'world_readable' }
-        },
-        {
-          type: 'm.room.guest_access',
-          state_key: '',
-          content: { guest_access: 'can_join' }
-        }
-      ]
-    })
-  });
-  const createData = await createRes.json();
-  if (createRes.ok && createData.room_id) {
-    officialGeneralRoomId = createData.room_id;
-    return officialGeneralRoomId;
-  }
-
-  // If alias was already taken, re-query directory
-  try {
-    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
-    if (dirRes.ok) {
-      const dirData = await dirRes.json();
-      if (dirData.room_id) {
-        officialGeneralRoomId = dirData.room_id;
-        return officialGeneralRoomId;
-      }
-    }
-  } catch (_) {}
-
-  throw new Error('Failed to ensure official general room: ' + (createData?.error || createRes.statusText));
+  throw new Error('Failed to ensure official general room');
 }
 
 async function syncMatrixUserToOfficialRooms(userId, userToken, targetPowerLevel) {
-  const roomId = await ensureOfficialGeneralRoom();
-
-  // 1. Join user to official room
-  if (userToken) {
+  for (const rDef of OFFICIAL_MATRIX_ROOMS) {
     try {
-      await callConduit(`/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${userToken}`
-        },
-        body: '{}'
+      const roomId = await ensureOfficialRoom(rDef);
+      if (!roomId) continue;
+
+      // 1. Join user to official room
+      if (userToken) {
+        try {
+          await callConduit(`/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${userToken}`
+            },
+            body: '{}'
+          });
+        } catch (joinErr) {
+          console.warn(`[matrix-sync] User join ${roomId} (${rDef.alias}) warning:`, joinErr?.message || joinErr);
+        }
+      }
+
+      // 2. Fetch current power levels
+      const adminToken = await getSystemAdminMatrixToken();
+      const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${adminToken}` }
       });
-    } catch (joinErr) {
-      console.warn(`[matrix-sync] User join ${roomId} warning:`, joinErr?.message || joinErr);
+      if (plRes.ok) {
+        const plData = await plRes.json();
+        plData.users = plData.users || {};
+        plData.events = plData.events || {};
+        let plChanged = false;
+        for (const callEv of ['org.matrix.msc3401.call.member', 'org.matrix.msc3401.call', 'org.matrix.msc4143.rtc.member']) {
+          if (plData.events[callEv] !== 0) {
+            plData.events[callEv] = 0;
+            plChanged = true;
+          }
+        }
+        const currentPL = plData.users[userId] !== undefined ? plData.users[userId] : 0;
+        if (currentPL !== targetPowerLevel) {
+          if (targetPowerLevel > 0) {
+            plData.users[userId] = targetPowerLevel;
+          } else {
+            delete plData.users[userId];
+          }
+          plChanged = true;
+        }
+        if (plChanged) {
+          const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify(plData)
+          });
+          if (!putRes.ok) {
+            const putErr = await putRes.json().catch(() => ({}));
+            console.warn(`[matrix-sync] Power level update for ${userId} in ${rDef.alias} failed:`, putErr);
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn(`[matrix-sync] Sync error for room ${rDef.alias}:`, syncErr?.message || syncErr);
+    }
+  }
+}
+
+// ── Matrix Room Settings & Moderation Helpers ────────────────────────────────
+const matrixRoomLastMessageTimes = new Map(); // key: `${roomId}:${senderKey}` -> timestamp (ms)
+
+function loadMatrixRoomSettings() {
+  return loadJson(MATRIX_ROOM_SETTINGS_FILE, {});
+}
+
+function saveMatrixRoomSettings(data) {
+  saveJson(MATRIX_ROOM_SETTINGS_FILE, data);
+}
+
+function getMatrixRoomSettings(roomId) {
+  const all = loadMatrixRoomSettings();
+  const room = all[roomId] || {};
+  return {
+    slowmodeSeconds: Number(room.slowmodeSeconds) || 0,
+    roomMuted: Boolean(room.roomMuted),
+    mutedUsers: room.mutedUsers || {}
+  };
+}
+
+function isUserMutedInMatrixRoom(roomId, userIdentifiers = []) {
+  const settings = getMatrixRoomSettings(roomId);
+  if (!settings || !settings.mutedUsers) return null;
+  const now = Date.now();
+  let changed = false;
+
+  for (const rawId of userIdentifiers) {
+    if (!rawId) continue;
+    const lower = String(rawId).toLowerCase().trim();
+    const cleanUser = lower.startsWith('@') ? lower : `@${lower}:mitch.pro`;
+    const entry = settings.mutedUsers[cleanUser] || settings.mutedUsers[lower];
+    if (entry) {
+      if (entry.expiresAt && entry.expiresAt <= now) {
+        delete settings.mutedUsers[cleanUser];
+        delete settings.mutedUsers[lower];
+        changed = true;
+        continue;
+      }
+      if (changed) {
+        const all = loadMatrixRoomSettings();
+        all[roomId] = settings;
+        saveMatrixRoomSettings(all);
+      }
+      return entry;
     }
   }
 
-  // 2. Fetch current power levels
-  const adminToken = await getSystemAdminMatrixToken();
-  const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${adminToken}` }
-  });
-  if (plRes.ok) {
-    const plData = await plRes.json();
-    plData.users = plData.users || {};
-    const currentPL = plData.users[userId] !== undefined ? plData.users[userId] : 0;
-    if (currentPL !== targetPowerLevel) {
-      if (targetPowerLevel > 0) {
-        plData.users[userId] = targetPowerLevel;
-      } else {
-        delete plData.users[userId];
-      }
-      const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(plData)
-      });
-      if (!putRes.ok) {
-        const putErr = await putRes.json().catch(() => ({}));
-        console.warn(`[matrix-sync] Power level update for ${userId} failed:`, putErr);
-      } else {
-        console.log(`[matrix-sync] Set power level for ${userId} to ${targetPowerLevel} in ${roomId}`);
+  if (changed) {
+    const all = loadMatrixRoomSettings();
+    all[roomId] = settings;
+    saveMatrixRoomSettings(all);
+  }
+  return null;
+}
+
+function checkMatrixSlowmode(roomId, senderKey, slowmodeSeconds) {
+  if (!slowmodeSeconds || slowmodeSeconds <= 0) return 0;
+  const key = `${roomId}:${senderKey}`;
+  const lastTime = matrixRoomLastMessageTimes.get(key) || 0;
+  const elapsed = (Date.now() - lastTime) / 1000;
+  if (elapsed < slowmodeSeconds) {
+    return Math.max(1, Math.ceil(slowmodeSeconds - elapsed));
+  }
+  return 0;
+}
+
+function recordMatrixMessageSent(roomId, senderKey) {
+  if (!roomId || !senderKey) return;
+  const key = `${roomId}:${senderKey}`;
+  matrixRoomLastMessageTimes.set(key, Date.now());
+  if (matrixRoomLastMessageTimes.size > 20000) {
+    const oldestKey = matrixRoomLastMessageTimes.keys().next().value;
+    matrixRoomLastMessageTimes.delete(oldestKey);
+  }
+}
+
+async function isMatrixStaffMember(req, roomId, account = null) {
+  try {
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    if (sid && (isAdminId(sid) || isAnyAdminId(sid))) return true;
+
+    const acc = account || await resolveMatrixAccount(req).catch(() => null);
+    if (acc) {
+      if (acc.uid && (isAdminId(acc.uid) || isAnyAdminId(acc.uid))) return true;
+      if (acc.normEmail) {
+        const adminNorms = new Set(siteAdminEmails().map(e => normalizeEmail(e)));
+        if (adminNorms.has(acc.normEmail) || isModeratorEmail(acc.normEmail)) return true;
       }
     }
-  }
+  } catch (_) {}
+  return false;
 }
 
 async function loginOrRegisterMatrixUser(uid, desiredUsername, displayName) {
@@ -8219,7 +8421,11 @@ async function resolveMatrixAccount(req, parsedBody = null) {
     const norm = resolveLoginIdentifier(localPart) || resolveLoginIdentifier(raw);
     if (norm) {
       const uid = getUidForEmail(norm);
-      if (uid) return { uid, normEmail: norm };
+      if (uid) {
+        const assigned = matrixUsers[uid];
+        const userId = assigned ? `@${assigned}:mitch.pro` : (localPart ? `@${localPart}:mitch.pro` : '');
+        return { uid, normEmail: norm, userId };
+      }
     }
 
     // 2. Try looking up assigned matrix username in MATRIX_USERS_FILE
@@ -8227,7 +8433,7 @@ async function resolveMatrixAccount(req, parsedBody = null) {
       if (name.toLowerCase() === localPart.toLowerCase() || `@${name}:mitch.pro` === raw.toLowerCase()) {
         const email = emailFromSid(u);
         const normEmail = email ? normalizeEmail(email) : '';
-        if (normEmail) return { uid: u, normEmail };
+        if (normEmail) return { uid: u, normEmail, userId: `@${name}:mitch.pro` };
       }
     }
 
@@ -8236,7 +8442,10 @@ async function resolveMatrixAccount(req, parsedBody = null) {
     for (const [normEmail, p] of Object.entries(profiles)) {
       if (p && p.username && p.username.toLowerCase() === localPart.toLowerCase()) {
         const uid = getUidForEmail(normEmail);
-        if (uid) return { uid, normEmail };
+        if (uid) {
+          const assigned = matrixUsers[uid] || p.username;
+          return { uid, normEmail, userId: `@${assigned}:mitch.pro` };
+        }
       }
     }
   }
@@ -8272,8 +8481,8 @@ async function resolveMatrixAccount(req, parsedBody = null) {
           norm = resolveLoginIdentifier(uname) || '';
           if (!matchedUid && norm) matchedUid = getUidForEmail(norm);
         }
-        if (matchedUid && norm) {
-          const account = { uid: matchedUid, normEmail: norm, userId: matrixUserId };
+        if (matrixUserId) {
+          const account = { uid: matchedUid || '', normEmail: norm || '', userId: matrixUserId };
           matrixTokenToAccount.set(token, account);
           if (matrixTokenToAccount.size > 5000) {
             const firstKey = matrixTokenToAccount.keys().next().value;
@@ -8292,7 +8501,8 @@ async function resolveMatrixAccount(req, parsedBody = null) {
     const email = emailFromSid(sid);
     if (email) {
       const normEmail = normalizeEmail(email);
-      return { uid: sid, normEmail };
+      const assigned = matrixUsers[sid];
+      return { uid: sid, normEmail, userId: assigned ? `@${assigned}:mitch.pro` : '' };
     }
   }
 
@@ -8443,7 +8653,17 @@ async function getMatrixRoomInfoForNotifications(roomId, token) {
 
 const matrixUserLastSeen = new Map();
 const matrixPendingEmailAlerts = new Map();
-const matrixLastEmailSent = new Map();
+const MATRIX_EMAIL_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const matrixLastEmailSent = new Map(Object.entries(loadJson(MATRIX_EMAIL_SENT_FILE, {})));
+
+function recordMatrixEmailSent(memberNorm) {
+  const norm = normalizeEmail(memberNorm);
+  if (!norm) return;
+  matrixLastEmailSent.set(norm, Date.now());
+  try {
+    saveJson(MATRIX_EMAIL_SENT_FILE, Object.fromEntries(matrixLastEmailSent));
+  } catch (_) {}
+}
 
 function addMatrixNotification(targetNorm, notif) {
   if (!targetNorm) return null;
@@ -8570,19 +8790,20 @@ function sendMatrixEmailAlert(memberNorm, { title, senderName, roomTitle, previe
   });
 
   sendEmailBg(targetEmail, title, html);
-  matrixLastEmailSent.set(`${memberNorm}:${roomId}`, Date.now());
+  recordMatrixEmailSent(memberNorm);
   console.log(`[matrix-email-alert] Sent "${title}" to ${targetEmail}`);
 }
 
 function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, previewText, roomId, isCall, isInvite, notifTitle }) {
   if (!notifAllowed(memberNorm, 'digest')) return;
-  const key = `${memberNorm}:${roomId}`;
+  const norm = normalizeEmail(memberNorm);
+  if (!norm) return;
   const now = Date.now();
-  const lastSent = matrixLastEmailSent.get(key) || 0;
+  const lastSent = Number(matrixLastEmailSent.get(norm)) || 0;
+  if (now - lastSent < MATRIX_EMAIL_INTERVAL_MS) return;
 
   if (isCall || isInvite) {
-    if (now - lastSent < 300_000) return;
-    sendMatrixEmailAlert(memberNorm, {
+    sendMatrixEmailAlert(norm, {
       title: notifTitle,
       senderName: senderDisplayName,
       roomTitle,
@@ -8594,8 +8815,7 @@ function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, prev
     return;
   }
 
-  if (now - lastSent < 15 * 60 * 1000) return;
-
+  const key = `${norm}:${roomId}`;
   if (matrixPendingEmailAlerts.has(key)) {
     const item = matrixPendingEmailAlerts.get(key);
     item.previewText = previewText;
@@ -8606,12 +8826,14 @@ function queueMatrixUnreadEmail(memberNorm, { senderDisplayName, roomTitle, prev
 
   const timer = setTimeout(() => {
     matrixPendingEmailAlerts.delete(key);
+    const sentRecently = Number(matrixLastEmailSent.get(norm)) || 0;
+    if (Date.now() - sentRecently < MATRIX_EMAIL_INTERVAL_MS) return;
     const all = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
-    const list = Array.isArray(all[memberNorm]) ? all[memberNorm] : [];
+    const list = Array.isArray(all[norm]) ? all[norm] : [];
     const hasUnread = list.some(n => !n.read && n.roomId === roomId);
-    const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
+    const lastSeen = matrixUserLastSeen.get(norm) || 0;
     if (hasUnread && (Date.now() - lastSeen > 60_000)) {
-      sendMatrixEmailAlert(memberNorm, {
+      sendMatrixEmailAlert(norm, {
         title: notifTitle,
         senderName: senderDisplayName,
         roomTitle,
@@ -9058,22 +9280,24 @@ async function handleRequest(req, server) {
   const path   = url.pathname;
   const method = req.method;
 
+  // Keep the old hostname available for API compatibility, but use one public
+  // origin for pages so browser sessions and Matrix storage cannot diverge.
+  const incomingHost = requestHost(req).split(':')[0].toLowerCase();
+  const isCompatibilityEndpoint = path.startsWith('/api/') ||
+    path.startsWith('/_matrix/') || path.startsWith('/.well-known/matrix/') ||
+    path === '/ws' || path === '/health' || path === '/healthz';
+  if (incomingHost === 'mitch.pro' && (method === 'GET' || method === 'HEAD') && !isCompatibilityEndpoint) {
+    const canonicalDestination = `https://mitchdog.com${path}${url.search}`;
+    if (checkPasswordCookie(req)) {
+      return Response.redirect(`https://mitch.pro/api/sso/bridge?back=${encodeURIComponent(canonicalDestination)}`, 302);
+    }
+    return Response.redirect(canonicalDestination, 308);
+  }
+
   const bellRedirect = bellScheduleRedirect(url, method);
   if (bellRedirect) return Response.redirect(bellRedirect, 302);
   const botRedirect = blooketBotRedirect(url, method);
   if (botRedirect) return Response.redirect(botRedirect, 302);
-
-  if (method === 'GET' && /^\/game-portal(?:\/|\/index\.html)?$/.test(path)) {
-    const currentHost = requestHost(req).split(':')[0].toLowerCase();
-    const configuredSite = site();
-    let primaryHost = '';
-    try { primaryHost = new URL(configuredSite.primary).hostname.toLowerCase(); } catch {}
-    if (currentHost && currentHost === primaryHost && configuredSite.alternate && checkPasswordCookie(req)) {
-      const destination = configuredSite.alternate.replace(/\/+$/, '') + '/game-portal/' + url.search;
-      const bridge = configuredSite.primary.replace(/\/+$/, '') + '/api/sso/bridge?back=' + encodeURIComponent(destination);
-      return Response.redirect(bridge, 302);
-    }
-  }
 
   const csrfFailure = csrfFailureIfUnsafe(req, path, method);
   if (csrfFailure) return csrfFailure;
@@ -9187,6 +9411,15 @@ async function handleRequest(req, server) {
       });
     }
 
+    // Serve federation discovery from the website. Forwarding this request to
+    // Conduit causes homeserver discovery to fail on some Matrix clients.
+    if (path === '/.well-known/matrix/server' && method === 'GET') {
+      return jsonResp(200, { 'm.server': 'mitch.pro:443' }, {
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=300'
+      });
+    }
+
     // Matrix Client-Server VoIP STUN/TURN Discovery for WebRTC peer connections
     if (method === 'GET' && path.match(/^\/_matrix\/client\/(?:v3|r0)\/voip\/turnServer/)) {
       return jsonResp(200, {
@@ -9239,40 +9472,140 @@ async function handleRequest(req, server) {
       }
     }
 
+    let sendMatchRoomId = null;
+    let sendMatchSenderKey = null;
+    let isChatSendEvent = false;
+
+    if (sendMatch) {
+      const targetRoomId = decodeURIComponent(sendMatch[1]);
+      const eventType = decodeURIComponent(sendMatch[2]);
+      isChatSendEvent = eventType === 'm.room.message' ||
+        eventType === 'm.room.encrypted' ||
+        eventType === 'm.reaction' ||
+        eventType === 'm.sticker' ||
+        eventType.startsWith('org.matrix.msc2677.reaction');
+
+      if (isChatSendEvent) {
+        sendMatchRoomId = targetRoomId;
+        let parsedPayload = null;
+        if (capturedBodyText) {
+          try { parsedPayload = JSON.parse(capturedBodyText); } catch (_) {}
+        }
+        const senderAccount = await resolveMatrixAccount(req, parsedPayload).catch(() => null);
+        const senderIds = [];
+        const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+        if (senderAccount) {
+          if (senderAccount.userId) senderIds.push(senderAccount.userId);
+          if (senderAccount.normEmail) senderIds.push(senderAccount.normEmail);
+          if (senderAccount.uid) {
+            senderIds.push(senderAccount.uid);
+            if (matrixUsers[senderAccount.uid]) {
+              senderIds.push(`@${matrixUsers[senderAccount.uid]}:mitch.pro`);
+            }
+          }
+        }
+        const cookies = getCookies(req);
+        const sid = cookies['studentId'] || cookies['id'] || '';
+        if (sid) {
+          senderIds.push(sid);
+          const email = emailFromSid(sid);
+          if (email) senderIds.push(normalizeEmail(email));
+          if (matrixUsers[sid]) {
+            senderIds.push(`@${matrixUsers[sid]}:mitch.pro`);
+          }
+        }
+        const authHeader = req.headers.get('authorization') || '';
+        sendMatchSenderKey = senderIds[0] || (authHeader ? authHeader.replace(/^Bearer\s+/i, '').slice(0, 32) : (ip || 'anonymous'));
+
+        const isStaff = await isMatrixStaffMember(req, targetRoomId, senderAccount);
+
+        if (!isStaff) {
+          const roomSettings = getMatrixRoomSettings(targetRoomId);
+
+          // 1. Room lockdown check
+          if (roomSettings.roomMuted) {
+            return jsonResp(403, {
+              errcode: 'M_FORBIDDEN',
+              error: 'This room is currently in lockdown mode. Only administrators and moderators may speak.'
+            }, {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+            });
+          }
+
+          // 2. User mute check
+          const muteInfo = isUserMutedInMatrixRoom(targetRoomId, senderIds);
+          if (muteInfo) {
+            const reasonPart = muteInfo.reason ? `: ${muteInfo.reason}` : '';
+            const remainingSec = muteInfo.expiresAt ? Math.max(1, Math.ceil((muteInfo.expiresAt - Date.now()) / 1000)) : null;
+            const expiryPart = remainingSec ? ` (Mute expires in ${remainingSec}s)` : ' (Indefinite mute)';
+            return jsonResp(403, {
+              errcode: 'M_FORBIDDEN',
+              error: `You are muted in this room${reasonPart}.${expiryPart}`
+            }, {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+            });
+          }
+
+          // 3. Slowmode check
+          if (roomSettings.slowmodeSeconds > 0) {
+            const waitSec = checkMatrixSlowmode(targetRoomId, sendMatchSenderKey, roomSettings.slowmodeSeconds);
+            if (waitSec > 0) {
+              return jsonResp(429, {
+                errcode: 'M_LIMIT_EXCEEDED',
+                error: `Slowmode is enabled (${roomSettings.slowmodeSeconds}s). Please wait ${waitSec}s before sending another message.`,
+                retry_after_ms: waitSec * 1000
+              }, {
+                'Retry-After': String(waitSec),
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+              });
+            }
+          }
+        }
+      }
+    }
+
     // Intercept client-side chat reports to feed into Mitch.pro Safety & Moderation
-    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report\/([^/]+)$/);
+    const reportMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/report(?:\/([^/]+))?$/);
     if (reportMatch && capturedBodyText !== null) {
       try {
         const roomId = decodeURIComponent(reportMatch[1]);
-        const eventId = decodeURIComponent(reportMatch[2]);
+        const eventId = reportMatch[2] ? decodeURIComponent(reportMatch[2]) : '';
         let parsed = {};
         try { parsed = JSON.parse(capturedBodyText); } catch {}
-        const reason = parsed.reason || 'Reported message';
+        const reason = parsed.reason || (eventId ? 'Reported message' : 'Reported chat without entering');
 
         const cookies = getCookies(req);
         const sid = cookies['studentId'] || cookies['id'] || '';
         let reporter = sid ? (emailFromSid(sid) || sid) : '';
 
-        let eventSender = 'unknown';
-        let eventBody = `Reported message event ${eventId}`;
+        let eventSender = eventId ? 'unknown' : 'room-report';
+        let eventBody = eventId ? `Reported message event ${eventId}` : `Chat reported without opening: ${reason}`;
         let eventTs = Date.now();
         const authHeader = req.headers.get('authorization') || '';
 
-        try {
-          const eventRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`, {
-            headers: authHeader ? { 'Authorization': authHeader } : {}
-          });
-          if (eventRes.ok) {
-            const ev = await eventRes.json();
-            if (ev.sender) eventSender = ev.sender;
-            if (ev.origin_server_ts) eventTs = ev.origin_server_ts;
-            if (ev.content && typeof ev.content.body === 'string') {
-              eventBody = ev.content.body;
-            } else if (ev.content) {
-              eventBody = JSON.stringify(ev.content);
+        if (eventId) {
+          try {
+            const eventRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`, {
+              headers: authHeader ? { 'Authorization': authHeader } : {}
+            });
+            if (eventRes.ok) {
+              const ev = await eventRes.json();
+              if (ev.sender) eventSender = ev.sender;
+              if (ev.origin_server_ts) eventTs = ev.origin_server_ts;
+              if (ev.content && typeof ev.content.body === 'string') {
+                eventBody = ev.content.body;
+              } else if (ev.content) {
+                eventBody = JSON.stringify(ev.content);
+              }
             }
-          }
-        } catch (_) {}
+          } catch (_) {}
+        }
 
         if (!reporter && authHeader) {
           try {
@@ -9288,7 +9621,7 @@ async function handleRequest(req, server) {
         if (!reporter) reporter = 'matrix-user';
 
         const reports = loadJson(CHAT_REPORTS_FILE, []);
-        const cleanId = (eventId || String(Date.now())).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+        const cleanId = (eventId || ('room-' + Date.now())).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
         const reportEntry = {
           id: 'matrix-' + cleanId,
           reason: `[Matrix Room ${roomId}] ${reason}`.slice(0, 500),
@@ -9296,8 +9629,9 @@ async function handleRequest(req, server) {
           ts: Date.now(),
           status: 'Needs review',
           matrixRoomId: roomId,
-          matrixEventId: eventId,
+          matrixEventId: eventId || '',
           matrixSender: eventSender,
+          reportedWithoutEntering: !eventId,
           context: [
             {
               from: eventSender,
@@ -9313,8 +9647,13 @@ async function handleRequest(req, server) {
         saveJson(CHAT_REPORTS_FILE, reports);
 
         try {
-          ntfy(`[Matrix Report] ${reporter} reported message from ${eventSender} in ${roomId}: ${reason}`, { title: 'Chat Safety' });
+          const alertSubject = eventId ? `message from ${eventSender} in ${roomId}` : `room ${roomId} (without opening)`;
+          ntfy(`[Matrix Report] ${reporter} reported ${alertSubject}: ${reason}`, { title: 'Chat Safety' });
         } catch (_) {}
+
+        if (!eventId) {
+          return jsonResp(200, {});
+        }
       } catch (err) {
         console.warn('[matrix-report] Error intercepting report:', err?.message || err);
       }
@@ -9401,10 +9740,11 @@ async function handleRequest(req, server) {
         const clone = upstreamRes.clone();
         const loginData = await clone.json();
         if (loginData.access_token && (translatedAccount || loginData.user_id)) {
-          const acc = translatedAccount || {
-            userId: loginData.user_id,
-            uid: getUidForEmail(loginData.user_id.replace(/^@/, '').split(':')[0]),
-            normEmail: resolveLoginIdentifier(loginData.user_id.replace(/^@/, '').split(':')[0]) || ''
+          const acc = {
+            ...(translatedAccount || {}),
+            userId: loginData.user_id || (translatedAccount && translatedAccount.userId) || '',
+            uid: (translatedAccount && translatedAccount.uid) || (loginData.user_id ? getUidForEmail(loginData.user_id.replace(/^@/, '').split(':')[0]) : ''),
+            normEmail: (translatedAccount && translatedAccount.normEmail) || (loginData.user_id ? (resolveLoginIdentifier(loginData.user_id.replace(/^@/, '').split(':')[0]) || '') : '')
           };
           matrixTokenToAccount.set(loginData.access_token, acc);
         }
@@ -9429,6 +9769,9 @@ async function handleRequest(req, server) {
 
     // Trigger Mitch.pro notifications for Matrix messages, calls & room invites
     if (upstreamRes.ok) {
+      if (sendMatch && isChatSendEvent && sendMatchRoomId && sendMatchSenderKey) {
+        recordMatrixMessageSent(sendMatchRoomId, sendMatchSenderKey);
+      }
       if (sendMatch && capturedBodyText) {
         const roomId = decodeURIComponent(sendMatch[1]);
         const eventType = decodeURIComponent(sendMatch[2]);
@@ -9470,15 +9813,11 @@ async function handleRequest(req, server) {
 
   // Dynamic Cinny client configuration for Mitch.pro
   if (path === '/matrix/config.json' && method === 'GET') {
-    const host = requestHost(req) || 'mitch.pro';
-    const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
-    const serverEntry = (host.split(':')[0] === 'localhost' || host.split(':')[0] === '127.0.0.1') ? `${proto}${host}` : host;
     const targetHost = matrixSsoTargetHost();
-    const serverList = Array.from(new Set([serverEntry, targetHost, 'mitch.pro'])).filter(Boolean);
     return jsonResp(200, {
       defaultHomeserver: 0,
-      homeserverList: serverList,
-      allowCustomHomeservers: true,
+      homeserverList: [targetHost],
+      allowCustomHomeservers: false,
       featuredCommunities: {
         openAsDefault: true,
         servers: ['mitch.pro'],
@@ -9525,9 +9864,7 @@ async function handleRequest(req, server) {
           userId: authResult.user_id
         });
       }
-      const host = requestHost(req) || 'mitch.pro';
-      const proto = (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http://' : 'https://';
-      const baseUrl = `${proto}${host}`;
+      const baseUrl = matrixSsoTargetOrigin();
 
       const targetPowerLevel = getMatrixPowerLevelForSid(uid);
       const role = targetPowerLevel === 100 ? 'admin' : (targetPowerLevel === 50 ? 'moderator' : 'member');
@@ -9548,7 +9885,8 @@ async function handleRequest(req, server) {
         displayName,
         role,
         powerLevel: targetPowerLevel,
-        officialRoom: '#general:mitch.pro'
+        officialRoom: '#general:mitch.pro',
+        officialRooms: OFFICIAL_MATRIX_ROOMS.map(r => `#${r.alias}:mitch.pro`)
       }, {
         'Access-Control-Allow-Origin': '*'
       });
@@ -9633,6 +9971,69 @@ async function handleRequest(req, server) {
     return jsonResp(200, { ok: true }, { 'Access-Control-Allow-Origin': '*' });
   }
 
+  // Matrix Report Room Without Entering (Abuse/Filter-Bypass/Infohazard Prevention)
+  if (path === '/api/matrix/report-room' && (method === 'POST' || method === 'OPTIONS')) {
+    if (method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization',
+          'Access-Control-Max-Age': '86400'
+        }
+      });
+    }
+    let body = {};
+    try { body = await req.json(); } catch (_) {}
+    const roomId = String(body.roomId || '').trim();
+    if (!roomId) return jsonResp(400, { error: 'Room ID required' }, { 'Access-Control-Allow-Origin': '*' });
+    const reason = String(body.reason || 'Reported chat without entering').slice(0, 500);
+    const roomName = String(body.roomName || roomId).slice(0, 200);
+
+    const cookies = getCookies(req);
+    const sid = cookies['studentId'] || cookies['id'] || '';
+    let reporter = sid ? (emailFromSid(sid) || sid) : '';
+    if (!reporter) {
+      const authHeader = req.headers.get('authorization') || '';
+      const tok = authHeader.replace(/^Bearer\s+/i, '');
+      const acc = matrixTokenToAccount.get(tok);
+      if (acc && acc.normEmail) reporter = acc.normEmail;
+    }
+    if (!reporter) reporter = String(body.reporter || 'matrix-user').slice(0, 100);
+
+    const reports = loadJson(CHAT_REPORTS_FILE, []);
+    const cleanId = ('room-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)).replace(/[^a-zA-Z0-9_-]/g, '');
+    const reportEntry = {
+      id: cleanId,
+      reason: `[Matrix Room ${roomName} (${roomId})] ${reason}`,
+      reportedBy: reporter,
+      ts: Date.now(),
+      status: 'Needs review',
+      matrixRoomId: roomId,
+      matrixRoomName: roomName,
+      reportedWithoutEntering: true,
+      context: [
+        {
+          from: 'system',
+          to: roomId,
+          text: `Chat reported without opening: ${reason} (Room: ${roomName})`,
+          ts: Date.now(),
+          reported: true
+        }
+      ]
+    };
+    reports.push(reportEntry);
+    if (reports.length > 5000) reports.splice(0, reports.length - 5000);
+    saveJson(CHAT_REPORTS_FILE, reports);
+
+    try {
+      ntfy(`[Matrix Chat Report] ${reporter} reported room "${roomName}" (${roomId}) without opening: ${reason}`, { title: 'Chat Safety Alert' });
+    } catch (_) {}
+
+    return jsonResp(200, { success: true, message: 'Chat reported successfully' }, { 'Access-Control-Allow-Origin': '*' });
+  }
+
   // ── Matrix VoIP & LiveKit SFU Service for Voice/Video Calls ──────────────────
   if (path.startsWith('/livekit') && method === 'OPTIONS') {
     return new Response(null, {
@@ -9647,15 +10048,16 @@ async function handleRequest(req, server) {
   }
 
   // LiveKit SFU Token Generation (MSC3401 / MSC4143 MatrixRTC / Element Call)
-  if ((path === '/livekit/sfu/get' || path === '/livekit/get_token') && (method === 'POST' || method === 'GET')) {
+  if ((path === '/livekit/sfu/get' || path === '/livekit/get_token' || path === '/livekit/token' || path === '/livekit/jwt') && (method === 'POST' || method === 'GET')) {
     let body = {};
     if (method === 'POST') {
       try {
         const text = await req.text();
         body = JSON.parse(text);
       } catch (_) {}
-    } else {
-      for (const [k, v] of url.searchParams.entries()) body[k] = v;
+    }
+    for (const [k, v] of url.searchParams.entries()) {
+      if (body[k] === undefined) body[k] = v;
     }
 
     const cookies = getCookies(req);
@@ -9665,8 +10067,8 @@ async function handleRequest(req, server) {
     const profiles = loadJson(PROFILES_FILE, {});
     const prof = normEmail ? (profiles[normEmail] || {}) : {};
 
-    const room = body.room || body.room_id || 'default';
-    let rawUserId = body.member?.claimed_user_id || body.user_id || '';
+    const room = body.room || body.room_id || body.roomId || 'default';
+    let rawUserId = body.member?.claimed_user_id || body.claimed_user_id || body.user_id || body.userId || body.openid_token?.user_id || '';
     if (!rawUserId && normEmail) {
       const username = prof.username || defaultUsernameForEmail(normEmail);
       rawUserId = `@${username}:mitch.pro`;
@@ -9674,7 +10076,7 @@ async function handleRequest(req, server) {
     if (!rawUserId) rawUserId = `@user_${Math.random().toString(36).slice(2, 8)}:mitch.pro`;
 
     const identity = rawUserId.startsWith('@') ? rawUserId : `@${rawUserId.replace(/[^a-zA-Z0-9._=-]/g, '')}:mitch.pro`;
-    const displayName = body.name || prof.displayName || identity.split(':')[0].replace(/^@/, '');
+    const displayName = body.name || body.member?.display_name || prof.displayName || identity.split(':')[0].replace(/^@/, '');
 
     const jwt = generateLiveKitToken({ identity, name: displayName, roomName: room });
     const host = requestHost(req) || 'mitch.pro';
@@ -9684,7 +10086,9 @@ async function handleRequest(req, server) {
 
     return jsonResp(200, {
       url: wsUrl,
-      jwt: jwt
+      jwt: jwt,
+      token: jwt,
+      access_token: jwt
     }, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -10541,6 +10945,9 @@ async function handleRequest(req, server) {
   // ── Password Enforcement (Unified) ──────────────────────────────────────────
   const cleanPath = (path.endsWith('/') && path !== '/') ? path.slice(0, -1) : path;
   const isExempt = cleanPath === '/enroll' ||
+                   cleanPath === '/index.html' ||
+                   cleanPath === '/index-sales' ||
+                   cleanPath === '/index-sales.html' ||
                    cleanPath === '/api/me/coins' ||
                    cleanPath === '/larp' ||
                    cleanPath === '/larp/rezero' ||
@@ -11512,7 +11919,7 @@ async function handleRequest(req, server) {
       // Email notification
       const emailSubject = "Mitch.pro Marketplace — You are a mediator!";
       const itemDesc = listing.type === 'cosmetic' ? listing.itemId : 'Custom: ' + listing.description;
-      const mUrl = `https://mitch.pro/marketplace/`;
+      const mUrl = `https://mitchdog.com/marketplace/`;
       sendEmailBg(listing.mediator, emailSubject, makeMediatorEscrowHtml(listing.mediator, maskEmail(listing.seller), maskEmail(email), listing.price, itemDesc, mUrl));
       return jsonResp(200, { ok: true, message: "Purchase placed in mediator escrow successfully!" });
     } else {
@@ -11766,8 +12173,12 @@ async function handleRequest(req, server) {
     const session = vmDesktopSessions.get(sessionId);
     if (!session || session.used || session.expiresAt <= Date.now()) return jsonResp(401, { error: 'Desktop connection expired.' });
     const record = getVirtualMachineById(session.recordId);
-    const sessionCheck = validateDesktopSession(session, actor, record);
+    const sessionCheck = validateDesktopSession(session, actor, record, Date.now(), isAdminEmail);
     if (!sessionCheck.ok) return jsonResp(sessionCheck.status, { error: sessionCheck.status === 401 ? 'Desktop connection expired.' : 'You do not have permission to access this computer.' });
+    const isAdminUsingOtherVm = Boolean(actor.isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(actor.email));
+    if (isAdminUsingOtherVm && !isVmAdminAccessAllowed(record.id)) {
+      return jsonResp(403, { error: 'The owner has not allowed administrator access to this computer.' });
+    }
     session.used = true;
     vmDesktopSessions.delete(sessionId);
     const success = server.upgrade(req, {
@@ -12272,6 +12683,32 @@ async function handleRequest(req, server) {
         if (!stats[norm]) stats[norm] = {};
         stats[norm].slots_free_spins = (stats[norm].slots_free_spins || 0) + 5;
         saveUserStats(stats);
+      } else if (type === 'loaded_dice') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentUntil = stats[norm].loaded_dice_until || 0;
+        const baseTime = Math.max(Date.now(), currentUntil);
+        stats[norm].loaded_dice_until = baseTime + (30 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'casino_glitch_chip') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentUntil = stats[norm].casino_glitch_until || 0;
+        const baseTime = Math.max(Date.now(), currentUntil);
+        stats[norm].casino_glitch_until = baseTime + (20 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'infinite_luck_charm') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentUntil = stats[norm].infinite_luck_until || 0;
+        const baseTime = Math.max(Date.now(), currentUntil);
+        const duration = 30 * 60 * 1000;
+        stats[norm].infinite_luck_until = baseTime + duration;
+        stats[norm].loaded_dice_until = Math.max(stats[norm].loaded_dice_until || 0, baseTime + duration);
+        stats[norm].casino_glitch_until = Math.max(stats[norm].casino_glitch_until || 0, baseTime + duration);
+        stats[norm].bad_beat_insurance_until = Math.max(stats[norm].bad_beat_insurance_until || 0, baseTime + duration);
+        stats[norm].vip_casino_until = Math.max(stats[norm].vip_casino_until || 0, baseTime + duration);
+        saveUserStats(stats);
       }
 
       if (cost > 0) addCoins(email, -cost);
@@ -12719,21 +13156,32 @@ async function handleRequest(req, server) {
       return jsonResp(200, { ok: true });
       }
 
+      // Polling fallback for networks that block or interrupt WebSockets.
+      if (path === '/api/broadcast/latest' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid) || !checkPasswordCookie(req, sid)) {
+        return jsonResp(401, { error: 'authentication required' });
+      }
+      const event = activeAdminBroadcast();
+      const response = jsonResp(200, { ok: true, active: !!event, event });
+      response.headers.set('Cache-Control', 'private, no-store, max-age=0');
+      return response;
+      }
+
       // POST /api/admin/broadcast
-      if (path === '/api/admin/broadcast') {
+      if (path === '/api/admin/broadcast' && method === 'POST') {
       const cookies = getCookies(req);
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       const adminEmail = emailFromSid(sid) || 'admin';
-      const { msg, type } = body;
-      const payload = JSON.stringify({ type: type === 'jumpscare' ? 'admin_jumpscare' : 'admin_broadcast', message: msg });
-      for (const ws of allSockets) {
-        if (ws.data && ws.data.isBroadcast) {
-          try { ws.send(payload); } catch {}
-        }
-      }      logAdminAction(adminEmail, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg });
-      return jsonResp(200, { ok: true });
+      const type = body.type === 'jumpscare' ? 'jumpscare' : 'normal';
+      const msg = String(body.msg || '').trim().slice(0, 500);
+      if (type === 'normal' && !msg) return jsonResp(400, { error: 'message required' });
+      const delivery = publishAdminBroadcast(type, msg);
+      logAdminAction(adminEmail, type === 'jumpscare' ? 'jumpscare' : 'broadcast', { message: msg });
+      return jsonResp(200, { ok: true, ...delivery });
       }
 
     // POST /api/admin/casino/rig
@@ -12778,6 +13226,36 @@ async function handleRequest(req, server) {
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       return jsonResp(200, { moderators: moderatorEmails() });
+    }
+
+    // POST /api/admin/testers
+    if (path === '/api/admin/testers' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const adminEmail = emailFromSid(sid) || 'admin';
+      const targetRaw = String(body.email || '').trim();
+      const target = normalizeEmail(targetRaw);
+      if (!target) return jsonResp(400, { error: 'valid email required' });
+      const active = !!body.active;
+      let testers = testerEmails();
+      if (active) {
+        if (!testers.some(t => normalizeEmail(t) === target)) testers.push(targetRaw);
+      } else {
+        testers = testers.filter(t => normalizeEmail(t) !== target);
+      }
+      await saveJson(TESTERS_FILE, testers);
+      logAdminAction(adminEmail, active ? 'add_tester' : 'remove_tester', { target: targetRaw });
+      return jsonResp(200, { ok: true, testers });
+    }
+
+    // GET /api/admin/testers
+    if (path === '/api/admin/testers' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      return jsonResp(200, { testers: testerEmails() });
     }
 
     if (path === '/api/admin/moderator-panel' && method === 'GET') {
@@ -13349,11 +13827,40 @@ async function handleRequest(req, server) {
           .slice(-50)
           .reverse();
 
+        const roomSettings = getMatrixRoomSettings(roomId);
+        const now = Date.now();
+        const activeMutedUsers = [];
+        let mutesChanged = false;
+        if (roomSettings.mutedUsers) {
+          for (const [mId, mInfo] of Object.entries(roomSettings.mutedUsers)) {
+            if (mInfo && mInfo.expiresAt && mInfo.expiresAt <= now) {
+              delete roomSettings.mutedUsers[mId];
+              mutesChanged = true;
+            } else if (mInfo) {
+              activeMutedUsers.push({
+                userId: mInfo.userId || mId,
+                reason: mInfo.reason || '',
+                mutedBy: mInfo.mutedBy || '',
+                mutedAt: mInfo.mutedAt || 0,
+                expiresAt: mInfo.expiresAt || null
+              });
+            }
+          }
+          if (mutesChanged) {
+            const allSettings = loadMatrixRoomSettings();
+            allSettings[roomId] = roomSettings;
+            saveMatrixRoomSettings(allSettings);
+          }
+        }
+
         return jsonResp(200, {
           ok: true,
           officialRoom: '#general:mitch.pro',
           roomId,
           staff,
+          slowmodeSeconds: roomSettings.slowmodeSeconds || 0,
+          roomMuted: Boolean(roomSettings.roomMuted),
+          mutedUsers: activeMutedUsers,
           recentReports: matrixReports
         });
       } catch (err) {
@@ -13541,6 +14048,321 @@ async function handleRequest(req, server) {
       } catch (err) {
         console.error('[matrix-moderation] redact error:', err?.message || err);
         return jsonResp(500, { ok: false, error: err?.message || 'Failed to redact message' });
+      }
+    }
+
+    // POST /api/matrix/moderation/slowmode
+    if (path === '/api/matrix/moderation/slowmode' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const seconds = Math.max(0, parseInt(body.seconds, 10) || 0);
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      rSettings.slowmodeSeconds = seconds;
+      allSettings[roomId] = rSettings;
+      saveMatrixRoomSettings(allSettings);
+
+      const adminEmail = emailFromSid(sid) || 'admin';
+      logAdminAction(adminEmail, 'matrix_set_slowmode', {
+        roomId,
+        slowmodeSeconds: seconds
+      });
+
+      return jsonResp(200, { ok: true, roomId, slowmodeSeconds: seconds });
+    }
+
+    // POST /api/matrix/moderation/mute-user
+    if (path === '/api/matrix/moderation/mute-user' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+
+      const durationSeconds = body.durationSeconds ? Math.max(0, parseInt(body.durationSeconds, 10) || 0) : 0;
+      const reason = String(body.reason || 'Muted by administrator').slice(0, 300);
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const adminEmail = emailFromSid(sid) || 'admin';
+      const expiresAt = durationSeconds > 0 ? Date.now() + (durationSeconds * 1000) : null;
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      rSettings.mutedUsers = rSettings.mutedUsers || {};
+      rSettings.mutedUsers[targetUserId] = {
+        userId: targetUserId,
+        reason,
+        mutedBy: adminEmail,
+        mutedAt: Date.now(),
+        expiresAt
+      };
+      allSettings[roomId] = rSettings;
+      saveMatrixRoomSettings(allSettings);
+
+      // Also set room power level to -1 in Conduit so standard Matrix clients enforce mute
+      try {
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          plData.users = plData.users || {};
+          plData.users[targetUserId] = -1;
+          await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+            body: JSON.stringify(plData)
+          });
+        }
+      } catch (_) {}
+
+      logAdminAction(adminEmail, 'matrix_mute_user', {
+        roomId,
+        userId: targetUserId,
+        durationSeconds,
+        reason,
+        expiresAt
+      });
+
+      return jsonResp(200, { ok: true, roomId, userId: targetUserId, muted: true, expiresAt });
+    }
+
+    // POST /api/matrix/moderation/unmute-user
+    if (path === '/api/matrix/moderation/unmute-user' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      let targetUserId = String(body.userId || '').trim();
+      if (!targetUserId) return jsonResp(400, { error: 'userId is required' });
+      if (!targetUserId.startsWith('@')) targetUserId = `@${targetUserId}:mitch.pro`;
+
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const adminEmail = emailFromSid(sid) || 'admin';
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      if (rSettings.mutedUsers) {
+        delete rSettings.mutedUsers[targetUserId];
+        delete rSettings.mutedUsers[targetUserId.replace(/^@/, '').split(':')[0]];
+        allSettings[roomId] = rSettings;
+        saveMatrixRoomSettings(allSettings);
+      }
+
+      // Reset room power level in Conduit
+      try {
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          if (plData.users && plData.users[targetUserId] === -1) {
+            delete plData.users[targetUserId];
+            await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+              body: JSON.stringify(plData)
+            });
+          }
+        }
+      } catch (_) {}
+
+      logAdminAction(adminEmail, 'matrix_unmute_user', {
+        roomId,
+        userId: targetUserId
+      });
+
+      return jsonResp(200, { ok: true, roomId, userId: targetUserId, muted: false });
+    }
+
+    // POST /api/matrix/moderation/mute-room
+    if (path === '/api/matrix/moderation/mute-room' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'Admin access required' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+
+      const roomId = body.roomId || await ensureOfficialGeneralRoom();
+      const roomMuted = Boolean(body.muted);
+      const adminEmail = emailFromSid(sid) || 'admin';
+
+      const allSettings = loadMatrixRoomSettings();
+      const rSettings = allSettings[roomId] || { slowmodeSeconds: 0, roomMuted: false, mutedUsers: {} };
+      rSettings.roomMuted = roomMuted;
+      allSettings[roomId] = rSettings;
+      saveMatrixRoomSettings(allSettings);
+
+      // Sync Conduit room power levels events_default
+      try {
+        const adminToken = await getSystemAdminMatrixToken();
+        const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${adminToken}` }
+        });
+        if (plRes.ok) {
+          const plData = await plRes.json();
+          plData.events_default = roomMuted ? 50 : 0;
+          await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${adminToken}` },
+            body: JSON.stringify(plData)
+          });
+        }
+      } catch (_) {}
+
+      logAdminAction(adminEmail, 'matrix_mute_room', {
+        roomId,
+        roomMuted
+      });
+
+      return jsonResp(200, { ok: true, roomId, roomMuted });
+    }
+
+    // POST /api/matrix/devices/prune-stale
+    if (path === '/api/matrix/devices/prune-stale' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      let parsed = {};
+      try { parsed = await req.json(); } catch (_) {}
+
+      const authHeader = req.headers.get('authorization') || '';
+      let userToken = authHeader ? authHeader.replace(/^Bearer\s+/i, '') : '';
+      let currentDeviceId = parsed.currentDeviceId || req.headers.get('x-matrix-device-id') || '';
+      const maxAgeDays = typeof parsed.maxAgeDays === 'number' ? parsed.maxAgeDays : 7;
+      const pruneAllExceptCurrent = parsed.pruneAllExceptCurrent === true;
+
+      let targetUid = null;
+      let targetUsername = '';
+
+      if (validId(sid)) {
+        targetUid = sid;
+        const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+        targetUsername = matrixUsers[targetUid] || '';
+      }
+
+      if (userToken) {
+        try {
+          const whoRes = await callConduit('/_matrix/client/v3/account/whoami', {
+            headers: { 'Authorization': `Bearer ${userToken}` }
+          });
+          if (whoRes.ok) {
+            const who = await whoRes.json();
+            if (who.device_id && !currentDeviceId) currentDeviceId = who.device_id;
+            if (who.user_id && !targetUsername) targetUsername = who.user_id.replace(/^@/, '').split(':')[0];
+          }
+        } catch (_) {}
+      } else if (targetUid && targetUsername) {
+        try {
+          const conduitPass = getMatrixPasswordForUid(targetUid);
+          const loginRes = await callConduit('/_matrix/client/v3/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type: 'm.login.password',
+              identifier: { type: 'm.id.user', user: targetUsername },
+              password: conduitPass,
+              initial_device_display_name: 'Mitch.pro Prune Session'
+            })
+          });
+          if (loginRes.ok) {
+            const loginData = await loginRes.json();
+            userToken = loginData.access_token || '';
+            if (!currentDeviceId) currentDeviceId = loginData.device_id || '';
+          }
+        } catch (_) {}
+      }
+
+      if (!userToken) {
+        return jsonResp(401, { error: 'Authentication required to prune devices' });
+      }
+
+      try {
+        const devRes = await callConduit('/_matrix/client/v3/devices', {
+          headers: { 'Authorization': `Bearer ${userToken}` }
+        });
+        if (!devRes.ok) {
+          const errData = await devRes.json().catch(() => ({}));
+          throw new Error(errData?.error || 'Failed to list user devices');
+        }
+        const devData = await devRes.json();
+        const devices = Array.isArray(devData.devices) ? devData.devices : [];
+
+        const now = Date.now();
+        const maxAgeMs = Math.max(1, maxAgeDays) * 24 * 60 * 60 * 1000;
+        const toDelete = [];
+
+        for (const dev of devices) {
+          const dId = dev.device_id;
+          if (!dId) continue;
+          if (currentDeviceId && dId === currentDeviceId) continue;
+          if (pruneAllExceptCurrent) {
+            toDelete.push(dId);
+            continue;
+          }
+          const lastSeen = Number(dev.last_seen_ts) || 0;
+          if (!lastSeen || (now - lastSeen) > maxAgeMs) {
+            toDelete.push(dId);
+          }
+        }
+
+        if (toDelete.length > 0) {
+          let delRes = await callConduit('/_matrix/client/v3/delete_devices', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${userToken}`
+            },
+            body: JSON.stringify({ devices: toDelete })
+          });
+
+          if (delRes.status === 401 && targetUid) {
+            const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+            const assigned = targetUsername || matrixUsers[targetUid];
+            const conduitPass = getMatrixPasswordForUid(targetUid);
+            delRes = await callConduit('/_matrix/client/v3/delete_devices', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${userToken}`
+              },
+              body: JSON.stringify({
+                devices: toDelete,
+                auth: {
+                  type: 'm.login.password',
+                  identifier: { type: 'm.id.user', user: assigned },
+                  password: conduitPass
+                }
+              })
+            });
+          }
+
+          if (!delRes.ok && delRes.status !== 200) {
+            const delErr = await delRes.json().catch(() => ({}));
+            throw new Error(delErr?.error || 'Failed to delete stale devices');
+          }
+        }
+
+        return jsonResp(200, {
+          ok: true,
+          prunedCount: toDelete.length,
+          prunedDevices: toDelete,
+          remainingCount: devices.length - toDelete.length
+        });
+      } catch (err) {
+        console.error('[matrix-devices] Prune stale error:', err?.message || err);
+        return jsonResp(500, { ok: false, error: err?.message || 'Failed to prune devices' });
       }
     }
 
@@ -13784,6 +14606,9 @@ async function handleRequest(req, server) {
 
         const selfHost = (requestHost(req) || '').split(':')[0].toLowerCase();
         const isMatrixPath = back.pathname === '/matrix' || back.pathname.startsWith('/matrix/');
+        const isGamePath = ['/games', '/game-portal', '/msn-games'].some(
+          prefix => back.pathname === prefix || back.pathname.startsWith(prefix + '/')
+        );
 
         // Already signed in here? Mint a token and hop straight across.
         // Matrix chat stays on the host the user opened (e.g. rjuhsd.school/matrix/).
@@ -13801,10 +14626,11 @@ async function handleRequest(req, server) {
               const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
               dest.searchParams.set('token', token);
               dest.searchParams.set('back', back.toString());
-              // Matrix does not need the legacy Secure Chat JWK handoff. A
-              // normal top-level redirect also works with the site's
-              // form-action CSP, unlike a cross-origin hidden form.
-              if (isMatrixPath) {
+              // Matrix and game destinations do not need the legacy Secure Chat
+              // JWK handoff. A normal top-level redirect also avoids stranding
+              // the user on the inline-script "Signing in" bridge page when a
+              // deployed CSP blocks that script.
+              if (isMatrixPath || isGamePath) {
                 return new Response(null, {
                   status: 302,
                   headers: {
@@ -13865,6 +14691,12 @@ async function handleRequest(req, server) {
         // If not, mitch.pro's bridge redirects them to /enroll/ to sign in.
         let loginOrigin = selfOrigin;
         if (!isMitchSsoHost(requestHost(req))) {
+          if (isRjuhsdHost(req)) {
+            return new Response(null, {
+              status: 302,
+              headers: { Location: '/enroll/?next=' + encodeURIComponent(back.toString()) }
+            });
+          }
           const s = site();
           loginOrigin = (s.alternate || s.primary || MITCH_ORIGIN).replace(/\/+$/, '');
           return new Response(null, {
@@ -13906,10 +14738,17 @@ async function handleRequest(req, server) {
         const dest = new URL('https://' + back.hostname + '/api/sso/exchange');
         dest.searchParams.set('token', token);
         dest.searchParams.set('back', back.toString());
-        return new Response(null, {
-          status: 302,
+        // Do not redirect the form submission across origins. Browsers apply
+        // form-action 'self' to the full redirect chain and block that 302.
+        // Finish the same-origin POST with HTML, then perform a normal top-level
+        // navigation, which is not governed by form-action.
+        const continueHtml =
+          '<!doctype html><meta charset="utf-8"><title>Signing in…</title>\n' +
+          '<script>location.replace(' + JSON.stringify(dest.toString()) + ');<\/script>\n';
+        return new Response(continueHtml, {
+          status: 200,
           headers: {
-            Location: dest.toString(),
+            'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': 'no-store',
             'Referrer-Policy': 'no-referrer'
           }
@@ -15198,7 +16037,7 @@ async function handleRequest(req, server) {
         if (!invSent[norm]) invSent[norm] = [];
         const alreadySent = invSent[norm].includes(normalizeEmail(toEmail));
 
-        const inviteLink = `https://mitch.pro/enroll?ref=${encodeURIComponent(code)}&email=${encodeURIComponent(toEmail)}`;
+        const inviteLink = `https://mitchdog.com/enroll?ref=${encodeURIComponent(code)}&email=${encodeURIComponent(toEmail)}`;
         const _s = site();
         const senderDisplay = email.split('@')[0];
 
@@ -15749,7 +16588,7 @@ async function handleRequest(req, server) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=5" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=8" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -15800,28 +16639,66 @@ async function handleRequest(req, server) {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
         return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
-      const { name, email, discord, why, skills, extra, type } = body;
+      const { name, email, discord, matrix, why, skills, extra, type, role, availability, portfolio } = body;
       const isPremium = type === 'premium';
       if (!name?.trim() || !email?.trim() || !why?.trim()) return jsonResp(400, { error: 'Please fill in all required fields.' });
-      if (!isPremium && (!discord?.trim() || !skills?.trim())) return jsonResp(400, { error: 'Please fill in all required fields.' });
+      if (!isPremium && (!discord?.trim() && !matrix?.trim()) && !skills?.trim()) return jsonResp(400, { error: 'Please fill in contact and skills fields.' });
+      const targetRole = String(role || 'team').toLowerCase().trim();
       const application = {
         name: name.trim(), email: email.trim().toLowerCase(),
-        discord: (discord || '').trim(), why: why.trim(),
+        discord: (discord || '').trim(),
+        matrix: (matrix || '').trim(),
+        why: why.trim(),
+        role: targetRole,
+        availability: (availability || '').trim(),
+        portfolio: (portfolio || '').trim(),
         ...(skills?.trim() ? { skills: skills.trim() } : {}),
         extra: (extra || '').trim(),
-        type: isPremium ? 'premium' : 'team',
+        type: isPremium ? 'premium' : targetRole,
         submitted_at: Date.now(),
       };
       const apps = applications;
       apps.unshift(application);
-      saveApplications( apps);
-      const ntfyTitle = isPremium ? 'New Premium Application' : 'New Team Application';
-      ntfy(`${name.trim()} (${email.trim()})${discord?.trim() ? ' — ' + discord.trim() : ''}\n\n${why.trim().slice(0, 200)}`, {
+      saveApplications(apps);
+      const ntfyTitle = isPremium ? 'New Premium Application' : `New ${targetRole.toUpperCase()} Application`;
+      ntfy(`${name.trim()} (${email.trim()}) [Role: ${targetRole}]\nDiscord: ${discord?.trim() || 'N/A'}\n\n${why.trim().slice(0, 200)}`, {
         title: ntfyTitle,
         priority: 'high',
       });
-      console.log(`[apply] New application from ${name.trim()} <${email.trim()}> (${discord.trim()})`);
+      console.log(`[apply] New application from ${name.trim()} <${email.trim()}> (Role: ${targetRole})`);
       return jsonResp(200, { ok: true });
+    }
+
+    // /api/contact
+    if (path === '/api/contact' && method === 'POST') {
+      if (rateLimited('ip:' + ip, '/api/contact')) return jsonResp(429, { error: 'Too many messages sent. Please wait before trying again.' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
+      const { name, email, subject, message, department } = body;
+      if (!name?.trim() || !email?.trim() || !message?.trim()) {
+        return jsonResp(400, { error: 'Name, email, and message are required.' });
+      }
+      const contactMsg = {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        subject: (subject || 'General Inquiry').trim(),
+        department: (department || 'support').trim(),
+        message: message.trim(),
+        received_at: Date.now(),
+        ip,
+      };
+      const CONTACT_LOG_FILE = join(DATA_DIR, 'contact_messages.json');
+      const messages = loadJson(CONTACT_LOG_FILE, []);
+      messages.unshift(contactMsg);
+      await saveJson(CONTACT_LOG_FILE, messages.slice(0, 500));
+
+      ntfy(`From: ${name.trim()} <${email.trim()}>\nDept: ${department || 'support'}\nSubject: ${subject || 'Inquiry'}\n\n${message.trim().slice(0, 300)}`, {
+        title: `📩 New Contact: ${subject || 'Support Message'}`,
+        priority: 'high',
+      });
+      console.log(`[contact] Message from ${name.trim()} <${email.trim()}> [${department || 'support'}]`);
+      return jsonResp(200, { ok: true, message: 'Your message has been sent to the team!' });
     }
 
     if (path === '/api/profile' && method === 'POST') {
@@ -18307,15 +19184,343 @@ async function handleRequest(req, server) {
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
         updateVirtualMachineRuntime(record.id, { ipAddress: runtime.ipAddress });
-        return publicVmRecord(record, runtime);
+        return publicVmRecord(record, runtime, actor);
       } catch {
-        return publicVmRecord(record, { state: 'unavailable' });
+        return publicVmRecord(record, { state: 'unavailable' }, actor);
       }
     }));
-    return jsonResp(200, { computers, serviceAvailable: proxmoxDesktop.configured });
+    return jsonResp(200, {
+      computers,
+      serviceAvailable: proxmoxDesktop.configured,
+      isEligible: isEligibleForFreeVm(actor.email, actor.isAdmin),
+    });
   }
 
-  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend))?$/);
+  if (path === '/api/vm/upgrades' && method === 'GET') {
+    const rl = checkRateLimit(req, '/api/vm/upgrades'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    const current = getUserVmUpgrades(actor.email);
+    const coins = getCoins(actor.email);
+    const runningResources = await getRunningNonAdminVmResources();
+    return jsonResp(200, {
+      catalog: VM_UPGRADE_CATALOG,
+      current,
+      coins,
+      fleet: {
+        runningCores: runningResources.cores,
+        runningMemoryMb: runningResources.memoryMb,
+        maxCores: VM_FLEET_MAX_CORES,
+        maxMemoryMb: VM_FLEET_MAX_MEMORY_MB,
+      },
+    });
+  }
+
+  if (path === '/api/vm/upgrade' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/vm/upgrade'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+
+    const category = String(body.category || '').trim().toLowerCase();
+    const targetValue = Number(body.targetValue);
+    if (!['cpu', 'ram', 'disk', 'session'].includes(category) || !Number.isFinite(targetValue)) {
+      return jsonResp(400, { error: 'Invalid category or target value.' });
+    }
+
+    const tiers = VM_UPGRADE_CATALOG[category];
+    const targetTier = tiers.find(t => t.value === targetValue);
+    if (!targetTier) {
+      return jsonResp(400, { error: 'Target upgrade tier not found in catalog.' });
+    }
+
+    const duration = (String(body.duration || 'month').toLowerCase() === 'week') ? 'week' : 'month';
+    const durationDays = (duration === 'week') ? 7 : 30;
+
+    const currentUpgrades = getUserVmUpgrades(actor.email);
+    let currentValue = 0;
+    if (category === 'cpu') currentValue = currentUpgrades.cpuCores;
+    if (category === 'ram') currentValue = currentUpgrades.memoryMb;
+    if (category === 'disk') currentValue = currentUpgrades.diskGb;
+    if (category === 'session') currentValue = currentUpgrades.dailyMaxSeconds;
+
+    const isSessionRenewal = (category === 'session' && targetValue === currentValue && currentValue > VM_DAILY_MAX_SECONDS);
+    if (targetValue < currentValue || (targetValue === currentValue && !isSessionRenewal)) {
+      return jsonResp(400, { error: 'You already possess this tier or a higher tier.' });
+    }
+
+    const currentTier = tiers.find(t => t.value === currentValue) || { cost: 0 };
+    let cost = isSessionRenewal ? targetTier.cost : Math.max(0, targetTier.cost - currentTier.cost);
+    if (category === 'session' && duration === 'week') {
+      cost = Math.round(cost * 0.35);
+    }
+
+    const userCoins = getCoins(actor.email);
+    if (userCoins < cost) {
+      return jsonResp(402, {
+        error: `Insufficient Mitch Coins. You need ${cost} coins, but only have ${Math.floor(userCoins)}.`,
+        code: 'insufficient_coins',
+        required: cost,
+        current: userCoins,
+      });
+    }
+
+    const userVms = getVirtualMachinesForOwner(actor.email).filter(r => r.status !== 'unassigned');
+    const vmRecord = userVms[0] || null;
+    let isVmRunning = false;
+    if (vmRecord && proxmoxDesktop.configured) {
+      try {
+        const runtime = await proxmoxDesktop.getStatus(vmRecord);
+        isVmRunning = (runtime?.state === 'running');
+      } catch {
+        isVmRunning = false;
+      }
+    }
+
+    if (isVmRunning && !actor.isAdmin) {
+      const additionalCores = (category === 'cpu') ? (targetValue - currentValue) : 0;
+      const additionalMemoryMb = (category === 'ram') ? (targetValue - currentValue) : 0;
+      if (additionalCores > 0 || additionalMemoryMb > 0) {
+        const capCheck = await canAccommodateVmResources(additionalCores, additionalMemoryMb);
+        if (!capCheck.ok) {
+          await notifyCapacityFullOnAttempt(actor.email, `upgrade ${category} to ${targetTier.label}`, { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
+          return jsonResp(409, {
+            error: `Host capacity reached: not enough resources to apply this upgrade while your computer is running (${capCheck.currentCores}/${capCheck.maxCores} cores, ${Math.round(capCheck.currentMemoryMb / 1024)}/${Math.round(capCheck.maxMemoryMb / 1024)} GB RAM). Stop your computer to upgrade, or try again later.`,
+            code: 'capacity_limit_reached',
+          });
+        }
+      }
+    }
+
+    if (cost > 0) {
+      addCoins(actor.email, -cost, `vm-upgrade: ${category} to ${targetTier.label}`);
+    }
+
+    const newUpgrades = saveUserVmUpgrade(actor.email, category, targetValue, durationDays);
+
+    if (vmRecord) {
+      const updateSpecs = {};
+      if (category === 'cpu') updateSpecs.cpuCores = targetValue;
+      if (category === 'ram') updateSpecs.memoryMb = targetValue;
+      if (category === 'disk') updateSpecs.diskGb = targetValue;
+
+      if (Object.keys(updateSpecs).length > 0) {
+        updateVirtualMachineSpecs(vmRecord.id, updateSpecs);
+        if (updateSpecs.cpuCores != null) vmRecord.cpuCores = updateSpecs.cpuCores;
+        if (updateSpecs.memoryMb != null) vmRecord.memoryMb = updateSpecs.memoryMb;
+        if (updateSpecs.diskGb != null) vmRecord.diskGb = updateSpecs.diskGb;
+
+        if (proxmoxDesktop.configured) {
+          try {
+            await proxmoxDesktop.updateHardware(vmRecord, updateSpecs);
+          } catch (hwErr) {
+            console.warn(`[vm-upgrade] Hardware update warning for ${vmRecord.id}:`, hwErr?.message || hwErr);
+          }
+        }
+      }
+
+      vmAudit({
+        actorEmail: actor.email,
+        record: vmRecord,
+        action: 'VM_UPGRADED',
+        success: true,
+        details: { category, targetValue, cost, newUpgrades },
+      });
+    }
+
+    return jsonResp(200, {
+      success: true,
+      message: `Successfully upgraded ${category} to ${targetTier.label}!`,
+      upgrades: newUpgrades,
+      coins: getCoins(actor.email),
+    });
+  }
+
+  if (path === '/api/vm/my-computer/create' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/vm/my-computer/create'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+    if (!isEligibleForFreeVm(actor.email, actor.isAdmin)) {
+      return jsonResp(403, { error: 'Free computers are available to RJUHSD students (@student.rjuhsd.us) and Premium members.' });
+    }
+    const existing = getVirtualMachinesForOwner(actor.email).filter(r => r.status !== 'unassigned');
+    if (existing.length > 0) {
+      return jsonResp(409, { error: 'You already have a computer assigned. Use the recreate option if you want to start fresh.' });
+    }
+    const userUpgrades = getUserVmUpgrades(actor.email);
+    if (!actor.isAdmin) {
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email), { isAdmin: false, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
+      if (dailyRemaining <= 0) {
+        return jsonResp(429, {
+          error: `Daily limit reached: you have used your maximum ${Math.round(userUpgrades.dailyMaxSeconds / 3600)} hours of computer time for today. Your daily limit will reset tomorrow.`,
+          code: 'daily_limit_reached',
+          dailyRemainingSeconds: 0,
+        });
+      }
+      const cooldownRemaining = getVmCooldownRemaining(actor.email, actor.isAdmin);
+      if (cooldownRemaining > 0) {
+        const mins = Math.ceil(cooldownRemaining / 60);
+        return jsonResp(429, { error: `Computer is cooling down. You can start/create a computer in ${mins} minute${mins === 1 ? '' : 's'}.`, code: 'vm_cooldown_active' });
+      }
+      const capCheck = await canAccommodateVmResources(userUpgrades.cpuCores, userUpgrades.memoryMb);
+      if (!capCheck.ok) {
+        await notifyCapacityFullOnAttempt(actor.email, 'create a computer', { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
+        return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
+      }
+    }
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const lockKey = `create-${actor.email}`;
+    if (vmPowerRequests.has(lockKey)) return jsonResp(409, { error: 'A computer is already being created for your account.' });
+    vmPowerRequests.set(lockKey, { startedAt: Date.now() });
+    let desktopLogin;
+    let baseUser = (actor.email.split('@')[0] || 'student').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!/^[a-z]/.test(baseUser)) baseUser = 'u' + baseUser;
+    baseUser = baseUser.slice(0, 30);
+    if (['root', 'daemon', 'nobody', 'ubuntu'].includes(baseUser)) baseUser = 'u' + baseUser;
+    const requestedUsername = String(body.desktopUsername || baseUser).trim().toLowerCase();
+    try {
+      desktopLogin = proxmoxDesktop.validateDesktopLogin(requestedUsername, body.desktopPassword);
+    } catch {
+      vmPowerRequests.delete(lockKey);
+      return jsonResp(400, { error: 'Choose a password of 8 to 128 characters.', code: 'invalid_desktop_login' });
+    }
+    const templateVmid = Number(proxmoxDesktop.templateVmids[0] || 9010);
+    let pendingRecord = { ownerEmail: actor.email, vmid: null, id: '' };
+    try {
+      const vmid = await proxmoxDesktop.nextAvailableVmid(PVE_VMID_MIN, PVE_VMID_MAX, listVirtualMachines({ includeUnassigned: true }).map(r => r.vmid));
+      const hostname = `student-${vmid}`;
+      pendingRecord = reserveVirtualMachine({
+        id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
+        node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
+        hostname, operatingSystem: 'Linux Desktop',
+        templateVmid, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb, status: 'provisioning', createdAt: Date.now(),
+      });
+      if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
+      const created = await proxmoxDesktop.cloneDesktop({
+        templateVmid, vmid, hostname, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb,
+        desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
+      });
+      const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
+      vmPagePresence.set(record.id, { lastSeen: Date.now() });
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_CREATED', success: true });
+      return jsonResp(201, { success: true, computer: publicVmRecord(record, { state: 'starting' }, actor) });
+    } catch (error) {
+      console.error('[my-computer/create] Error:', error);
+      if (pendingRecord?.id) updateVirtualMachineRuntime(pendingRecord.id, { status: 'provisioning-failed' });
+      vmAudit({ actorEmail: actor.email, record: pendingRecord, action: 'VM_CREATED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+      const friendly = friendlyVmError(error);
+      return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+    } finally {
+      if (desktopLogin) desktopLogin.password = '';
+      body.desktopPassword = '';
+      vmPowerRequests.delete(lockKey);
+    }
+  }
+
+  if (path === '/api/vm/my-computer/recreate' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/vm/my-computer/recreate'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+    if (!isEligibleForFreeVm(actor.email, actor.isAdmin)) {
+      return jsonResp(403, { error: 'Free computers are available to RJUHSD students (@student.rjuhsd.us) and Premium members.' });
+    }
+    const userUpgrades = getUserVmUpgrades(actor.email);
+    if (!actor.isAdmin) {
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email), { isAdmin: false, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
+      if (dailyRemaining <= 0) {
+        return jsonResp(429, {
+          error: `Daily limit reached: you have used your maximum ${Math.round(userUpgrades.dailyMaxSeconds / 3600)} hours of computer time for today. Your daily limit will reset tomorrow.`,
+          code: 'daily_limit_reached',
+          dailyRemainingSeconds: 0,
+        });
+      }
+      const capCheck = await canAccommodateVmResources(userUpgrades.cpuCores, userUpgrades.memoryMb);
+      if (!capCheck.ok) {
+        await notifyCapacityFullOnAttempt(actor.email, 'recreate a computer', { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
+        return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
+      }
+    }
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+    const lockKey = `recreate-${actor.email}`;
+    if (vmPowerRequests.has(lockKey) || vmPowerRequests.has(`create-${actor.email}`)) return jsonResp(409, { error: 'A computer operation is already in progress for your account.' });
+    vmPowerRequests.set(lockKey, { startedAt: Date.now() });
+
+    let desktopLogin;
+    let baseUser = (actor.email.split('@')[0] || 'student').toLowerCase().replace(/[^a-z0-9_-]/g, '');
+    if (!/^[a-z]/.test(baseUser)) baseUser = 'u' + baseUser;
+    baseUser = baseUser.slice(0, 30);
+    if (['root', 'daemon', 'nobody', 'ubuntu'].includes(baseUser)) baseUser = 'u' + baseUser;
+    const requestedUsername = String(body.desktopUsername || baseUser).trim().toLowerCase();
+    try {
+      desktopLogin = proxmoxDesktop.validateDesktopLogin(requestedUsername, body.desktopPassword);
+    } catch {
+      vmPowerRequests.delete(lockKey);
+      return jsonResp(400, { error: 'Choose a password of 8 to 128 characters.', code: 'invalid_desktop_login' });
+    }
+
+    // 1. Delete existing computer(s) owned by user
+    const existingRecords = getVirtualMachinesForOwner(actor.email);
+    for (const old of existingRecords) {
+      try {
+        await proxmoxDesktop.deleteGuest(old, { force: true });
+      } catch (err) {
+        console.warn(`[recreate] Note: Proxmox delete for ${old.id} returned:`, err?.message || err);
+      }
+      deleteVirtualMachine(old.id);
+      revokeVmDesktopConnections(old.id);
+      clearVmLease(old.id);
+      vmPagePresence.delete(old.id);
+      vmAudit({ actorEmail: actor.email, record: old, action: 'VM_DELETED_FOR_RECREATE', success: true });
+    }
+
+    try {
+      const vmApps = loadJson(VM_APPS_FILE, {});
+      if (vmApps[actor.email]) {
+        delete vmApps[actor.email];
+        saveJson(VM_APPS_FILE, vmApps);
+      }
+    } catch (_) {}
+
+    clearVmCooldown(actor.email);
+
+    // 2. Clone new computer
+    const templateVmid = Number(proxmoxDesktop.templateVmids[0] || 9010);
+    let pendingRecord = { ownerEmail: actor.email, vmid: null, id: '' };
+    try {
+      const vmid = await proxmoxDesktop.nextAvailableVmid(PVE_VMID_MIN, PVE_VMID_MAX, listVirtualMachines({ includeUnassigned: true }).map(r => r.vmid));
+      const hostname = `student-${vmid}`;
+      pendingRecord = reserveVirtualMachine({
+        id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
+        node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
+        hostname, operatingSystem: 'Linux Desktop',
+        templateVmid, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb, status: 'provisioning', createdAt: Date.now(),
+      });
+      if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
+      const created = await proxmoxDesktop.cloneDesktop({
+        templateVmid, vmid, hostname, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb,
+        desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
+      });
+      const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
+      vmPagePresence.set(record.id, { lastSeen: Date.now() });
+      vmAudit({ actorEmail: actor.email, record, action: 'VM_RECREATED', success: true });
+      return jsonResp(201, { success: true, computer: publicVmRecord(record, { state: 'starting' }, actor) });
+    } catch (error) {
+      console.error('[my-computer/recreate] Error cloning new desktop:', error);
+      if (pendingRecord?.id) updateVirtualMachineRuntime(pendingRecord.id, { status: 'provisioning-failed' });
+      vmAudit({ actorEmail: actor.email, record: pendingRecord, action: 'VM_RECREATED', success: false, details: { code: error?.code || 'UNKNOWN' } });
+      const friendly = friendlyVmError(error);
+      return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
+    } finally {
+      if (desktopLogin) desktopLogin.password = '';
+      body.desktopPassword = '';
+      vmPowerRequests.delete(lockKey);
+    }
+  }
+
+  const vmComputerMatch = path.match(/^\/api\/vm\/computers\/([a-zA-Z0-9_-]{1,80})(?:\/(power|desktop-session|extend|heartbeat|admin-access|request-admin-access))?$/);
   if (vmComputerMatch) {
     const actor = authenticatedVmActor(req);
     if (!actor) return jsonResp(401, { error: 'Sign in to access your computer.' });
@@ -18327,25 +19532,89 @@ async function handleRequest(req, server) {
     if (operation && record.status === 'provisioning') return jsonResp(409, { error: 'Your computer is still being prepared.', code: 'computer_starting' });
     if (operation && record.status === 'provisioning-failed') return jsonResp(409, { error: 'This computer needs administrator attention before it can be opened.', code: 'setup_incomplete' });
 
+    if (operation === 'admin-access') {
+      if (method === 'GET') {
+        const isOwner = normalizeEmail(record.ownerEmail) === normalizeEmail(actor.email);
+        if (!isOwner && !actor.isAdmin) return jsonResp(403, { error: 'Permission denied.' });
+        return jsonResp(200, {
+          allowed: isVmAdminAccessAllowed(record.id),
+          requested: isVmAdminAccessRequested(record.id),
+          grant: getVmAdminGrant(record.id),
+        });
+      }
+      if (method === 'POST') {
+        const rl = checkRateLimit(req, '/api/vm/admin-access'); if (rl) return rl;
+        const isOwner = normalizeEmail(record.ownerEmail) === normalizeEmail(actor.email);
+        if (!isOwner) return jsonResp(403, { error: 'Only the computer owner can grant or revoke admin access.' });
+        if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+        const allow = Boolean(body.allow !== undefined ? body.allow : body.allowed);
+        setVmAdminAccess(record.id, record.ownerEmail, allow, actor.email);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: allow ? 'ADMIN_ACCESS_ALLOWED' : 'ADMIN_ACCESS_REVOKED',
+          success: true,
+          details: { allowed: allow, ownerEmail: record.ownerEmail }
+        });
+        return jsonResp(200, {
+          success: true,
+          allowed: allow,
+          message: allow ? 'Administrator access granted.' : 'Administrator access revoked.',
+        });
+      }
+      return jsonResp(405, { error: 'Method not allowed.' });
+    }
+
+    if (operation === 'request-admin-access' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/request-admin-access'); if (rl) return rl;
+      if (!actor.isAdmin) return jsonResp(403, { error: 'Only administrators can request computer access.' });
+      if (normalizeEmail(record.ownerEmail) === normalizeEmail(actor.email)) {
+        return jsonResp(200, { success: true, message: 'You are the owner of this computer.' });
+      }
+      requestVmAdminAccess(record, actor.email);
+      return jsonResp(200, { success: true, requested: true, message: 'Access request sent to the computer owner.' });
+    }
+
     if (!operation && method === 'GET') {
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
         updateVirtualMachineRuntime(record.id, { ipAddress: runtime.ipAddress });
-        return jsonResp(200, { computer: publicVmRecord(record, runtime) });
+        return jsonResp(200, { computer: publicVmRecord(record, runtime, actor) });
       } catch (error) {
         const friendly = friendlyVmError(error);
         return jsonResp(friendly.status, { error: friendly.error, code: friendly.code });
       }
     }
 
+    if (operation === 'heartbeat' && method === 'POST') {
+      const rl = checkRateLimit(req, '/api/vm/heartbeat'); if (rl) return rl;
+      vmPagePresence.set(record.id, { lastSeen: Date.now() });
+      return jsonResp(200, { success: true, lastSeen: Date.now() });
+    }
+
     if (operation === 'extend' && method === 'POST') {
       const rl = checkRateLimit(req, '/api/vm/extend'); if (rl) return rl;
+      if (actor.isAdmin || isAdminEmail(record.ownerEmail)) {
+        return jsonResp(200, {
+          success: true,
+          message: 'Admins have unlimited session time.',
+          lease: { isExempt: true, remainingSeconds: null, maxUptimeSeconds: null, canExtend: false },
+        });
+      }
+      if (!canUserExtendToday(actor.email, actor.isAdmin)) {
+        return jsonResp(400, { error: 'Only one 30-minute extension is allowed per day.', code: 'daily_extension_limit_reached' });
+      }
+      const userUpgrades = getUserVmUpgrades(record.ownerEmail);
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail), { isAdmin: actor.isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
+      if (dailyRemaining <= 0) {
+        return jsonResp(400, { error: 'Daily computer limit reached.', code: 'daily_limit_reached' });
+      }
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
         if (runtime.state !== 'running') {
           return jsonResp(400, { error: 'Computer must be running to extend session.' });
         }
-        const leaseInfo = getVmLease(record.id, runtime.uptime);
+        const leaseInfo = getVmLease(record.id, runtime.uptime, { isAdmin: actor.isAdmin, ownerEmail: record.ownerEmail });
         if (leaseInfo.extended || !leaseInfo.canExtend) {
           return jsonResp(400, { error: 'Maximum extension already applied (30 minutes maximum).', code: 'extension_limit_reached' });
         }
@@ -18354,7 +19623,8 @@ async function handleRequest(req, server) {
         lease.extendedAt = Date.now();
         lease.lastSeenUptime = runtime.uptime;
         vmLeases.set(record.id, lease);
-        const updatedLease = getVmLease(record.id, runtime.uptime);
+        recordUserExtension(actor.email);
+        const updatedLease = getVmLease(record.id, runtime.uptime, { isAdmin: actor.isAdmin, ownerEmail: record.ownerEmail });
         vmAudit({
           actorEmail: actor.email,
           record,
@@ -18378,12 +19648,94 @@ async function handleRequest(req, server) {
       if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
       const action = String(body.action || '').trim().toLowerCase();
       if (!['start', 'shutdown', 'restart', 'force-stop'].includes(action)) return jsonResp(400, { error: 'Invalid power action.' });
+
+      const isAdminUsingOtherVm = Boolean(actor.isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(actor.email));
+      if (isAdminUsingOtherVm) {
+        if (!isVmAdminAccessAllowed(record.id)) {
+          requestVmAdminAccess(record, actor.email);
+          return jsonResp(403, {
+            error: 'The owner has not allowed administrator access to this computer. An access request has been sent to their notification center.',
+            code: 'admin_access_not_allowed',
+            accessRequested: true,
+          });
+        }
+      }
+
+      // Daily runtime limit check for start/restart
+      if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
+        const userUpgrades = getUserVmUpgrades(record.ownerEmail);
+        const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail), { isAdmin: actor.isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
+        if (dailyRemaining <= 0) {
+          return jsonResp(429, {
+            error: 'Daily limit reached: you have used your maximum 6 hours of computer time for today. Your daily limit will reset tomorrow.',
+            code: 'daily_limit_reached',
+            dailyRemainingSeconds: 0,
+          });
+        }
+      }
+
+      // Cooldown check for start/restart
+      if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
+        const cooldownRemaining = getVmCooldownRemaining(record.ownerEmail, actor.isAdmin);
+        if (cooldownRemaining > 0) {
+          const mins = Math.ceil(cooldownRemaining / 60);
+          return jsonResp(429, {
+            error: `Computer is cooling down. You can start it again in ${mins} minute${mins === 1 ? '' : 's'}.`,
+            code: 'vm_cooldown_active',
+            cooldownRemainingSeconds: cooldownRemaining,
+          });
+        }
+      }
+
+      // Capacity check for start/restart
+      if (action === 'start' || action === 'restart') {
+        let isRunning = false;
+        try {
+          const runtime = await proxmoxDesktop.getStatus(record);
+          isRunning = (runtime?.state === 'running');
+        } catch {
+          isRunning = false;
+        }
+        if (!isRunning) {
+          const reqCores = Number(record.cpuCores) || VM_DEFAULT_CPU_CORES;
+          const reqMemoryMb = Number(record.memoryMb) || VM_DEFAULT_MEMORY_MB;
+          const capCheck = await canAccommodateVmResources(reqCores, reqMemoryMb);
+          if (!capCheck.ok) {
+            await notifyCapacityFullOnAttempt(actor.email, `start computer ${record.friendlyName || record.hostname || record.id}`, { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
+            if (!actor.isAdmin) {
+              return jsonResp(409, {
+                error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`,
+                code: 'capacity_limit_reached',
+              });
+            }
+          }
+        }
+      }
+
       if (!vmPowerGate.acquire(record.id, action)) return jsonResp(409, { error: 'A power request is already in progress.', code: 'request_in_progress' });
+
+      if (isAdminUsingOtherVm) {
+        console.log(`[vm-audit] Admin ${actor.email} used VM ${record.id} (${record.friendlyName || record.hostname}) owned by ${record.ownerEmail}. Action: power-${action}`);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: 'ADMIN_VM_USED',
+          success: true,
+          details: { operation: `power-${action}`, targetUser: record.ownerEmail, vmid: record.vmid, hostname: record.hostname }
+        });
+        notifyOwnerAdminUsedVm(record, actor.email, `power action: ${action}`);
+      }
+
       try {
         const task = await proxmoxDesktop.power(record, action);
         clearVmLease(record.id);
+        if (action === 'start') {
+          vmPagePresence.set(record.id, { lastSeen: Date.now() });
+        }
         if (action === 'shutdown' || action === 'force-stop') {
           revokeVmDesktopConnections(record.id);
+          triggerVmCooldown(record.ownerEmail, 'user_power_off');
+          vmPagePresence.delete(record.id);
         }
         void proxmoxDesktop.waitForTask(record.node, task, 180_000).then(() => {
           vmAudit({ actorEmail: actor.email, record, action: action === 'restart' ? 'VM_RESTARTED' : action === 'start' ? 'VM_STARTED' : 'VM_STOPPED', success: true });
@@ -18401,6 +19753,28 @@ async function handleRequest(req, server) {
 
     if (operation === 'desktop-session' && method === 'POST') {
       const rl = checkRateLimit(req, '/api/vm/desktop-session'); if (rl) return rl;
+      const isAdminUsingOtherVm = Boolean(actor.isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(actor.email));
+      if (isAdminUsingOtherVm) {
+        if (!isVmAdminAccessAllowed(record.id)) {
+          requestVmAdminAccess(record, actor.email);
+          return jsonResp(403, {
+            error: 'The owner has not allowed administrator access to this computer. An access request has been sent to their notification center.',
+            code: 'admin_access_not_allowed',
+            accessRequested: true,
+          });
+        }
+      }
+      if (isAdminUsingOtherVm) {
+        console.log(`[vm-audit] Admin ${actor.email} used VM ${record.id} (${record.friendlyName || record.hostname}) owned by ${record.ownerEmail}. Action: desktop-session`);
+        vmAudit({
+          actorEmail: actor.email,
+          record,
+          action: 'ADMIN_VM_USED',
+          success: true,
+          details: { operation: 'desktop-session', targetUser: record.ownerEmail, vmid: record.vmid, hostname: record.hostname }
+        });
+        notifyOwnerAdminUsedVm(record, actor.email, 'opened desktop session');
+      }
       cleanupVmDesktopSessions();
       try {
         const consoleSession = await proxmoxDesktop.createConsole(record);
@@ -18447,23 +19821,72 @@ async function handleRequest(req, server) {
       serviceError = friendlyVmError(error).error;
     }
     const assignedVmids = new Set(records.filter(item => item.status !== 'unassigned').map(item => item.vmid));
+    const now = Date.now();
+    const activeSessions = [];
+    for (const ws of vmDesktopSockets) {
+      if (ws.readyState === 1 && ws.data?.recordId) {
+        activeSessions.push({
+          recordId: ws.data.recordId,
+          vmid: ws.data.vmid,
+          actorEmail: ws.data.actorEmail,
+          ownerEmail: ws.data.ownerEmail,
+          connectedAt: ws.data.connectedAt || now,
+          durationSeconds: Math.floor((now - (ws.data.connectedAt || now)) / 1000),
+        });
+      }
+    }
     const recordViews = await Promise.all(records.map(async record => {
       let runtime = null;
       try { runtime = await proxmoxDesktop.getStatus(record); } catch {}
-      return { ...publicVmRecord(record, runtime), ownerEmail: record.ownerEmail, vmid: record.vmid, node: record.node, guestType: record.guestType, assignmentStatus: record.status };
+      const activeUsers = activeSessions.filter(s => s.recordId === record.id);
+      return {
+        ...publicVmRecord(record, runtime, actor),
+        ownerEmail: record.ownerEmail,
+        vmid: record.vmid,
+        node: record.node,
+        guestType: record.guestType,
+        assignmentStatus: record.status,
+        activeUsers,
+        isCurrentlyInUse: activeUsers.length > 0,
+        canAccess: vmRecordAllowedForActor(record, actor),
+      };
     }));
     const profiles = loadJson(PROFILES_FILE, {});
     const users = Object.keys(loadPasswords()).sort().map(email => ({
       email,
       name: profiles[normalizeEmail(email)]?.displayName || profiles[normalizeEmail(email)]?.nickname || defaultUsernameForEmail(email),
     }));
+    const runningResources = await getRunningNonAdminVmResources();
+    const runningNonAdminCount = runningResources.count;
+    const runningNonAdminCores = runningResources.cores;
+    const runningNonAdminMemoryMb = runningResources.memoryMb;
+    const dayKey = url.searchParams.get('day') || getVmDayKey();
+    const usageStats = await getVmFleetUsageStats(dayKey, records, activeSessions, recordViews);
     return jsonResp(200, {
       computers: recordViews,
       availableGuests: guests.filter(guest => !guest.template && guest.type === 'qemu' && !assignedVmids.has(guest.vmid)),
       templates: guests.filter(guest => guest.template && guest.type === 'qemu' && proxmoxDesktop.templateVmids.includes(guest.vmid)),
       users, capacity, serviceAvailable: proxmoxDesktop.configured && !serviceError, serviceError,
       audit: listVmAuditLogs(100),
+      activeSessions,
+      runningNonAdminCount,
+      runningNonAdminCores,
+      runningNonAdminMemoryMb,
+      maxFleetCores: VM_FLEET_MAX_CORES,
+      maxFleetMemoryMb: VM_FLEET_MAX_MEMORY_MB,
+      maxRunningNonAdminLimit: VM_MAX_CONCURRENT_RUNNING,
+      usageStats,
     });
+  }
+
+  if (path === '/api/admin/vms/stats' && method === 'GET') {
+    const rl = checkRateLimit(req, '/api/admin/vms'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!actor.isAdmin) return jsonResp(403, { error: 'Admin access required.' });
+    const dayKey = url.searchParams.get('day') || getVmDayKey();
+    const usageStats = await getVmFleetUsageStats(dayKey);
+    return jsonResp(200, { ok: true, usageStats });
   }
 
   if (path === '/api/admin/vms/assign' && method === 'POST') {
@@ -18488,7 +19911,7 @@ async function handleRequest(req, server) {
         guestType: 'qemu', friendlyName: String(body.friendlyName || 'My Computer').trim().slice(0, 60) || 'My Computer',
         hostname: guest.name, operatingSystem: String(body.operatingSystem || 'Linux Mint Cinnamon').trim().slice(0, 80),
         templateVmid: null, cpuCores: Number(config?.cores || guest.cpuCores || 4),
-        memoryMb: Number(config?.memory || guest.memoryMb || 4096), diskGb: guest.diskGb || 40,
+        memoryMb: Number(config?.memory || guest.memoryMb || 16384), diskGb: guest.diskGb || 64,
         status: 'assigned', createdAt: record?.createdAt || Date.now(),
       });
       vmAudit({ actorEmail: actor.email, record, action: 'VM_ASSIGNED', success: true });
@@ -18527,10 +19950,10 @@ async function handleRequest(req, server) {
     if (!proxmoxDesktop.templateVmids.includes(templateVmid)) return jsonResp(400, { error: 'Choose an available desktop template.' });
     let desktopLogin;
     try { desktopLogin = proxmoxDesktop.validateDesktopLogin(body.desktopUsername, body.desktopPassword); }
-    catch { return jsonResp(400, { error: 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' }); }
-    const cpuCores = Math.max(2, Math.min(Math.round(Number(body.cpuCores) || 4), 8));
-    const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 4096), 16384));
-    const diskGb = Math.max(40, Math.min(Math.round(Number(body.diskGb) || 40), 256));
+    catch { return jsonResp(400, { error: 'Choose a desktop username and a password of 8 to 128 characters.', code: 'invalid_desktop_login' }); }
+    const cpuCores = Math.max(2, Math.min(Math.round(Number(body.cpuCores) || 6), 16));
+    const memoryMb = Math.max(2048, Math.min(Math.round(Number(body.memoryMb) || 16384), 65536));
+    const diskGb = Math.max(40, Math.min(Math.round(Number(body.diskGb) || 64), 256));
     const hostname = String(body.hostname || `computer-${ownerEmail.split('@')[0]}`).trim();
     vmPowerRequests.set('admin-create', { startedAt: Date.now() });
     let pendingRecord = { ownerEmail, vmid: null, id: '' };
@@ -18645,7 +20068,7 @@ async function handleRequest(req, server) {
         code,
         isPremium: isPremiumEmail(email),
         signups,
-        inviteUrl: `https://mitch.pro/enroll?ref=${encodeURIComponent(code)}&email=THEIR_EMAIL`
+        inviteUrl: `https://mitchdog.com/enroll?ref=${encodeURIComponent(code)}&email=THEIR_EMAIL`
       });
     }
 
@@ -18952,6 +20375,18 @@ async function handleRequest(req, server) {
           });
           continue;
         }
+        if (g.kind === 'vm_admin_access') {
+          notices.push({
+            type: 'vm_admin_access',
+            id: String(g.id),
+            title: g.title || 'Computer Access Alert',
+            body: g.message || '',
+            detail: `Administrator: ${g.from || 'admin'}`,
+            ts: g.ts || 0,
+            url: g.url || notificationUrl('/vms/'),
+          });
+          continue;
+        }
         notices.push({
           type: 'coin_gift',
           id: String(g.id),
@@ -19148,6 +20583,7 @@ async function handleRequest(req, server) {
         else if (adminMemberEmails().some(adminEmail => normalizeEmail(adminEmail) === normalizeEmail(email))) role = 'admin/developer';
         else if (isModeratorEmail(email)) role = 'moderator';
         else if (isBlogContributorEmail(email)) role = 'contributor';
+        else if (isTesterEmail(email)) role = 'tester';
         else if (isPremiumEmail(email)) role = 'premium';
         
         const e2eLegacy = deriveUserE2EKeys(email);
@@ -19336,6 +20772,32 @@ async function handleRequest(req, server) {
       return jsonResp(200, { members });
     }
 
+    // /api/tester-members — public list of beta testers
+    if (path === '/api/tester-members') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const profiles = loadJson(PROFILES_FILE, {});
+      const cosmetics = loadJson(COSMETICS_FILE, {});
+      const viewerEmail = emailFromSid(sid);
+      const members = testerEmails()
+        .filter(email => email !== TEST_ACCOUNT_EMAIL)
+        .map(email => {
+          const norm = normalizeEmail(email);
+          const profile = profiles[norm] || {};
+          const cosm = cosmetics[norm] || {};
+          const processed = processMemberFields(email, profile, viewerEmail);
+          return {
+            displayName: processed.displayName,
+            email: processed.email,
+            role: 'Beta Tester',
+            color: publicActiveColor(email, cosm.activeColor),
+            badge: cosm.activeBadge || null
+          };
+        });
+      return jsonResp(200, { members });
+    }
+
     // /api/owner-members — public list of site owners
     if (path === '/api/owner-members') {
       const cookies = getCookies(req);
@@ -19392,6 +20854,8 @@ async function handleRequest(req, server) {
         email: processed.email,
         isPremium: isPremiumEmail(email),
         isAdmin: isAdminEmail(email),
+        isModerator: isModeratorEmail(email),
+        isTester: isTesterEmail(email),
         stats: loadUserStats()[norm] || {},
         achievements: getAchievements(email),
         totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
@@ -19437,6 +20901,8 @@ async function handleRequest(req, server) {
         isPremium: isPremiumEmail(actualEmail),
 
         isAdmin: isAdminEmail(actualEmail),
+        isModerator: isModeratorEmail(actualEmail),
+        isTester: isTesterEmail(actualEmail),
         stats: loadUserStats()[norm] || {},
         achievements: getAchievements(actualEmail),
         totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
@@ -23103,6 +24569,16 @@ async function handleRequest(req, server) {
       casinoHistory.set(norm, h);
     }
 
+    function hasLoadedDice() {
+      const stats = loadUserStats();
+      return !!(stats[norm] && ((stats[norm].loaded_dice_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now()));
+    }
+
+    function hasCasinoGlitch() {
+      const stats = loadUserStats();
+      return !!(stats[norm] && ((stats[norm].casino_glitch_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now()));
+    }
+
     function readCasinoBet(min = 1) {
       const bet = Number(body.amount);
       const bal = getCoins(email);
@@ -23110,8 +24586,8 @@ async function handleRequest(req, server) {
       if (bet > bal) return { error: 'You do not have enough coins for that bet.' };
 
       const stats = loadUserStats();
-      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
-      if (!isVip && bet > 500) return { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' };
+      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
+      if (!isVip && bet > 500) return { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass or Infinite Luck Charm in the shop for unlimited betting!' };
 
       return { bet: Number(bet.toFixed(2)), bal };
     }
@@ -23123,12 +24599,17 @@ async function handleRequest(req, server) {
     function settleCasinoRound(gameName, bet, payout, outcome, freeSpin = false, prepaid = false) {
       const stats = loadUserStats();
       const isDouble = stats[norm] && (stats[norm].double_down_until || 0) > Date.now();
-      const isInsured = stats[norm] && (stats[norm].bad_beat_insurance_until || 0) > Date.now();
+      const isInsured = stats[norm] && ((stats[norm].bad_beat_insurance_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
+      const isGlitch = hasCasinoGlitch();
+      const glitchMultiplier = (stats[norm] && (stats[norm].infinite_luck_until || 0) > Date.now()) ? 10 : 5;
 
       let finalPayout = payout;
       let finalOutcome = outcome;
 
-      if (payout > bet && isDouble) {
+      if (payout > 0 && isGlitch) {
+        finalPayout = payout * glitchMultiplier;
+        finalOutcome = outcome + ` (${glitchMultiplier}X GLITCH EXPLOIT)`;
+      } else if (payout > bet && isDouble) {
         finalPayout = payout * 2;
         finalOutcome = outcome + ' (2X DOUBLE)';
       } else if (payout <= 0 && isInsured && !freeSpin) {
@@ -23193,7 +24674,8 @@ async function handleRequest(req, server) {
       const choice = String(body.choice || '').toLowerCase();
       const options = ['rock', 'paper', 'scissors'];
       if (!options.includes(choice)) return jsonResp(400, { error: 'Choose rock, paper, or scissors.' });
-      const computer = options[Math.floor(Math.random() * options.length)];
+      const losesTo = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
+      const computer = hasLoadedDice() ? losesTo[choice] : options[Math.floor(Math.random() * options.length)];
       const tie = choice === computer;
       const won = !tie && ((choice === 'rock' && computer === 'scissors') || (choice === 'paper' && computer === 'rock') || (choice === 'scissors' && computer === 'paper'));
       const payout = tie ? betCheck.bet : won ? betCheck.bet * 1.9 : 0;
@@ -23205,7 +24687,8 @@ async function handleRequest(req, server) {
       if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
       const betCheck = readCasinoBet();
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
-      const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      let dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      if (hasLoadedDice()) dice = [3, 4];
       const total = dice[0] + dice[1];
       const won = total === 7;
       const settled = settleCasinoRound('Lucky Seven', betCheck.bet, won ? betCheck.bet * 4.8 : 0, won ? 'WIN' : 'LOSE');
@@ -23219,7 +24702,8 @@ async function handleRequest(req, server) {
       const choice = String(body.choice || '').toLowerCase();
       if (choice !== 'red' && choice !== 'black') return jsonResp(400, { error: 'Choose red or black.' });
       const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
-      const suit = suits[Math.floor(Math.random() * suits.length)];
+      let suit = suits[Math.floor(Math.random() * suits.length)];
+      if (hasLoadedDice()) suit = (choice === 'red') ? 'hearts' : 'spades';
       const color = suit === 'hearts' || suit === 'diamonds' ? 'red' : 'black';
       const value = 1 + Math.floor(Math.random() * 13);
       const card = value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' : value === 11 ? 'J' : String(value);
@@ -23234,7 +24718,8 @@ async function handleRequest(req, server) {
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
       const pick = Number(body.pick);
       if (!Number.isInteger(pick) || pick < 1 || pick > 6) return jsonResp(400, { error: 'Pick a number from 1 to 6.' });
-      const dice = Array.from({ length: 3 }, () => 1 + Math.floor(Math.random() * 6));
+      let dice = Array.from({ length: 3 }, () => 1 + Math.floor(Math.random() * 6));
+      if (hasLoadedDice()) dice = [pick, pick, pick];
       const matches = dice.filter(value => value === pick).length;
       const mult = [0, 2, 5, 25][matches];
       const settled = settleCasinoRound('Triple Dice', betCheck.bet, betCheck.bet * mult, matches ? 'WIN' : 'LOSE');
@@ -23245,12 +24730,13 @@ async function handleRequest(req, server) {
       if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
       const betCheck = readCasinoBet();
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
-      const slot = weightedPick([
+      let slot = weightedPick([
         { label: '0x', mult: 0, weight: 25 }, { label: '0.5x', mult: 0.5, weight: 25 },
         { label: '0.8x', mult: 0.8, weight: 18 }, { label: '1.2x', mult: 1.2, weight: 15 },
         { label: '1.5x', mult: 1.5, weight: 10 }, { label: '3x', mult: 3, weight: 5 },
         { label: '8x', mult: 8, weight: 2 },
       ]);
+      if (hasLoadedDice()) slot = { label: '8x (JACKPOT)', mult: 8 };
       const settled = settleCasinoRound('Plinko', betCheck.bet, betCheck.bet * slot.mult, slot.mult >= 1 ? 'WIN' : 'LOSE');
       return jsonResp(200, { ok: true, slot: slot.label, mult: slot.mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
@@ -23274,6 +24760,18 @@ async function handleRequest(req, server) {
       
       let num = Math.floor(Math.random() * 37);
       let resultColor = colors[num];
+      if (hasLoadedDice()) {
+        if (type === 'red' || type === 'black') {
+          num = (type === 'red') ? 1 : 2;
+          resultColor = type;
+        } else if (type === 'green') {
+          num = 0;
+          resultColor = 'green';
+        } else if (Number.isInteger(Number(type)) && Number(type) >= 0 && Number(type) <= 36) {
+          num = Number(type);
+          resultColor = colors[num];
+        }
+      }
       const rigged = isRigged();
 
       let won = false;
@@ -23311,7 +24809,8 @@ async function handleRequest(req, server) {
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
       const choice = String(body.choice || '').toLowerCase();
       if (choice !== 'higher' && choice !== 'lower') return jsonResp(400, { error: 'Choose higher or lower.' });
-      const value = 1 + Math.floor(Math.random() * 13);
+      let value = 1 + Math.floor(Math.random() * 13);
+      if (hasLoadedDice()) value = (choice === 'higher') ? 12 : 2;
       const card = value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' : value === 11 ? 'J' : String(value);
       const push = value === 7;
       const won = !push && (choice === 'higher' ? value > 7 : value < 7);
@@ -23329,7 +24828,7 @@ async function handleRequest(req, server) {
       if (!Number.isFinite(bet) || bet < 1 || bet > bal) return jsonResp(400, { error: 'invalid bet' });
 
       const stats = loadUserStats();
-      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
+      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
       if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
 
       casinoIntake += bet; saveCasinoStats();
@@ -23345,6 +24844,10 @@ async function handleRequest(req, server) {
 
       let playerHand = [deck.pop(), deck.pop()];
       let dealerHand = [deck.pop(), deck.pop()];
+      if (hasLoadedDice()) {
+        playerHand = [{ s: '♠', v: 'A' }, { s: '♦', v: 'K' }];
+        dealerHand = [{ s: '♥', v: '10' }, { s: '♣', v: '6' }];
+      }
       const rigged = false;
 
       if (rigged) {
@@ -23474,6 +24977,9 @@ async function handleRequest(req, server) {
       }
       
       let hand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+      if (hasLoadedDice()) {
+        hand = [{ s: '♠', v: '10' }, { s: '♠', v: 'J' }, { s: '♠', v: 'Q' }, { s: '♠', v: 'K' }, { s: '♠', v: 'A' }];
+      }
       
       const checkHand = (h) => {
         const counts = {};
@@ -23525,7 +25031,8 @@ async function handleRequest(req, server) {
       if (!['heads', 'tails'].includes(side)) return jsonResp(400, { error: 'Choose heads or tails.' });
       const rigged = isRigged();
       let result = Math.random() < 0.5 ? 'heads' : 'tails';
-      if (rigged && result === side) result = side === 'heads' ? 'tails' : 'heads';
+      if (hasLoadedDice()) result = side;
+      else if (rigged && result === side) result = side === 'heads' ? 'tails' : 'heads';
       const won = side === result;
       const mult = won ? 1.9 : 0;
       const settled = settleCasinoRound('Coin Flip', betCheck.bet, won ? betCheck.bet * mult : 0, won ? 'WIN' : 'LOSE');
@@ -23541,7 +25048,8 @@ async function handleRequest(req, server) {
       if (!['under', 'over'].includes(side)) return jsonResp(400, { error: 'Choose under or over.' });
       const rigged = isRigged();
       let roll = Math.floor(Math.random() * 100) + 1;
-      if (rigged) {
+      if (hasLoadedDice()) roll = (side === 'under') ? 25 : 75;
+      else if (rigged) {
         if (side === 'under' && roll < 50) roll = Math.floor(Math.random() * 51) + 50;
         else if (side === 'over' && roll > 51) roll = Math.floor(Math.random() * 51) + 1;
       }
@@ -23561,7 +25069,8 @@ async function handleRequest(req, server) {
       const rigged = isRigged();
       let crashAt = Number(Math.max(1, Math.min(10, 0.95 / Math.max(Math.random(), 0.000001))).toFixed(2));
       const cashout = Number(target.toFixed(2));
-      if (rigged && cashout <= crashAt) crashAt = Number(Math.max(1, cashout - 0.01).toFixed(2));
+      if (hasLoadedDice()) crashAt = Number((cashout + 1.0).toFixed(2));
+      else if (rigged && cashout <= crashAt) crashAt = Number(Math.max(1, cashout - 0.01).toFixed(2));
       const won = cashout <= crashAt;
       const settled = settleCasinoRound('Crash', betCheck.bet, won ? betCheck.bet * cashout : 0, won ? 'WIN' : 'CRASH');
       return jsonResp(200, { ok: true, crashAt, target: cashout, won, mult: won ? cashout : 0, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
@@ -23583,7 +25092,8 @@ async function handleRequest(req, server) {
       ];
       const rigged = isRigged();
       let segment = weightedPick(segments);
-      if (rigged && segment.mult >= 1) segment = segments[0]; // Force Bust
+      if (hasLoadedDice()) segment = { label: 'Galaxy Jackpot', mult: 20, weight: 1 };
+      else if (rigged && segment.mult >= 1) segment = segments[0]; // Force Bust
       const settled = settleCasinoRound('Prize Wheel', betCheck.bet, betCheck.bet * segment.mult, segment.mult >= 1 ? 'WIN' : 'LOSE');
       return jsonResp(200, { ok: true, segment: segment.label, mult: segment.mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
@@ -23595,7 +25105,8 @@ async function handleRequest(req, server) {
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
       const rigged = isRigged();
       let roll = Math.random();
-      if (rigged && roll < 0.180) roll = 0.300 + Math.random() * 0.7; // Force No Match (roll >= 0.300)
+      if (hasLoadedDice()) roll = 0.001;
+      else if (rigged && roll < 0.180) roll = 0.300 + Math.random() * 0.7; // Force No Match (roll >= 0.300)
       let mult = 0, rank = 'No Match';
       if (roll < 0.002) { mult = 90; rank = 'Triple Diamonds'; }
       else if (roll < 0.010) { mult = 25; rank = 'Triple Sevens'; }
@@ -23631,6 +25142,10 @@ async function handleRequest(req, server) {
       };
       const rigged = isRigged();
       let drawn = drawUniqueNumbers(40, 12);
+      if (hasLoadedDice()) {
+        const rest = Array.from({ length: 40 }, (_, i) => i + 1).filter(n => !picks.includes(n));
+        drawn = [...picks, ...rest.slice(0, 12 - picks.length)].sort((a, b) => a - b);
+      }
       let hitSet = new Set(drawn);
       let hits = picks.filter(n => hitSet.has(n));
       
@@ -23658,7 +25173,7 @@ async function handleRequest(req, server) {
       
       const stats = loadUserStats();
       const norm = normalizeEmail(email);
-      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
+      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
       
       if (isVipRoom && !isVip) return jsonResp(403, { error: 'VIP pass required' });
 
@@ -23685,6 +25200,7 @@ async function handleRequest(req, server) {
         symbols[Math.floor(Math.random() * symbols.length)],
         symbols[Math.floor(Math.random() * symbols.length)]
       ];
+      if (hasLoadedDice()) results = ['💎', '💎', '💎'];
 
       const getMult = (res) => {
         if (res[0] === res[1] && res[1] === res[2]) {
@@ -24442,6 +25958,7 @@ async function handleRequest(req, server) {
                                 '/swift', '/swift/index', '/larp', '/larp/index', '/larp/rezero', '/larp/rezero/index',
                                 '/games', '/games/index', '/game-portal', '/game-portal/index', '/msn-games', '/msn-games/index',
                                 '/matrix', '/matrix/index',
+                                '/index-sales', '/index-sales/index',
                                 '/rjuhsd', '/rjuhsd/index', '/sexypickleclub', '/sexypickleclub/index']);
     const pickleHubHtml = () => injectSharedHead(readFileSync(join(WEBROOT, 'sexypickleclub', 'index.html'), 'utf8'));
     if ((path === '/' || path === '/index.html') && isPickleHost(req)) {
@@ -24572,7 +26089,7 @@ async function handleRequest(req, server) {
           const ban = bannedInfoForSid(sid);
           if (ban) return bannedResponse(ban);
           if (!checkPasswordCookie(req)) {
-            return Response.redirect('/api/sso/bridge?back=' + encodeURIComponent(RJUHSD_ORIGIN + rel), 302);
+            return Response.redirect('/enroll/?next=' + encodeURIComponent(rel), 302);
           }
         }
         try {
@@ -24634,7 +26151,7 @@ async function handleRequest(req, server) {
 	      const ban = bannedInfoForSid(sid);
 	      if (ban) return bannedResponse(ban);
 	      if (!checkPasswordCookie(req)) {
-	        if (path !== '/') return Response.redirect('/enroll/', 302);
+	        if (path !== '/' && path !== '/index.html' && path !== '/index-sales.html' && path !== '/index-sales') return Response.redirect('/enroll/', 302);
 	      }
 	    }
 	    if (path.endsWith('.html') && !existsSync(safeWebrootPath(path) || '')) {
@@ -24659,12 +26176,27 @@ async function handleRequest(req, server) {
 	    // Inject tracking into HTML pages
 	    if ((path.endsWith('.html') || path === '/' || (path.endsWith('/') && path.length > 1)) && path !== '/admin.html' && path !== '/roblox.html') {
 	      let filePath;
-	      if (path === '/') {
-	        filePath = join(WEBROOT, 'index.html');
+	      let isSalesPage = false;
+	      let setTrialCookie = false;
+	      if (path === '/' || path === '/index.html') {
+	        const cookies = getCookies(req);
+	        const sid = cookies['studentId'] || cookies['id'] || '';
+	        const isAuthenticated = !!sid && validId(sid) && !isRevoked(sid) && checkPasswordCookie(req, sid);
+	        const wantsTrial = url.searchParams.has('trial') || cookies['mitch_trial'] === '1';
+	        if (isAuthenticated || wantsTrial) {
+	          filePath = join(WEBROOT, 'index.html');
+	          if (url.searchParams.has('trial')) setTrialCookie = true;
+	        } else {
+	          filePath = join(WEBROOT, 'index-sales.html');
+	          isSalesPage = true;
+	        }
 	      }
 	      else if (path.endsWith('/')) filePath = safeWebrootPath(path.replace(/^\//, '') + 'index.html');
-
 	      else filePath = safeWebrootPath(path);
+
+	      if (filePath && filePath.endsWith('index-sales.html')) {
+	        isSalesPage = true;
+	      }
 
 	      if (filePath && existsSync(filePath) && !statSync(filePath).isDirectory()) {
 	        try {
@@ -24692,13 +26224,13 @@ async function handleRequest(req, server) {
           const pageCookies = getCookies(req);
           const pageSid = pageCookies['studentId'] || pageCookies['id'] || '';
           const isAuthenticatedHtml = !!pageSid && validId(pageSid) && !isRevoked(pageSid) && checkPasswordCookie(req, pageSid);
-          if (!isRjuhsdHost(req) && !isPickleHost(req) && (!isEmbeddedGameRuntime || isStandaloneGamePortal)) {
+          if (!isSalesPage && !isRjuhsdHost(req) && !isPickleHost(req) && (!isEmbeddedGameRuntime || isStandaloneGamePortal)) {
             injectStr += '<link rel="stylesheet" href="/community-refresh.css?v=2">\n';
             if (!isAuthenticatedHtml) injectStr += '<script src="/guest-preview.js?v=1" defer></script>\n';
           }
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=5" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=8" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }
@@ -24799,7 +26331,11 @@ async function handleRequest(req, server) {
             ? Buffer.concat([raw.slice(0, bi), agreeB, raw.slice(bi)])
             : Buffer.concat([raw, agreeB]);
         }
-        return new Response(raw, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        const respHeaders = new Headers({ 'Content-Type': 'text/html; charset=utf-8' });
+        if (setTrialCookie) {
+          respHeaders.append('Set-Cookie', setCookieHeader('mitch_trial', '1', req, 86400, false));
+        }
+        return new Response(raw, { headers: respHeaders });
         } catch {} // fall through to static serving
         }
         }
@@ -24814,7 +26350,6 @@ async function handleRequest(req, server) {
     // Public assets whitelist
     const PUBLIC_ASSETS = new Set([
       '/community-refresh.css', '/guest-preview.js', '/home-friends.js', '/home.css', '/home-dayboard.js',
-      '/tab-cloak.js', '/tab-cloak.css', '/cloak-google-classroom.svg', '/cloak-google-drive.svg', '/cloak-google-docs.svg', '/cloak-clever.png',
       '/auth.js', '/sync.js', '/auth-non-enrolled.js',
       '/assistant.js', '/broadcast.js', '/cookie-consent.js',
       '/api.js', '/app-shell.js', '/mitch-coins.js', '/mitch-coins.css', '/mitchcoin.png', '/mitchcoin.webp', '/app.css', '/relaunch.css', '/site-galaxy.css', '/portal-redesign.css', '/mitch-ui.css', '/auth-liquid.css', '/encrypt-galaxy.css',
@@ -24962,7 +26497,26 @@ Bun.serve({
       if (ws.data && ws.data.isProxmoxVnc) {
         try {
           if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
+          const isAdminUsingOther = Boolean(isAdminId(ws.data.sid) && ws.data.ownerEmail && normalizeEmail(ws.data.ownerEmail) !== normalizeEmail(ws.data.actorEmail));
+          if (isAdminUsingOther && !isVmAdminAccessAllowed(ws.data.recordId)) {
+            ws.close(1008, 'Administrator access not permitted by owner');
+            return;
+          }
+          if (isAdminUsingOther) {
+            const r = getVirtualMachineById(ws.data.recordId);
+            console.log(`[vm-audit] Admin ${ws.data.actorEmail} connected to desktop console on VM ${ws.data.recordId} owned by ${ws.data.ownerEmail}`);
+            vmAudit({
+              actorEmail: ws.data.actorEmail,
+              record: r || { id: ws.data.recordId, ownerEmail: ws.data.ownerEmail, vmid: ws.data.vmid },
+              action: 'ADMIN_VM_USED',
+              success: true,
+              details: { operation: 'desktop-stream', targetUser: ws.data.ownerEmail, vmid: ws.data.vmid }
+            });
+            if (r) notifyOwnerAdminUsedVm(r, ws.data.actorEmail, 'connected to desktop console');
+          }
+          ws.data.connectedAt = Date.now();
           vmDesktopSockets.add(ws);
+          vmPagePresence.set(ws.data.recordId, { lastSeen: Date.now() });
           const upstream = new WebSocket(ws.data.upstreamUrl, {
             headers: { Authorization: ws.data.upstreamAuthorization },
             tls: ws.data.upstreamTlsOptions,
@@ -25053,6 +26607,7 @@ Bun.serve({
         }
       }
       if (ws.data && ws.data.isProxmoxVnc) {
+        vmPagePresence.set(ws.data.recordId, { lastSeen: Date.now() });
         if (Date.now() - (ws.data.lastAuthorizationCheck || 0) > 1000) {
           ws.data.lastAuthorizationCheck = Date.now();
           if (!vmDesktopSocketAuthorized(ws)) { ws.close(1008, 'Desktop access expired'); return; }
@@ -25211,6 +26766,7 @@ Bun.serve({
         }
       }
       if (ws.data && ws.data.isProxmoxVnc) {
+        if (ws.data.recordId) vmPagePresence.set(ws.data.recordId, { lastSeen: Date.now() });
         vmDesktopSockets.delete(ws);
         ws.data.pendingVnc = [];
         try { ws.data.upstreamVnc?.close(); } catch (e) {}
@@ -25226,10 +26782,12 @@ setTimeout(() => {
   scheduleDailySummary();
   setInterval(premiumMaintenanceWorker, 6 * 3600 * 1000); 
   premiumMaintenanceWorker(); 
-  setInterval(nudgeWorker, 600_000); 
+  setInterval(sampleVmUsageWorker, 60_000); // Sample VM usage every minute throughout the day
+  sampleVmUsageWorker();
 
   setInterval(purgeExpiredVmsWorker, 3600_000); // Check VM soft-deletes hourly
-  purgeExpiredVmsWorker(); 
+  purgeExpiredVmsWorker();
+  try { pruneOldVmUsageSamples(30); } catch {} 
 
   setInterval(pruneInactiveFreeVmsWorker, 300_000); // Check VM inactive free VMs every 5 mins
   pruneInactiveFreeVmsWorker(); 
@@ -25239,7 +26797,6 @@ setTimeout(() => {
 
   initPortalSshKey();
   cleanupAllEphemeralVms();
-  shutdownAllRunningVmsOnStartup();
   migrateLegacyVmOwnership();
   cleanupVmDesktopSessions();
   setInterval(cleanupVmDesktopSessions, 5000);
@@ -25288,9 +26845,10 @@ function isSchoolHoursPDT() {
 
 function getLeastUsedSchoolHourSevenDays(logs) {
   try {
+    const safeLogs = Array.isArray(logs) ? logs : [];
     const counts = { 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0 };
     const oneWeekAgo = Date.now() - 7 * 24 * 3600 * 1000;
-    for (const log of logs) {
+    for (const log of safeLogs) {
       if (!log.timestamp) continue;
       const ts = new Date(log.timestamp).getTime();
       if (ts < oneWeekAgo) continue;
@@ -25324,7 +26882,8 @@ function getLeastUsedSchoolHourSevenDays(logs) {
 
 function getLeastUsedSchoolHour() {
   try {
-    const logs = loadJson(SESSION_LOG_FILE, []);
+    const rawLogs = loadJson(SESSION_LOG_FILE, []);
+    const logs = Array.isArray(rawLogs) ? rawLogs : [];
     const counts = { 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0 };
     
     // Find yesterday's calendar date in America/Los_Angeles timezone
@@ -25526,35 +27085,628 @@ const vmDesktopSockets = new Set();
 const vmPowerRequests = new Map();
 const vmPowerGate = new VmOperationGate(5000);
 const VM_DESKTOP_SESSION_TTL_MS = 75_000;
-const VM_BASE_MAX_UPTIME_SECONDS = 3600; // 1 hour maximum base uptime
+const VM_BASE_MAX_UPTIME_SECONDS = 6 * 3600; // 6 hours maximum daily uptime
 const VM_MAX_EXTENSION_SECONDS = 1800;   // 30 minutes maximum extension
-const VM_TOTAL_MAX_UPTIME_SECONDS = VM_BASE_MAX_UPTIME_SECONDS + VM_MAX_EXTENSION_SECONDS; // 5400 seconds (90 min)
-const vmLeases = new Map();
+const VM_TOTAL_MAX_UPTIME_SECONDS = 6 * 3600; // 6 hours hard cap per day
+const VM_EXTENSIONS_FILE = join(DATA_DIR, 'vm_extensions.json');
+const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
+const VM_DAILY_USAGE_FILE = join(DATA_DIR, 'vm_daily_usage.json');
+const VM_ADMIN_GRANTS_FILE = join(DATA_DIR, 'vm_admin_grants.json');
+const lastCapacityNtfy = new Map();
+const lastAdminUsageNotice = new Map();
+const lastAdminRequestNotice = new Map();
 
-function getVmLease(recordId, currentUptime = 0) {
+function getVmAdminGrant(recordId) {
+  if (!recordId) return { allowed: false, requested: false };
+  const grants = loadJson(VM_ADMIN_GRANTS_FILE, {});
+  return grants[String(recordId)] || { allowed: false, requested: false };
+}
+
+function isVmAdminAccessAllowed(recordId) {
+  if (!recordId) return false;
+  return Boolean(getVmAdminGrant(recordId)?.allowed);
+}
+
+function isVmAdminAccessRequested(recordId) {
+  if (!recordId) return false;
+  return Boolean(getVmAdminGrant(recordId)?.requested);
+}
+
+function setVmAdminAccess(recordId, ownerEmail, allowed, actorEmail = '') {
+  if (!recordId) return;
+  const grants = loadJson(VM_ADMIN_GRANTS_FILE, {});
+  const id = String(recordId);
+  const current = grants[id] || {};
+  grants[id] = {
+    ...current,
+    allowed: Boolean(allowed),
+    allowedAt: allowed ? Date.now() : (current.allowedAt || null),
+    revokedAt: allowed ? null : Date.now(),
+    allowedBy: actorEmail || current.allowedBy || '',
+    ownerEmail: normalizeEmail(ownerEmail || current.ownerEmail || ''),
+    requested: allowed ? false : Boolean(current.requested),
+  };
+  saveJson(VM_ADMIN_GRANTS_FILE, grants);
+  if (!allowed) {
+    revokeVmDesktopConnections(recordId);
+  }
+}
+
+function requestVmAdminAccess(record, adminEmail) {
+  if (!record?.id || !record?.ownerEmail) return;
+  const owner = normalizeEmail(record.ownerEmail);
+  const admin = normalizeEmail(adminEmail);
+  if (!owner || owner === admin) return;
+
+  const grants = loadJson(VM_ADMIN_GRANTS_FILE, {});
+  const current = grants[record.id] || {};
+  grants[record.id] = {
+    ...current,
+    allowed: Boolean(current.allowed),
+    requested: true,
+    requestedAt: Date.now(),
+    requestedBy: admin,
+    ownerEmail: owner,
+  };
+  saveJson(VM_ADMIN_GRANTS_FILE, grants);
+
+  const key = `${owner}:${record.id}:${admin}`;
+  const now = Date.now();
+  const last = lastAdminRequestNotice.get(key) || 0;
+  if (now - last < 15 * 60 * 1000) return;
+  lastAdminRequestNotice.set(key, now);
+
+  const vmName = record.friendlyName || record.hostname || 'your computer';
+  addVmAdminNotification(
+    owner,
+    'Admin Access Request',
+    `Administrator ${admin} requested access to your computer "${vmName}". You can allow or revoke access in your Computer settings.`,
+    admin,
+    `/vms/?action=allow-admin&id=${encodeURIComponent(record.id)}`
+  );
+
+  vmAudit({
+    actorEmail: admin,
+    record,
+    action: 'ADMIN_ACCESS_REQUESTED',
+    success: true,
+    details: { requestedBy: admin, ownerEmail: owner }
+  });
+}
+
+function notifyOwnerAdminUsedVm(record, adminEmail, operation = 'accessed') {
+  if (!record?.ownerEmail) return;
+  const owner = normalizeEmail(record.ownerEmail);
+  const admin = normalizeEmail(adminEmail);
+  if (!owner || owner === admin) return;
+
+  const key = `${owner}:${record.id}:${operation}`;
+  const now = Date.now();
+  const last = lastAdminUsageNotice.get(key) || 0;
+  if (now - last < 5 * 60 * 1000) return;
+  lastAdminUsageNotice.set(key, now);
+
+  const vmName = record.friendlyName || record.hostname || 'your computer';
+  addVmAdminNotification(
+    owner,
+    'Admin Used Your Computer',
+    `Administrator ${admin} accessed your computer "${vmName}" (${operation}).`,
+    admin,
+    `/vms/?id=${encodeURIComponent(record.id)}`
+  );
+}
+
+async function notifyCapacityFullOnAttempt(userEmail, actionDesc = 'use a computer', details = {}) {
+  const norm = normalizeEmail(userEmail || 'unknown');
+  const now = Date.now();
+  const lastTime = lastCapacityNtfy.get(norm) || 0;
+  if (now - lastTime < 60_000) return;
+  lastCapacityNtfy.set(norm, now);
+
+  const title = 'VM Capacity Alert';
+  const c = details.cores ?? VM_FLEET_MAX_CORES;
+  const m = Math.round((details.memoryMb ?? VM_FLEET_MAX_MEMORY_MB) / 1024);
+  const msg = `VM capacity full (${c}/${VM_FLEET_MAX_CORES} cores, ${m}/${Math.round(VM_FLEET_MAX_MEMORY_MB / 1024)} GB RAM, 6/6 max slots): ${norm} attempted to ${actionDesc}.`;
+  console.log(`[vm-ntfy] ${title}: ${msg}`);
+  if (process.env.NODE_ENV === 'test') {
+    try {
+      const logFile = join(DATA_DIR, 'test_vm_ntfy_log.json');
+      const list = loadJson(logFile, []);
+      list.push({ title, message: msg, priority: 'high', timestamp: now, user: norm });
+      saveJson(logFile, list);
+    } catch {}
+  }
+  await ntfy(msg, { title, priority: 'high' });
+}
+
+const VM_UPGRADES_FILE = join(DATA_DIR, 'vm_upgrades.json');
+
+function getUserVmUpgrades(email) {
+  if (!email) return {
+    cpuCores: VM_DEFAULT_CPU_CORES,
+    memoryMb: VM_DEFAULT_MEMORY_MB,
+    diskGb: VM_DEFAULT_DISK_GB,
+    dailyMaxSeconds: VM_DAILY_MAX_SECONDS,
+    sessionUpgradeExpiresAt: null,
+  };
+  const norm = normalizeEmail(email);
+  const data = loadJson(VM_UPGRADES_FILE, {});
+  const user = data[norm] || {};
+  let dailyMaxSeconds = Number(user.dailyMaxSeconds) || VM_DAILY_MAX_SECONDS;
+  const sessionUpgradeExpiresAt = Number(user.sessionUpgradeExpiresAt) || null;
+  const isExpired = sessionUpgradeExpiresAt && Date.now() > sessionUpgradeExpiresAt;
+  if (dailyMaxSeconds > VM_DAILY_MAX_SECONDS && isExpired) {
+    dailyMaxSeconds = VM_DAILY_MAX_SECONDS;
+  }
+  return {
+    cpuCores: Number(user.cpuCores) || VM_DEFAULT_CPU_CORES,
+    memoryMb: Number(user.memoryMb) || VM_DEFAULT_MEMORY_MB,
+    diskGb: Number(user.diskGb) || VM_DEFAULT_DISK_GB,
+    dailyMaxSeconds,
+    sessionUpgradeExpiresAt: isExpired ? null : sessionUpgradeExpiresAt,
+  };
+}
+
+function saveUserVmUpgrade(email, category, value, durationDays = 30) {
+  if (!email) return null;
+  const norm = normalizeEmail(email);
+  const data = loadJson(VM_UPGRADES_FILE, {});
+  const current = data[norm] || {
+    cpuCores: VM_DEFAULT_CPU_CORES,
+    memoryMb: VM_DEFAULT_MEMORY_MB,
+    diskGb: VM_DEFAULT_DISK_GB,
+    dailyMaxSeconds: VM_DAILY_MAX_SECONDS,
+    sessionUpgradeExpiresAt: null,
+  };
+  if (category === 'cpu') current.cpuCores = Number(value);
+  if (category === 'ram') current.memoryMb = Number(value);
+  if (category === 'disk') current.diskGb = Number(value);
+  if (category === 'session') {
+    const nextVal = Number(value);
+    current.dailyMaxSeconds = nextVal;
+    if (nextVal > VM_DAILY_MAX_SECONDS) {
+      const ms = Math.max(1, Number(durationDays) || 30) * 86400 * 1000;
+      const baseTime = (current.sessionUpgradeExpiresAt && current.sessionUpgradeExpiresAt > Date.now())
+        ? current.sessionUpgradeExpiresAt
+        : Date.now();
+      current.sessionUpgradeExpiresAt = baseTime + ms;
+    } else {
+      current.sessionUpgradeExpiresAt = null;
+    }
+  }
+  data[norm] = current;
+  saveJson(VM_UPGRADES_FILE, data);
+  return current;
+}
+
+const vmLeases = new Map();
+const vmPagePresence = new Map(); // recordId -> { lastSeen: number }
+
+function getUserDailyVmUsage(email, dayKey = getVmDayKey()) {
+  if (!email) return 0;
+  const norm = normalizeEmail(email);
+  const usage = loadJson(VM_DAILY_USAGE_FILE, {});
+  return Math.max(0, Number(usage[norm]?.[dayKey]) || 0);
+}
+
+function recordDailyVmUsage(email, secondsToAdd, dayKey = getVmDayKey()) {
+  if (!email || secondsToAdd <= 0) return 0;
+  const norm = normalizeEmail(email);
+  const usage = loadJson(VM_DAILY_USAGE_FILE, {});
+  if (!usage[norm]) usage[norm] = {};
+  const current = Math.max(0, Number(usage[norm][dayKey]) || 0);
+  const updated = current + Math.max(0, Math.floor(secondsToAdd));
+  usage[norm][dayKey] = updated;
+  saveJson(VM_DAILY_USAGE_FILE, usage);
+  return updated;
+}
+
+async function getVmFleetUsageStats(dayKey = getVmDayKey(), records = null, activeSessions = null, recordViews = null) {
+  const resolvedDayKey = dayKey || getVmDayKey();
+  if (!records) records = listVirtualMachines({ includeUnassigned: true });
+  if (!activeSessions) {
+    const now = Date.now();
+    activeSessions = [];
+    for (const ws of vmDesktopSockets) {
+      if (ws.readyState === 1 && ws.data?.recordId) {
+        activeSessions.push({
+          recordId: ws.data.recordId,
+          vmid: ws.data.vmid,
+          actorEmail: ws.data.actorEmail,
+          ownerEmail: ws.data.ownerEmail,
+          connectedAt: ws.data.connectedAt || now,
+        });
+      }
+    }
+  }
+
+  const timeline = getVmUsageTimeline(resolvedDayKey);
+  const dailyUsage = loadJson(VM_DAILY_USAGE_FILE, {});
+  const profiles = loadJson(PROFILES_FILE, {});
+
+  // Build user email set across records, dailyUsage, and timeline
+  const userEmails = new Set();
+  for (const r of records) if (r.ownerEmail) userEmails.add(normalizeEmail(r.ownerEmail));
+  for (const u of Object.keys(dailyUsage)) if (u) userEmails.add(normalizeEmail(u));
+  for (const h of timeline.hours) {
+    for (const u of h.users) if (u.email) userEmails.add(normalizeEmail(u.email));
+  }
+
+  const recordsByOwner = new Map();
+  for (const r of records) {
+    if (r.ownerEmail) {
+      recordsByOwner.set(normalizeEmail(r.ownerEmail), r);
+    }
+  }
+
+  const activeByRecord = new Map();
+  for (const s of activeSessions) {
+    if (!activeByRecord.has(s.recordId)) activeByRecord.set(s.recordId, []);
+    activeByRecord.get(s.recordId).push(s.actorEmail || s.ownerEmail);
+  }
+
+  const rankings = [];
+  let totalFleetSecondsToday = 0;
+
+  for (const email of userEmails) {
+    const norm = normalizeEmail(email);
+    const profile = profiles[norm] || {};
+    const record = recordsByOwner.get(norm);
+    const userDailyRecord = dailyUsage[norm] || {};
+
+    let todaySeconds = Math.max(0, Number(userDailyRecord[resolvedDayKey]) || 0);
+
+    // Also check max uptime from timeline samples for today
+    let maxTimelineUptime = 0;
+    let timelineSampleCount = 0;
+    for (const h of timeline.hours) {
+      const u = h.users.find(entry => normalizeEmail(entry.email) === norm);
+      if (u) {
+        timelineSampleCount += u.samples;
+        if (u.maxUptimeSeconds > maxTimelineUptime) maxTimelineUptime = u.maxUptimeSeconds;
+      }
+    }
+    if (maxTimelineUptime > todaySeconds) {
+      todaySeconds = maxTimelineUptime;
+    }
+
+    // All-time seconds: sum of all days in daily usage
+    let allTimeSeconds = 0;
+    if (typeof userDailyRecord === 'object') {
+      for (const [day, secs] of Object.entries(userDailyRecord)) {
+        allTimeSeconds += Math.max(0, Number(secs) || 0);
+      }
+    }
+    if (todaySeconds > allTimeSeconds) allTimeSeconds = todaySeconds;
+
+    totalFleetSecondsToday += todaySeconds;
+
+    const activeUsers = record ? (activeByRecord.get(record.id) || []) : [];
+    const isInUse = activeUsers.length > 0;
+    const view = recordViews ? recordViews.find(v => v.id === record?.id) : null;
+    const isRunning = Boolean(view?.status === 'running' || isInUse);
+
+    rankings.push({
+      email: norm,
+      displayName: profile.displayName || profile.nickname || defaultUsernameForEmail(norm),
+      vmName: record?.friendlyName || record?.hostname || (record ? `VM ${record.vmid}` : 'My Computer'),
+      vmRecordId: record?.id || '',
+      vmid: record?.vmid || null,
+      todaySeconds,
+      todayFormatted: formatUptimeDuration(todaySeconds),
+      allTimeSeconds,
+      allTimeFormatted: formatUptimeDuration(allTimeSeconds),
+      isRunning,
+      isInUse,
+      activeUsers,
+      activeUsersCount: activeUsers.length,
+      samplesToday: timelineSampleCount,
+    });
+  }
+
+  // Sort rankings: most uptime today first; if tied, all-time uptime
+  rankings.sort((a, b) => (b.todaySeconds - a.todaySeconds) || (b.allTimeSeconds - a.allTimeSeconds));
+  rankings.forEach((item, idx) => {
+    item.rank = idx + 1;
+  });
+
+  const topUser = rankings.length > 0 && rankings[0].todaySeconds > 0 ? rankings[0] : (rankings[0] || null);
+  const peakRunningToday = Math.max(timeline.peakConcurrentToday, rankings.filter(r => r.isRunning).length);
+  const activeUsersToday = rankings.filter(r => r.todaySeconds > 0).length;
+
+  return {
+    dayKey: resolvedDayKey,
+    hourlyTimeline: timeline.hours,
+    rankings,
+    summary: {
+      topUser,
+      peakRunningToday,
+      totalFleetSecondsToday,
+      totalFleetHoursToday: (totalFleetSecondsToday / 3600).toFixed(1),
+      activeUsersToday,
+      totalTrackedUsers: rankings.length,
+    },
+  };
+}
+
+async function sampleVmUsageWorker() {
+  try {
+    const dayKey = getVmDayKey();
+    const now = Date.now();
+    const d = new Date(now);
+    const hour = d.getHours();
+    const minute = d.getMinutes();
+
+    const activeSocketsByRecord = new Map();
+    for (const ws of vmDesktopSockets) {
+      if (ws.readyState === 1 && ws.data?.recordId) {
+        const recId = ws.data.recordId;
+        if (!activeSocketsByRecord.has(recId)) activeSocketsByRecord.set(recId, []);
+        activeSocketsByRecord.get(recId).push(ws.data.actorEmail || ws.data.ownerEmail);
+      }
+    }
+
+    const records = listVirtualMachines({ includeUnassigned: true });
+    let guests = [];
+    if (proxmoxDesktop.configured) {
+      try {
+        guests = await proxmoxDesktop.listGuests();
+      } catch {}
+    }
+    const guestsByVmid = new Map((guests || []).map(g => [g.vmid, g]));
+
+    let testMock = null;
+    if (process.env.NODE_ENV === 'test') {
+      try {
+        testMock = loadJson(join(DATA_DIR, 'test_vm_mock.json'), null);
+      } catch {}
+    }
+
+    for (const record of records) {
+      if (!record.ownerEmail) continue;
+      const guest = guestsByVmid.get(record.vmid);
+      let isRunning = false;
+      let uptime = 0;
+
+      if (guest && (guest.status === 'running' || guest.status === 'paused')) {
+        isRunning = true;
+        uptime = Number(guest.uptime) || 0;
+      } else {
+        const presence = vmPagePresence.get(record.id);
+        if (presence && (now - presence.lastSeen < 15 * 60 * 1000)) {
+          isRunning = true;
+        }
+      }
+      const activeUsers = activeSocketsByRecord.get(record.id) || [];
+      if (activeUsers.length > 0) isRunning = true;
+
+      if (testMock && testMock.sampleAsRunning && testMock.sampleAsRunning.includes(record.id)) {
+        isRunning = true;
+        uptime = testMock.uptimeSeconds || 3600;
+      }
+
+      if (isRunning) {
+        recordVmUsageSample({
+          ts: now,
+          dayKey,
+          hour,
+          minute,
+          ownerEmail: record.ownerEmail,
+          vmRecordId: record.id,
+          vmid: record.vmid,
+          vmName: record.friendlyName || record.hostname || record.id,
+          uptimeSeconds: uptime,
+          activeUsers: activeUsers.join(','),
+          isRunning: 1,
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[vm-usage] Error in sampleVmUsageWorker:', err);
+  }
+}
+
+function isEligibleForFreeVm(email, isAdmin = false) {
+  if (!email) return false;
+  const norm = normalizeEmail(email);
+  return isEligibleForFreeVmPolicy(norm, { isAdmin, isPremium: isPremiumEmail(norm) });
+}
+
+async function getRunningNonAdminVmResources() {
+  if (process.env.NODE_ENV === 'test') {
+    try {
+      const mock = loadJson(join(DATA_DIR, 'test_vm_mock.json'), null);
+      if (mock) {
+        if (typeof mock.runningCores === 'number' && typeof mock.runningMemoryMb === 'number') {
+          return {
+            count: typeof mock.runningNonAdminCount === 'number' ? mock.runningNonAdminCount : Math.ceil(mock.runningCores / VM_DEFAULT_CPU_CORES),
+            cores: mock.runningCores,
+            memoryMb: mock.runningMemoryMb,
+          };
+        }
+        if (typeof mock.runningNonAdminCount === 'number') {
+          const isMaxed = mock.runningNonAdminCount >= 6;
+          return {
+            count: mock.runningNonAdminCount,
+            cores: isMaxed ? VM_FLEET_MAX_CORES : mock.runningNonAdminCount * VM_DEFAULT_CPU_CORES,
+            memoryMb: isMaxed ? VM_FLEET_MAX_MEMORY_MB : mock.runningNonAdminCount * VM_DEFAULT_MEMORY_MB,
+          };
+        }
+      }
+    } catch {}
+  }
+  if (!proxmoxDesktop.configured) return { count: 0, cores: 0, memoryMb: 0 };
+  try {
+    const guests = await proxmoxDesktop.listGuests();
+    let count = 0;
+    let cores = 0;
+    let memoryMb = 0;
+    for (const guest of (guests || [])) {
+      if (guest.template || (guest.status !== 'running' && guest.status !== 'paused')) continue;
+      const record = getVirtualMachineByVmid(guest.vmid);
+      let ownerEmail = record?.ownerEmail;
+      if (!ownerEmail) {
+        for (const [email, entry] of activeFreeVms.entries()) {
+          if (entry.vmid === guest.vmid) { ownerEmail = email; break; }
+        }
+      }
+      if (!ownerEmail) {
+        try {
+          const appsData = loadJson(VM_APPS_FILE, {});
+          for (const [email, app] of Object.entries(appsData)) {
+            if (app.vmid === guest.vmid) { ownerEmail = app.email || email; break; }
+          }
+        } catch {}
+      }
+      if (ownerEmail && isAdminEmail(ownerEmail)) {
+        continue;
+      }
+      count++;
+      cores += Number(record?.cpuCores || guest.cpuCores || VM_DEFAULT_CPU_CORES);
+      memoryMb += Number(record?.memoryMb || guest.memoryMb || VM_DEFAULT_MEMORY_MB);
+    }
+    return { count, cores, memoryMb };
+  } catch (err) {
+    console.error('[vm] Error calculating running non-admin VM resources:', err);
+    return { count: 0, cores: 0, memoryMb: 0 };
+  }
+}
+
+async function countRunningNonAdminVms() {
+  const res = await getRunningNonAdminVmResources();
+  return res.count;
+}
+
+async function canAccommodateVmResources(requestedCores = VM_DEFAULT_CPU_CORES, requestedMemoryMb = VM_DEFAULT_MEMORY_MB) {
+  const running = await getRunningNonAdminVmResources();
+  const currentCores = running.cores;
+  const currentMemoryMb = running.memoryMb;
+  const wouldCores = currentCores + Number(requestedCores || 0);
+  const wouldMemoryMb = currentMemoryMb + Number(requestedMemoryMb || 0);
+  const ok = wouldCores <= VM_FLEET_MAX_CORES && wouldMemoryMb <= VM_FLEET_MAX_MEMORY_MB;
+  return {
+    ok,
+    currentCores,
+    currentMemoryMb,
+    wouldCores,
+    wouldMemoryMb,
+    maxCores: VM_FLEET_MAX_CORES,
+    maxMemoryMb: VM_FLEET_MAX_MEMORY_MB,
+  };
+}
+
+function canUserExtendToday(email, isAdmin = false) {
+  if (isAdmin) return true;
+  const norm = normalizeEmail(email);
+  const exts = loadJson(VM_EXTENSIONS_FILE, {});
+  const lastAt = exts[norm]?.lastExtensionAt;
+  return canUserExtendPolicy(lastAt, { isAdmin });
+}
+
+function recordUserExtension(email) {
+  const norm = normalizeEmail(email);
+  const exts = loadJson(VM_EXTENSIONS_FILE, {});
+  exts[norm] = { lastExtensionAt: Date.now() };
+  saveJson(VM_EXTENSIONS_FILE, exts);
+}
+
+function getVmCooldownRemaining(email, isAdmin = false) {
+  if (isAdmin) return 0;
+  const norm = normalizeEmail(email);
+  const cooldowns = loadJson(VM_COOLDOWNS_FILE, {});
+  const until = cooldowns[norm]?.cooldownUntil;
+  return computeCooldownRemaining(until, { isAdmin });
+}
+
+function triggerVmCooldown(email, reason = 'session_ended') {
+  if (!email) return;
+  const norm = normalizeEmail(email);
+  if (isAdminEmail(norm)) return;
+  const cooldowns = loadJson(VM_COOLDOWNS_FILE, {});
+  cooldowns[norm] = {
+    cooldownUntil: Date.now() + VM_COOLDOWN_DURATION_MS,
+    triggeredAt: Date.now(),
+    reason,
+  };
+  saveJson(VM_COOLDOWNS_FILE, cooldowns);
+}
+
+function clearVmCooldown(email) {
+  if (!email) return;
+  const norm = normalizeEmail(email);
+  const cooldowns = loadJson(VM_COOLDOWNS_FILE, {});
+  if (cooldowns[norm]) {
+    delete cooldowns[norm];
+    saveJson(VM_COOLDOWNS_FILE, cooldowns);
+  }
+}
+
+function getVmLease(recordId, currentUptime = 0, { isAdmin = false, ownerEmail = '' } = {}) {
   const normalizedUptime = Math.max(0, Math.floor(Number(currentUptime) || 0));
+  const userUpgrades = getUserVmUpgrades(ownerEmail);
+  const isUnlimitedSession = (userUpgrades?.dailyMaxSeconds || 0) >= 24 * 3600;
+
+  if (isAdmin || (ownerEmail && isAdminEmail(ownerEmail)) || isUnlimitedSession) {
+    return {
+      isExempt: true,
+      extended: false,
+      maxUptimeSeconds: null,
+      remainingSeconds: null,
+      dailyRemainingSeconds: null,
+      canExtend: false,
+      currentUptime: normalizedUptime,
+    };
+  }
+
   let lease = vmLeases.get(recordId);
   if (!lease) {
     lease = {
       extended: false,
       startedAt: Date.now() - (normalizedUptime * 1000),
       lastSeenUptime: normalizedUptime,
+      trackedUptime: 0,
     };
     vmLeases.set(recordId, lease);
   } else if (normalizedUptime > 0 && lease.lastSeenUptime > 60 && normalizedUptime < (lease.lastSeenUptime - 60)) {
     lease.extended = false;
     lease.startedAt = Date.now() - (normalizedUptime * 1000);
+    lease.trackedUptime = 0;
   }
   lease.lastSeenUptime = normalizedUptime;
 
-  const maxUptimeSeconds = lease.extended ? VM_TOTAL_MAX_UPTIME_SECONDS : VM_BASE_MAX_UPTIME_SECONDS;
-  const remainingSeconds = Math.max(0, maxUptimeSeconds - normalizedUptime);
-  const canExtend = !lease.extended && remainingSeconds > 0;
+  // Track daily usage delta
+  if (ownerEmail && !isAdmin) {
+    if (lease.trackedUptime == null) lease.trackedUptime = 0;
+    if (normalizedUptime > lease.trackedUptime) {
+      const delta = normalizedUptime - lease.trackedUptime;
+      recordDailyVmUsage(ownerEmail, delta);
+      lease.trackedUptime = normalizedUptime;
+      const rec = getVirtualMachineById(recordId);
+      recordVmUsageSample({
+        ownerEmail,
+        vmRecordId: recordId,
+        vmid: rec?.vmid || null,
+        vmName: rec?.friendlyName || rec?.hostname || 'My Computer',
+        uptimeSeconds: normalizedUptime,
+        isRunning: 1,
+      });
+    }
+  }
+
+  const usedToday = ownerEmail ? getUserDailyVmUsage(ownerEmail) : 0;
+  const dailyRemainingSeconds = getRemainingDailyVmSeconds(usedToday, { isAdmin: false, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
+  const baseSessionSeconds = Math.max(VM_BASE_MAX_UPTIME_SECONDS, userUpgrades.dailyMaxSeconds);
+  const maxUptimeSeconds = lease.extended ? (baseSessionSeconds + 1800) : baseSessionSeconds;
+  const sessionRemaining = Math.max(0, maxUptimeSeconds - normalizedUptime);
+  const remainingSeconds = Math.min(sessionRemaining, dailyRemainingSeconds);
+  const canExtend = !lease.extended && remainingSeconds > 0 && dailyRemainingSeconds > remainingSeconds;
 
   return {
+    isExempt: false,
     extended: Boolean(lease.extended),
     maxUptimeSeconds,
     remainingSeconds,
+    dailyRemainingSeconds,
     canExtend,
     currentUptime: normalizedUptime,
   };
@@ -25617,7 +27769,7 @@ function vmSameOriginRequest(req) {
 }
 
 function vmRecordAllowedForActor(record, actor) {
-  return canAccessVmRecord(record, actor);
+  return canAccessVmRecord(record, actor, isAdminEmail);
 }
 
 function friendlyVmError(error) {
@@ -25625,7 +27777,7 @@ function friendlyVmError(error) {
     if (error.code === 'STOPPED') return { status: 409, error: 'Your computer is currently offline. Start it and try again.', code: 'computer_offline' };
     if (error.code === 'TIMEOUT' || error.code === 'TASK_TIMEOUT') return { status: 504, error: 'Your computer is still starting. Try again in a moment.', code: 'computer_starting' };
     if (error.code === 'INVALID_ACTION' || error.code === 'INVALID_VM' || error.code === 'INVALID_TEMPLATE') return { status: 400, error: error.message || 'That computer request is not valid.', code: 'invalid_request' };
-    if (error.code === 'INVALID_DESKTOP_LOGIN') return { status: 400, error: error.message || 'Choose a desktop username and a password of 12 to 128 characters.', code: 'invalid_desktop_login' };
+    if (error.code === 'INVALID_DESKTOP_LOGIN') return { status: 400, error: error.message || 'Choose a desktop username and a password of 8 to 128 characters.', code: 'invalid_desktop_login' };
     if (error.code === 'NO_CAPACITY') return { status: 409, error: 'No computer slots are available right now.', code: 'no_capacity' };
     if (error.code === 'NO_GRAPHICAL_DESKTOP') return { status: 409, error: 'This machine does not have a graphical desktop.', code: 'desktop_unavailable' };
     if (error.code === 'GUEST_SETUP_FAILED') return { status: 504, error: error.message || 'The graphical desktop did not finish starting.', code: 'guest_setup_failed' };
@@ -25636,15 +27788,30 @@ function friendlyVmError(error) {
   return { status: 502, error: error?.message || 'Your computer could not be reached.', code: error?.code || 'computer_unreachable' };
 }
 
-function publicVmRecord(record, runtime = null) {
+function publicVmRecord(record, runtime = null, actor = null) {
   const isRunning = runtime?.state === 'running';
-  const lease = isRunning ? getVmLease(record.id, runtime.uptime) : {
+  const isAdmin = Boolean(actor?.isAdmin || (record?.ownerEmail && isAdminEmail(record.ownerEmail)));
+  const ownerEmail = record?.ownerEmail || actor?.email || '';
+  const userUpgrades = getUserVmUpgrades(ownerEmail);
+  const isUnlimitedSession = (userUpgrades?.dailyMaxSeconds || 0) >= 24 * 3600;
+  const isExempt = isAdmin || isUnlimitedSession;
+  const baseSessionSeconds = Math.max(VM_BASE_MAX_UPTIME_SECONDS, userUpgrades.dailyMaxSeconds);
+
+  const lease = isRunning ? getVmLease(record.id, runtime.uptime, { isAdmin, ownerEmail }) : {
+    isExempt,
     extended: false,
-    maxUptimeSeconds: VM_BASE_MAX_UPTIME_SECONDS,
-    remainingSeconds: VM_BASE_MAX_UPTIME_SECONDS,
-    canExtend: true,
+    maxUptimeSeconds: isExempt ? null : baseSessionSeconds,
+    remainingSeconds: isExempt ? null : Math.min(baseSessionSeconds, getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail), { isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds })),
+    dailyRemainingSeconds: isExempt ? null : getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail), { isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds }),
+    canExtend: !isExempt && getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail), { isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds }) > 0,
     currentUptime: 0,
   };
+  const dailyExtensionUsed = !isAdmin && !canUserExtendToday(record.ownerEmail, actor?.isAdmin);
+  if (dailyExtensionUsed) {
+    lease.canExtend = false;
+    lease.dailyExtensionUsed = true;
+  }
+  const cooldownRemainingSeconds = getVmCooldownRemaining(record.ownerEmail, isAdmin);
   return {
     id: record.id,
     name: record.friendlyName || 'My Computer',
@@ -25664,6 +27831,10 @@ function publicVmRecord(record, runtime = null) {
     desktopAvailable: record.guestType === 'qemu',
     createdAt: record.createdAt,
     lease,
+    upgrades: userUpgrades,
+    cooldownRemainingSeconds,
+    adminAccessAllowed: isVmAdminAccessAllowed(record.id),
+    adminAccessRequested: isVmAdminAccessRequested(record.id),
   };
 }
 
@@ -25688,48 +27859,16 @@ function vmDesktopSocketAuthorized(ws) {
   } else if (process.env.NODE_ENV !== 'test') return false;
   const record = getVirtualMachineById(data.recordId);
   if (!record || record.ownerEmail !== data.ownerEmail || record.vmid !== data.vmid || record.node !== data.node) return false;
-  return vmRecordAllowedForActor(record, { email: data.actorEmail, isAdmin: isAdminId(data.sid) });
+  const isAdmin = isAdminId(data.sid);
+  if (isAdmin && record.ownerEmail && normalizeEmail(record.ownerEmail) !== normalizeEmail(data.actorEmail)) {
+    if (!isVmAdminAccessAllowed(record.id)) return false;
+  }
+  return vmRecordAllowedForActor(record, { email: data.actorEmail, isAdmin });
 }
 
 function revokeVmDesktopConnections(recordId) {
   for (const [id, session] of vmDesktopSessions) if (session.recordId === recordId) vmDesktopSessions.delete(id);
   for (const ws of vmDesktopSockets) if (ws.data.recordId === recordId) ws.close(1008, 'Desktop access changed');
-}
-
-async function shutdownAllRunningVmsOnStartup() {
-  console.log('[startup] Checking for running VMs to shut down on server start...');
-  try {
-    if (!proxmoxDesktop.configured) {
-      console.log('[startup] Proxmox service not configured; skipping startup VM shutdown.');
-      return;
-    }
-    const guests = await proxmoxDesktop.listGuests();
-    const running = (guests || []).filter(g => !g.template && (g.status === 'running' || g.status === 'paused'));
-    if (running.length === 0) {
-      console.log('[startup] No running VMs found on Proxmox.');
-      return;
-    }
-    console.log(`[startup] Found ${running.length} running VM(s) to shut down on startup:`, running.map(g => `${g.vmid} (${g.name})`).join(', '));
-    await Promise.allSettled(running.map(async guest => {
-      try {
-        console.log(`[startup] Initiating graceful shutdown for VM ${guest.vmid} (${guest.name})...`);
-        await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
-      } catch (err) {
-        console.warn(`[startup] Graceful shutdown failed for VM ${guest.vmid}, attempting force-stop:`, err?.message || err);
-        try {
-          await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop');
-        } catch (stopErr) {
-          console.error(`[startup] Failed to stop VM ${guest.vmid}:`, stopErr?.message || stopErr);
-        }
-      }
-    }));
-    vmDesktopSessions.clear();
-    vmDesktopSockets.clear();
-    vmLeases.clear();
-    console.log('[startup] Finished shutting down all running VMs on startup.');
-  } catch (err) {
-    console.error('[startup] Error shutting down running VMs on startup:', err);
-  }
 }
 
 async function enforceVmMaxUptimeWorker() {
@@ -25739,17 +27878,40 @@ async function enforceVmMaxUptimeWorker() {
     for (const guest of (guests || [])) {
       if (guest.template || guest.status !== 'running') continue;
       const record = getVirtualMachineByVmid(guest.vmid);
+      let ownerEmail = record?.ownerEmail;
+      if (!ownerEmail) {
+        for (const [email, entry] of activeFreeVms.entries()) {
+          if (entry.vmid === guest.vmid) { ownerEmail = email; break; }
+        }
+      }
+      if (!ownerEmail) {
+        try {
+          const appsData = loadJson(VM_APPS_FILE, {});
+          for (const [email, app] of Object.entries(appsData)) {
+            if (app.vmid === guest.vmid) { ownerEmail = app.email || email; break; }
+          }
+        } catch {}
+      }
+      // Admins are exempt from VM time limits
+      if (ownerEmail && isAdminEmail(ownerEmail)) {
+        continue;
+      }
       const recordKey = record ? record.id : `vmid-${guest.vmid}`;
-      const lease = getVmLease(recordKey, guest.uptime);
-      if (lease.remainingSeconds <= 0) {
-        console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) reached max uptime (${guest.uptime}s / ${lease.maxUptimeSeconds}s). Automatically shutting down...`);
+      const lease = getVmLease(recordKey, guest.uptime, {
+        isAdmin: false,
+        ownerEmail: ownerEmail || '',
+      });
+      if (lease.isExempt) continue;
+      if (lease.remainingSeconds != null && lease.remainingSeconds <= 0) {
+        const isDailyLimit = (lease.dailyRemainingSeconds != null && lease.dailyRemainingSeconds <= 0);
+        console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) reached ${isDailyLimit ? 'daily limit (6h)' : 'max uptime'} (${guest.uptime}s / ${lease.maxUptimeSeconds}s). Automatically shutting down...`);
         if (record) {
           vmAudit({
             actorEmail: 'system',
             record,
-            action: 'VM_SHUTDOWN_TIMEOUT',
+            action: isDailyLimit ? 'VM_SHUTDOWN_DAILY_LIMIT' : 'VM_SHUTDOWN_TIMEOUT',
             success: true,
-            details: { uptime: guest.uptime, maxUptimeSeconds: lease.maxUptimeSeconds, extended: lease.extended },
+            details: { uptime: guest.uptime, maxUptimeSeconds: lease.maxUptimeSeconds, extended: lease.extended, dailyRemainingSeconds: lease.dailyRemainingSeconds },
           });
           revokeVmDesktopConnections(record.id);
           try {
@@ -25762,6 +27924,7 @@ async function enforceVmMaxUptimeWorker() {
               console.error(`[vm-watchdog] Force stop failed for ${record.id}:`, stopErr?.message || stopErr);
             }
           }
+          if (record.ownerEmail) triggerVmCooldown(record.ownerEmail, isDailyLimit ? 'daily_limit_reached' : 'max_uptime_reached');
         } else {
           try {
             await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
@@ -25772,6 +27935,49 @@ async function enforceVmMaxUptimeWorker() {
           }
         }
         vmLeases.delete(recordKey);
+        vmPagePresence.delete(recordKey);
+      } else {
+        // Check 10-minute off-page inactivity limit
+        let hasOpenSocket = false;
+        for (const ws of vmDesktopSockets) {
+          if (ws.readyState === 1 && ws.data?.recordId === recordKey) {
+            hasOpenSocket = true;
+            vmPagePresence.set(recordKey, { lastSeen: Date.now() });
+            break;
+          }
+        }
+        if (!hasOpenSocket) {
+          const presence = vmPagePresence.get(recordKey);
+          const lastSeen = presence?.lastSeen || (Date.now() - (guest.uptime * 1000));
+          if (isVmInactive(lastSeen)) {
+            const inactiveMs = Date.now() - lastSeen;
+            console.log(`[vm-watchdog] VM ${recordKey} (VMID ${guest.vmid}) inactive/off-page for ${Math.round(inactiveMs / 60000)}m. Automatically shutting down...`);
+            if (record) {
+              vmAudit({
+                actorEmail: 'system',
+                record,
+                action: 'VM_SHUTDOWN_INACTIVITY',
+                success: true,
+                details: { inactiveSeconds: Math.floor(inactiveMs / 1000) },
+              });
+              revokeVmDesktopConnections(record.id);
+              try {
+                await proxmoxDesktop.power(record, 'shutdown');
+              } catch (err) {
+                try { await proxmoxDesktop.power(record, 'force-stop'); } catch {}
+              }
+              if (record.ownerEmail) triggerVmCooldown(record.ownerEmail, 'inactivity_10m');
+            } else {
+              try {
+                await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'shutdown');
+              } catch {
+                try { await proxmoxDesktop.power({ vmid: guest.vmid, node: guest.node, guestType: guest.type }, 'force-stop'); } catch {}
+              }
+            }
+            vmLeases.delete(recordKey);
+            vmPagePresence.delete(recordKey);
+          }
+        }
       }
     }
   } catch (err) {
@@ -25915,6 +28121,13 @@ async function getVmConnectionIpForEmail(email) {
     const appsData = loadJson(VM_APPS_FILE, {});
     const app = appsData[norm];
     if (app && app.status === 'approved' && app.vmid) vmid = Number(app.vmid);
+  }
+
+  if (!vmid) {
+    const userRecords = getVirtualMachinesForOwner(norm);
+    if (userRecords.length > 0 && userRecords[0].vmid) {
+      vmid = Number(userRecords[0].vmid);
+    }
   }
 
   if (!isVmIdInRange(vmid)) return '';
@@ -26145,9 +28358,9 @@ async function cloneUserVm(email, tier, vmid, password) {
     }
 
     // 2. Configure VM settings (Memory Ballooning, CPU Cores, and Cloud-Init Password)
-    const memMax = tier === 'paid' ? 8192 : (tier === 'premium' ? 4096 : 1024);
-    const memMin = tier === 'paid' ? 3072 : (tier === 'premium' ? 2048 : 512);
-    const cores = tier === 'paid' ? 4 : (tier === 'premium' ? 2 : 1);
+    const memMax = tier === 'paid' || tier === 'premium' ? 16384 : 4096;
+    const memMin = tier === 'paid' || tier === 'premium' ? 4096 : 2048;
+    const cores = tier === 'paid' || tier === 'premium' ? 6 : 2;
 
     const configUrl = `${PVE_URL}/nodes/${PVE_NODE}/qemu/${vmid}/config`;
     const configRes = await fetch(configUrl, {

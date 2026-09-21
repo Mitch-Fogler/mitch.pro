@@ -39,6 +39,62 @@
       <article><span>Memory</span><strong id="memory-capacity">—</strong><div><i id="memory-bar"></i></div></article>
       <article><span>Host storage</span><strong id="storage-capacity">—</strong><div><i id="storage-bar"></i></div></article>
       <article><span>Assigned</span><strong id="assigned-capacity">—</strong><small>customer computers</small></article>
+      <article><span>Active In Use</span><strong id="active-sessions-count">—</strong><small id="active-sessions-sub">0 users on desktop</small></article>
+      <article><span>Running Fleet</span><strong id="running-vms-count">—</strong><small id="running-vms-sub">max 36 cores / 96 GB RAM</small></article>
+    </section>
+
+    <section class="panel analytics-panel" id="analytics-panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Telemetry &amp; Activity</p>
+          <h2>Fleet Usage &amp; Uptime (Today)</h2>
+        </div>
+        <div class="analytics-badges">
+          <span class="stat-pill" id="top-user-pill">Top user: <strong id="top-user-display">—</strong></span>
+          <span class="stat-pill">Fleet uptime: <strong id="fleet-total-hours">—</strong></span>
+          <span class="stat-pill">Peak concurrent: <strong id="fleet-peak-concurrent">—</strong></span>
+        </div>
+      </div>
+
+      <div class="chart-box">
+        <div class="chart-header">
+          <div class="chart-title-group">
+            <span class="chart-subtitle">Hourly Concurrency &amp; User Sessions Throughout Day</span>
+          </div>
+          <div class="chart-legend">
+            <span><i class="legend-running"></i> Running Computers</span>
+            <span><i class="legend-active"></i> Active Sessions</span>
+          </div>
+        </div>
+        <div class="chart-container" id="chart-container">
+          <canvas id="usage-chart" height="180"></canvas>
+          <div id="chart-tooltip" class="chart-tooltip" style="display:none;"></div>
+        </div>
+      </div>
+
+      <div class="leaderboard-section">
+        <div class="leaderboard-header">
+          <h3 style="margin: 0; font-size: 1rem; color: #f1f5f9;">🏆 Uptime Leaderboard</h3>
+          <small class="leaderboard-hint" style="color: var(--muted); font-size: 0.8rem;">Ranked by today's computer uptime (not anonymous)</small>
+        </div>
+        <div class="leaderboard-table-wrapper" style="margin-top: 10px;">
+          <table class="leaderboard-table">
+            <thead>
+              <tr>
+                <th style="width: 50px;">Rank</th>
+                <th>User</th>
+                <th>Computer</th>
+                <th>Today's Uptime</th>
+                <th>All-Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="leaderboard-body">
+              <tr><td colspan="6" class="empty">Loading uptime leaderboard…</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <section class="admin-grid">
@@ -50,9 +106,9 @@
           <label>Hostname<input id="create-hostname" placeholder="computer-name" maxlength="48" pattern="[a-zA-Z0-9\-]+" required></label>
           <label>Desktop<select id="create-template" required></select></label>
           <label>Desktop username<input id="create-username" value="desktop" minlength="2" maxlength="32" pattern="[a-z][a-z0-9_\-]{1,31}" autocomplete="off" required></label>
-          <label>Desktop password<input id="create-password" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label>
+          <label>Desktop password<input id="create-password" type="password" minlength="8" maxlength="128" autocomplete="new-password" required></label>
           <p class="login-note">Give these login details to the user securely. The password is sent to the new computer once and is not saved in this portal.</p>
-          <div class="resource-row"><label>CPU cores<select id="create-cpu"><option>2</option><option selected>4</option><option>6</option><option>8</option></select></label><label>Memory<select id="create-memory"><option value="2048">2 GB</option><option value="4096" selected>4 GB</option><option value="8192">8 GB</option><option value="16384">16 GB</option></select></label><label>Disk<select id="create-disk"><option value="40" selected>40 GB</option><option value="64">64 GB</option><option value="80">80 GB</option><option value="128">128 GB</option></select></label></div>
+          <div class="resource-row"><label>CPU cores<select id="create-cpu"><option>2</option><option>4</option><option selected>6</option><option>8</option></select></label><label>Memory<select id="create-memory"><option value="2048">2 GB</option><option value="4096">4 GB</option><option value="8192">8 GB</option><option value="16384" selected>16 GB</option><option value="65536">64 GB</option></select></label><label>Disk<select id="create-disk"><option value="40">40 GB</option><option value="64" selected>64 GB</option><option value="80">80 GB</option><option value="128">128 GB</option></select></label></div>
           <button class="primary" type="submit" id="create-button">Create & start computer</button>
           <p class="form-status" id="create-status" role="status"></p>
         </form>

@@ -20,7 +20,7 @@
       try { sessionStorage.setItem('sw-scripts', JSON.stringify(seenSW)); } catch (_) {}
       location.reload();
     });
-    navigator.serviceWorker.register('/sw.js?v=11', { scope: '/', updateViaCache: 'none' })
+    navigator.serviceWorker.register('/sw.js?v=42', { scope: '/', updateViaCache: 'none' })
       .then(function (reg) {
         try { reg.update(); } catch (_) {}
         setInterval(function () { try { reg.update(); } catch (_) {} }, 30 * 60 * 1000);
@@ -411,12 +411,4 @@
   } else {
     inject();
   }
-  function loadCloak() {
-    if (document.querySelector('script[data-mitch-cloak]')) return;
-    var script = document.createElement('script');
-    script.src = '/tab-cloak.js?v=1'; script.dataset.mitchCloak = '1';
-    document.head.appendChild(script);
-  }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', loadCloak);
-  else loadCloak();
 })();

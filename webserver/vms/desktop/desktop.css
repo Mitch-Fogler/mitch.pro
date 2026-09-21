@@ -47,4 +47,3 @@ button,a{font:inherit}
 .uptime-dialog-actions button:hover{border-color:var(--line-strong);background:rgba(255,255,255,.09);transform:translateY(-1px)}
 .uptime-dialog-actions .primary{border-color:#eff1f4;background:#eff1f4;color:#111}
 .uptime-dialog-actions .primary:hover{background:#fff}
-

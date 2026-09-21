@@ -84,6 +84,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 38222
           script: |
+            set -e
             if [ "${{ needs.test.outputs.only_static }}" = "true" ]; then
               echo "[deploy-ci] Push contains ONLY static changes. Running fast static deploy..."
               git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
@@ -100,7 +101,7 @@ jobs:
                   -H "Content-Type: application/json" \
                   -H "Authorization: Bearer $SECRET_KEY" \
                   -H "X-Internal-Refresh: 1" \
-                  -H "Host: mitch.pro" \
+                  -H "Host: mitchdog.com" \
                   -d '{"files":[]}' "$URL" || echo "000")
                 if [ "$STATUS" = "200" ]; then
                   REFRESHED=true
@@ -116,10 +117,4 @@ jobs:
             fi
 
             echo "[deploy-ci] Running full blue-green deployment..."
-            sudo -u mitch git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
             sudo /usr/local/bin/deploy.sh
-            if ! grep -q "@not_game_content" /home/mitch/server/bun/caddy/Caddyfile; then
-              echo "[deploy-ci] Legacy Caddyfile detected; re-running with newly synchronized deploy.sh..."
-              sudo -u mitch git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
-              sudo /usr/local/bin/deploy.sh
-            fi

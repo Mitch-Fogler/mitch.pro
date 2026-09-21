@@ -21,7 +21,7 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js?v=11', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
+      navigator.serviceWorker.register('/sw.js?v=42', { updateViaCache: 'none' }).catch(err => console.warn('SW register failed: ', err));
     });
   }
 </script>
@@ -585,6 +585,9 @@ function showPopup(src) {
 }
 
 function openAboutBlank(target) {
+  if (!target) return;
+  target = String(target).trim();
+  if (!/^https?:\/\//i.test(target) && !target.startsWith('/') && !target.startsWith('about:')) target = 'https://' + target;
   var w = window.open('', '_blank', 'width=10000000,height=10000000');
   if (!w) {
     window.location.href = target;
@@ -3906,7 +3909,7 @@ goBack = function() {
     };
   })();
 </script>
-<script src="/broadcast.js?v=5"></script>
+<script src="/broadcast.js?v=8"></script>
 <script src="/sync.js?v=1779165304438"></script>
 <script src="/cookie-consent.js" defer></script>
 </body>

@@ -1,13 +1,18 @@
 {
   "defaultHomeserver": 0,
   "homeserverList": ["mitch.pro"],
-  "allowCustomHomeservers": true,
+  "allowCustomHomeservers": false,
 
   "featuredCommunities": {
     "openAsDefault": true,
     "spaces": [],
     "rooms": [
-      "#general:mitch.pro"
+      "#general:mitch.pro",
+      "#tech:mitch.pro",
+      "#biking:mitch.pro",
+      "#gaming:mitch.pro",
+      "#computers:mitch.pro",
+      "#random:mitch.pro"
     ],
     "servers": ["mitch.pro"]
   },
@@ -15,5 +20,10 @@
   "hashRouter": {
     "enabled": false,
     "basename": "/matrix"
+  },
+
+  "elementCall": {
+    "url": "/matrix/public/element-call",
+    "useInternalInstance": true
   }
 }

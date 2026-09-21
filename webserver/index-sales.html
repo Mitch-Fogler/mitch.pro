@@ -158,6 +158,56 @@
       font-weight: 700;
     }
 
+    .btn-try-it-out {
+      min-height: 3.35rem;
+      padding: 0.85rem 2.25rem;
+      font-family: Outfit, system-ui, sans-serif;
+      font-size: 1.15rem;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #ec4899 100%);
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 4px 22px rgba(124, 58, 237, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+    }
+    .btn-try-it-out:hover {
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 8px 32px rgba(168, 85, 247, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+      filter: brightness(1.12);
+      color: #ffffff !important;
+    }
+    .btn-try-it-out:active {
+      transform: translateY(0) scale(0.98);
+    }
+    .btn-try-it-out-sm {
+      padding: 0.5rem 1.1rem;
+      font-family: Outfit, system-ui, sans-serif;
+      font-size: 0.88rem;
+      font-weight: 800;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #7c3aed, #ec4899);
+      color: #ffffff !important;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+      box-shadow: 0 2px 12px rgba(124, 58, 237, 0.4);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn-try-it-out-sm:hover {
+      transform: translateY(-1px) scale(1.03);
+      box-shadow: 0 4px 18px rgba(168, 85, 247, 0.55);
+      color: #ffffff !important;
+    }
+
     .sales-section {
       width: min(920px, 100%);
       margin: 0 auto;
@@ -299,7 +349,10 @@
       <a href="https://github.com/Mitch-Fogler/mitch.pro" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:5px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg> Open Source</a>
       <a href="/faq/">Help</a>
     </nav>
-    <a class="btn-ghost" href="/enroll/" id="nav-login">Log In</a>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <a class="btn-try-it-out-sm" href="/?trial=1" id="nav-try-it-out">⚡ Try It Out</a>
+      <a class="btn-ghost" href="/enroll/" id="nav-login">Log In</a>
+    </div>
   </header>
 
   <main>
@@ -314,7 +367,11 @@
       <h1>mitch.pro</h1>
       <p class="lede" id="hero-desc">Free, open-source games, end-to-end encrypted chat, and community progress.</p>
       <div class="sales-cta-row">
-        <a class="btn-primary" href="/enroll/" id="hero-cta">Request access</a>
+        <a class="btn-try-it-out" href="/?trial=1" id="hero-try-it-out" aria-label="Try it out with instant guest preview">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <span>Try It Out</span>
+        </a>
+        <a class="btn-ghost" href="/enroll/" id="hero-cta">Request access</a>
         <a class="btn-ghost" href="https://github.com/Mitch-Fogler/mitch.pro" target="_blank" rel="noopener" style="display:inline-flex; align-items:center; gap:6px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/></svg> View on GitHub</a>
         <a class="btn-ghost" href="https://rjuhsd.school/">Bell schedule</a>
       </div>
@@ -409,14 +466,30 @@
     </section>
 
     <section class="sales-bottom" id="enroll-cta-card">
-      <h2>Ready to join?</h2>
-      <p>Request an invite, verify your email, and you’re in.</p>
-      <a class="btn-primary" href="/enroll/" id="cta-enroll-button">Request invitation</a>
+      <h2>Ready to try it?</h2>
+      <p>Launch the live guest preview instantly, or request an invite to create a permanent account.</p>
+      <div style="display:flex; flex-wrap:wrap; gap:10px; justify-content:center; align-items:center;">
+        <a class="btn-try-it-out" href="/?trial=1" id="cta-try-it-out">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <span>Try It Out</span>
+        </a>
+        <a class="btn-ghost" href="/enroll/" id="cta-enroll-button">Request invitation</a>
+      </div>
     </section>
   </main>
 
   <footer class="sales-foot">
     <p>&copy; 2026 mitch.pro &middot; <a href="/faq.html" id="footer-faq">FAQ</a> &middot; <a href="/privacy/" id="footer-privacy">Privacy</a> &middot; <a href="/use-agreement.html">Use Agreement</a> &middot; <a href="https://github.com/Mitch-Fogler/mitch.pro" target="_blank" rel="noopener" title="mitch.pro is open source — view the code yourself">Open source</a></p>
   </footer>
+
+  <script>
+    (function() {
+      document.querySelectorAll('.btn-try-it-out, .btn-try-it-out-sm').forEach(function(el) {
+        el.addEventListener('click', function() {
+          document.cookie = 'mitch_trial=1; path=/; max-age=86400; SameSite=Lax';
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

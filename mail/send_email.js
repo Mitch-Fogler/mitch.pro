@@ -236,11 +236,13 @@ function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) 
   console.log(body);
 
   let htmlBody = undefined;
-  if (!useRaw) {
-    const unsubUrl = `${PRIMARY}/unsubscribe/${token}`;
-    htmlBody = formatHtmlEmail(subject, rawBody, unsubUrl, PRIMARY, ALT);
-  } else {
-    htmlBody = formatHtmlEmail(subject, rawBody, null, PRIMARY, ALT);
+  if (!useAlt) {
+    if (!useRaw) {
+      const unsubUrl = `${PRIMARY}/unsubscribe/${token}`;
+      htmlBody = formatHtmlEmail(subject, rawBody, unsubUrl, PRIMARY, ALT);
+    } else {
+      htmlBody = formatHtmlEmail(subject, rawBody, null, PRIMARY, ALT);
+    }
   }
 
   const transporter = nodemailer.createTransport({
@@ -253,12 +255,14 @@ function formatHtmlEmail(subject, textBody, unsubscribeUrl, primaryUrl, altUrl) 
     from: `${GMAIL_NAME} <${GMAIL_USER}>`,
     to, subject: useAlt ? subject + zwsp : subject,
     text: body,
-    html: htmlBody,
+    ...(htmlBody ? { html: htmlBody } : {}),
     priority: 'high',
     headers: {
       'X-Priority': '1', 'Importance': 'high',
-      'List-Unsubscribe': `<https://mitch.pro/unsubscribe/${token}>, <mailto:support@mitch.pro?subject=unsubscribe>`,
-      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      ...(!useAlt ? {
+        'List-Unsubscribe': `<https://mitch.pro/unsubscribe/${token}>, <mailto:support@mitch.pro?subject=unsubscribe>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      } : {}),
       ...(!useAlt && inReplyTo ? { 'In-Reply-To': inReplyTo, 'References': inReplyTo } : {}),
     },
   });

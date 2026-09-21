@@ -75,7 +75,8 @@
     <!-- Mitch.pro SSO Connect Banner (only shown if guest/logged out) -->
     <div id="mitch-sso-banner">
       <span id="mitch-sso-msg">✨ Connect your account for instant single sign-on</span>
-      <a id="mitch-sso-btn" href="/api/sso/bridge?back=/matrix/">Log In</a>
+      <a id="mitch-sso-btn" href="/api/sso/bridge?back=/matrix/">Login with mitch.pro</a>
+      <a id="mitch-home-btn" href="/" style="margin-left: 12px; color: var(--t-fg2); text-decoration: none; font-size: 13px; opacity: 0.85; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.85'">← Return to mitch.pro</a>
     </div>
 
     <!-- Mitch.pro Push Notification Opt-in Prompt -->
@@ -243,7 +244,7 @@
             : '✨ Connect your Mitch.pro account for instant single sign-on';
         }
         if (ssoBtn) {
-          ssoBtn.textContent = isPickle ? 'Log In' : 'Log In with Mitch.pro';
+          ssoBtn.textContent = isPickle ? 'Log In' : 'Login with mitch.pro';
         }
 
         const origTitleSetter = Object.getOwnPropertyDescriptor(Document.prototype, 'title')?.set;
@@ -339,6 +340,12 @@
           };
         }
 
+        function clearStoredSession() {
+          for (const key of ['cinny_access_token', 'cinny_device_id', 'cinny_user_id', 'cinny_hs_base_url']) {
+            localStorage.removeItem(key);
+          }
+        }
+
         async function storedSessionIsValid(token, expectedUserId) {
           if (!token || !expectedUserId) return false;
           try {
@@ -376,10 +383,13 @@
             if (stored.token && stored.userId &&
                 (!status.authenticated || stored.userId === status.user_id) &&
                 await storedSessionIsValid(stored.token, stored.userId)) {
+              localStorage.setItem('cinny_hs_base_url', 'https://mitchdog.com');
               if (banner) banner.style.display = 'none';
               bootCinny();
               return;
             }
+
+            if (stored.token || stored.userId) clearStoredSession();
 
             if (!status.authenticated) {
               if (banner) banner.style.display = 'flex';
@@ -442,7 +452,7 @@
 
             let reg = await navigator.serviceWorker.getRegistration('/');
             if (!reg) {
-              reg = await navigator.serviceWorker.register('/sw.js?v=36', { scope: '/', updateViaCache: 'none' });
+              reg = await navigator.serviceWorker.register('/sw.js?v=42', { scope: '/', updateViaCache: 'none' });
             }
             await navigator.serviceWorker.ready;
 
@@ -482,7 +492,7 @@
 
         // Register Service Worker on / scope
         if ('serviceWorker' in navigator && window.isSecureContext) {
-          navigator.serviceWorker.register('/sw.js?v=36', { scope: '/', updateViaCache: 'none' }).catch(() => {});
+          navigator.serviceWorker.register('/sw.js?v=42', { scope: '/', updateViaCache: 'none' }).catch(() => {});
         }
 
         // Auto-sync if notification permission is already granted
@@ -545,6 +555,34 @@
         } else {
           setupBanner();
         }
+      })();
+
+      // ── Stale Matrix Session Hygiene (E2EE Key Health) ────────────
+      (function() {
+        async function pruneStaleMatrixDevices() {
+          const token = localStorage.getItem('cinny_access_token');
+          const currentDeviceId = localStorage.getItem('cinny_device_id');
+          if (!token) return;
+          const lastPrune = Number(localStorage.getItem('mitch_matrix_last_prune')) || 0;
+          if (Date.now() - lastPrune < 24 * 60 * 60 * 1000) return;
+
+          try {
+            const res = await fetch('/api/matrix/devices/prune-stale', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'X-Matrix-Device-Id': currentDeviceId || ''
+              },
+              credentials: 'same-origin',
+              body: JSON.stringify({ currentDeviceId, maxAgeDays: 7 })
+            });
+            if (res.ok) {
+              localStorage.setItem('mitch_matrix_last_prune', String(Date.now()));
+            }
+          } catch (_) {}
+        }
+        setTimeout(pruneStaleMatrixDevices, 8000);
       })();
     </script>
     <div id="root"></div>

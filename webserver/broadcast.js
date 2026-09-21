@@ -1,6 +1,11 @@
 (function setupBroadcast() {
     var ws;
     var presenceTimer;
+    var reconnectTimer;
+    var fallbackTimer;
+    var LAST_BROADCAST_KEY = 'mitch:last-admin-broadcast';
+    var lastBroadcastId = '';
+    var pageOpenedAt = Date.now();
     function stopPresencePing() {
       if (presenceTimer) clearInterval(presenceTimer);
       presenceTimer = null;
@@ -10,26 +15,55 @@
         try { ws.send(JSON.stringify({ type: 'presence_ping' })); } catch(ex) {}
       }
     }
+    function hasSeenBroadcast(data) {
+      if (!data || !data.broadcastId) return false;
+      if (lastBroadcastId === data.broadcastId) return true;
+      try {
+        if (sessionStorage.getItem(LAST_BROADCAST_KEY) === data.broadcastId) return true;
+        sessionStorage.setItem(LAST_BROADCAST_KEY, data.broadcastId);
+      } catch(ex) {}
+      lastBroadcastId = data.broadcastId;
+      return false;
+    }
+    function handleMessage(data) {
+      if ((data.type === 'admin_broadcast' || data.type === 'admin_jumpscare') && data.createdAt && Number(data.createdAt) < pageOpenedAt) {
+        return;
+      }
+      if (data.type === 'admin_broadcast') {
+        if (!hasSeenBroadcast(data)) showBroadcast(data.message);
+      } else if (data.type === 'admin_jumpscare') {
+        if (!hasSeenBroadcast(data)) showJumpscare(data.message);
+      } else if (data.type === 'refresh_notifications') {
+        if (typeof window.__refreshNotifications === 'function') {
+          window.__refreshNotifications();
+        }
+      } else if (data.type === 'new_dm') {
+        if (typeof window.__handleIncomingDm === 'function') {
+          window.__handleIncomingDm(data.message || null);
+        }
+      }
+      window.dispatchEvent(new CustomEvent('ws-broadcast-message', { detail: data }));
+    }
+    function scheduleReconnect() {
+      if (reconnectTimer) return;
+      reconnectTimer = setTimeout(function() {
+        reconnectTimer = null;
+        connect();
+      }, 1800);
+    }
     function connect() {
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
       var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(protocol + '//' + location.host + '/ws');
+      try {
+        ws = new WebSocket(protocol + '//' + location.host + '/ws');
+      } catch(ex) {
+        scheduleReconnect();
+        return;
+      }
       ws.onmessage = function(e) {
         try {
           var data = JSON.parse(e.data);
-          if (data.type === 'admin_broadcast') {
-            showBroadcast(data.message);
-          } else if (data.type === 'admin_jumpscare') {
-            showJumpscare(data.message);
-          } else if (data.type === 'refresh_notifications') {
-            if (typeof window.__refreshNotifications === 'function') {
-              window.__refreshNotifications();
-            }
-          } else if (data.type === 'new_dm') {
-            if (typeof window.__handleIncomingDm === 'function') {
-              window.__handleIncomingDm(data.message || null);
-            }
-          }
-          window.dispatchEvent(new CustomEvent('ws-broadcast-message', { detail: data }));
+          handleMessage(data);
         } catch(ex) {}
       };
       ws.onopen = function() {
@@ -41,25 +75,69 @@
       ws.onclose = function() {
         stopPresencePing();
         window.dispatchEvent(new CustomEvent('ws-broadcast-status', { detail: { connected: false } }));
-        setTimeout(connect, 1800);
+        scheduleReconnect();
       };
     }
+    function pollLatestBroadcast() {
+      fetch('/api/broadcast/latest', {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { 'Accept': 'application/json' }
+      }).then(function(response) {
+        if (!response.ok) return null;
+        return response.json();
+      }).then(function(result) {
+        if (result && result.active && result.event) handleMessage(result.event);
+      }).catch(function() {});
+    }
+    function start() {
+      connect();
+      pollLatestBroadcast();
+      fallbackTimer = setInterval(pollLatestBroadcast, 3000);
+      document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) pollLatestBroadcast();
+      });
+    }
     function showJumpscare(msg) {
-      var el = document.createElement('div');
-      el.style.cssText = 'position:fixed;inset:0;background:#000;color:#f00;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:serif;text-align:center;padding:2rem;animation:shake 0.1s infinite;';
-      el.innerHTML = '<div style="font-size:8rem;margin-bottom:20px;">😱</div><div style="font-size:3rem;font-weight:900;text-transform:uppercase;letter-spacing:-0.05em;">' + (msg || 'WAKE UP') + '</div>';
-      
-      if (!document.getElementById('jumpscare-style')) {
-        var style = document.createElement('style');
-        style.id = 'jumpscare-style';
-        style.textContent = '@keyframes shake { 0% { transform: translate(2px, 1px) rotate(0deg); } 10% { transform: translate(-1px, -2px) rotate(-1deg); } 20% { transform: translate(-3px, 0px) rotate(1deg); } 30% { transform: translate(3px, 2px) rotate(0deg); } 40% { transform: translate(1px, -1px) rotate(1deg); } 50% { transform: translate(-1px, 2px) rotate(-1deg); } 60% { transform: translate(-3px, 1px) rotate(0deg); } 70% { transform: translate(3px, 1px) rotate(-1deg); } 80% { transform: translate(-1px, -1px) rotate(1deg); } 90% { transform: translate(1px, 2px) rotate(0deg); } 100% { transform: translate(1px, -2px) rotate(-1deg); } }';
-        document.head.appendChild(style);
+      showVideoJumpscare(msg);
+    }
+    function showVideoJumpscare(msg) {
+      var previous = document.getElementById('admin-video-jumpscare');
+      if (previous) {
+        var previousVideo = previous.querySelector('video');
+        if (previousVideo) previousVideo.pause();
+        previous.remove();
       }
-      
-      document.body.appendChild(el);
-      var audio = new Audio('https://www.myinstants.com/media/sounds/screamer.mp3');
-      audio.play().catch(function(){});
-      setTimeout(function() { el.remove(); }, 3000);
+      var overlay = document.createElement('div');
+      overlay.id = 'admin-video-jumpscare';
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.style.cssText = 'position:fixed;inset:0;background:#000;z-index:2147483647;display:grid;place-items:center;overflow:hidden;';
+      var video = document.createElement('video');
+      video.src = '/media/admin-jumpscare-krupp-1935.webm';
+      video.autoplay = true;
+      video.playsInline = true;
+      video.preload = 'auto';
+      video.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+      var close = document.createElement('button');
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Close video');
+      close.textContent = '×';
+      close.style.cssText = 'position:absolute;top:max(12px,env(safe-area-inset-top));right:14px;width:42px;height:42px;border:1px solid #ffffff55;border-radius:50%;background:#000a;color:#fff;font:26px/1 system-ui;cursor:pointer;z-index:2;';
+      var caption = document.createElement('div');
+      caption.style.cssText = 'position:absolute;left:50%;bottom:max(18px,env(safe-area-inset-bottom));translate:-50% 0;max-width:min(760px,calc(100% - 40px));padding:9px 14px;border-radius:10px;background:#000b;color:#fff;font:700 clamp(14px,2vw,22px)/1.25 system-ui;text-align:center;';
+      caption.textContent = String(msg || '').trim();
+      caption.hidden = !caption.textContent;
+      function remove() { video.pause(); video.removeAttribute('src'); overlay.remove(); }
+      close.onclick = remove;
+      video.addEventListener('ended', remove, { once: true });
+      video.addEventListener('error', function() { caption.hidden = false; caption.textContent = 'The video could not be loaded.'; });
+      overlay.append(video, close, caption);
+      document.body.appendChild(overlay);
+      video.play().catch(function() {
+        video.muted = true;
+        video.play().catch(function() {});
+      });
     }
     function showBroadcast(msg) {
       var el = document.createElement('div');
@@ -76,8 +154,8 @@
       document.body.appendChild(el);
       el.querySelector('#close-broadcast').onclick = function() { el.remove(); };
     }
-    if (document.body) connect();
-    else document.addEventListener('DOMContentLoaded', connect);
+    if (document.body) start();
+    else document.addEventListener('DOMContentLoaded', start, { once: true });
 })();
 
 // Site-wide Notifications
@@ -186,7 +264,7 @@
     if (!keyData.publicKey) throw new Error('Notification service is not configured');
 
     var registration = await navigator.serviceWorker.getRegistration('/');
-    if (!registration) registration = await navigator.serviceWorker.register('/sw.js?v=13', { scope: '/', updateViaCache: 'none' });
+    if (!registration) registration = await navigator.serviceWorker.register('/sw.js?v=42', { scope: '/', updateViaCache: 'none' });
     await navigator.serviceWorker.ready;
     var subscription = await registration.pushManager.getSubscription();
     if (!subscription) {
@@ -553,6 +631,7 @@
       group_dm: '&#9783;',
       coin_gift: '&#9733;',
       admin_notice: '&#9888;',
+      vm_admin_access: '&#128187;',
       matrix: '&#128172;',
       matrix_call: '&#128222;',
       matrix_invite: '&#128233;'
@@ -585,7 +664,7 @@
 
   async function markNotificationRead(n, navigating) {
     if (!n) return;
-    var body = (n.type === 'coin_gift' || n.type === 'admin_notice')
+    var body = (n.type === 'coin_gift' || n.type === 'admin_notice' || n.type === 'vm_admin_access')
       ? { coinGiftIds: [n.id] }
       : n.type === 'group_dm'
         ? { groupIds: [n.groupId] }

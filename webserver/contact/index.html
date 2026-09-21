@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Contact the Team — mitch.pro</title>
+<script src="/theme.js?v=11"></script>
+<link rel="stylesheet" href="/app.css">
+<script src="/api.js"></script>
+<script src="/app-shell.js" defer></script>
+<style>
+  .contact-shell {
+    width: min(46rem, 100%);
+    max-width: 46rem;
+    margin: 0 auto;
+    padding-bottom: 3rem;
+  }
+  .page-head {
+    margin-bottom: 1.5rem;
+    animation: app-fade-in 0.45s ease both;
+  }
+  .page-head h1 {
+    margin: 0;
+    font-size: clamp(2rem, 4.5vw, 2.75rem);
+    letter-spacing: -0.035em;
+  }
+  .page-sub {
+    margin: 0.5rem 0 0;
+    color: var(--t-fg2);
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+  .contact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+  .channel-card {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 10px);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .channel-card:hover {
+    transform: translateY(-2px);
+    border-color: var(--t-ac);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  }
+  .channel-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0.25rem;
+  }
+  .channel-card h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+  }
+  .channel-card p {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--t-fg2);
+    line-height: 1.45;
+  }
+  .channel-action {
+    margin-top: auto;
+    padding-top: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--t-ac);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .staff-directory {
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 10px);
+    padding: 1.4rem;
+    margin-bottom: 1.75rem;
+  }
+  .staff-directory h2 {
+    margin: 0 0 0.85rem;
+    font-size: 1.2rem;
+    letter-spacing: -0.02em;
+  }
+  .role-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 0.85rem;
+  }
+  .role-badge-card {
+    background: var(--t-bg3);
+    border: 1px solid var(--t-bd);
+    border-radius: 8px;
+    padding: 0.85rem 1rem;
+  }
+  .role-title {
+    font-size: 0.76rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-bottom: 0.3rem;
+  }
+  .role-title.owner { color: #f59e0b; }
+  .role-title.admin { color: #ef4444; }
+  .role-title.mod { color: #3b82f6; }
+  .role-title.tester { color: #10b981; }
+  .role-desc {
+    font-size: 0.8rem;
+    color: var(--t-fg2);
+    line-height: 1.4;
+    margin: 0;
+  }
+  .field { margin-bottom: 1rem; }
+  .field label {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--t-fg2);
+    margin-bottom: 0.35rem;
+  }
+  .field input,
+  .field select,
+  .field textarea {
+    width: 100%;
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 8px);
+    background: var(--t-bg2);
+    color: var(--t-fg);
+    font-family: inherit;
+    font-size: 0.92rem;
+    padding: 0.65rem 0.8rem;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    border-color: var(--t-ac);
+    box-shadow: 0 0 0 3px var(--t-gls);
+  }
+  textarea { resize: vertical; line-height: 1.55; min-height: 6.5rem; }
+  #submit-btn { width: 100%; }
+  #msg {
+    margin-top: 0.85rem;
+    font-size: 0.85rem;
+    text-align: center;
+    line-height: 1.5;
+    min-height: 1.4em;
+  }
+  #msg.ok { color: #4ade80; }
+  #msg.err { color: #f87171; }
+  .success-box {
+    display: none;
+    text-align: center;
+    padding: 1.5rem 1rem;
+    background: var(--t-bg2);
+    border: 1px solid var(--t-bd);
+    border-radius: var(--t-radius, 10px);
+  }
+</style>
+</head>
+<body>
+<main class="app-main contact-shell">
+  <header class="page-head">
+    <h1>Contact the Team</h1>
+    <p class="page-sub">Need help, have a question, found a bug or exploit, or want to reach an administrator or moderator? We're here to assist.</p>
+  </header>
+
+  <div class="contact-grid">
+    <a href="/matrix/" class="channel-card">
+      <span class="channel-icon">💬</span>
+      <h3>Matrix Chat</h3>
+      <p>Instant direct messages &amp; public channels (#general, #tech, #gaming). Fastest way to reach online staff.</p>
+      <span class="channel-action">Open Matrix ↗</span>
+    </a>
+
+    <a href="mailto:support@mitch.pro" class="channel-card">
+      <span class="channel-icon">✉️</span>
+      <h3>Support Email</h3>
+      <p>For account recovery, general assistance, or feedback: <strong>support@mitch.pro</strong></p>
+      <span class="channel-action">Send Email ↗</span>
+    </a>
+
+    <a href="mailto:admin@mitch.pro" class="channel-card">
+      <span class="channel-icon">🛡️</span>
+      <h3>Admin Office</h3>
+      <p>For server cluster operations, VM hardware issues, or policy matters: <strong>admin@mitch.pro</strong></p>
+      <span class="channel-action">Email Admins ↗</span>
+    </a>
+
+    <a href="/apply/" class="channel-card">
+      <span class="channel-icon">🧪</span>
+      <h3>Join as a Tester or Staff</h3>
+      <p>Want to become a Beta Tester, Moderator, Developer, or Designer? Apply today!</p>
+      <span class="channel-action">Apply Now ↗</span>
+    </a>
+  </div>
+
+  <section class="staff-directory">
+    <h2>Staff &amp; Community Roles</h2>
+    <div class="role-list">
+      <div class="role-badge-card">
+        <span class="role-title owner">👑 Owners &amp; Founders</span>
+        <p class="role-desc">Mitchell Fogler &amp; Tyler Thompson. Project leadership, architecture, and core systems.</p>
+      </div>
+      <div class="role-badge-card">
+        <span class="role-title admin">⚡ Administrators</span>
+        <p class="role-desc">Proxmox hypervisor maintenance, network infrastructure, security, and fleet monitoring.</p>
+      </div>
+      <div class="role-badge-card">
+        <span class="role-title mod">🛡️ Moderators</span>
+        <p class="role-desc">Chat safety, report handling, student guidance, and rule enforcement across channels.</p>
+      </div>
+      <div class="role-badge-card">
+        <span class="role-title tester">🧪 Beta Testers</span>
+        <p class="role-desc">Quality assurance, testing new games &amp; VMs, finding exploits, and pre-release stress tests.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel contact-form-panel">
+    <h2>Send a Message</h2>
+    <p style="font-size:0.85rem;color:var(--t-fg2);margin:0.25rem 0 1.25rem;">Fill out this form and your message will be forwarded directly to the appropriate staff member.</p>
+
+    <form id="contact-form">
+      <div class="field">
+        <label for="dept">Department</label>
+        <select id="dept" required>
+          <option value="general">General Support</option>
+          <option value="moderation">Moderator / Safety Report</option>
+          <option value="bug">Bug &amp; Exploit Discovery (Testers &amp; Devs)</option>
+          <option value="vm">Virtual Machine &amp; Specs Assistance</option>
+          <option value="admin">Administrator Direct Inquiry</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="name">Your Name</label>
+        <input id="name" type="text" placeholder="Your name or username" required>
+      </div>
+
+      <div class="field">
+        <label for="email">Your Email Address</label>
+        <input id="email" type="email" placeholder="you@student.rjuhsd.us or personal email" required>
+      </div>
+
+      <div class="field">
+        <label for="subject">Subject</label>
+        <input id="subject" type="text" placeholder="Brief summary of your inquiry" required>
+      </div>
+
+      <div class="field">
+        <label for="message">Message</label>
+        <textarea id="message" placeholder="Please provide details so we can assist you quickly…" required></textarea>
+      </div>
+
+      <button type="submit" class="btn-primary" id="submit-btn">Send Message</button>
+      <div id="msg"></div>
+    </form>
+
+    <div class="success-box" id="success-box">
+      <span style="font-size:2rem;color:#10b981;display:block;margin-bottom:0.5rem;">✓</span>
+      <h3>Message Sent</h3>
+      <p style="color:var(--t-fg2);font-size:0.9rem;margin-top:0.35rem;">Thanks for reaching out! Our team has received your message and will respond via email as soon as possible.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+document.getElementById('contact-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+  const msg = document.getElementById('msg');
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  msg.className = '';
+  msg.textContent = '';
+
+  let recaptcha_token = '';
+  if (window.getCaptchaToken) {
+    recaptcha_token = await window.getCaptchaToken('contact_form') || '';
+  }
+
+  const payload = {
+    department: document.getElementById('dept').value,
+    name: document.getElementById('name').value.trim(),
+    email: document.getElementById('email').value.trim(),
+    subject: document.getElementById('subject').value.trim(),
+    message: document.getElementById('message').value.trim(),
+    recaptcha_token,
+  };
+
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to send message.');
+    document.getElementById('contact-form').style.display = 'none';
+    document.getElementById('success-box').style.display = 'block';
+  } catch (err) {
+    msg.className = 'err';
+    msg.textContent = err.message;
+    btn.disabled = false;
+    btn.textContent = 'Send Message';
+  }
+});
+</script>
+<script src="/cookie-consent.js" defer></script>
+</body>
+</html>
