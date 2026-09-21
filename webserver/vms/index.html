@@ -100,7 +100,42 @@
     </form>
   </dialog>
 
+  <dialog id="upgrade-dialog" class="upgrade-dialog">
+    <div class="upgrade-dialog-content">
+      <div class="upgrade-header">
+        <div>
+          <p class="eyebrow">Hardware &amp; Session Upgrades</p>
+          <h2>⚡ Upgrade Your Computer</h2>
+        </div>
+        <div class="user-coin-badge">
+          🪙 <strong id="upgrade-coin-balance">0</strong> Mitch Coins
+        </div>
+      </div>
+
+      <div class="upgrade-tabs">
+        <button type="button" class="upgrade-tab active" data-tab="cpu">Processor (CPU)</button>
+        <button type="button" class="upgrade-tab" data-tab="ram">Memory (RAM)</button>
+        <button type="button" class="upgrade-tab" data-tab="disk">Storage (Disk)</button>
+        <button type="button" class="upgrade-tab" data-tab="session">Daily Session</button>
+      </div>
+
+      <div id="upgrade-tab-content" class="upgrade-tab-content">
+        <!-- Injected dynamically by portal.js -->
+      </div>
+
+      <div class="upgrade-notice">
+        <span>💡 Upgrades are permanent and tie to your account even if you recreate your computer. When upgrading a running computer, changes apply live if host capacity permits!</span>
+      </div>
+
+      <p id="upgrade-status" class="form-status" role="status"></p>
+
+      <div class="dialog-actions">
+        <button type="button" id="upgrade-close-btn" class="quiet-button">Done</button>
+      </div>
+    </div>
+  </dialog>
+
   <script src="/app-shell.js?v=17" defer></script>
-  <script src="/vms/portal.js?v=2" defer></script>
+  <script src="/vms/portal.js?v=3" defer></script>
 </body>
 </html>

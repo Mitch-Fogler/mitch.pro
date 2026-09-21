@@ -11,6 +11,13 @@ import {
   VM_DEFAULT_MEMORY_MB,
   VM_DEFAULT_BALLOON_MB,
   VM_DEFAULT_DISK_GB,
+  VM_MAX_UPGRADE_CPU_CORES,
+  VM_MAX_UPGRADE_MEMORY_MB,
+  VM_MAX_UPGRADE_DISK_GB,
+  VM_FLEET_MAX_CORES,
+  VM_FLEET_MAX_MEMORY_MB,
+  VM_UPGRADE_CATALOG,
+  checkFleetResourceCapacity,
   getRemainingDailyVmSeconds,
   isDailyVmLimitReached,
   getVmDayKey,
@@ -207,25 +214,73 @@ assert(isVmInactive(now - (10 * 60 * 1000), { now }), 'activity 10 minutes ago m
 assert(isVmInactive(now - (15 * 60 * 1000), { now }), 'activity 15 minutes ago must be considered inactive');
 assert(!isVmInactive(null, { now }), 'null presence must not be marked inactive');
 
-// --- Capacity Limit ---
-assert(VM_MAX_CONCURRENT_RUNNING === 6, 'max concurrent running VMs must be 6');
+// --- Fleet Capacity Limit ---
+assert(VM_FLEET_MAX_CORES === 36, 'max fleet CPU cores must be 36');
+assert(VM_FLEET_MAX_MEMORY_MB === 98304, 'max fleet memory must be 96 GB (98304 MB)');
 assert(VM_COOLDOWN_DURATION_MS === 30 * 60 * 1000, 'cooldown duration must be 30 minutes');
 assert(VM_EXTENSION_COOLDOWN_MS === 24 * 60 * 60 * 1000, 'extension cooldown must be 24 hours');
 assert(VM_OFFPAGE_INACTIVITY_MS === 10 * 60 * 1000, 'offpage inactivity timeout must be 10 minutes');
 
-// --- 6-Hour Daily Max and Admin Exemption ---
+// --- VM Defaults (2 Cores, 4 GB RAM, 64 GB Disk) and Upgrades (Up to 6 Cores, 16 GB RAM, 256 GB Disk) ---
 assert(VM_DAILY_MAX_SECONDS === 6 * 3600, 'daily max VM seconds must be 6 hours (21600 seconds)');
-assert(VM_DEFAULT_CPU_CORES === 6, 'default CPU cores must be 6');
-assert(VM_DEFAULT_MEMORY_MB === 16384, 'default memory must be 16384 MB (16 GB)');
-assert(VM_DEFAULT_BALLOON_MB === 4096, 'default balloon memory must be 4096 MB (4 GB)');
+assert(VM_DEFAULT_CPU_CORES === 2, 'default CPU cores must be 2');
+assert(VM_DEFAULT_MEMORY_MB === 4096, 'default memory must be 4096 MB (4 GB)');
+assert(VM_DEFAULT_BALLOON_MB === 1024, 'default balloon memory must be 1024 MB (1 GB)');
 assert(VM_DEFAULT_DISK_GB === 64, 'default disk must be 64 GB');
+assert(VM_MAX_UPGRADE_CPU_CORES === 6, 'max upgrade CPU cores must be 6');
+assert(VM_MAX_UPGRADE_MEMORY_MB === 16384, 'max upgrade memory must be 16384 MB (16 GB)');
+assert(VM_MAX_UPGRADE_DISK_GB === 256, 'max upgrade disk must be 256 GB');
 
+// --- Fleet Resource Capacity Check ---
+const cap1 = checkFleetResourceCapacity(30, 80 * 1024, 6, 16 * 1024);
+assert(cap1.ok === true, '36 cores and 96 GB RAM must fit in fleet capacity');
+assert(cap1.totalCores === 36, 'total cores must be 36');
+assert(cap1.totalMemoryMb === 98304, 'total memory must be 98304 MB');
+
+const capOverCores = checkFleetResourceCapacity(36, 64 * 1024, 2, 4 * 1024);
+assert(capOverCores.ok === false, '38 cores must exceed 36 cores fleet limit');
+
+const capOverMem = checkFleetResourceCapacity(20, 96 * 1024, 2, 4 * 1024);
+assert(capOverMem.ok === false, '100 GB RAM must exceed 96 GB fleet limit');
+
+// --- Upgrade Catalog and Differential Pricing ---
+assert(Array.isArray(VM_UPGRADE_CATALOG.cpu), 'catalog must have cpu tiers');
+assert(Array.isArray(VM_UPGRADE_CATALOG.ram), 'catalog must have ram tiers');
+assert(Array.isArray(VM_UPGRADE_CATALOG.disk), 'catalog must have disk tiers');
+assert(Array.isArray(VM_UPGRADE_CATALOG.session), 'catalog must have session tiers');
+
+const cpuMax = VM_UPGRADE_CATALOG.cpu[VM_UPGRADE_CATALOG.cpu.length - 1];
+assert(cpuMax.value === 6, 'max cpu tier in catalog must be 6 cores');
+const ramMax = VM_UPGRADE_CATALOG.ram[VM_UPGRADE_CATALOG.ram.length - 1];
+assert(ramMax.value === 16384, 'max ram tier in catalog must be 16384 MB (16 GB)');
+const diskMax = VM_UPGRADE_CATALOG.disk[VM_UPGRADE_CATALOG.disk.length - 1];
+assert(diskMax.value === 256, 'max disk tier in catalog must be 256 GB');
+const sessionMax = VM_UPGRADE_CATALOG.session[VM_UPGRADE_CATALOG.session.length - 1];
+assert(sessionMax.value === 86400, 'max session tier in catalog must be 86400s (24h unlimited)');
+
+// Differential pricing verification
+function calcCost(cat, fromVal, toVal) {
+  const fromTier = VM_UPGRADE_CATALOG[cat].find(t => t.value === fromVal) || { cost: 0 };
+  const toTier = VM_UPGRADE_CATALOG[cat].find(t => t.value === toVal) || { cost: 0 };
+  return Math.max(0, toTier.cost - fromTier.cost);
+}
+assert(calcCost('cpu', 2, 4) === 400, '2 -> 4 cores should cost 400 coins');
+assert(calcCost('cpu', 4, 6) === 400, '4 -> 6 cores should cost 400 coins (differential)');
+assert(calcCost('cpu', 2, 6) === 800, '2 -> 6 cores should cost 800 coins');
+assert(calcCost('ram', 4096, 16384) === 1200, '4GB -> 16GB should cost 1200 coins');
+assert(calcCost('ram', 8192, 16384) === 800, '8GB -> 16GB should cost 800 coins');
+assert(calcCost('disk', 64, 256) === 1200, '64GB -> 256GB should cost 1200 coins');
+assert(calcCost('session', 21600, 86400) === 1800, '6h -> 24h should cost 1800 coins');
+
+// --- Daily Max and Admin/Session Upgraded Exemption ---
 assert(getRemainingDailyVmSeconds(0) === 21600, '0 used seconds must leave 21600 seconds remaining');
 assert(getRemainingDailyVmSeconds(3600) === 18000, '1 hour used must leave 5 hours remaining');
 assert(getRemainingDailyVmSeconds(21600) === 0, '6 hours used must leave 0 seconds remaining');
 assert(getRemainingDailyVmSeconds(25000) === 0, 'over 6 hours used must leave 0 seconds remaining');
 assert(getRemainingDailyVmSeconds(21600, { isAdmin: true }) === Infinity, 'admin must have Infinity remaining seconds');
 assert(getRemainingDailyVmSeconds(50000, { isAdmin: true }) === Infinity, 'admin must have Infinity remaining seconds regardless of usage');
+assert(getRemainingDailyVmSeconds(50000, { dailyMaxSeconds: 86400 }) === Infinity, 'unlimited 24h session upgrade must have Infinity remaining seconds');
+assert(getRemainingDailyVmSeconds(20000, { dailyMaxSeconds: 36000 }) === 16000, '10h session with 20000s used must leave 16000s remaining');
 
 assert(!isDailyVmLimitReached(0), '0 used must not reach daily limit');
 assert(!isDailyVmLimitReached(21599), '21599s used must not reach daily limit');
@@ -233,6 +288,7 @@ assert(isDailyVmLimitReached(21600), '21600s used must reach daily limit');
 assert(isDailyVmLimitReached(30000), '30000s used must reach daily limit');
 assert(!isDailyVmLimitReached(21600, { isAdmin: true }), 'admin must not be subject to daily limit');
 assert(!isDailyVmLimitReached(99999, { isAdmin: true }), 'admin must not be subject to daily limit even with high usage');
+assert(!isDailyVmLimitReached(99999, { dailyMaxSeconds: 86400 }), 'unlimited session upgrade must not be subject to daily limit');
 
 assert(getVmDayKey(new Date('2026-09-17T12:00:00Z').getTime()) === '2026-09-17', 'getVmDayKey must return YYYY-MM-DD');
 

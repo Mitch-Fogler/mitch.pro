@@ -5,9 +5,11 @@
   document.title = `My Computer - ${location.hostname}`;
   const dialog = $('confirm-dialog');
   const provDialog = $('provision-dialog');
+  const upDialog = $('upgrade-dialog');
   const headers = { 'Content-Type': 'application/json', 'X-Mitch-Requested-With': '1' };
   const pending = new Map();
   let computers = [], loading = false, provisionMode = 'create';
+  let upgradeData = null, activeUpgradeTab = 'cpu';
   const esc = value => String(value ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const bytes = value => Number(value) ? `${(Number(value) / 1073741824).toLocaleString(undefined, { maximumFractionDigits: 1 })} GB` : '\u2014';
   const uptime = value => { const n = Number(value) || 0, d = Math.floor(n / 86400), h = Math.floor(n % 86400 / 3600), m = Math.floor(n % 3600 / 60); return !n ? '\u2014' : d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
@@ -50,18 +52,19 @@
         <div class="machine-facts">
           <span><small>Address</small><strong title="${esc(vm.ipAddress)}">${esc(vm.ipAddress || (running ? 'Connecting…' : 'Not available'))}</strong></span>
           <span><small>Uptime</small><strong>${uptime(vm.uptime)}</strong></span>
-          ${isExempt ? `<span><small>Time Limit</small><strong style="color:#4ade80;">Unlimited</strong></span>` : (running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : '')}
+          ${isExempt ? `<span><small>Time Limit</small><strong style="color:#4ade80;">Unlimited</strong></span>` : (running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : `<span><small>Session Limit</small><strong>${Math.round((vm.upgrades?.dailyMaxSeconds || 21600) / 3600)}h / day</strong></span>`)}
           ${inCooldown ? `<span><small>Cooldown</small><strong style="color:#f87171;">${cooldownMins}m left</strong></span>` : ''}
           <span><small>Admin Access</small><strong style="color:${adminAllowed ? '#4ade80' : '#94a3b8'};">${adminAllowed ? 'Allowed' : 'Disallowed'}</strong></span>
         </div>
         <div class="resource-grid">
-          <div class="resource"><span><small>CPU</small><b>${esc(vm.cpuCores || '—')} cores</b></span><em>${cpuLoad}%</em><i><b style="width:${cpuLoad}%"></b></i></div>
-          <div class="resource"><span><small>Memory</small><b>${bytes(vm.memoryTotal)}</b></span><em>${memoryLoad}%</em><i><b style="width:${memoryLoad}%"></b></i></div>
-          <div class="resource"><span><small>Storage</small><b>${bytes(vm.diskTotal)}</b></span><em>${diskLoad}%</em><i><b style="width:${diskLoad}%"></b></i></div>
+          <div class="resource"><span><small>CPU</small><b>${esc(vm.cpuCores || vm.upgrades?.cpuCores || '2')} cores</b></span><em>${cpuLoad}%</em><i><b style="width:${cpuLoad}%"></b></i></div>
+          <div class="resource"><span><small>Memory</small><b>${bytes(vm.memoryTotal || (vm.upgrades?.memoryMb ? vm.upgrades.memoryMb * 1048576 : 4294967296))}</b></span><em>${memoryLoad}%</em><i><b style="width:${memoryLoad}%"></b></i></div>
+          <div class="resource"><span><small>Storage</small><b>${bytes(vm.diskTotal || (vm.upgrades?.diskGb ? vm.upgrades.diskGb * 1073741824 : 68719476736))}</b></span><em>${diskLoad}%</em><i><b style="width:${diskLoad}%"></b></i></div>
         </div>
         ${adminRequested && !adminAllowed ? `<div class="admin-request-banner" style="background:rgba(234,179,8,.12);border:1px solid #eab308;border-radius:10px;padding:10px 14px;margin:14px 0 0;display:flex;align-items:center;justify-content:space-between;gap:10px;"><span style="font-size:0.85rem;color:#fde047;">⚠️ Administrator requested access to your computer for support.</span><button class="primary-button" style="min-height:32px;padding:5px 12px;font-size:0.82rem;" data-action="grant-admin-access">Allow Access</button></div>` : ''}
         <div class="computer-actions">
-          ${!running ? `<button class="primary-button" data-action="start" ${busy || inCooldown || vm.status !== 'stopped' || dailyLimitReached ? 'disabled' : ''}>${dailyLimitReached ? 'Daily Limit Reached (6h)' : inCooldown ? `Cooldown (${cooldownMins}m)` : (operation || 'Start Computer')}</button>` : ''}
+          ${!running ? `<button class="primary-button" data-action="start" ${busy || inCooldown || vm.status !== 'stopped' || dailyLimitReached ? 'disabled' : ''}>${dailyLimitReached ? 'Daily Limit Reached' : inCooldown ? `Cooldown (${cooldownMins}m)` : (operation || 'Start Computer')}</button>` : ''}
+          <button class="control-button upgrade-control" data-action="open-upgrade" title="Upgrade CPU, RAM, Disk, or Session Time with Mitch Coins"><span aria-hidden="true">⚡</span> Upgrade Specs</button>
           ${canExtend ? `<button class="control-button" data-action="extend" ${busy ? 'disabled' : ''}><span aria-hidden="true">+</span> Extend 30m</button>` : (running && dailyUsed ? `<button class="control-button" disabled title="Only 1 30-minute extension allowed per day"><span aria-hidden="true">+</span> Extend 30m (Used)</button>` : '')}
           <button class="control-button" data-action="restart" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">↻</span> Restart</button>
           <button class="control-button danger-control" data-action="shutdown" ${!running || busy ? 'disabled' : ''}><span aria-hidden="true">⏻</span> Shut Down</button>
@@ -219,6 +222,121 @@
     } catch (_) {}
   }
 
+  async function openUpgradeModal() {
+    if (!upDialog) return;
+    $('upgrade-status').textContent = '';
+    upDialog.showModal();
+    try {
+      const res = await fetch('/api/vm/upgrades', { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) throw new Error('Could not load upgrade catalog.');
+      upgradeData = await res.json();
+      if ($('upgrade-coin-balance')) {
+        $('upgrade-coin-balance').textContent = Math.floor(upgradeData.coins || 0).toLocaleString();
+      }
+      renderUpgradeTab();
+    } catch (err) {
+      $('upgrade-status').textContent = err.message || 'Error loading upgrades.';
+    }
+  }
+
+  function renderUpgradeTab() {
+    const container = $('upgrade-tab-content');
+    if (!container || !upgradeData) return;
+    const cat = activeUpgradeTab;
+    const tiers = upgradeData.catalog?.[cat] || [];
+    const current = upgradeData.current || {};
+    const coins = upgradeData.coins || 0;
+
+    let currentVal = 0;
+    if (cat === 'cpu') currentVal = current.cpuCores || 2;
+    if (cat === 'ram') currentVal = current.memoryMb || 4096;
+    if (cat === 'disk') currentVal = current.diskGb || 64;
+    if (cat === 'session') currentVal = current.dailyMaxSeconds || 21600;
+
+    const currentTier = tiers.find(t => t.value === currentVal) || { cost: 0 };
+
+    container.innerHTML = `<div class="upgrade-tier-list">
+      ${tiers.map(tier => {
+        const isCurrent = tier.value === currentVal;
+        const isOwned = tier.value <= currentVal;
+        const diffCost = Math.max(0, tier.cost - currentTier.cost);
+        const canAfford = coins >= diffCost;
+
+        let actionHtml = '';
+        if (isCurrent) {
+          actionHtml = `<span class="current-tier-pill">✓ Current</span>`;
+        } else if (isOwned) {
+          actionHtml = `<span class="current-tier-pill" style="opacity:0.75;">Included</span>`;
+        } else if (canAfford) {
+          actionHtml = `<button type="button" class="primary-button" data-upgrade-cat="${esc(cat)}" data-upgrade-val="${tier.value}" style="min-height:36px;padding:6px 14px;font-size:0.85rem;">Upgrade for ${diffCost} 🪙</button>`;
+        } else {
+          actionHtml = `<button type="button" class="quiet-button" disabled style="font-size:0.82rem;padding:6px 12px;">Need ${diffCost} 🪙</button>`;
+        }
+
+        return `<div class="upgrade-tier-card ${isCurrent ? 'is-current' : ''}">
+          <div class="upgrade-tier-info">
+            <span class="upgrade-tier-title">${esc(tier.label)}</span>
+            <span class="upgrade-tier-sub">${tier.cost === 0 ? 'Free (Standard tier)' : `Base Tier: ${tier.cost} coins`}</span>
+          </div>
+          <div class="upgrade-tier-action">
+            ${actionHtml}
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+    document.querySelectorAll('.upgrade-tab').forEach(tab => {
+      tab.classList.toggle('active', tab.dataset.tab === cat);
+    });
+  }
+
+  async function purchaseUpgrade(category, targetValue) {
+    const statusEl = $('upgrade-status');
+    statusEl.textContent = 'Applying upgrade…';
+    statusEl.style.color = '#fde047';
+    try {
+      const res = await fetch('/api/vm/upgrade', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers,
+        body: JSON.stringify({ category, targetValue }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Failed to apply upgrade.');
+      statusEl.textContent = data.message || 'Upgrade successful!';
+      statusEl.style.color = '#4ade80';
+      if (upgradeData) {
+        upgradeData.current = data.upgrades;
+        upgradeData.coins = data.coins;
+        if ($('upgrade-coin-balance')) $('upgrade-coin-balance').textContent = Math.floor(data.coins).toLocaleString();
+        renderUpgradeTab();
+      }
+      load();
+    } catch (err) {
+      statusEl.textContent = err.message || 'Upgrade failed.';
+      statusEl.style.color = '#f87171';
+    }
+  }
+
+  $('upgrade-close-btn')?.addEventListener('click', () => upDialog?.close());
+
+  document.querySelectorAll('.upgrade-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      activeUpgradeTab = tab.dataset.tab;
+      renderUpgradeTab();
+    });
+  });
+
+  $('upgrade-tab-content')?.addEventListener('click', event => {
+    const btn = event.target.closest('button[data-upgrade-cat]');
+    if (!btn || btn.disabled) return;
+    const cat = btn.dataset.upgradeCat;
+    const val = Number(btn.dataset.upgradeVal);
+    if (cat && Number.isFinite(val)) {
+      purchaseUpgrade(cat, val);
+    }
+  });
+
   grid.addEventListener('click', event => {
     const button = event.target.closest('button[data-action]');
     if (!button || button.disabled) return;
@@ -226,6 +344,10 @@
     const cardEl = button.closest('[data-id]');
     const id = cardEl?.dataset.id;
     if (!id) return;
+    if (action === 'open-upgrade') {
+      openUpgradeModal();
+      return;
+    }
     if (action === 'grant-admin-access') {
       toggleAdminAccess(id, true);
       return;
@@ -238,6 +360,6 @@
   });
   $('refresh-button').addEventListener('click', load);
   load().then(checkUrlAction);
-  const timer = setInterval(() => { if (!document.hidden && !dialog.open && !provDialog?.open && !pending.size) load(); }, 60000);
+  const timer = setInterval(() => { if (!document.hidden && !dialog.open && !provDialog?.open && !upDialog?.open && !pending.size) load(); }, 60000);
   window.addEventListener('pagehide', () => clearInterval(timer), { once: true });
 })();
