@@ -7,7 +7,12 @@
     "openAsDefault": true,
     "spaces": [],
     "rooms": [
-      "#general:mitch.pro"
+      "#general:mitch.pro",
+      "#tech:mitch.pro",
+      "#biking:mitch.pro",
+      "#gaming:mitch.pro",
+      "#computers:mitch.pro",
+      "#random:mitch.pro"
     ],
     "servers": ["mitch.pro"]
   },

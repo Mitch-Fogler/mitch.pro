@@ -229,7 +229,7 @@ assert(VM_DEFAULT_BALLOON_MB === 1024, 'default balloon memory must be 1024 MB (
 assert(VM_DEFAULT_DISK_GB === 64, 'default disk must be 64 GB');
 assert(VM_MAX_UPGRADE_CPU_CORES === 6, 'max upgrade CPU cores must be 6');
 assert(VM_MAX_UPGRADE_MEMORY_MB === 16384, 'max upgrade memory must be 16384 MB (16 GB)');
-assert(VM_MAX_UPGRADE_DISK_GB === 256, 'max upgrade disk must be 256 GB');
+assert(VM_MAX_UPGRADE_DISK_GB === 128, 'max upgrade disk must be 128 GB');
 
 // --- Fleet Resource Capacity Check ---
 const cap1 = checkFleetResourceCapacity(30, 80 * 1024, 6, 16 * 1024);
@@ -254,7 +254,7 @@ assert(cpuMax.value === 6, 'max cpu tier in catalog must be 6 cores');
 const ramMax = VM_UPGRADE_CATALOG.ram[VM_UPGRADE_CATALOG.ram.length - 1];
 assert(ramMax.value === 16384, 'max ram tier in catalog must be 16384 MB (16 GB)');
 const diskMax = VM_UPGRADE_CATALOG.disk[VM_UPGRADE_CATALOG.disk.length - 1];
-assert(diskMax.value === 256, 'max disk tier in catalog must be 256 GB');
+assert(diskMax.value === 128, 'max disk tier in catalog must be 128 GB');
 const sessionMax = VM_UPGRADE_CATALOG.session[VM_UPGRADE_CATALOG.session.length - 1];
 assert(sessionMax.value === 86400, 'max session tier in catalog must be 86400s (24h unlimited)');
 
@@ -269,7 +269,8 @@ assert(calcCost('cpu', 4, 6) === 400, '4 -> 6 cores should cost 400 coins (diffe
 assert(calcCost('cpu', 2, 6) === 800, '2 -> 6 cores should cost 800 coins');
 assert(calcCost('ram', 4096, 16384) === 1200, '4GB -> 16GB should cost 1200 coins');
 assert(calcCost('ram', 8192, 16384) === 800, '8GB -> 16GB should cost 800 coins');
-assert(calcCost('disk', 64, 256) === 1200, '64GB -> 256GB should cost 1200 coins');
+assert(calcCost('disk', 64, 96) === 300, '64GB -> 96GB should cost 300 coins');
+assert(calcCost('disk', 64, 128) === 1200, '64GB -> 128GB should cost 1200 coins');
 assert(calcCost('session', 21600, 86400) === 1800, '6h -> 24h should cost 1800 coins');
 
 // --- Daily Max and Admin/Session Upgraded Exemption ---

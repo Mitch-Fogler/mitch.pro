@@ -406,6 +406,16 @@
     </div>
   </header>
 
+  <div id="active-buffs-bar" class="panel" style="display:none;margin-bottom:1.15rem;background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.25);border-radius:var(--t-radius, 8px);padding:0.85rem 1.15rem;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+      <strong style="font-size:0.85rem;color:var(--t-ac);text-transform:uppercase;letter-spacing:0.06em;display:flex;align-items:center;gap:0.4rem;">
+        ⚡ Active Boosts & Casino Exploits
+      </strong>
+      <span id="active-buffs-count" class="pill good">0 Active</span>
+    </div>
+    <div id="active-buffs-list" style="display:flex;flex-wrap:wrap;gap:0.5rem;"></div>
+  </div>
+
   <div class="shop-tools"><label><span>⌕</span><input id="shop-search" type="search" placeholder="Search cosmetics, perks, and passes" autocomplete="off"></label><span class="shop-stock"><i></i><b id="shop-stock-count">0</b> items in stock</span></div>
   <div id="tabs" class="tabs"></div>
   <div id="market"></div>
@@ -468,7 +478,10 @@
     builder_badge: '🛠',
     lucky_badge: '🍀',
     premium_star_badge: '⭐',
-    owner_fan_badge: '👑'
+    owner_fan_badge: '👑',
+    loaded_dice: '🎲',
+    casino_glitch_chip: '💥',
+    infinite_luck_charm: '⚡'
   };
 
   let coins = 0;
@@ -577,9 +590,24 @@
     tabs.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => setTab(btn.dataset.tab)));
   }
 
+  function isBuffActive(item) {
+    if (!inventory?.status) return false;
+    const now = Date.now();
+    const s = inventory.status;
+    if (item.costType === 'loaded_dice') return (s.loadedDiceUntil || 0) > now;
+    if (item.costType === 'casino_glitch_chip') return (s.casinoGlitchUntil || 0) > now;
+    if (item.costType === 'infinite_luck_charm') return (s.infiniteLuckUntil || 0) > now;
+    if (item.costType === 'vip_casino_pass') return (s.vipUntil || 0) > now || vipUntil > now;
+    if (item.costType === 'bad_beat_insurance') return (s.badBeatInsuranceUntil || 0) > now;
+    if (item.costType === 'double_down_ticket') return (s.doubleDownUntil || 0) > now;
+    if (item.costType === 'happy_hour_ticket') return (s.happyHourUntil || 0) > now;
+    return false;
+  }
+
   function buttonLabel(item, owned, active) {
     if (locked(item)) return 'Premium Only';
-    if (item.costType === 'vip_casino_pass' && owned) return 'Active';
+    if (isBuffActive(item)) return 'Active (Extend)';
+    if (item.costType === 'vip_casino_pass' && owned) return 'Active (Extend)';
     if (active) return 'Turn Off';
     if (owned && toggleable(item)) return 'Turn On';
     if (owned) return 'Owned';
@@ -817,6 +845,56 @@
       document.getElementById('shop-note').textContent = isAdmin
         ? 'Admin accounts automatically own every shop item and can toggle supported items on or off.'
         : 'Prices now scale by rarity and usefulness. Premium discounts vary per item, so cooler perks keep their own special pricing.';
+
+      const status = inventory.status || {};
+      const activeBuffs = [];
+      const now = Date.now();
+      if ((status.infiniteLuckUntil || 0) > now) {
+        const mins = Math.max(1, Math.ceil((status.infiniteLuckUntil - now) / 60000));
+        activeBuffs.push(`<span class="pill legendary">⚡ Infinite Luck Exploit (${mins}m left: 10X + Auto-Win + VIP)</span>`);
+      }
+      if ((status.loadedDiceUntil || 0) > now) {
+        const mins = Math.max(1, Math.ceil((status.loadedDiceUntil - now) / 60000));
+        activeBuffs.push(`<span class="pill gold">🎲 Loaded Dice (${mins}m left: Auto-Win Rig)</span>`);
+      }
+      if ((status.casinoGlitchUntil || 0) > now) {
+        const mins = Math.max(1, Math.ceil((status.casinoGlitchUntil - now) / 60000));
+        activeBuffs.push(`<span class="pill elite">💥 5X Glitch Multiplier (${mins}m left)</span>`);
+      }
+      if ((status.vipUntil || 0) > now || vipUntil > now) {
+        const maxVip = Math.max(status.vipUntil || 0, vipUntil || 0);
+        const mins = Math.max(1, Math.ceil((maxVip - now) / 60000));
+        activeBuffs.push(`<span class="pill gold">👑 VIP Casino Pass (${mins}m left: Unlimited Bet)</span>`);
+      }
+      if ((status.doubleDownUntil || 0) > now) {
+        const mins = Math.max(1, Math.ceil((status.doubleDownUntil - now) / 60000));
+        activeBuffs.push(`<span class="pill rare">🎯 Double Down (${mins}m left: 2X Win)</span>`);
+      }
+      if ((status.badBeatInsuranceUntil || 0) > now) {
+        const mins = Math.max(1, Math.ceil((status.badBeatInsuranceUntil - now) / 60000));
+        activeBuffs.push(`<span class="pill good">🛡️ Bad Beat Insurance (${mins}m left: 100% Refund)</span>`);
+      }
+      if ((status.happyHourUntil || 0) > now) {
+        const mins = Math.max(1, Math.ceil((status.happyHourUntil - now) / 60000));
+        activeBuffs.push(`<span class="pill good">🔥 Personal Happy Hour (${mins}m left: 2X Coins)</span>`);
+      }
+      if ((status.slotsFreeSpins || 0) > 0) {
+        activeBuffs.push(`<span class="pill good">🎰 ${status.slotsFreeSpins} Free Spins Available</span>`);
+      }
+
+      const bar = document.getElementById('active-buffs-bar');
+      const list = document.getElementById('active-buffs-list');
+      const count = document.getElementById('active-buffs-count');
+      if (bar && list && count) {
+        if (activeBuffs.length > 0) {
+          bar.style.display = 'block';
+          list.innerHTML = activeBuffs.join('');
+          count.textContent = `${activeBuffs.length} Active`;
+        } else {
+          bar.style.display = 'none';
+        }
+      }
+
       render();
     } catch (err) {
       console.error(err);
@@ -827,6 +905,9 @@
 
   const itemExplanations = {
     premium: "<strong>Premium Lifetime Membership</strong> unlocks the ultimate features of the platform. You get double coin rewards for Typing Races & Logic Puzzles, double offline progression in Clicker & Richard's Riches, a larger canvas painting brush (up to 3x3), exclusive golden name options, VIP forum threads, priority support channels, and the potential to sponsor your own custom arcade game name on the site!",
+    loaded_dice: "<strong>Loaded Lucky Dice:</strong> Exploit the casino physics engine! Forces guaranteed winning rolls, spins, coinflips, plinko drops, scratch cards, and roulette bets for 30 minutes. Rake in infinite coins!",
+    casino_glitch_chip: "<strong>Quantum Glitch Chip:</strong> Exploit a memory overflow vulnerability in casino payout smart contracts! Multiplies all casino winnings by an insane 5X factor for 20 minutes.",
+    infinite_luck_charm: "<strong>Infinite Coins Exploit Charm:</strong> The holy grail of casino hacks! Combines Loaded Dice auto-wins, 10X glitch payout multiplier, VIP unlimited max betting, and 100% bad beat loss refund for 30 full minutes. Allows accumulating millions or infinite coins quickly.",
     neon_purple: "<strong>Neon Purple Name:</strong> Equipping this styling option instantly colors your name across all public spaces including Chat, Profiles, and Leaderboards. Perfect for standing out with a vibrant look.",
     electric_blue: "<strong>Electric Blue Name:</strong> Equipping this styling option colors your name in electric blue. Stand out in chat and game leaderboards.",
     mint_flash: "<strong>Violet Flash Name:</strong> A luminous violet accent for your chat username. Gives messages a cosmic glow.",
