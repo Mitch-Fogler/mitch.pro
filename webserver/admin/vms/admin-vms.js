@@ -83,8 +83,13 @@
     const active = (overview.activeSessions || []).length;
     if ($('active-sessions-count')) $('active-sessions-count').textContent = active;
     if ($('active-sessions-sub')) $('active-sessions-sub').textContent = `${active} user${active === 1 ? '' : 's'} on desktop`;
-    const runningNonAdmin = overview.runningNonAdminCount != null ? overview.runningNonAdminCount : '\u2014';
-    if ($('running-vms-count')) $('running-vms-count').textContent = `${runningNonAdmin} / 6`;
+    const runningCores = overview.runningNonAdminCores != null ? overview.runningNonAdminCores : (overview.runningNonAdminCount ? overview.runningNonAdminCount * 2 : 0);
+    const maxCores = overview.maxFleetCores || 36;
+    const runningMemGb = overview.runningNonAdminMemoryMb != null ? Math.round(overview.runningNonAdminMemoryMb / 1024) : 0;
+    const maxMemGb = overview.maxFleetMemoryMb != null ? Math.round(overview.maxFleetMemoryMb / 1024) : 96;
+    const runningCount = overview.runningNonAdminCount != null ? overview.runningNonAdminCount : 0;
+    if ($('running-vms-count')) $('running-vms-count').textContent = `${runningCores}c / ${runningMemGb}GB`;
+    if ($('running-vms-sub')) $('running-vms-sub').textContent = `${runningCount} VMs (${maxCores}c, ${maxMemGb}GB max)`;
   }
   function renderForms() {
     for (const id of ['create-user', 'assign-user']) options(id, overview.users || [], user => user.email, user => `${user.name || user.email} - ${user.email}`, 'No users found');

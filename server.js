@@ -26,6 +26,7 @@ import {
   unassignVirtualMachine,
   deleteVirtualMachine,
   updateVirtualMachineRuntime,
+  updateVirtualMachineSpecs,
   appendVmAuditLog,
   listVmAuditLogs,
   recordVmUsageSample,
@@ -41,6 +42,13 @@ import {
   validateDesktopSession,
   VmOperationGate,
   VM_MAX_CONCURRENT_RUNNING,
+  VM_FLEET_MAX_CORES,
+  VM_FLEET_MAX_MEMORY_MB,
+  VM_MAX_UPGRADE_CPU_CORES,
+  VM_MAX_UPGRADE_MEMORY_MB,
+  VM_MAX_UPGRADE_DISK_GB,
+  VM_UPGRADE_CATALOG,
+  checkFleetResourceCapacity,
   VM_DAILY_MAX_SECONDS,
   VM_EXTENSION_COOLDOWN_MS,
   VM_COOLDOWN_DURATION_MS,
@@ -1605,6 +1613,8 @@ const RATE_LIMITS = {
   '/api/vm/heartbeat':             [120, 60],
   '/api/vm/my-computer/create':    [5,   60],
   '/api/vm/my-computer/recreate':  [5,   60],
+  '/api/vm/upgrades':              [30,  60],
+  '/api/vm/upgrade':               [15,  60],
   '/api/admin/vms':                [30,  60],
   '/api/admin/profile-reports/resolve': [20, 60],
   '/api/presence/heartbeat':       [60,  60],
@@ -3128,7 +3138,17 @@ const ACHIEVEMENT_DEFINITIONS = {
   'jeopardy_2': { name: 'Jeopardy Legend', desc: 'Win 10 Jeopardy games', bonus: 500, goal: 10, stat: 'jeopardy_wins' }
 };
 
-function loadCoins() { return coinsCache; }
+function loadCoins() {
+  if (process.env.NODE_ENV === 'test') {
+    try {
+      const fromDisk = loadJson(COINS_FILE, {});
+      if (fromDisk && typeof fromDisk === 'object') {
+        coinsCache = { ...fromDisk };
+      }
+    } catch {}
+  }
+  return coinsCache;
+}
 function saveCoins(c) { coinsCache = c; saveJson(COINS_FILE, c); }
 function getCoins(email) { if (!email) return 0; return loadCoins()[normalizeEmail(email)] || 0; }
 function addCoins(email, amount, reason = '') {
@@ -19016,6 +19036,140 @@ async function handleRequest(req, server) {
     });
   }
 
+  if (path === '/api/vm/upgrades' && method === 'GET') {
+    const rl = checkRateLimit(req, '/api/vm/upgrades'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    const current = getUserVmUpgrades(actor.email);
+    const coins = getCoins(actor.email);
+    const runningResources = await getRunningNonAdminVmResources();
+    return jsonResp(200, {
+      catalog: VM_UPGRADE_CATALOG,
+      current,
+      coins,
+      fleet: {
+        runningCores: runningResources.cores,
+        runningMemoryMb: runningResources.memoryMb,
+        maxCores: VM_FLEET_MAX_CORES,
+        maxMemoryMb: VM_FLEET_MAX_MEMORY_MB,
+      },
+    });
+  }
+
+  if (path === '/api/vm/upgrade' && method === 'POST') {
+    const rl = checkRateLimit(req, '/api/vm/upgrade'); if (rl) return rl;
+    const actor = authenticatedVmActor(req);
+    if (!actor) return jsonResp(401, { error: 'Sign in required.' });
+    if (!vmSameOriginRequest(req)) return jsonResp(403, { error: 'Request origin rejected.' });
+    if (!await tryParseJson()) return jsonResp(400, { error: 'Invalid request.' });
+
+    const category = String(body.category || '').trim().toLowerCase();
+    const targetValue = Number(body.targetValue);
+    if (!['cpu', 'ram', 'disk', 'session'].includes(category) || !Number.isFinite(targetValue)) {
+      return jsonResp(400, { error: 'Invalid category or target value.' });
+    }
+
+    const tiers = VM_UPGRADE_CATALOG[category];
+    const targetTier = tiers.find(t => t.value === targetValue);
+    if (!targetTier) {
+      return jsonResp(400, { error: 'Target upgrade tier not found in catalog.' });
+    }
+
+    const currentUpgrades = getUserVmUpgrades(actor.email);
+    let currentValue = 0;
+    if (category === 'cpu') currentValue = currentUpgrades.cpuCores;
+    if (category === 'ram') currentValue = currentUpgrades.memoryMb;
+    if (category === 'disk') currentValue = currentUpgrades.diskGb;
+    if (category === 'session') currentValue = currentUpgrades.dailyMaxSeconds;
+
+    if (targetValue <= currentValue) {
+      return jsonResp(400, { error: 'You already possess this tier or a higher tier.' });
+    }
+
+    const currentTier = tiers.find(t => t.value === currentValue) || { cost: 0 };
+    const cost = Math.max(0, targetTier.cost - currentTier.cost);
+
+    const userCoins = getCoins(actor.email);
+    if (userCoins < cost) {
+      return jsonResp(402, {
+        error: `Insufficient Mitch Coins. You need ${cost} coins, but only have ${Math.floor(userCoins)}.`,
+        code: 'insufficient_coins',
+        required: cost,
+        current: userCoins,
+      });
+    }
+
+    const userVms = getVirtualMachinesForOwner(actor.email).filter(r => r.status !== 'unassigned');
+    const vmRecord = userVms[0] || null;
+    let isVmRunning = false;
+    if (vmRecord && proxmoxDesktop.configured) {
+      try {
+        const runtime = await proxmoxDesktop.getStatus(vmRecord);
+        isVmRunning = (runtime?.state === 'running');
+      } catch {
+        isVmRunning = false;
+      }
+    }
+
+    if (isVmRunning && !actor.isAdmin) {
+      const additionalCores = (category === 'cpu') ? (targetValue - currentValue) : 0;
+      const additionalMemoryMb = (category === 'ram') ? (targetValue - currentValue) : 0;
+      if (additionalCores > 0 || additionalMemoryMb > 0) {
+        const capCheck = await canAccommodateVmResources(additionalCores, additionalMemoryMb);
+        if (!capCheck.ok) {
+          await notifyCapacityFullOnAttempt(actor.email, `upgrade ${category} to ${targetTier.label}`, { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
+          return jsonResp(409, {
+            error: `Host capacity reached: not enough resources to apply this upgrade while your computer is running (${capCheck.currentCores}/${capCheck.maxCores} cores, ${Math.round(capCheck.currentMemoryMb / 1024)}/${Math.round(capCheck.maxMemoryMb / 1024)} GB RAM). Stop your computer to upgrade, or try again later.`,
+            code: 'capacity_limit_reached',
+          });
+        }
+      }
+    }
+
+    if (cost > 0) {
+      addCoins(actor.email, -cost, `vm-upgrade: ${category} to ${targetTier.label}`);
+    }
+
+    const newUpgrades = saveUserVmUpgrade(actor.email, category, targetValue);
+
+    if (vmRecord) {
+      const updateSpecs = {};
+      if (category === 'cpu') updateSpecs.cpuCores = targetValue;
+      if (category === 'ram') updateSpecs.memoryMb = targetValue;
+      if (category === 'disk') updateSpecs.diskGb = targetValue;
+
+      if (Object.keys(updateSpecs).length > 0) {
+        updateVirtualMachineSpecs(vmRecord.id, updateSpecs);
+        if (updateSpecs.cpuCores != null) vmRecord.cpuCores = updateSpecs.cpuCores;
+        if (updateSpecs.memoryMb != null) vmRecord.memoryMb = updateSpecs.memoryMb;
+        if (updateSpecs.diskGb != null) vmRecord.diskGb = updateSpecs.diskGb;
+
+        if (proxmoxDesktop.configured) {
+          try {
+            await proxmoxDesktop.updateHardware(vmRecord, updateSpecs);
+          } catch (hwErr) {
+            console.warn(`[vm-upgrade] Hardware update warning for ${vmRecord.id}:`, hwErr?.message || hwErr);
+          }
+        }
+      }
+
+      vmAudit({
+        actorEmail: actor.email,
+        record: vmRecord,
+        action: 'VM_UPGRADED',
+        success: true,
+        details: { category, targetValue, cost, newUpgrades },
+      });
+    }
+
+    return jsonResp(200, {
+      success: true,
+      message: `Successfully upgraded ${category} to ${targetTier.label}!`,
+      upgrades: newUpgrades,
+      coins: getCoins(actor.email),
+    });
+  }
+
   if (path === '/api/vm/my-computer/create' && method === 'POST') {
     const rl = checkRateLimit(req, '/api/vm/my-computer/create'); if (rl) return rl;
     const actor = authenticatedVmActor(req);
@@ -19028,11 +19182,12 @@ async function handleRequest(req, server) {
     if (existing.length > 0) {
       return jsonResp(409, { error: 'You already have a computer assigned. Use the recreate option if you want to start fresh.' });
     }
+    const userUpgrades = getUserVmUpgrades(actor.email);
     if (!actor.isAdmin) {
-      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email));
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email), { isAdmin: false, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
       if (dailyRemaining <= 0) {
         return jsonResp(429, {
-          error: 'Daily limit reached: you have used your maximum 6 hours of computer time for today. Your daily limit will reset tomorrow.',
+          error: `Daily limit reached: you have used your maximum ${Math.round(userUpgrades.dailyMaxSeconds / 3600)} hours of computer time for today. Your daily limit will reset tomorrow.`,
           code: 'daily_limit_reached',
           dailyRemainingSeconds: 0,
         });
@@ -19042,9 +19197,9 @@ async function handleRequest(req, server) {
         const mins = Math.ceil(cooldownRemaining / 60);
         return jsonResp(429, { error: `Computer is cooling down. You can start/create a computer in ${mins} minute${mins === 1 ? '' : 's'}.`, code: 'vm_cooldown_active' });
       }
-      const runningNonAdmin = await countRunningNonAdminVms();
-      if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
-        await notifyCapacityFullOnAttempt(actor.email, 'create a computer');
+      const capCheck = await canAccommodateVmResources(userUpgrades.cpuCores, userUpgrades.memoryMb);
+      if (!capCheck.ok) {
+        await notifyCapacityFullOnAttempt(actor.email, 'create a computer', { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
         return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
       }
     }
@@ -19073,11 +19228,11 @@ async function handleRequest(req, server) {
         id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
         node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
         hostname, operatingSystem: 'Linux Desktop',
-        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB, status: 'provisioning', createdAt: Date.now(),
+        templateVmid, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb, status: 'provisioning', createdAt: Date.now(),
       });
       if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
       const created = await proxmoxDesktop.cloneDesktop({
-        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB,
+        templateVmid, vmid, hostname, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb,
         desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
       });
       const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
@@ -19105,18 +19260,19 @@ async function handleRequest(req, server) {
     if (!isEligibleForFreeVm(actor.email, actor.isAdmin)) {
       return jsonResp(403, { error: 'Free computers are available to RJUHSD students (@student.rjuhsd.us) and Premium members.' });
     }
+    const userUpgrades = getUserVmUpgrades(actor.email);
     if (!actor.isAdmin) {
-      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email));
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(actor.email), { isAdmin: false, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
       if (dailyRemaining <= 0) {
         return jsonResp(429, {
-          error: 'Daily limit reached: you have used your maximum 6 hours of computer time for today. Your daily limit will reset tomorrow.',
+          error: `Daily limit reached: you have used your maximum ${Math.round(userUpgrades.dailyMaxSeconds / 3600)} hours of computer time for today. Your daily limit will reset tomorrow.`,
           code: 'daily_limit_reached',
           dailyRemainingSeconds: 0,
         });
       }
-      const runningNonAdmin = await countRunningNonAdminVms();
-      if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
-        await notifyCapacityFullOnAttempt(actor.email, 'recreate a computer');
+      const capCheck = await canAccommodateVmResources(userUpgrades.cpuCores, userUpgrades.memoryMb);
+      if (!capCheck.ok) {
+        await notifyCapacityFullOnAttempt(actor.email, 'recreate a computer', { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
         return jsonResp(409, { error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`, code: 'capacity_limit_reached' });
       }
     }
@@ -19173,11 +19329,11 @@ async function handleRequest(req, server) {
         id: `vm-${vmid}`, ownerEmail: actor.email, ownerUserId: getUidForEmail(actor.email) || '', vmid,
         node: proxmoxDesktop.node, guestType: 'qemu', friendlyName: 'My Computer',
         hostname, operatingSystem: 'Linux Desktop',
-        templateVmid, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB, status: 'provisioning', createdAt: Date.now(),
+        templateVmid, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb, status: 'provisioning', createdAt: Date.now(),
       });
       if (!pendingRecord) throw new Error('Could not reserve computer slot. Please try again.');
       const created = await proxmoxDesktop.cloneDesktop({
-        templateVmid, vmid, hostname, cpuCores: VM_DEFAULT_CPU_CORES, memoryMb: VM_DEFAULT_MEMORY_MB, diskGb: VM_DEFAULT_DISK_GB,
+        templateVmid, vmid, hostname, cpuCores: userUpgrades.cpuCores, memoryMb: userUpgrades.memoryMb, diskGb: userUpgrades.diskGb,
         desktopUsername: desktopLogin.username, desktopPassword: desktopLogin.password,
       });
       const record = upsertVirtualMachine({ ...pendingRecord, ...created, status: 'assigned' });
@@ -19281,9 +19437,10 @@ async function handleRequest(req, server) {
       if (!canUserExtendToday(actor.email, actor.isAdmin)) {
         return jsonResp(400, { error: 'Only one 30-minute extension is allowed per day.', code: 'daily_extension_limit_reached' });
       }
-      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail));
+      const userUpgrades = getUserVmUpgrades(record.ownerEmail);
+      const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail), { isAdmin: actor.isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
       if (dailyRemaining <= 0) {
-        return jsonResp(400, { error: 'Daily computer limit reached (6 hours maximum).', code: 'daily_limit_reached' });
+        return jsonResp(400, { error: 'Daily computer limit reached.', code: 'daily_limit_reached' });
       }
       try {
         const runtime = await proxmoxDesktop.getStatus(record);
@@ -19339,7 +19496,8 @@ async function handleRequest(req, server) {
 
       // Daily runtime limit check for start/restart
       if ((action === 'start' || action === 'restart') && !actor.isAdmin) {
-        const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail));
+        const userUpgrades = getUserVmUpgrades(record.ownerEmail);
+        const dailyRemaining = getRemainingDailyVmSeconds(getUserDailyVmUsage(record.ownerEmail), { isAdmin: actor.isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
         if (dailyRemaining <= 0) {
           return jsonResp(429, {
             error: 'Daily limit reached: you have used your maximum 6 hours of computer time for today. Your daily limit will reset tomorrow.',
@@ -19362,7 +19520,7 @@ async function handleRequest(req, server) {
         }
       }
 
-      // Max 6 running VMs capacity check
+      // Capacity check for start/restart
       if (action === 'start' || action === 'restart') {
         let isRunning = false;
         try {
@@ -19372,9 +19530,11 @@ async function handleRequest(req, server) {
           isRunning = false;
         }
         if (!isRunning) {
-          const runningNonAdmin = await countRunningNonAdminVms();
-          if (runningNonAdmin >= VM_MAX_CONCURRENT_RUNNING) {
-            await notifyCapacityFullOnAttempt(actor.email, `start computer ${record.friendlyName || record.hostname || record.id}`);
+          const reqCores = Number(record.cpuCores) || VM_DEFAULT_CPU_CORES;
+          const reqMemoryMb = Number(record.memoryMb) || VM_DEFAULT_MEMORY_MB;
+          const capCheck = await canAccommodateVmResources(reqCores, reqMemoryMb);
+          if (!capCheck.ok) {
+            await notifyCapacityFullOnAttempt(actor.email, `start computer ${record.friendlyName || record.hostname || record.id}`, { cores: capCheck.wouldCores, memoryMb: capCheck.wouldMemoryMb });
             if (!actor.isAdmin) {
               return jsonResp(409, {
                 error: `Server capacity reached: a maximum of ${VM_MAX_CONCURRENT_RUNNING} computers can run at once. Please try again later.`,
@@ -19529,7 +19689,10 @@ async function handleRequest(req, server) {
       email,
       name: profiles[normalizeEmail(email)]?.displayName || profiles[normalizeEmail(email)]?.nickname || defaultUsernameForEmail(email),
     }));
-    const runningNonAdminCount = await countRunningNonAdminVms();
+    const runningResources = await getRunningNonAdminVmResources();
+    const runningNonAdminCount = runningResources.count;
+    const runningNonAdminCores = runningResources.cores;
+    const runningNonAdminMemoryMb = runningResources.memoryMb;
     const dayKey = url.searchParams.get('day') || getVmDayKey();
     const usageStats = await getVmFleetUsageStats(dayKey, records, activeSessions, recordViews);
     return jsonResp(200, {
@@ -19540,6 +19703,10 @@ async function handleRequest(req, server) {
       audit: listVmAuditLogs(100),
       activeSessions,
       runningNonAdminCount,
+      runningNonAdminCores,
+      runningNonAdminMemoryMb,
+      maxFleetCores: VM_FLEET_MAX_CORES,
+      maxFleetMemoryMb: VM_FLEET_MAX_MEMORY_MB,
       maxRunningNonAdminLimit: VM_MAX_CONCURRENT_RUNNING,
       usageStats,
     });
@@ -26420,9 +26587,10 @@ function isSchoolHoursPDT() {
 
 function getLeastUsedSchoolHourSevenDays(logs) {
   try {
+    const safeLogs = Array.isArray(logs) ? logs : [];
     const counts = { 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0 };
     const oneWeekAgo = Date.now() - 7 * 24 * 3600 * 1000;
-    for (const log of logs) {
+    for (const log of safeLogs) {
       if (!log.timestamp) continue;
       const ts = new Date(log.timestamp).getTime();
       if (ts < oneWeekAgo) continue;
@@ -26456,7 +26624,8 @@ function getLeastUsedSchoolHourSevenDays(logs) {
 
 function getLeastUsedSchoolHour() {
   try {
-    const logs = loadJson(SESSION_LOG_FILE, []);
+    const rawLogs = loadJson(SESSION_LOG_FILE, []);
+    const logs = Array.isArray(rawLogs) ? rawLogs : [];
     const counts = { 8: 0, 9: 0, 10: 0, 11: 0, 12: 0, 13: 0, 14: 0 };
     
     // Find yesterday's calendar date in America/Los_Angeles timezone
@@ -26769,7 +26938,7 @@ function notifyOwnerAdminUsedVm(record, adminEmail, operation = 'accessed') {
   );
 }
 
-async function notifyCapacityFullOnAttempt(userEmail, actionDesc = 'use a computer') {
+async function notifyCapacityFullOnAttempt(userEmail, actionDesc = 'use a computer', details = {}) {
   const norm = normalizeEmail(userEmail || 'unknown');
   const now = Date.now();
   const lastTime = lastCapacityNtfy.get(norm) || 0;
@@ -26777,7 +26946,9 @@ async function notifyCapacityFullOnAttempt(userEmail, actionDesc = 'use a comput
   lastCapacityNtfy.set(norm, now);
 
   const title = 'VM Capacity Alert';
-  const msg = `VM capacity full (${VM_MAX_CONCURRENT_RUNNING}/${VM_MAX_CONCURRENT_RUNNING}): ${norm} attempted to ${actionDesc}.`;
+  const c = details.cores ?? VM_FLEET_MAX_CORES;
+  const m = Math.round((details.memoryMb ?? VM_FLEET_MAX_MEMORY_MB) / 1024);
+  const msg = `VM capacity full (${c}/${VM_FLEET_MAX_CORES} cores, ${m}/${Math.round(VM_FLEET_MAX_MEMORY_MB / 1024)} GB RAM, 6/6 max slots): ${norm} attempted to ${actionDesc}.`;
   console.log(`[vm-ntfy] ${title}: ${msg}`);
   if (process.env.NODE_ENV === 'test') {
     try {
@@ -26788,6 +26959,45 @@ async function notifyCapacityFullOnAttempt(userEmail, actionDesc = 'use a comput
     } catch {}
   }
   await ntfy(msg, { title, priority: 'high' });
+}
+
+const VM_UPGRADES_FILE = join(DATA_DIR, 'vm_upgrades.json');
+
+function getUserVmUpgrades(email) {
+  if (!email) return {
+    cpuCores: VM_DEFAULT_CPU_CORES,
+    memoryMb: VM_DEFAULT_MEMORY_MB,
+    diskGb: VM_DEFAULT_DISK_GB,
+    dailyMaxSeconds: VM_DAILY_MAX_SECONDS,
+  };
+  const norm = normalizeEmail(email);
+  const data = loadJson(VM_UPGRADES_FILE, {});
+  const user = data[norm] || {};
+  return {
+    cpuCores: Number(user.cpuCores) || VM_DEFAULT_CPU_CORES,
+    memoryMb: Number(user.memoryMb) || VM_DEFAULT_MEMORY_MB,
+    diskGb: Number(user.diskGb) || VM_DEFAULT_DISK_GB,
+    dailyMaxSeconds: Number(user.dailyMaxSeconds) || VM_DAILY_MAX_SECONDS,
+  };
+}
+
+function saveUserVmUpgrade(email, category, value) {
+  if (!email) return null;
+  const norm = normalizeEmail(email);
+  const data = loadJson(VM_UPGRADES_FILE, {});
+  const current = data[norm] || {
+    cpuCores: VM_DEFAULT_CPU_CORES,
+    memoryMb: VM_DEFAULT_MEMORY_MB,
+    diskGb: VM_DEFAULT_DISK_GB,
+    dailyMaxSeconds: VM_DAILY_MAX_SECONDS,
+  };
+  if (category === 'cpu') current.cpuCores = Number(value);
+  if (category === 'ram') current.memoryMb = Number(value);
+  if (category === 'disk') current.diskGb = Number(value);
+  if (category === 'session') current.dailyMaxSeconds = Number(value);
+  data[norm] = current;
+  saveJson(VM_UPGRADES_FILE, data);
+  return current;
 }
 
 const vmLeases = new Map();
@@ -27023,19 +27233,35 @@ function isEligibleForFreeVm(email, isAdmin = false) {
   return isEligibleForFreeVmPolicy(norm, { isAdmin, isPremium: isPremiumEmail(norm) });
 }
 
-async function countRunningNonAdminVms() {
+async function getRunningNonAdminVmResources() {
   if (process.env.NODE_ENV === 'test') {
     try {
       const mock = loadJson(join(DATA_DIR, 'test_vm_mock.json'), null);
-      if (mock && typeof mock.runningNonAdminCount === 'number') {
-        return mock.runningNonAdminCount;
+      if (mock) {
+        if (typeof mock.runningCores === 'number' && typeof mock.runningMemoryMb === 'number') {
+          return {
+            count: typeof mock.runningNonAdminCount === 'number' ? mock.runningNonAdminCount : Math.ceil(mock.runningCores / VM_DEFAULT_CPU_CORES),
+            cores: mock.runningCores,
+            memoryMb: mock.runningMemoryMb,
+          };
+        }
+        if (typeof mock.runningNonAdminCount === 'number') {
+          const isMaxed = mock.runningNonAdminCount >= 6;
+          return {
+            count: mock.runningNonAdminCount,
+            cores: isMaxed ? VM_FLEET_MAX_CORES : mock.runningNonAdminCount * VM_DEFAULT_CPU_CORES,
+            memoryMb: isMaxed ? VM_FLEET_MAX_MEMORY_MB : mock.runningNonAdminCount * VM_DEFAULT_MEMORY_MB,
+          };
+        }
       }
     } catch {}
   }
-  if (!proxmoxDesktop.configured) return 0;
+  if (!proxmoxDesktop.configured) return { count: 0, cores: 0, memoryMb: 0 };
   try {
     const guests = await proxmoxDesktop.listGuests();
     let count = 0;
+    let cores = 0;
+    let memoryMb = 0;
     for (const guest of (guests || [])) {
       if (guest.template || (guest.status !== 'running' && guest.status !== 'paused')) continue;
       const record = getVirtualMachineByVmid(guest.vmid);
@@ -27057,12 +27283,37 @@ async function countRunningNonAdminVms() {
         continue;
       }
       count++;
+      cores += Number(record?.cpuCores || guest.cpuCores || VM_DEFAULT_CPU_CORES);
+      memoryMb += Number(record?.memoryMb || guest.memoryMb || VM_DEFAULT_MEMORY_MB);
     }
-    return count;
+    return { count, cores, memoryMb };
   } catch (err) {
-    console.error('[vm] Error counting running non-admin VMs:', err);
-    return 0;
+    console.error('[vm] Error calculating running non-admin VM resources:', err);
+    return { count: 0, cores: 0, memoryMb: 0 };
   }
+}
+
+async function countRunningNonAdminVms() {
+  const res = await getRunningNonAdminVmResources();
+  return res.count;
+}
+
+async function canAccommodateVmResources(requestedCores = VM_DEFAULT_CPU_CORES, requestedMemoryMb = VM_DEFAULT_MEMORY_MB) {
+  const running = await getRunningNonAdminVmResources();
+  const currentCores = running.cores;
+  const currentMemoryMb = running.memoryMb;
+  const wouldCores = currentCores + Number(requestedCores || 0);
+  const wouldMemoryMb = currentMemoryMb + Number(requestedMemoryMb || 0);
+  const ok = wouldCores <= VM_FLEET_MAX_CORES && wouldMemoryMb <= VM_FLEET_MAX_MEMORY_MB;
+  return {
+    ok,
+    currentCores,
+    currentMemoryMb,
+    wouldCores,
+    wouldMemoryMb,
+    maxCores: VM_FLEET_MAX_CORES,
+    maxMemoryMb: VM_FLEET_MAX_MEMORY_MB,
+  };
 }
 
 function canUserExtendToday(email, isAdmin = false) {
@@ -27113,8 +27364,10 @@ function clearVmCooldown(email) {
 
 function getVmLease(recordId, currentUptime = 0, { isAdmin = false, ownerEmail = '' } = {}) {
   const normalizedUptime = Math.max(0, Math.floor(Number(currentUptime) || 0));
+  const userUpgrades = getUserVmUpgrades(ownerEmail);
+  const isUnlimitedSession = (userUpgrades?.dailyMaxSeconds || 0) >= 24 * 3600;
 
-  if (isAdmin || (ownerEmail && isAdminEmail(ownerEmail))) {
+  if (isAdmin || (ownerEmail && isAdminEmail(ownerEmail)) || isUnlimitedSession) {
     return {
       isExempt: true,
       extended: false,
@@ -27162,8 +27415,9 @@ function getVmLease(recordId, currentUptime = 0, { isAdmin = false, ownerEmail =
   }
 
   const usedToday = ownerEmail ? getUserDailyVmUsage(ownerEmail) : 0;
-  const dailyRemainingSeconds = getRemainingDailyVmSeconds(usedToday, { isAdmin: false });
-  const maxUptimeSeconds = lease.extended ? VM_TOTAL_MAX_UPTIME_SECONDS : VM_BASE_MAX_UPTIME_SECONDS;
+  const dailyRemainingSeconds = getRemainingDailyVmSeconds(usedToday, { isAdmin: false, dailyMaxSeconds: userUpgrades.dailyMaxSeconds });
+  const baseSessionSeconds = Math.max(VM_BASE_MAX_UPTIME_SECONDS, userUpgrades.dailyMaxSeconds);
+  const maxUptimeSeconds = lease.extended ? (baseSessionSeconds + 1800) : baseSessionSeconds;
   const sessionRemaining = Math.max(0, maxUptimeSeconds - normalizedUptime);
   const remainingSeconds = Math.min(sessionRemaining, dailyRemainingSeconds);
   const canExtend = !lease.extended && remainingSeconds > 0 && dailyRemainingSeconds > remainingSeconds;
@@ -27259,13 +27513,18 @@ function publicVmRecord(record, runtime = null, actor = null) {
   const isRunning = runtime?.state === 'running';
   const isAdmin = Boolean(actor?.isAdmin || (record?.ownerEmail && isAdminEmail(record.ownerEmail)));
   const ownerEmail = record?.ownerEmail || actor?.email || '';
+  const userUpgrades = getUserVmUpgrades(ownerEmail);
+  const isUnlimitedSession = (userUpgrades?.dailyMaxSeconds || 0) >= 24 * 3600;
+  const isExempt = isAdmin || isUnlimitedSession;
+  const baseSessionSeconds = Math.max(VM_BASE_MAX_UPTIME_SECONDS, userUpgrades.dailyMaxSeconds);
+
   const lease = isRunning ? getVmLease(record.id, runtime.uptime, { isAdmin, ownerEmail }) : {
-    isExempt: isAdmin,
+    isExempt,
     extended: false,
-    maxUptimeSeconds: isAdmin ? null : VM_BASE_MAX_UPTIME_SECONDS,
-    remainingSeconds: isAdmin ? null : Math.min(VM_BASE_MAX_UPTIME_SECONDS, getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail))),
-    dailyRemainingSeconds: isAdmin ? null : getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail)),
-    canExtend: !isAdmin && getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail)) > 0,
+    maxUptimeSeconds: isExempt ? null : baseSessionSeconds,
+    remainingSeconds: isExempt ? null : Math.min(baseSessionSeconds, getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail), { isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds })),
+    dailyRemainingSeconds: isExempt ? null : getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail), { isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds }),
+    canExtend: !isExempt && getRemainingDailyVmSeconds(getUserDailyVmUsage(ownerEmail), { isAdmin, dailyMaxSeconds: userUpgrades.dailyMaxSeconds }) > 0,
     currentUptime: 0,
   };
   const dailyExtensionUsed = !isAdmin && !canUserExtendToday(record.ownerEmail, actor?.isAdmin);
@@ -27293,6 +27552,7 @@ function publicVmRecord(record, runtime = null, actor = null) {
     desktopAvailable: record.guestType === 'qemu',
     createdAt: record.createdAt,
     lease,
+    upgrades: userUpgrades,
     cooldownRemainingSeconds,
     adminAccessAllowed: isVmAdminAccessAllowed(record.id),
     adminAccessRequested: isVmAdminAccessRequested(record.id),

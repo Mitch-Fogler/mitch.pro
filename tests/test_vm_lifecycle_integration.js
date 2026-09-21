@@ -28,6 +28,8 @@ const VM_COOLDOWNS_FILE = join(DATA_DIR, 'vm_cooldowns.json');
 const VM_DAILY_USAGE_FILE = join(DATA_DIR, 'vm_daily_usage.json');
 const VM_ADMIN_GRANTS_FILE = join(DATA_DIR, 'vm_admin_grants.json');
 const COIN_GIFTS_FILE = join(DATA_DIR, 'coin_gifts.json');
+const COINS_FILE = join(DATA_DIR, 'coins.json');
+const VM_UPGRADES_FILE = join(DATA_DIR, 'vm_upgrades.json');
 const GENERATIONS_FILE = join(DATA_DIR, 'generations.json');
 const PASSPHRASE_FILE = join(DATA_DIR, 'admin_passphrase.json');
 const TEST_MOCK_FILE = join(DATA_DIR, 'test_vm_mock.json');
@@ -107,6 +109,7 @@ writeDocument(VM_COOLDOWNS_FILE, {});
 writeDocument(VM_DAILY_USAGE_FILE, {});
 writeDocument(VM_ADMIN_GRANTS_FILE, {});
 writeDocument(COIN_GIFTS_FILE, {});
+writeDocument(VM_UPGRADES_FILE, {});
 writeDocument(TEST_MOCK_FILE, {});
 writeDocument(TEST_NTFY_LOG_FILE, []);
 
@@ -559,6 +562,173 @@ try {
   const matrixHtml = await matrixHtmlRes.text();
   assert(matrixHtml.includes('Login with mitch.pro'), 'Matrix login button must say "Login with mitch.pro"');
   console.log('Matrix login button text verified: "Login with mitch.pro"');
+
+  // 12. VM Hardware Upgrades with Mitch Coins
+  console.log('--- 12. Testing VM Hardware Upgrades with Mitch Coins ---');
+  // Credit student 2000 Mitch Coins
+  const coins = { ...readDocument(COINS_FILE, {}) };
+  coins[studentNorm] = 2000;
+  writeDocument(COINS_FILE, coins);
+
+  // Clear existing upgrades
+  const upgrades = { ...readDocument(VM_UPGRADES_FILE, {}) };
+  delete upgrades[studentNorm];
+  writeDocument(VM_UPGRADES_FILE, upgrades);
+
+  // GET /api/vm/upgrades
+  const resUpgradesGet = await fetch(`${BASE_URL}/api/vm/upgrades`, {
+    headers: { 'Cookie': `studentId=${studentSid}` },
+  });
+  assert.equal(resUpgradesGet.status, 200, 'GET /api/vm/upgrades must return 200');
+  const upgradesData = await resUpgradesGet.json();
+  assert(upgradesData.catalog && upgradesData.catalog.cpu, 'Catalog must be returned');
+  assert.equal(upgradesData.current.cpuCores, 2, 'Default CPU cores must be 2');
+  assert.equal(upgradesData.current.memoryMb, 4096, 'Default RAM must be 4096 MB');
+  assert.equal(upgradesData.coins, 2000, 'Student must have 2000 coins');
+  assert.equal(upgradesData.fleet.maxCores, 36, 'Fleet max cores must be 36');
+  assert.equal(upgradesData.fleet.maxMemoryMb, 98304, 'Fleet max memory must be 98304 MB');
+  console.log('GET /api/vm/upgrades verified');
+
+  // Invalid upgrade target
+  const resBadCat = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'gpu', targetValue: 1 }),
+  });
+  assert.equal(resBadCat.status, 400, 'Invalid category must return 400');
+
+  // Upgrade CPU: 2 -> 4 cores (cost: 400 coins)
+  const resUpgradeCpu = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'cpu', targetValue: 4 }),
+  });
+  assert.equal(resUpgradeCpu.status, 200, 'CPU upgrade to 4 cores must succeed');
+  const cpuData = await resUpgradeCpu.json();
+  assert.equal(cpuData.upgrades.cpuCores, 4);
+  assert.equal(cpuData.coins, 1600, 'Coin balance must be 2000 - 400 = 1600');
+  console.log('CPU upgrade to 4 cores verified (cost 400 coins)');
+
+  // Differential pricing: upgrade CPU: 4 -> 6 cores (cost: 400 coins, not 800)
+  const resUpgradeCpu6 = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'cpu', targetValue: 6 }),
+  });
+  assert.equal(resUpgradeCpu6.status, 200);
+  const cpuData6 = await resUpgradeCpu6.json();
+  assert.equal(cpuData6.upgrades.cpuCores, 6);
+  assert.equal(cpuData6.coins, 1200, 'Coin balance must be 1600 - 400 = 1200');
+  console.log('Differential pricing verified: 4 -> 6 cores cost 400 coins');
+
+  // Attempting to buy a tier already owned
+  const resCpuDup = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'cpu', targetValue: 4 }),
+  });
+  assert.equal(resCpuDup.status, 400, 'Buying lower/equal tier must return 400');
+
+  // Upgrade RAM: 4GB -> 8GB (cost: 400 coins)
+  const resUpgradeRam = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'ram', targetValue: 8192 }),
+  });
+  assert.equal(resUpgradeRam.status, 200);
+  const ramData = await resUpgradeRam.json();
+  assert.equal(ramData.upgrades.memoryMb, 8192);
+  assert.equal(ramData.coins, 800, '1200 - 400 = 800 coins remaining');
+  console.log('RAM upgrade to 8GB verified (cost 400 coins)');
+
+  // Insufficient coins test: session unlimited costs 1800 coins, student only has 800
+  const resInsuffCoins = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'session', targetValue: 86400 }),
+  });
+  assert.equal(resInsuffCoins.status, 402, 'Insufficient coins must return 402');
+  const insuffData = await resInsuffCoins.json();
+  assert.equal(insuffData.code, 'insufficient_coins');
+  console.log('Insufficient coins guard verified: 402 rejected');
+
+  // Upgrade Disk: 64GB -> 96GB (cost: 300 coins)
+  const resUpgradeDisk = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'disk', targetValue: 96 }),
+  });
+  assert.equal(resUpgradeDisk.status, 200);
+  const diskData = await resUpgradeDisk.json();
+  assert.equal(diskData.upgrades.diskGb, 96);
+  assert.equal(diskData.coins, 500, '800 - 300 = 500 coins remaining');
+  console.log('Disk upgrade to 96GB verified (cost 300 coins)');
+
+  // Upgrade Session: 6h -> 8h (cost: 300 coins)
+  const resUpgradeSession = await fetch(`${BASE_URL}/api/vm/upgrade`, {
+    method: 'POST',
+    headers: {
+      'Cookie': `studentId=${studentSid}`,
+      'Content-Type': 'application/json',
+      'Origin': BASE_URL,
+    },
+    body: JSON.stringify({ category: 'session', targetValue: 8 * 3600 }),
+  });
+  assert.equal(resUpgradeSession.status, 200);
+  const sessData = await resUpgradeSession.json();
+  assert.equal(sessData.upgrades.dailyMaxSeconds, 28800);
+  assert.equal(sessData.coins, 200, '500 - 300 = 200 coins remaining');
+  console.log('Session upgrade to 8h verified (cost 300 coins)');
+
+  // Verify persistence in data/vm_upgrades.json
+  const persistedUpgrades = readDocument(VM_UPGRADES_FILE, {})[studentNorm];
+  assert.equal(persistedUpgrades.cpuCores, 6);
+  assert.equal(persistedUpgrades.memoryMb, 8192);
+  assert.equal(persistedUpgrades.diskGb, 96);
+  assert.equal(persistedUpgrades.dailyMaxSeconds, 28800);
+  console.log('Persisted user upgrades verified in storage');
+
+  // Verify student computer list returns upgrades
+  const resStudentVms = await fetch(`${BASE_URL}/api/vm/computers`, {
+    headers: { 'Cookie': `studentId=${studentSid}` },
+  });
+  assert.equal(resStudentVms.status, 200);
+  const studentVmsData = await resStudentVms.json();
+  assert(studentVmsData.computers.length > 0);
+  const myPc = studentVmsData.computers[0];
+  assert.equal(myPc.upgrades.cpuCores, 6);
+  assert.equal(myPc.upgrades.memoryMb, 8192);
+  assert.equal(myPc.upgrades.diskGb, 96);
+  assert.equal(myPc.upgrades.dailyMaxSeconds, 28800);
+  console.log('Student computer list contains upgraded specs');
 
   console.log('=== ALL VM LIFECYCLE & POLICY INTEGRATION TESTS PASSED! ===');
 } finally {
