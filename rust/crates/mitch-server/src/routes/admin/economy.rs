@@ -717,7 +717,9 @@ fn token_email_targets(state: &Arc<AppState>) -> std::collections::BTreeSet<Stri
 }
 
 /// `grant-premium` application insert (10081-10093) — also used by the
-/// moderator-request executor.
+/// moderator-request executor. Both JS call sites follow the insert with
+/// `sendPremiumEmailOffer(targetRaw)` (server.js:13079, 7120), so the offer
+/// is folded in here.
 pub fn grant_premium_application(
     state: &Arc<AppState>,
     target_raw: &str,
@@ -745,6 +747,7 @@ pub fn grant_premium_application(
     })];
     next.extend(apps);
     let _ = state.store.write_document(&file, &json!(next));
+    super::legacy::send_premium_email_offer(state, target_raw);
 }
 
 /// Marks approved premium applications for one email as revoked; returns
@@ -1052,11 +1055,12 @@ fn unsend_notification(state: &Arc<AppState>, id: &str, batch_id: &str) -> i64 {
 }
 
 /// `sendDailySummaryNotification` body (server.js:3966-4014) — builds the
-/// text; the ntfy send happens in push.rs.
-fn build_daily_summary(state: &Arc<AppState>) -> String {
+/// text; the ntfy send happens in push.rs. Also shared with the batch 3
+/// daily-summary scheduler (workers_site.rs).
+pub(crate) fn build_daily_summary(state: &Arc<AppState>) -> String {
     let logs = state
         .store
-        .read_document(&state.cfg.data_dir.join("session_log.json"), json!([]));
+        .read_document(&state.cfg.data_dir.join("sessions.json"), json!([]));
     let names = state
         .store
         .read_document(&state.cfg.base_dir.join("data/names.json"), json!({}));
@@ -1124,7 +1128,7 @@ fn local_start_of_day_ms() -> i64 {
     (day - offset) * 1000
 }
 
-fn local_tz_offset_secs() -> i64 {
+pub(crate) fn local_tz_offset_secs() -> i64 {
     // Parse `TZ` env or fall back to the offset embedded in `date +%z`.
     if let Ok(out) = std::process::Command::new("date").arg("+%z").output() {
         let s = String::from_utf8_lossy(&out.stdout).trim().to_string();

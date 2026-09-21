@@ -589,6 +589,16 @@ pub async fn handle(
                 return resp;
             }
         }
+        // Team gmail/support bridge (server.js:20094-20145, 22984-23096,
+        // 23814-23867) — Bearer team-token auth, behind the password gate.
+        if path.starts_with("/api/team/") {
+            if let Some(resp) =
+                crate::routes::team::handle(&state, &method, &path, headers, body_bytes, &search)
+                    .await
+            {
+                return resp;
+            }
+        }
         // Captcha proxy (solve/submit/stats/token/next/puzzle/images).
         if let Some(resp) = crate::routes::proxy::captcha_proxy(
             &state, &method, &path, headers, &search, body_bytes,

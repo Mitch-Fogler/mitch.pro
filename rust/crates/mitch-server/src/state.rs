@@ -70,6 +70,9 @@ pub struct AppState {
     /// `computedHappyHour` (server.js:1189) — computed once at boot from the
     /// session log (server.js:25249).
     pub computed_happy_hour: std::sync::atomic::AtomicI64,
+    /// `lastDailySummarySentDate` (server.js:4156) — e.g. '2026-05-27'; the
+    /// daily-summary scheduler's once-per-date dedupe.
+    pub last_daily_summary_sent_date: std::sync::Mutex<String>,
     /// Canvas state (server.js:4304-4556) — in-memory pixel/chunk/lock caches
     /// with the 30s flush and hourly heatmap sweep in `crate::workers`.
     pub canvas: crate::routes::canvas::CanvasState,
@@ -311,6 +314,7 @@ impl AppState {
             last_recaptcha_success: std::sync::Mutex::new(std::collections::HashMap::new()),
             happy_hour_active: std::sync::atomic::AtomicBool::new(false),
             computed_happy_hour: std::sync::atomic::AtomicI64::new(computed_happy_hour),
+            last_daily_summary_sent_date: std::sync::Mutex::new(String::new()),
             canvas,
             e2e_users: std::sync::Mutex::new(Vec::new()),
             e2e_messages: std::sync::Mutex::new(std::collections::HashMap::new()),
@@ -496,5 +500,30 @@ pub const PUBLIC_API_PATHS: &[&str] = &[
     "/api/backgrounds/list",
 ];
 
-/// `CSRF_EXEMPT_PATHS` — verbatim.
-pub const CSRF_EXEMPT_PATHS: &[&str] = &["/api/sso/exchange", "/api/dm/attachment/upload"];
+/// `CSRF_EXEMPT_PATHS` (server.js:5705-5728) — verbatim. Team POSTs are NOT
+/// exempt (they require X-Mitch-Requested-With like every other /api/ POST).
+pub const CSRF_EXEMPT_PATHS: &[&str] = &[
+    "/api/sso/exchange",
+    "/api/sso/bridge/handoff",
+    "/api/dm/attachment/upload",
+    "/api/games",
+    "/api/premium/email/register",
+    "/api/verify-open",
+    "/verify-open.json",
+    "/api/cache/refresh",
+    "/api/admin/cache/refresh",
+    "/api/refresh-cache",
+    "/api/matrix/sso-login",
+    "/api/matrix/sso-status",
+    "/api/matrix/moderation/overview",
+    "/api/matrix/moderation/set-role",
+    "/api/matrix/moderation/kick",
+    "/api/matrix/moderation/ban",
+    "/api/matrix/moderation/redact",
+    "/api/matrix/moderation/slowmode",
+    "/api/matrix/moderation/mute-user",
+    "/api/matrix/moderation/unmute-user",
+    "/api/matrix/moderation/mute-room",
+    "/api/matrix/devices/prune-stale",
+    "/api/matrix/report-room",
+];

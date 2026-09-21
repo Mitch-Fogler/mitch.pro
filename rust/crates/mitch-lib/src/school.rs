@@ -141,7 +141,7 @@ pub fn get_least_used_school_hour(
     data_dir: &std::path::Path,
     now_ms: i64,
 ) -> i64 {
-    let logs = store.read_document(&data_dir.join("session_log.json"), json!([]));
+    let logs = store.read_document(&data_dir.join("sessions.json"), json!([]));
     let yesterday_start = la_local_day_start(now_ms) - 86_400_000;
     let (yy, ym, yd, _, _, _) = la_local_parts(yesterday_start);
 

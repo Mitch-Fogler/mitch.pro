@@ -97,7 +97,7 @@ fn names_doc(state: &Arc<AppState>) -> Value {
 fn session_log_doc(state: &Arc<AppState>) -> Vec<Value> {
     state
         .store
-        .read_document(&state.cfg.data_dir.join("session_log.json"), json!([]))
+        .read_document(&state.cfg.data_dir.join("sessions.json"), json!([]))
         .as_array()
         .cloned()
         .unwrap_or_default()

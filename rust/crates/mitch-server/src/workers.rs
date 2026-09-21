@@ -64,5 +64,8 @@ pub fn spawn(state: std::sync::Arc<crate::state::AppState>) {
     // Step 13 batch 1 — the four email workers (weekly digest, daily puzzle,
     // clock warning, DM digest) plus the DM prune, e2e-attachment cleanup and
     // rlLog sweep timers (server.js:5061-5064, 26352, 25227+, 3477-3483).
-    crate::workers_email::spawn(state);
+    crate::workers_email::spawn(state.clone());
+    // Step 13 batch 3 — daily-summary scheduler, premium maintenance and
+    // happy hour (server.js:4211-4218, 26783-26784, 26805-26807).
+    crate::workers_site::spawn(state);
 }

@@ -948,3 +948,57 @@ fn percent_decode(s: &str) -> String {
     }
     String::from_utf8_lossy(&out).into_owned()
 }
+
+/// `makePremiumAlertHtml(email, title, messageText, actionUrl='', actionLabel='')`
+/// (server.js:2085-2104) — the 🌟 Premium Status Alert card on the shared
+/// base template. `messageText`/`actionUrl`/`actionLabel` interpolate raw
+/// (the JS call sites pass trusted literals).
+pub fn premium_alert_html(
+    state: &crate::state::AppState,
+    email: &str,
+    title: &str,
+    message_text: &str,
+    action_url: &str,
+    action_label: &str,
+) -> String {
+    let action_block = if action_url.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n    <div style=\"text-align: center; margin-bottom: 8px;\">\n      <a href=\"{action_url}\" style=\"display: inline-block; background: linear-gradient(135deg, #a855f7, #6366f1); color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 10px; font-weight: 700; box-shadow: 0 10px 20px rgba(168, 85, 247, 0.2);\">{action_label}</a>\n    </div>\n    "
+        )
+    };
+    let content = format!(
+        "\n    <h2 style=\"margin: 0 0 16px; font-size: 20px; font-weight: 700; color: #fbbf24; text-align: center;\">🌟 Premium Status Alert</h2>\n    <div style=\"background-color: rgba(251, 191, 36, 0.08); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;\">\n      <p style=\"margin: 0 0 12px; font-size: 16px; font-weight: 700; color: #f4f4f5;\">{title}</p>\n      <p style=\"margin: 0; color: #cbd5e1; line-height: 1.6;\">{message_text}</p>\n    </div>\n    {action_block}"
+    );
+    html_base_template(state, email, title, &content)
+}
+
+/// `sendPremiumEmailOffer(targetEmail)` (server.js:4309-4324) — the free
+/// @mitch.pro address offer sent whenever a premium grant lands.
+pub fn send_premium_email_offer(
+    state: &std::sync::Arc<crate::state::AppState>,
+    target_email: &str,
+) {
+    let to_email = mitch_lib::profile::canonical_delivery_email(
+        &state.store,
+        &state.cfg.data_dir,
+        &state.id_secret,
+        target_email,
+    );
+    let base = crate::workers_email::site_url(state, &to_email);
+    let subject = "Eligible for a Free @mitch.pro Email Address!";
+    let message = "Congratulations on getting Premium! As a Premium member, your main benefit is eligibility for a free custom @student.mitch.pro email address! Claim yours now by submitting your application.";
+    let html = premium_alert_html(
+        state,
+        &to_email,
+        subject,
+        message,
+        &format!("{base}/premium-email"),
+        "Claim Email Address",
+    );
+    // Same deliverability rule as the expiry warning: school addresses must
+    // ride the Gmail script (sendEmailBg), not support@mitch.pro SMTP.
+    crate::routes::push::send_email_bg(state, &to_email, subject, &html);
+    tracing::info!("[premium] Sent premium email offer to {to_email}");
+}

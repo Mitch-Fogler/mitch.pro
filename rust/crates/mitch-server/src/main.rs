@@ -32,6 +32,7 @@ mod state;
 mod static_files;
 mod workers;
 mod workers_email;
+mod workers_site;
 mod ws;
 
 #[tokio::main]

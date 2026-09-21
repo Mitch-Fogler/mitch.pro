@@ -192,7 +192,7 @@ fn email_slot(email: &str, slots: u32) -> u32 {
 /// `@student.rjuhsd.us` picks `alternate`, else `primary`. `site()`
 /// (server.js:1675-1677) defaults the whole doc when the file is empty; an
 /// existing doc missing a key renders `undefined` in the template, like JS.
-fn site_url(state: &AppState, email: &str) -> String {
+pub(crate) fn site_url(state: &AppState, email: &str) -> String {
     let site = state
         .store
         .read_document(&state.data_dir().join("site.json"), Value::Null);
