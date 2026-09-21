@@ -52,7 +52,7 @@
         <div class="machine-facts">
           <span><small>Address</small><strong title="${esc(vm.ipAddress)}">${esc(vm.ipAddress || (running ? 'Connecting…' : 'Not available'))}</strong></span>
           <span><small>Uptime</small><strong>${uptime(vm.uptime)}</strong></span>
-          ${isExempt ? `<span><small>Time Limit</small><strong style="color:#4ade80;">Unlimited</strong></span>` : (running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : `<span><small>Session Limit</small><strong>${Math.round((vm.upgrades?.dailyMaxSeconds || 21600) / 3600)}h / day</strong></span>`)}
+          ${isExempt ? `<span><small>Time Limit</small><strong style="color:#4ade80;">Unlimited</strong></span>` : (running && remDisplay ? `<span><small>Time Left</small><strong style="${remSeconds <= 600 ? 'color:#fde047' : ''}">${remDisplay}</strong></span>` : `<span><small>Session Limit</small><strong>${Math.round((vm.upgrades?.dailyMaxSeconds || 21600) / 3600)}h / day</strong>${(vm.upgrades?.sessionUpgradeExpiresAt && vm.upgrades?.dailyMaxSeconds > 21600) ? `<small style="display:block;font-size:0.68rem;color:#c084fc;">Pass: ${Math.max(1, Math.ceil((vm.upgrades.sessionUpgradeExpiresAt - Date.now()) / 86400000))}d left</small>` : ''}</span>`)}
           ${inCooldown ? `<span><small>Cooldown</small><strong style="color:#f87171;">${cooldownMins}m left</strong></span>` : ''}
           <span><small>Admin Access</small><strong style="color:${adminAllowed ? '#4ade80' : '#94a3b8'};">${adminAllowed ? 'Allowed' : 'Disallowed'}</strong></span>
         </div>
@@ -239,6 +239,8 @@
     }
   }
 
+  let sessionDurationMode = 'month';
+
   function renderUpgradeTab() {
     const container = $('upgrade-tab-content');
     if (!container || !upgradeData) return;
@@ -254,31 +256,62 @@
     if (cat === 'session') currentVal = current.dailyMaxSeconds || 21600;
 
     const currentTier = tiers.find(t => t.value === currentVal) || { cost: 0 };
+    const expiresAt = current.sessionUpgradeExpiresAt;
+    const daysLeft = (expiresAt && expiresAt > Date.now()) ? Math.ceil((expiresAt - Date.now()) / 86400000) : 0;
+    const sessionMult = (cat === 'session' && sessionDurationMode === 'week') ? 0.35 : 1.0;
 
-    container.innerHTML = `<div class="upgrade-tier-list">
+    let durationSelectorHtml = '';
+    if (cat === 'session') {
+      durationSelectorHtml = `
+        <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:8px 12px;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div style="font-size:0.84rem;color:#cbd5e1;">
+            <strong>Pass Term:</strong>
+            ${daysLeft > 0 ? `<span style="margin-left:8px;color:#c084fc;font-weight:600;">Active pass expires in ${daysLeft}d</span>` : '<span style="margin-left:8px;color:#94a3b8;">Select 1 Week or 1 Month</span>'}
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="${sessionDurationMode === 'month' ? 'primary-button' : 'quiet-button'}" data-term="month" style="min-height:30px;padding:4px 10px;font-size:0.8rem;">1 Month (30d)</button>
+            <button type="button" class="${sessionDurationMode === 'week' ? 'primary-button' : 'quiet-button'}" data-term="week" style="min-height:30px;padding:4px 10px;font-size:0.8rem;">1 Week (7d)</button>
+          </div>
+        </div>
+      `;
+    }
+
+    container.innerHTML = `
+      ${durationSelectorHtml}
+      <div class="upgrade-tier-list">
       ${tiers.map(tier => {
         const isCurrent = tier.value === currentVal;
         const isOwned = tier.value <= currentVal;
-        const diffCost = Math.max(0, tier.cost - currentTier.cost);
+        const tierCost = (tier.cost === 0) ? 0 : Math.max(1, Math.round(tier.cost * sessionMult));
+        const currentTierCost = (currentTier.cost === 0) ? 0 : Math.max(1, Math.round(currentTier.cost * sessionMult));
+        const diffCost = (isCurrent && cat === 'session' && currentVal > 21600)
+          ? tierCost
+          : Math.max(0, tierCost - currentTierCost);
         const canAfford = coins >= diffCost;
 
         let actionHtml = '';
-        if (isCurrent) {
+        if (isCurrent && cat === 'session' && currentVal > 21600) {
+          actionHtml = `<span class="current-tier-pill" style="margin-bottom:4px;">✓ Active (${daysLeft}d left)</span><button type="button" class="quiet-button" data-upgrade-cat="${esc(cat)}" data-upgrade-val="${tier.value}" data-duration="${sessionDurationMode}" style="min-height:30px;padding:4px 10px;font-size:0.8rem;">Renew (+${sessionDurationMode === 'week' ? '7d' : '30d'} for ${diffCost} 🪙)</button>`;
+        } else if (isCurrent) {
           actionHtml = `<span class="current-tier-pill">✓ Current</span>`;
-        } else if (isOwned) {
+        } else if (isOwned && cat !== 'session') {
           actionHtml = `<span class="current-tier-pill" style="opacity:0.75;">Included</span>`;
         } else if (canAfford) {
-          actionHtml = `<button type="button" class="primary-button" data-upgrade-cat="${esc(cat)}" data-upgrade-val="${tier.value}" style="min-height:36px;padding:6px 14px;font-size:0.85rem;">Upgrade for ${diffCost} 🪙</button>`;
+          actionHtml = `<button type="button" class="primary-button" data-upgrade-cat="${esc(cat)}" data-upgrade-val="${tier.value}" data-duration="${sessionDurationMode}" style="min-height:36px;padding:6px 14px;font-size:0.85rem;">Upgrade for ${diffCost} 🪙</button>`;
         } else {
           actionHtml = `<button type="button" class="quiet-button" disabled style="font-size:0.82rem;padding:6px 12px;">Need ${diffCost} 🪙</button>`;
         }
 
+        const subLabel = (cat === 'session' && tier.cost > 0)
+          ? `Pass Cost: ${tierCost} coins (${sessionDurationMode === 'week' ? '7 Days' : '30 Days'})`
+          : (tier.cost === 0 ? 'Free (Standard tier)' : `Base Tier: ${tier.cost} coins`);
+
         return `<div class="upgrade-tier-card ${isCurrent ? 'is-current' : ''}">
           <div class="upgrade-tier-info">
             <span class="upgrade-tier-title">${esc(tier.label)}</span>
-            <span class="upgrade-tier-sub">${tier.cost === 0 ? 'Free (Standard tier)' : `Base Tier: ${tier.cost} coins`}</span>
+            <span class="upgrade-tier-sub">${subLabel}</span>
           </div>
-          <div class="upgrade-tier-action">
+          <div class="upgrade-tier-action" style="display:flex;flex-direction:column;align-items:flex-end;">
             ${actionHtml}
           </div>
         </div>`;
@@ -290,7 +323,7 @@
     });
   }
 
-  async function purchaseUpgrade(category, targetValue) {
+  async function purchaseUpgrade(category, targetValue, duration) {
     const statusEl = $('upgrade-status');
     statusEl.textContent = 'Applying upgrade…';
     statusEl.style.color = '#fde047';
@@ -299,7 +332,7 @@
         method: 'POST',
         credentials: 'same-origin',
         headers,
-        body: JSON.stringify({ category, targetValue }),
+        body: JSON.stringify({ category, targetValue, duration: duration || (category === 'session' ? sessionDurationMode : undefined) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || 'Failed to apply upgrade.');
@@ -328,12 +361,19 @@
   });
 
   $('upgrade-tab-content')?.addEventListener('click', event => {
+    const termBtn = event.target.closest('button[data-term]');
+    if (termBtn) {
+      sessionDurationMode = termBtn.dataset.term;
+      renderUpgradeTab();
+      return;
+    }
     const btn = event.target.closest('button[data-upgrade-cat]');
     if (!btn || btn.disabled) return;
     const cat = btn.dataset.upgradeCat;
     const val = Number(btn.dataset.upgradeVal);
+    const dur = btn.dataset.duration;
     if (cat && Number.isFinite(val)) {
-      purchaseUpgrade(cat, val);
+      purchaseUpgrade(cat, val, dur);
     }
   });
 

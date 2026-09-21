@@ -260,6 +260,7 @@ const MATRIX_EMAIL_SENT_FILE    = join(DATA_DIR, 'matrix_email_sent.json');
 const MATRIX_ROOM_SETTINGS_FILE  = join(DATA_DIR, 'matrix_room_settings.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
+const TESTERS_FILE           = join(DATA_DIR, 'testers.json');
 const MODERATOR_PANEL_FILE   = join(DATA_DIR, 'moderator_panel.json');
 const MODERATOR_REQUESTS_FILE = join(DATA_DIR, 'moderator_requests.json');
 const GENERATIONS_FILE       = join(DATA_DIR, 'generations.json');
@@ -6483,6 +6484,25 @@ function isAdminEmail(email) {
   return siteAdminEmails().some(adminEmail => normalizeEmail(adminEmail) === norm);
 }
 
+function testerEmails() {
+  const adminCfg = loadAdminConfig().testers || [];
+  const raw = loadJson(TESTERS_FILE, []);
+  const list = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.keys(raw) : []);
+  return [...new Set([...list, ...adminCfg].map(normalizeEmail).filter(Boolean))];
+}
+
+function isTesterEmail(email) {
+  if (!email) return false;
+  const norm = normalizeEmail(email);
+  return testerEmails().includes(norm);
+}
+
+function isTesterId(sid) {
+  if (!sid) return false;
+  const email = emailFromSid(sid);
+  return email ? isTesterEmail(email) : false;
+}
+
 function blogContributorEmails() {
   const raw = loadJson(BLOG_CONTRIBUTORS_FILE, []);
   if (Array.isArray(raw)) return raw.filter(Boolean);
@@ -6885,6 +6905,7 @@ const MODERATOR_ACTION_BY_URL = {
   '/api/admin/content/mirror': 'content_mirror',
   '/api/admin/content/featured': 'content_featured',
   '/api/admin/moderators': 'moderator_role',
+  '/api/admin/testers': 'tester_role',
   '/api/admin/moderator-panel': 'moderator_panel',
 };
 
@@ -7297,7 +7318,10 @@ const DEFAULT_SHOP_CATALOG = [
   { id: 'double_down_ticket', name: 'Double Down Ticket (30m)', section: 'Utility', type: 'utility', costType: 'double_down_ticket', cost: 500, desc: 'Active for 30 minutes. Doubles the payout of any casino game wins!' },
   { id: 'bad_beat_insurance', name: 'Bad Beat Insurance (30m)', section: 'Utility', type: 'utility', costType: 'bad_beat_insurance', cost: 300, desc: 'Active for 30 minutes. Refunds your entire bet if you lose any casino game round.' },
   { id: 'happy_hour_extension', name: 'Happy Hour Extension (15m)', section: 'Utility', type: 'utility', costType: 'happy_hour_extension', cost: 250, desc: 'Extends your active Personal Happy Hour by an additional 15 minutes. Requires active Happy Hour to purchase.' },
-  { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' }
+  { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' },
+  { id: 'loaded_dice', name: 'Loaded Lucky Dice (30m)', section: 'Casino Exploits', type: 'utility', costType: 'loaded_dice', cost: 600, desc: 'Exploit casino physics! Forces guaranteed winning rolls, spins, coinflips, and jackpots across all casino games for 30 minutes.' },
+  { id: 'casino_glitch_chip', name: 'Quantum Glitch Chip (20m)', section: 'Casino Exploits', type: 'utility', costType: 'casino_glitch_chip', cost: 1000, desc: 'Exploit memory overflow in payout contracts! Multiplies all casino winnings by an insane 5X for 20 minutes.' },
+  { id: 'infinite_luck_charm', name: 'Infinite Coins Exploit Charm (30m)', section: 'Casino Exploits', type: 'utility', costType: 'infinite_luck_charm', cost: 1500, desc: 'The ultimate casino exploit! Combines Loaded Dice auto-wins, 10X glitch payout multiplier, VIP unlimited max betting, and 100% loss refund for 30 minutes.' }
 ];
 let SHOP_CATALOG = [...DEFAULT_SHOP_CATALOG];
 try {
@@ -7526,6 +7550,9 @@ function buildInventory(email) {
       happyHourUntil: stats.personal_happy_hour_until || 0,
       doubleDownUntil: stats.double_down_until || 0,
       badBeatInsuranceUntil: stats.bad_beat_insurance_until || 0,
+      loadedDiceUntil: stats.loaded_dice_until || 0,
+      casinoGlitchUntil: stats.casino_glitch_until || 0,
+      infiniteLuckUntil: stats.infinite_luck_until || 0,
       slotsFreeSpins: stats.slots_free_spins || 0,
       streakFreezes: daily.streakFreezes || 0
     }
@@ -7540,7 +7567,7 @@ function ownsShopItem(email, item, inventory = buildInventory(email)) {
     const stats = loadUserStats();
     return (stats[normalizeEmail(email)]?.vip_casino_until || 0) > Date.now();
   }
-  if (item.costType === 'streak_freeze' || item.costType === 'happy_hour_ticket') {
+  if (['streak_freeze', 'happy_hour_ticket', 'happy_hour_extension', 'double_down_ticket', 'bad_beat_insurance', 'slots_free_spin', 'loaded_dice', 'casino_glitch_chip', 'infinite_luck_charm'].includes(item.costType)) {
     return false;
   }
   const cfg = SHOP_TYPE_CONFIG[item.costType];
@@ -8021,131 +8048,161 @@ async function getSystemAdminMatrixToken() {
   return systemAdminMatrixToken;
 }
 
+const OFFICIAL_MATRIX_ROOMS = [
+  { alias: 'general', name: 'General', topic: 'Welcome to Mitch.pro Official Matrix Chat!' },
+  { alias: 'tech', name: 'Tech', topic: 'Technology, software development, coding, and projects' },
+  { alias: 'biking', name: 'Biking', topic: 'Cycling, bikes, trails, maintenance, and gear' },
+  { alias: 'gaming', name: 'Gaming', topic: 'Video games, arcade high scores, speedruns, and tips' },
+  { alias: 'computers', name: 'Computers', topic: 'PC hardware, Linux, VMs, custom builds, and setups' },
+  { alias: 'random', name: 'Random', topic: 'Off-topic discussions, casual chat, and memes' },
+];
+
+const officialRoomIdCache = new Map();
+
+async function ensureOfficialRoom(roomDef) {
+  const alias = roomDef.alias;
+  if (officialRoomIdCache.has(alias)) return officialRoomIdCache.get(alias);
+  const fullAlias = `#${alias}:mitch.pro`;
+
+  // 1. Check directory alias
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent(fullAlias));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialRoomIdCache.set(alias, dirData.room_id);
+        if (alias === 'general') officialGeneralRoomId = dirData.room_id;
+        return dirData.room_id;
+      }
+    }
+  } catch (_) {}
+
+  // 2. Create room with version 10
+  try {
+    const adminToken = await getSystemAdminMatrixToken();
+    const createRes = await callConduit('/_matrix/client/v3/createRoom', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${adminToken}`
+      },
+      body: JSON.stringify({
+        room_version: '10',
+        name: roomDef.name,
+        topic: roomDef.topic,
+        room_alias_name: alias,
+        visibility: 'public',
+        preset: 'public_chat',
+        initial_state: [
+          {
+            type: 'm.room.history_visibility',
+            state_key: '',
+            content: { history_visibility: 'world_readable' }
+          },
+          {
+            type: 'm.room.guest_access',
+            state_key: '',
+            content: { guest_access: 'can_join' }
+          }
+        ]
+      })
+    });
+    const createData = await createRes.json();
+    if (createRes.ok && createData.room_id) {
+      officialRoomIdCache.set(alias, createData.room_id);
+      if (alias === 'general') officialGeneralRoomId = createData.room_id;
+      return createData.room_id;
+    }
+  } catch (_) {}
+
+  // 3. Re-query directory in case alias already existed
+  try {
+    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent(fullAlias));
+    if (dirRes.ok) {
+      const dirData = await dirRes.json();
+      if (dirData.room_id) {
+        officialRoomIdCache.set(alias, dirData.room_id);
+        if (alias === 'general') officialGeneralRoomId = dirData.room_id;
+        return dirData.room_id;
+      }
+    }
+  } catch (_) {}
+
+  return null;
+}
+
 async function ensureOfficialGeneralRoom() {
+  const id = await ensureOfficialRoom(OFFICIAL_MATRIX_ROOMS[0]);
+  if (id) return id;
   if (officialGeneralRoomId) return officialGeneralRoomId;
-
-  // 1. Check if directory alias exists
-  try {
-    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
-    if (dirRes.ok) {
-      const dirData = await dirRes.json();
-      if (dirData.room_id) {
-        officialGeneralRoomId = dirData.room_id;
-        return officialGeneralRoomId;
-      }
-    }
-  } catch (_) {}
-
-  // 2. Create room with version 10 (allows power levels modification)
-  const adminToken = await getSystemAdminMatrixToken();
-  const createRes = await callConduit('/_matrix/client/v3/createRoom', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${adminToken}`
-    },
-    body: JSON.stringify({
-      room_version: '10',
-      name: 'General',
-      topic: 'Welcome to Mitch.pro Official Matrix Chat!',
-      room_alias_name: 'general',
-      visibility: 'public',
-      preset: 'public_chat',
-      initial_state: [
-        {
-          type: 'm.room.history_visibility',
-          state_key: '',
-          content: { history_visibility: 'world_readable' }
-        },
-        {
-          type: 'm.room.guest_access',
-          state_key: '',
-          content: { guest_access: 'can_join' }
-        }
-      ]
-    })
-  });
-  const createData = await createRes.json();
-  if (createRes.ok && createData.room_id) {
-    officialGeneralRoomId = createData.room_id;
-    return officialGeneralRoomId;
-  }
-
-  // If alias was already taken, re-query directory
-  try {
-    const dirRes = await callConduit('/_matrix/client/v3/directory/room/' + encodeURIComponent('#general:mitch.pro'));
-    if (dirRes.ok) {
-      const dirData = await dirRes.json();
-      if (dirData.room_id) {
-        officialGeneralRoomId = dirData.room_id;
-        return officialGeneralRoomId;
-      }
-    }
-  } catch (_) {}
-
-  throw new Error('Failed to ensure official general room: ' + (createData?.error || createRes.statusText));
+  throw new Error('Failed to ensure official general room');
 }
 
 async function syncMatrixUserToOfficialRooms(userId, userToken, targetPowerLevel) {
-  const roomId = await ensureOfficialGeneralRoom();
-
-  // 1. Join user to official room
-  if (userToken) {
+  for (const rDef of OFFICIAL_MATRIX_ROOMS) {
     try {
-      await callConduit(`/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${userToken}`
-        },
-        body: '{}'
-      });
-    } catch (joinErr) {
-      console.warn(`[matrix-sync] User join ${roomId} warning:`, joinErr?.message || joinErr);
-    }
-  }
+      const roomId = await ensureOfficialRoom(rDef);
+      if (!roomId) continue;
 
-  // 2. Fetch current power levels
-  const adminToken = await getSystemAdminMatrixToken();
-  const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
-    method: 'GET',
-    headers: { 'Authorization': `Bearer ${adminToken}` }
-  });
-  if (plRes.ok) {
-    const plData = await plRes.json();
-    plData.users = plData.users || {};
-    plData.events = plData.events || {};
-    let plChanged = false;
-    for (const callEv of ['org.matrix.msc3401.call.member', 'org.matrix.msc3401.call', 'org.matrix.msc4143.rtc.member']) {
-      if (plData.events[callEv] !== 0) {
-        plData.events[callEv] = 0;
-        plChanged = true;
+      // 1. Join user to official room
+      if (userToken) {
+        try {
+          await callConduit(`/_matrix/client/v3/join/${encodeURIComponent(roomId)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${userToken}`
+            },
+            body: '{}'
+          });
+        } catch (joinErr) {
+          console.warn(`[matrix-sync] User join ${roomId} (${rDef.alias}) warning:`, joinErr?.message || joinErr);
+        }
       }
-    }
-    const currentPL = plData.users[userId] !== undefined ? plData.users[userId] : 0;
-    if (currentPL !== targetPowerLevel) {
-      if (targetPowerLevel > 0) {
-        plData.users[userId] = targetPowerLevel;
-      } else {
-        delete plData.users[userId];
-      }
-      plChanged = true;
-    }
-    if (plChanged) {
-      const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${adminToken}`
-        },
-        body: JSON.stringify(plData)
+
+      // 2. Fetch current power levels
+      const adminToken = await getSystemAdminMatrixToken();
+      const plRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${adminToken}` }
       });
-      if (!putRes.ok) {
-        const putErr = await putRes.json().catch(() => ({}));
-        console.warn(`[matrix-sync] Power level update for ${userId} failed:`, putErr);
-      } else {
-        console.log(`[matrix-sync] Set power level for ${userId} to ${targetPowerLevel} in ${roomId}`);
+      if (plRes.ok) {
+        const plData = await plRes.json();
+        plData.users = plData.users || {};
+        plData.events = plData.events || {};
+        let plChanged = false;
+        for (const callEv of ['org.matrix.msc3401.call.member', 'org.matrix.msc3401.call', 'org.matrix.msc4143.rtc.member']) {
+          if (plData.events[callEv] !== 0) {
+            plData.events[callEv] = 0;
+            plChanged = true;
+          }
+        }
+        const currentPL = plData.users[userId] !== undefined ? plData.users[userId] : 0;
+        if (currentPL !== targetPowerLevel) {
+          if (targetPowerLevel > 0) {
+            plData.users[userId] = targetPowerLevel;
+          } else {
+            delete plData.users[userId];
+          }
+          plChanged = true;
+        }
+        if (plChanged) {
+          const putRes = await callConduit(`/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.room.power_levels`, {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${adminToken}`
+            },
+            body: JSON.stringify(plData)
+          });
+          if (!putRes.ok) {
+            const putErr = await putRes.json().catch(() => ({}));
+            console.warn(`[matrix-sync] Power level update for ${userId} in ${rDef.alias} failed:`, putErr);
+          }
+        }
       }
+    } catch (syncErr) {
+      console.warn(`[matrix-sync] Sync error for room ${rDef.alias}:`, syncErr?.message || syncErr);
     }
   }
 }
@@ -9820,7 +9877,8 @@ async function handleRequest(req, server) {
         displayName,
         role,
         powerLevel: targetPowerLevel,
-        officialRoom: '#general:mitch.pro'
+        officialRoom: '#general:mitch.pro',
+        officialRooms: OFFICIAL_MATRIX_ROOMS.map(r => `#${r.alias}:mitch.pro`)
       }, {
         'Access-Control-Allow-Origin': '*'
       });
@@ -12617,6 +12675,32 @@ async function handleRequest(req, server) {
         if (!stats[norm]) stats[norm] = {};
         stats[norm].slots_free_spins = (stats[norm].slots_free_spins || 0) + 5;
         saveUserStats(stats);
+      } else if (type === 'loaded_dice') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentUntil = stats[norm].loaded_dice_until || 0;
+        const baseTime = Math.max(Date.now(), currentUntil);
+        stats[norm].loaded_dice_until = baseTime + (30 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'casino_glitch_chip') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentUntil = stats[norm].casino_glitch_until || 0;
+        const baseTime = Math.max(Date.now(), currentUntil);
+        stats[norm].casino_glitch_until = baseTime + (20 * 60 * 1000);
+        saveUserStats(stats);
+      } else if (type === 'infinite_luck_charm') {
+        const stats = loadUserStats();
+        if (!stats[norm]) stats[norm] = {};
+        const currentUntil = stats[norm].infinite_luck_until || 0;
+        const baseTime = Math.max(Date.now(), currentUntil);
+        const duration = 30 * 60 * 1000;
+        stats[norm].infinite_luck_until = baseTime + duration;
+        stats[norm].loaded_dice_until = Math.max(stats[norm].loaded_dice_until || 0, baseTime + duration);
+        stats[norm].casino_glitch_until = Math.max(stats[norm].casino_glitch_until || 0, baseTime + duration);
+        stats[norm].bad_beat_insurance_until = Math.max(stats[norm].bad_beat_insurance_until || 0, baseTime + duration);
+        stats[norm].vip_casino_until = Math.max(stats[norm].vip_casino_until || 0, baseTime + duration);
+        saveUserStats(stats);
       }
 
       if (cost > 0) addCoins(email, -cost);
@@ -13134,6 +13218,36 @@ async function handleRequest(req, server) {
       const sid = cookies['studentId'] || cookies['id'] || '';
       if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
       return jsonResp(200, { moderators: moderatorEmails() });
+    }
+
+    // POST /api/admin/testers
+    if (path === '/api/admin/testers' && method === 'POST') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      const adminEmail = emailFromSid(sid) || 'admin';
+      const targetRaw = String(body.email || '').trim();
+      const target = normalizeEmail(targetRaw);
+      if (!target) return jsonResp(400, { error: 'valid email required' });
+      const active = !!body.active;
+      let testers = testerEmails();
+      if (active) {
+        if (!testers.some(t => normalizeEmail(t) === target)) testers.push(targetRaw);
+      } else {
+        testers = testers.filter(t => normalizeEmail(t) !== target);
+      }
+      await saveJson(TESTERS_FILE, testers);
+      logAdminAction(adminEmail, active ? 'add_tester' : 'remove_tester', { target: targetRaw });
+      return jsonResp(200, { ok: true, testers });
+    }
+
+    // GET /api/admin/testers
+    if (path === '/api/admin/testers' && method === 'GET') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!isAnyAdminId(sid)) return jsonResp(403, { error: 'forbidden' });
+      return jsonResp(200, { testers: testerEmails() });
     }
 
     if (path === '/api/admin/moderator-panel' && method === 'GET') {
@@ -16517,28 +16631,66 @@ async function handleRequest(req, server) {
       if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
       if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
         return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
-      const { name, email, discord, why, skills, extra, type } = body;
+      const { name, email, discord, matrix, why, skills, extra, type, role, availability, portfolio } = body;
       const isPremium = type === 'premium';
       if (!name?.trim() || !email?.trim() || !why?.trim()) return jsonResp(400, { error: 'Please fill in all required fields.' });
-      if (!isPremium && (!discord?.trim() || !skills?.trim())) return jsonResp(400, { error: 'Please fill in all required fields.' });
+      if (!isPremium && (!discord?.trim() && !matrix?.trim()) && !skills?.trim()) return jsonResp(400, { error: 'Please fill in contact and skills fields.' });
+      const targetRole = String(role || 'team').toLowerCase().trim();
       const application = {
         name: name.trim(), email: email.trim().toLowerCase(),
-        discord: (discord || '').trim(), why: why.trim(),
+        discord: (discord || '').trim(),
+        matrix: (matrix || '').trim(),
+        why: why.trim(),
+        role: targetRole,
+        availability: (availability || '').trim(),
+        portfolio: (portfolio || '').trim(),
         ...(skills?.trim() ? { skills: skills.trim() } : {}),
         extra: (extra || '').trim(),
-        type: isPremium ? 'premium' : 'team',
+        type: isPremium ? 'premium' : targetRole,
         submitted_at: Date.now(),
       };
       const apps = applications;
       apps.unshift(application);
-      saveApplications( apps);
-      const ntfyTitle = isPremium ? 'New Premium Application' : 'New Team Application';
-      ntfy(`${name.trim()} (${email.trim()})${discord?.trim() ? ' — ' + discord.trim() : ''}\n\n${why.trim().slice(0, 200)}`, {
+      saveApplications(apps);
+      const ntfyTitle = isPremium ? 'New Premium Application' : `New ${targetRole.toUpperCase()} Application`;
+      ntfy(`${name.trim()} (${email.trim()}) [Role: ${targetRole}]\nDiscord: ${discord?.trim() || 'N/A'}\n\n${why.trim().slice(0, 200)}`, {
         title: ntfyTitle,
         priority: 'high',
       });
-      console.log(`[apply] New application from ${name.trim()} <${email.trim()}> (${discord.trim()})`);
+      console.log(`[apply] New application from ${name.trim()} <${email.trim()}> (Role: ${targetRole})`);
       return jsonResp(200, { ok: true });
+    }
+
+    // /api/contact
+    if (path === '/api/contact' && method === 'POST') {
+      if (rateLimited('ip:' + ip, '/api/contact')) return jsonResp(429, { error: 'Too many messages sent. Please wait before trying again.' });
+      if (!await tryParseJson()) return jsonResp(400, { error: 'bad json' });
+      if (!await verifyRecaptcha(body.recaptcha_token || '', ip))
+        return jsonResp(400, { error: 'reCAPTCHA failed. Please try again.' });
+      const { name, email, subject, message, department } = body;
+      if (!name?.trim() || !email?.trim() || !message?.trim()) {
+        return jsonResp(400, { error: 'Name, email, and message are required.' });
+      }
+      const contactMsg = {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        subject: (subject || 'General Inquiry').trim(),
+        department: (department || 'support').trim(),
+        message: message.trim(),
+        received_at: Date.now(),
+        ip,
+      };
+      const CONTACT_LOG_FILE = join(DATA_DIR, 'contact_messages.json');
+      const messages = loadJson(CONTACT_LOG_FILE, []);
+      messages.unshift(contactMsg);
+      await saveJson(CONTACT_LOG_FILE, messages.slice(0, 500));
+
+      ntfy(`From: ${name.trim()} <${email.trim()}>\nDept: ${department || 'support'}\nSubject: ${subject || 'Inquiry'}\n\n${message.trim().slice(0, 300)}`, {
+        title: `📩 New Contact: ${subject || 'Support Message'}`,
+        priority: 'high',
+      });
+      console.log(`[contact] Message from ${name.trim()} <${email.trim()}> [${department || 'support'}]`);
+      return jsonResp(200, { ok: true, message: 'Your message has been sent to the team!' });
     }
 
     if (path === '/api/profile' && method === 'POST') {
@@ -19075,6 +19227,9 @@ async function handleRequest(req, server) {
       return jsonResp(400, { error: 'Target upgrade tier not found in catalog.' });
     }
 
+    const duration = (String(body.duration || 'month').toLowerCase() === 'week') ? 'week' : 'month';
+    const durationDays = (duration === 'week') ? 7 : 30;
+
     const currentUpgrades = getUserVmUpgrades(actor.email);
     let currentValue = 0;
     if (category === 'cpu') currentValue = currentUpgrades.cpuCores;
@@ -19082,12 +19237,16 @@ async function handleRequest(req, server) {
     if (category === 'disk') currentValue = currentUpgrades.diskGb;
     if (category === 'session') currentValue = currentUpgrades.dailyMaxSeconds;
 
-    if (targetValue <= currentValue) {
+    const isSessionRenewal = (category === 'session' && targetValue === currentValue && currentValue > VM_DAILY_MAX_SECONDS);
+    if (targetValue < currentValue || (targetValue === currentValue && !isSessionRenewal)) {
       return jsonResp(400, { error: 'You already possess this tier or a higher tier.' });
     }
 
     const currentTier = tiers.find(t => t.value === currentValue) || { cost: 0 };
-    const cost = Math.max(0, targetTier.cost - currentTier.cost);
+    let cost = isSessionRenewal ? targetTier.cost : Math.max(0, targetTier.cost - currentTier.cost);
+    if (category === 'session' && duration === 'week') {
+      cost = Math.round(cost * 0.35);
+    }
 
     const userCoins = getCoins(actor.email);
     if (userCoins < cost) {
@@ -19130,7 +19289,7 @@ async function handleRequest(req, server) {
       addCoins(actor.email, -cost, `vm-upgrade: ${category} to ${targetTier.label}`);
     }
 
-    const newUpgrades = saveUserVmUpgrade(actor.email, category, targetValue);
+    const newUpgrades = saveUserVmUpgrade(actor.email, category, targetValue, durationDays);
 
     if (vmRecord) {
       const updateSpecs = {};
@@ -20412,6 +20571,7 @@ async function handleRequest(req, server) {
         else if (adminMemberEmails().some(adminEmail => normalizeEmail(adminEmail) === normalizeEmail(email))) role = 'admin/developer';
         else if (isModeratorEmail(email)) role = 'moderator';
         else if (isBlogContributorEmail(email)) role = 'contributor';
+        else if (isTesterEmail(email)) role = 'tester';
         else if (isPremiumEmail(email)) role = 'premium';
         
         const e2eLegacy = deriveUserE2EKeys(email);
@@ -20600,6 +20760,32 @@ async function handleRequest(req, server) {
       return jsonResp(200, { members });
     }
 
+    // /api/tester-members — public list of beta testers
+    if (path === '/api/tester-members') {
+      const cookies = getCookies(req);
+      const sid = cookies['studentId'] || cookies['id'] || '';
+      if (!sid || !validId(sid) || isRevoked(sid)) return jsonResp(401, { error: 'auth required' });
+      const profiles = loadJson(PROFILES_FILE, {});
+      const cosmetics = loadJson(COSMETICS_FILE, {});
+      const viewerEmail = emailFromSid(sid);
+      const members = testerEmails()
+        .filter(email => email !== TEST_ACCOUNT_EMAIL)
+        .map(email => {
+          const norm = normalizeEmail(email);
+          const profile = profiles[norm] || {};
+          const cosm = cosmetics[norm] || {};
+          const processed = processMemberFields(email, profile, viewerEmail);
+          return {
+            displayName: processed.displayName,
+            email: processed.email,
+            role: 'Beta Tester',
+            color: publicActiveColor(email, cosm.activeColor),
+            badge: cosm.activeBadge || null
+          };
+        });
+      return jsonResp(200, { members });
+    }
+
     // /api/owner-members — public list of site owners
     if (path === '/api/owner-members') {
       const cookies = getCookies(req);
@@ -20656,6 +20842,8 @@ async function handleRequest(req, server) {
         email: processed.email,
         isPremium: isPremiumEmail(email),
         isAdmin: isAdminEmail(email),
+        isModerator: isModeratorEmail(email),
+        isTester: isTesterEmail(email),
         stats: loadUserStats()[norm] || {},
         achievements: getAchievements(email),
         totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
@@ -20701,6 +20889,8 @@ async function handleRequest(req, server) {
         isPremium: isPremiumEmail(actualEmail),
 
         isAdmin: isAdminEmail(actualEmail),
+        isModerator: isModeratorEmail(actualEmail),
+        isTester: isTesterEmail(actualEmail),
         stats: loadUserStats()[norm] || {},
         achievements: getAchievements(actualEmail),
         totalAchievementsCount: Object.keys(ACHIEVEMENT_DEFINITIONS).length,
@@ -24361,6 +24551,16 @@ async function handleRequest(req, server) {
       casinoHistory.set(norm, h);
     }
 
+    function hasLoadedDice() {
+      const stats = loadUserStats();
+      return !!(stats[norm] && ((stats[norm].loaded_dice_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now()));
+    }
+
+    function hasCasinoGlitch() {
+      const stats = loadUserStats();
+      return !!(stats[norm] && ((stats[norm].casino_glitch_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now()));
+    }
+
     function readCasinoBet(min = 1) {
       const bet = Number(body.amount);
       const bal = getCoins(email);
@@ -24368,8 +24568,8 @@ async function handleRequest(req, server) {
       if (bet > bal) return { error: 'You do not have enough coins for that bet.' };
 
       const stats = loadUserStats();
-      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
-      if (!isVip && bet > 500) return { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' };
+      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
+      if (!isVip && bet > 500) return { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass or Infinite Luck Charm in the shop for unlimited betting!' };
 
       return { bet: Number(bet.toFixed(2)), bal };
     }
@@ -24381,12 +24581,17 @@ async function handleRequest(req, server) {
     function settleCasinoRound(gameName, bet, payout, outcome, freeSpin = false, prepaid = false) {
       const stats = loadUserStats();
       const isDouble = stats[norm] && (stats[norm].double_down_until || 0) > Date.now();
-      const isInsured = stats[norm] && (stats[norm].bad_beat_insurance_until || 0) > Date.now();
+      const isInsured = stats[norm] && ((stats[norm].bad_beat_insurance_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
+      const isGlitch = hasCasinoGlitch();
+      const glitchMultiplier = (stats[norm] && (stats[norm].infinite_luck_until || 0) > Date.now()) ? 10 : 5;
 
       let finalPayout = payout;
       let finalOutcome = outcome;
 
-      if (payout > bet && isDouble) {
+      if (payout > 0 && isGlitch) {
+        finalPayout = payout * glitchMultiplier;
+        finalOutcome = outcome + ` (${glitchMultiplier}X GLITCH EXPLOIT)`;
+      } else if (payout > bet && isDouble) {
         finalPayout = payout * 2;
         finalOutcome = outcome + ' (2X DOUBLE)';
       } else if (payout <= 0 && isInsured && !freeSpin) {
@@ -24451,7 +24656,8 @@ async function handleRequest(req, server) {
       const choice = String(body.choice || '').toLowerCase();
       const options = ['rock', 'paper', 'scissors'];
       if (!options.includes(choice)) return jsonResp(400, { error: 'Choose rock, paper, or scissors.' });
-      const computer = options[Math.floor(Math.random() * options.length)];
+      const losesTo = { rock: 'scissors', paper: 'rock', scissors: 'paper' };
+      const computer = hasLoadedDice() ? losesTo[choice] : options[Math.floor(Math.random() * options.length)];
       const tie = choice === computer;
       const won = !tie && ((choice === 'rock' && computer === 'scissors') || (choice === 'paper' && computer === 'rock') || (choice === 'scissors' && computer === 'paper'));
       const payout = tie ? betCheck.bet : won ? betCheck.bet * 1.9 : 0;
@@ -24463,7 +24669,8 @@ async function handleRequest(req, server) {
       if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
       const betCheck = readCasinoBet();
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
-      const dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      let dice = [1 + Math.floor(Math.random() * 6), 1 + Math.floor(Math.random() * 6)];
+      if (hasLoadedDice()) dice = [3, 4];
       const total = dice[0] + dice[1];
       const won = total === 7;
       const settled = settleCasinoRound('Lucky Seven', betCheck.bet, won ? betCheck.bet * 4.8 : 0, won ? 'WIN' : 'LOSE');
@@ -24477,7 +24684,8 @@ async function handleRequest(req, server) {
       const choice = String(body.choice || '').toLowerCase();
       if (choice !== 'red' && choice !== 'black') return jsonResp(400, { error: 'Choose red or black.' });
       const suits = ['hearts', 'diamonds', 'clubs', 'spades'];
-      const suit = suits[Math.floor(Math.random() * suits.length)];
+      let suit = suits[Math.floor(Math.random() * suits.length)];
+      if (hasLoadedDice()) suit = (choice === 'red') ? 'hearts' : 'spades';
       const color = suit === 'hearts' || suit === 'diamonds' ? 'red' : 'black';
       const value = 1 + Math.floor(Math.random() * 13);
       const card = value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' : value === 11 ? 'J' : String(value);
@@ -24492,7 +24700,8 @@ async function handleRequest(req, server) {
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
       const pick = Number(body.pick);
       if (!Number.isInteger(pick) || pick < 1 || pick > 6) return jsonResp(400, { error: 'Pick a number from 1 to 6.' });
-      const dice = Array.from({ length: 3 }, () => 1 + Math.floor(Math.random() * 6));
+      let dice = Array.from({ length: 3 }, () => 1 + Math.floor(Math.random() * 6));
+      if (hasLoadedDice()) dice = [pick, pick, pick];
       const matches = dice.filter(value => value === pick).length;
       const mult = [0, 2, 5, 25][matches];
       const settled = settleCasinoRound('Triple Dice', betCheck.bet, betCheck.bet * mult, matches ? 'WIN' : 'LOSE');
@@ -24503,12 +24712,13 @@ async function handleRequest(req, server) {
       if (!casinoEnabled) return jsonResp(403, { error: 'Casino is currently closed.' });
       const betCheck = readCasinoBet();
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
-      const slot = weightedPick([
+      let slot = weightedPick([
         { label: '0x', mult: 0, weight: 25 }, { label: '0.5x', mult: 0.5, weight: 25 },
         { label: '0.8x', mult: 0.8, weight: 18 }, { label: '1.2x', mult: 1.2, weight: 15 },
         { label: '1.5x', mult: 1.5, weight: 10 }, { label: '3x', mult: 3, weight: 5 },
         { label: '8x', mult: 8, weight: 2 },
       ]);
+      if (hasLoadedDice()) slot = { label: '8x (JACKPOT)', mult: 8 };
       const settled = settleCasinoRound('Plinko', betCheck.bet, betCheck.bet * slot.mult, slot.mult >= 1 ? 'WIN' : 'LOSE');
       return jsonResp(200, { ok: true, slot: slot.label, mult: slot.mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
@@ -24532,6 +24742,18 @@ async function handleRequest(req, server) {
       
       let num = Math.floor(Math.random() * 37);
       let resultColor = colors[num];
+      if (hasLoadedDice()) {
+        if (type === 'red' || type === 'black') {
+          num = (type === 'red') ? 1 : 2;
+          resultColor = type;
+        } else if (type === 'green') {
+          num = 0;
+          resultColor = 'green';
+        } else if (Number.isInteger(Number(type)) && Number(type) >= 0 && Number(type) <= 36) {
+          num = Number(type);
+          resultColor = colors[num];
+        }
+      }
       const rigged = isRigged();
 
       let won = false;
@@ -24569,7 +24791,8 @@ async function handleRequest(req, server) {
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
       const choice = String(body.choice || '').toLowerCase();
       if (choice !== 'higher' && choice !== 'lower') return jsonResp(400, { error: 'Choose higher or lower.' });
-      const value = 1 + Math.floor(Math.random() * 13);
+      let value = 1 + Math.floor(Math.random() * 13);
+      if (hasLoadedDice()) value = (choice === 'higher') ? 12 : 2;
       const card = value === 1 ? 'A' : value === 13 ? 'K' : value === 12 ? 'Q' : value === 11 ? 'J' : String(value);
       const push = value === 7;
       const won = !push && (choice === 'higher' ? value > 7 : value < 7);
@@ -24587,7 +24810,7 @@ async function handleRequest(req, server) {
       if (!Number.isFinite(bet) || bet < 1 || bet > bal) return jsonResp(400, { error: 'invalid bet' });
 
       const stats = loadUserStats();
-      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
+      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
       if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
 
       casinoIntake += bet; saveCasinoStats();
@@ -24603,6 +24826,10 @@ async function handleRequest(req, server) {
 
       let playerHand = [deck.pop(), deck.pop()];
       let dealerHand = [deck.pop(), deck.pop()];
+      if (hasLoadedDice()) {
+        playerHand = [{ s: '♠', v: 'A' }, { s: '♦', v: 'K' }];
+        dealerHand = [{ s: '♥', v: '10' }, { s: '♣', v: '6' }];
+      }
       const rigged = false;
 
       if (rigged) {
@@ -24732,6 +24959,9 @@ async function handleRequest(req, server) {
       }
       
       let hand = [deck.pop(), deck.pop(), deck.pop(), deck.pop(), deck.pop()];
+      if (hasLoadedDice()) {
+        hand = [{ s: '♠', v: '10' }, { s: '♠', v: 'J' }, { s: '♠', v: 'Q' }, { s: '♠', v: 'K' }, { s: '♠', v: 'A' }];
+      }
       
       const checkHand = (h) => {
         const counts = {};
@@ -24783,7 +25013,8 @@ async function handleRequest(req, server) {
       if (!['heads', 'tails'].includes(side)) return jsonResp(400, { error: 'Choose heads or tails.' });
       const rigged = isRigged();
       let result = Math.random() < 0.5 ? 'heads' : 'tails';
-      if (rigged && result === side) result = side === 'heads' ? 'tails' : 'heads';
+      if (hasLoadedDice()) result = side;
+      else if (rigged && result === side) result = side === 'heads' ? 'tails' : 'heads';
       const won = side === result;
       const mult = won ? 1.9 : 0;
       const settled = settleCasinoRound('Coin Flip', betCheck.bet, won ? betCheck.bet * mult : 0, won ? 'WIN' : 'LOSE');
@@ -24799,7 +25030,8 @@ async function handleRequest(req, server) {
       if (!['under', 'over'].includes(side)) return jsonResp(400, { error: 'Choose under or over.' });
       const rigged = isRigged();
       let roll = Math.floor(Math.random() * 100) + 1;
-      if (rigged) {
+      if (hasLoadedDice()) roll = (side === 'under') ? 25 : 75;
+      else if (rigged) {
         if (side === 'under' && roll < 50) roll = Math.floor(Math.random() * 51) + 50;
         else if (side === 'over' && roll > 51) roll = Math.floor(Math.random() * 51) + 1;
       }
@@ -24819,7 +25051,8 @@ async function handleRequest(req, server) {
       const rigged = isRigged();
       let crashAt = Number(Math.max(1, Math.min(10, 0.95 / Math.max(Math.random(), 0.000001))).toFixed(2));
       const cashout = Number(target.toFixed(2));
-      if (rigged && cashout <= crashAt) crashAt = Number(Math.max(1, cashout - 0.01).toFixed(2));
+      if (hasLoadedDice()) crashAt = Number((cashout + 1.0).toFixed(2));
+      else if (rigged && cashout <= crashAt) crashAt = Number(Math.max(1, cashout - 0.01).toFixed(2));
       const won = cashout <= crashAt;
       const settled = settleCasinoRound('Crash', betCheck.bet, won ? betCheck.bet * cashout : 0, won ? 'WIN' : 'CRASH');
       return jsonResp(200, { ok: true, crashAt, target: cashout, won, mult: won ? cashout : 0, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
@@ -24841,7 +25074,8 @@ async function handleRequest(req, server) {
       ];
       const rigged = isRigged();
       let segment = weightedPick(segments);
-      if (rigged && segment.mult >= 1) segment = segments[0]; // Force Bust
+      if (hasLoadedDice()) segment = { label: 'Galaxy Jackpot', mult: 20, weight: 1 };
+      else if (rigged && segment.mult >= 1) segment = segments[0]; // Force Bust
       const settled = settleCasinoRound('Prize Wheel', betCheck.bet, betCheck.bet * segment.mult, segment.mult >= 1 ? 'WIN' : 'LOSE');
       return jsonResp(200, { ok: true, segment: segment.label, mult: segment.mult, win: settled.payout, net: settled.net, newBalance: settled.newBalance });
     }
@@ -24853,7 +25087,8 @@ async function handleRequest(req, server) {
       if (betCheck.error) return jsonResp(400, { error: betCheck.error });
       const rigged = isRigged();
       let roll = Math.random();
-      if (rigged && roll < 0.180) roll = 0.300 + Math.random() * 0.7; // Force No Match (roll >= 0.300)
+      if (hasLoadedDice()) roll = 0.001;
+      else if (rigged && roll < 0.180) roll = 0.300 + Math.random() * 0.7; // Force No Match (roll >= 0.300)
       let mult = 0, rank = 'No Match';
       if (roll < 0.002) { mult = 90; rank = 'Triple Diamonds'; }
       else if (roll < 0.010) { mult = 25; rank = 'Triple Sevens'; }
@@ -24889,6 +25124,10 @@ async function handleRequest(req, server) {
       };
       const rigged = isRigged();
       let drawn = drawUniqueNumbers(40, 12);
+      if (hasLoadedDice()) {
+        const rest = Array.from({ length: 40 }, (_, i) => i + 1).filter(n => !picks.includes(n));
+        drawn = [...picks, ...rest.slice(0, 12 - picks.length)].sort((a, b) => a - b);
+      }
       let hitSet = new Set(drawn);
       let hits = picks.filter(n => hitSet.has(n));
       
@@ -24916,7 +25155,7 @@ async function handleRequest(req, server) {
       
       const stats = loadUserStats();
       const norm = normalizeEmail(email);
-      const isVip = stats[norm] && stats[norm].vip_casino_until > Date.now();
+      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
       
       if (isVipRoom && !isVip) return jsonResp(403, { error: 'VIP pass required' });
 
@@ -24943,6 +25182,7 @@ async function handleRequest(req, server) {
         symbols[Math.floor(Math.random() * symbols.length)],
         symbols[Math.floor(Math.random() * symbols.length)]
       ];
+      if (hasLoadedDice()) results = ['💎', '💎', '💎'];
 
       const getMult = (res) => {
         if (res[0] === res[1] && res[1] === res[2]) {
@@ -26969,19 +27209,27 @@ function getUserVmUpgrades(email) {
     memoryMb: VM_DEFAULT_MEMORY_MB,
     diskGb: VM_DEFAULT_DISK_GB,
     dailyMaxSeconds: VM_DAILY_MAX_SECONDS,
+    sessionUpgradeExpiresAt: null,
   };
   const norm = normalizeEmail(email);
   const data = loadJson(VM_UPGRADES_FILE, {});
   const user = data[norm] || {};
+  let dailyMaxSeconds = Number(user.dailyMaxSeconds) || VM_DAILY_MAX_SECONDS;
+  const sessionUpgradeExpiresAt = Number(user.sessionUpgradeExpiresAt) || null;
+  const isExpired = sessionUpgradeExpiresAt && Date.now() > sessionUpgradeExpiresAt;
+  if (dailyMaxSeconds > VM_DAILY_MAX_SECONDS && isExpired) {
+    dailyMaxSeconds = VM_DAILY_MAX_SECONDS;
+  }
   return {
     cpuCores: Number(user.cpuCores) || VM_DEFAULT_CPU_CORES,
     memoryMb: Number(user.memoryMb) || VM_DEFAULT_MEMORY_MB,
     diskGb: Number(user.diskGb) || VM_DEFAULT_DISK_GB,
-    dailyMaxSeconds: Number(user.dailyMaxSeconds) || VM_DAILY_MAX_SECONDS,
+    dailyMaxSeconds,
+    sessionUpgradeExpiresAt: isExpired ? null : sessionUpgradeExpiresAt,
   };
 }
 
-function saveUserVmUpgrade(email, category, value) {
+function saveUserVmUpgrade(email, category, value, durationDays = 30) {
   if (!email) return null;
   const norm = normalizeEmail(email);
   const data = loadJson(VM_UPGRADES_FILE, {});
@@ -26990,11 +27238,24 @@ function saveUserVmUpgrade(email, category, value) {
     memoryMb: VM_DEFAULT_MEMORY_MB,
     diskGb: VM_DEFAULT_DISK_GB,
     dailyMaxSeconds: VM_DAILY_MAX_SECONDS,
+    sessionUpgradeExpiresAt: null,
   };
   if (category === 'cpu') current.cpuCores = Number(value);
   if (category === 'ram') current.memoryMb = Number(value);
   if (category === 'disk') current.diskGb = Number(value);
-  if (category === 'session') current.dailyMaxSeconds = Number(value);
+  if (category === 'session') {
+    const nextVal = Number(value);
+    current.dailyMaxSeconds = nextVal;
+    if (nextVal > VM_DAILY_MAX_SECONDS) {
+      const ms = Math.max(1, Number(durationDays) || 30) * 86400 * 1000;
+      const baseTime = (current.sessionUpgradeExpiresAt && current.sessionUpgradeExpiresAt > Date.now())
+        ? current.sessionUpgradeExpiresAt
+        : Date.now();
+      current.sessionUpgradeExpiresAt = baseTime + ms;
+    } else {
+      current.sessionUpgradeExpiresAt = null;
+    }
+  }
   data[norm] = current;
   saveJson(VM_UPGRADES_FILE, data);
   return current;
