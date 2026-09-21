@@ -117,6 +117,4 @@ jobs:
             fi
 
             echo "[deploy-ci] Running full blue-green deployment..."
-            git -C /home/mitch/server/bun checkout -- caddy/Caddyfile 2>/dev/null || true
-            git -C /home/mitch/server/bun pull origin master 2>/dev/null || true
             sudo /usr/local/bin/deploy.sh
