@@ -6068,59 +6068,12 @@ function checkPasswordCookie(req, providedSid = null) {
   return true;
 }
 
-const requestTimings = {}; // key -> { lastTime, intervals: [] }
-
-function detectNonHumanTiming(key) {
-  if (process.env.NODE_ENV === 'test') return false;
-  const now = Date.now();
-  if (!requestTimings[key]) {
-    requestTimings[key] = { lastTime: now, intervals: [] };
-    return false;
-  }
-  const timing = requestTimings[key];
-  const diff = now - timing.lastTime;
-  timing.lastTime = now;
-
-  // Ignore requests that are far apart (e.g. > 10 seconds)
-  if (diff > 10000) {
-    timing.intervals = [];
-    return false;
-  }
-
-  timing.intervals.push(diff);
-  if (timing.intervals.length > 5) {
-    timing.intervals.shift();
-  }
-
-  // We need at least 4 intervals (5 requests) to detect timing regularity
-  if (timing.intervals.length >= 4) {
-    const min = Math.min(...timing.intervals);
-    const max = Math.max(...timing.intervals);
-    const spread = max - min;
-    // If the spread between the fastest and slowest interval is under 50 milliseconds,
-    // it's highly regular timing (less than 50ms jitter). A human cannot do this!
-    if (spread < 50) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function checkRateLimit(req, endpoint) {
   if (req._rateLimitChecked) return null;
   req._rateLimitChecked = true;
   const ip = getRealIp(req);
   if (WHITELISTED_IPS.has(ip)) return null;
   const ep = endpoint || new URL(req.url).pathname;
-
-  // Anti-bot timing regularity check on non-polling action endpoints
-  if (!ep.endsWith('/state') && !ep.includes('/inbox') && !ep.includes('/heartbeat') && !ep.includes('/groups') && !ep.includes('/dm/send') && !ep.includes('/canvas/') && !ep.includes('/blooket-bot/status')) {
-    const timingKey = ip + ':' + ep;
-    if (detectNonHumanTiming(timingKey)) {
-      console.warn(`[Anti-Bot] Non-human timing detected from ${ip} on ${ep}`);
-      return jsonResp(429, { error: 'Non-human request patterns detected' });
-    }
-  }
 
   if (rateLimited('ip:' + ip, ep) || rateLimited(getIdKey(req), ep))
     return jsonResp(429, { error: 'Too many requests, slow down' });
