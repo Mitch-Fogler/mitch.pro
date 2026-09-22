@@ -1172,6 +1172,29 @@ pub fn is_moderator_email(store: &DataStore, email: &str) -> bool {
         .any(|m| normalize_email(m) == norm)
 }
 
+/// `isTesterEmail(email)` (server.js:6525) — testers list + admin membership.
+pub fn is_tester_email(store: &DataStore, email: &str) -> bool {
+    if email.is_empty() {
+        return false;
+    }
+    let norm = normalize_email(email);
+    if is_admin_email(store, &norm) {
+        return true;
+    }
+    let raw = store.read_document(&store.base_dir.join("data/testers.json"), json!([]));
+    if let Some(arr) = raw.as_array() {
+        return arr.iter().any(|v| {
+            v.as_str()
+                .map(|s| normalize_email(s) == norm)
+                .unwrap_or(false)
+        });
+    }
+    if let Some(obj) = raw.as_object() {
+        return obj.keys().any(|k| normalize_email(k) == norm);
+    }
+    false
+}
+
 /// `isModeratorId(sid)` (6171) — sid → email → isModeratorEmail.
 pub fn is_moderator_id(store: &DataStore, id_secret: &[u8], sid: &str) -> bool {
     if sid.is_empty() {

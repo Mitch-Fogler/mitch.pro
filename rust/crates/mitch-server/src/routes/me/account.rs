@@ -23,6 +23,12 @@ pub(crate) async fn handle(
     headers: &HeaderMap,
     body_bytes: &[u8],
 ) -> Option<Response> {
+    if path == "/api/profile" && *method == Method::GET {
+        return Some(get_profile(state, headers));
+    }
+    if path == "/api/profile" && *method == Method::POST {
+        return Some(post_profile(state, headers, body_bytes));
+    }
     if path == "/api/me/change-email" && method == Method::POST {
         return Some(change_email(state, headers, body_bytes));
     }
@@ -40,6 +46,276 @@ pub(crate) async fn handle(
         return Some(me_root(state, headers));
     }
     None
+}
+
+fn get_profile(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
+    let cookies = cookies_of(state, headers);
+    let sid = me_uid(&cookies);
+    let Some(email) = auth::email_from_sid(&state.store, &state.id_secret, &sid) else {
+        return json_response(401, json!({ "error": "not logged in" }));
+    };
+    let profiles = state
+        .store
+        .read_document(&data_file(state, "profiles.json"), json!({}));
+    let norm = auth::normalize_email(&email);
+    let mut profile = profiles.get(&norm).cloned().unwrap_or_else(|| {
+        json!({
+            "username": mitch_lib::profile::default_username_for_email(&email),
+            "displayName": "",
+            "bio": "",
+            "pfp": "",
+            "background": ""
+        })
+    });
+    let cosm = state
+        .store
+        .read_document(&data_file(state, "cosmetics.json"), json!({}));
+    let processed = mitch_lib::profile::process_member_fields(
+        &state.store,
+        state.data_dir(),
+        &email,
+        Some(&profile),
+        Some(&email),
+    );
+    if let Some(obj) = profile.as_object_mut() {
+        obj.remove("totp_secret");
+        obj.remove("totpSecret");
+        obj.remove("pendingTotpSecret");
+        let pfp = obj.get("pfp").and_then(|v| v.as_str()).unwrap_or("");
+        obj.insert(
+            "pfp".into(),
+            json!(mitch_lib::profile::sanitize_profile_image_url(
+                pfp, true, 1000, 120_000
+            )),
+        );
+        let bg = obj.get("background").and_then(|v| v.as_str()).unwrap_or("");
+        obj.insert(
+            "background".into(),
+            json!(mitch_lib::profile::sanitize_profile_image_url(
+                bg, false, 1000, 0
+            )),
+        );
+        let website = obj.get("website").and_then(|v| v.as_str()).unwrap_or("");
+        obj.insert(
+            "website".into(),
+            json!(mitch_lib::profile::sanitize_profile_website_url(website)),
+        );
+    }
+    let is_premium = auth::is_premium_email(&state.store, &email);
+    let is_admin = auth::is_admin_email(&state.store, &email);
+    let is_moderator = auth::is_moderator_email(&state.store, &email);
+    let is_tester = auth::is_tester_email(&state.store, &email);
+    let user_stats = state
+        .store
+        .read_document(&data_file(state, "user_stats.json"), json!({}));
+    let stats = user_stats.get(&norm).cloned().unwrap_or(json!({}));
+    let achievements_doc = state
+        .store
+        .read_document(&data_file(state, "achievements.json"), json!({}));
+    let achievements = achievements_doc.get(&norm).cloned().unwrap_or(json!([]));
+    let coins = mitch_lib::coins::get_coins(&state.store, state.data_dir(), &email);
+    let user_cosm = cosm.get(&norm).cloned().unwrap_or(json!({}));
+
+    let mut resp_obj = profile;
+    if let Some(map) = resp_obj.as_object_mut() {
+        map.insert(
+            "displayName".into(),
+            map.get("displayName")
+                .filter(|v| jsval::truthy(v))
+                .cloned()
+                .unwrap_or(json!("")),
+        );
+        map.insert(
+            "email".into(),
+            processed.get("email").cloned().unwrap_or(json!("")),
+        );
+        map.insert("isPremium".into(), json!(is_premium));
+        map.insert("isAdmin".into(), json!(is_admin));
+        map.insert("isModerator".into(), json!(is_moderator));
+        map.insert("isTester".into(), json!(is_tester));
+        map.insert("unlimitedCoins".into(), json!(false));
+        map.insert("coins".into(), json!(coins));
+        map.insert("stats".into(), stats);
+        map.insert("achievements".into(), achievements);
+        map.insert(
+            "totalAchievementsCount".into(),
+            json!(mitch_lib::achievements::ACHIEVEMENT_DEFINITIONS.len()),
+        );
+        map.insert(
+            "activeColor".into(),
+            mitch_lib::shop::public_active_color(
+                &state.store,
+                &email,
+                user_cosm.get("activeColor").unwrap_or(&Value::Null),
+            )
+            .map(|c| json!(c))
+            .unwrap_or(Value::Null),
+        );
+        map.insert(
+            "activeBadge".into(),
+            jsval::or(user_cosm.get("activeBadge"), json!(Value::Null)),
+        );
+        map.insert(
+            "activeProfileEffect".into(),
+            jsval::or(user_cosm.get("activeProfileEffect"), json!(Value::Null)),
+        );
+        map.insert(
+            "profileBonusClaimed".into(),
+            map.get("profileBonusClaimed")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)
+                .into(),
+        );
+    }
+    json_response(200, resp_obj)
+}
+
+fn post_profile(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -> Response {
+    let cookies = cookies_of(state, headers);
+    let sid = me_uid(&cookies);
+    let Some(email) = auth::email_from_sid(&state.store, &state.id_secret, &sid) else {
+        return json_response(401, json!({ "error": "not logged in" }));
+    };
+    let Some(body) = parse_body_strict(body_bytes) else {
+        return json_response(400, json!({ "error": "bad json" }));
+    };
+    let norm = auth::normalize_email(&email);
+    let is_premium = auth::is_premium_email(&state.store, &email);
+    let profiles_path = data_file(state, "profiles.json");
+    let mut profiles = state.store.read_document(&profiles_path, json!({}));
+    let existing = profiles.get(&norm).cloned().unwrap_or(json!({}));
+
+    let req_username = body
+        .get("username")
+        .and_then(|v| v.as_str())
+        .or_else(|| existing.get("username").and_then(|v| v.as_str()))
+        .unwrap_or("");
+    let username = mitch_lib::profile::normalize_username(req_username);
+    let username = if username.is_empty() {
+        mitch_lib::profile::default_username_for_email(&norm)
+    } else {
+        username
+    };
+
+    let pfp_raw = body.get("pfp").and_then(|v| v.as_str()).unwrap_or("");
+    let bg_raw = body
+        .get("background")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let website_raw = body.get("website").and_then(|v| v.as_str()).unwrap_or("");
+
+    let safe_pfp = mitch_lib::profile::sanitize_profile_image_url(pfp_raw, true, 1000, 120_000);
+    let safe_bg = mitch_lib::profile::sanitize_profile_image_url(bg_raw, false, 1000, 0);
+    let safe_website = mitch_lib::profile::sanitize_profile_website_url(website_raw);
+
+    if !pfp_raw.trim().is_empty() && safe_pfp.is_empty() {
+        return json_response(
+            400,
+            json!({ "error": "Profile picture must be http(s) or a small PNG/JPEG/WebP/GIF image." }),
+        );
+    }
+    if is_premium && !bg_raw.trim().is_empty() && safe_bg.is_empty() {
+        return json_response(
+            400,
+            json!({ "error": "Background image must be an http(s) image URL." }),
+        );
+    }
+    if !website_raw.trim().is_empty() && safe_website.is_empty() {
+        return json_response(400, json!({ "error": "Website must be an http(s) URL." }));
+    }
+
+    let display_name = body
+        .get("displayName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let display_name = &display_name[..display_name.len().min(40)];
+
+    let nickname = body
+        .get("nickname")
+        .and_then(|v| v.as_str())
+        .or_else(|| existing.get("nickname").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .trim();
+    let nickname = &nickname[..nickname.len().min(40)];
+
+    let bio = body
+        .get("bio")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let bio = &bio[..bio.len().min(300)];
+
+    let grad_year = body
+        .get("gradYear")
+        .and_then(|v| v.as_str())
+        .or_else(|| existing.get("gradYear").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .trim();
+    let grad_year = &grad_year[..grad_year.len().min(20)];
+
+    let gender = body
+        .get("gender")
+        .and_then(|v| v.as_str())
+        .or_else(|| existing.get("gender").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .trim();
+    let gender = &gender[..gender.len().min(40)];
+
+    let referral_source = body
+        .get("referralSource")
+        .and_then(|v| v.as_str())
+        .or_else(|| existing.get("referralSource").and_then(|v| v.as_str()))
+        .unwrap_or("")
+        .trim();
+    let referral_source = &referral_source[..referral_source.len().min(80)];
+
+    let mut record = existing.clone();
+    if let Some(map) = record.as_object_mut() {
+        map.insert("email".into(), json!(email));
+        map.insert("username".into(), json!(username));
+        map.insert("nickname".into(), json!(nickname));
+        map.insert("displayName".into(), json!(display_name));
+        map.insert("bio".into(), json!(bio));
+        map.insert("website".into(), json!(safe_website));
+        map.insert("pfp".into(), json!(safe_pfp));
+        map.insert(
+            "background".into(),
+            json!(if is_premium {
+                safe_bg
+            } else {
+                existing
+                    .get("background")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
+            }),
+        );
+        map.insert("gradYear".into(), json!(grad_year));
+        map.insert("gender".into(), json!(gender));
+        map.insert("referralSource".into(), json!(referral_source));
+    } else {
+        record = json!({
+            "email": email,
+            "username": username,
+            "nickname": nickname,
+            "displayName": display_name,
+            "bio": bio,
+            "website": safe_website,
+            "pfp": safe_pfp,
+            "background": if is_premium { safe_bg } else { String::new() },
+            "gradYear": grad_year,
+            "gender": gender,
+            "referralSource": referral_source,
+        });
+    }
+
+    if let Some(map) = profiles.as_object_mut() {
+        map.insert(norm.clone(), record.clone());
+    }
+    let _ = state.store.write_document(&profiles_path, &profiles);
+
+    json_response(200, json!({ "profile": record }))
 }
 
 fn change_email(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -> Response {

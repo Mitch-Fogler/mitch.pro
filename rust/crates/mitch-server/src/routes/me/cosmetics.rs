@@ -17,6 +17,9 @@ pub(crate) fn handle(
     body: &Value,
     body_bytes: &[u8],
 ) -> Option<Response> {
+    if path == "/api/shop/items" && *method == Method::GET {
+        return Some(shop_items(state, headers));
+    }
     if path == "/api/me/inventory" && *method == Method::GET {
         return Some(me_inventory(state, headers));
     }
@@ -24,6 +27,27 @@ pub(crate) fn handle(
         return Some(me_cosmetics_equip(state, headers, body, body_bytes));
     }
     None
+}
+
+/// `GET /api/shop/items` — server.js:12018-12027.
+fn shop_items(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
+    let cookies = cookies_of(state, headers);
+    let sid = super::me_uid(&cookies);
+    let email = if auth::valid_id(&sid, &state.id_secret) {
+        auth::email_from_sid(&state.store, &state.id_secret, &sid).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let catalog = mitch_lib::shop::load_shop_catalog(&state.store, state.data_dir());
+    let items = mitch_lib::shop::shop_items_for(&state.store, state.data_dir(), &catalog, &email);
+    json_response(
+        200,
+        json!({
+            "items": items,
+            "premiumDiscountPct": 0,
+            "premiumDiscountNote": "Premium discounts vary by item."
+        }),
+    )
 }
 
 /// `GET /api/me/inventory` — server.js:11347-11356. Note the different 401
