@@ -69,21 +69,37 @@
 
     <!-- Cinny Stylesheet & Mitch.pro chat overrides -->
     <link rel="stylesheet" crossorigin href="/matrix/assets/index-DmaX6Xe5.css" />
-    <link rel="stylesheet" href="/matrix/matrix-galaxy.css?v=4" />
+    <link rel="stylesheet" href="/matrix/matrix-galaxy.css?v=5" />
   </head>
   <body id="appBody">
     <header id="matrix-site-bar">
       <a class="matrix-wordmark" href="/" aria-label="mitch.pro home"><b>mitch</b><span>.pro</span></a>
       <nav class="matrix-site-links" aria-label="Main navigation">
         <a href="/">Home</a>
-        <a href="/vms/">VM Lab</a>
+        <a href="/vms/">VM Lab <span class="matrix-free-pill">FREE</span></a>
         <a href="/matrix/" aria-current="page">Chat</a>
         <a href="/game-portal/">Games</a>
+        <a href="https://woodcreek.site/">Blooket Bot</a>
         <a href="/members/">People</a>
         <a href="https://rjuhsd.school/">Schedule</a>
       </nav>
-      <span class="matrix-network-status"><i></i> Encrypted network</span>
+      <div class="matrix-site-actions">
+        <span class="matrix-network-status"><i></i> Encrypted</span>
+        <a id="matrix-account-link" class="matrix-account-link" href="/preferences/#account">
+          <span id="matrix-account-avatar" aria-hidden="true">M</span>
+          <span id="matrix-account-name">Account</span>
+        </a>
+      </div>
     </header>
+
+    <div id="matrix-context-bar" aria-label="Chat workspace">
+      <div class="matrix-context-title"><span>COMMUNITY</span><b>Matrix chat</b></div>
+      <p>Private rooms, direct messages, voice and video on your mitch.pro account.</p>
+      <div class="matrix-context-links">
+        <a href="/members/">Find people</a>
+        <a href="/preferences/#notifications">Notification settings</a>
+      </div>
+    </div>
 
     <!-- Mitch.pro SSO Connect Banner (only shown if guest/logged out) -->
     <div id="mitch-sso-banner">
@@ -480,6 +496,9 @@
               cache: 'no-store'
             });
             const status = statusRes.ok ? await statusRes.json() : { authenticated: false };
+            if (typeof window.updateMatrixShellAccount === 'function') {
+              window.updateMatrixShellAccount(status);
+            }
             const stored = readStoredSession();
 
             // Reuse this browser's existing Matrix device. Logging in again on
@@ -532,6 +551,27 @@
         } else {
           initMitchSSO();
         }
+      })();
+
+      // Keep the shared site shell personal without coupling Cinny's boot to it.
+      (function() {
+        window.updateMatrixShellAccount = function(status) {
+          const name = document.getElementById('matrix-account-name');
+          const avatar = document.getElementById('matrix-account-avatar');
+          const link = document.getElementById('matrix-account-link');
+          if (!name || !avatar || !link) return;
+          if (!status || !status.authenticated) {
+            name.textContent = 'Sign in';
+            avatar.textContent = 'M';
+            link.href = '/api/sso/bridge?back=/matrix/';
+            return;
+          }
+          const raw = String(status.displayName || status.username || status.user_id || 'Account');
+          const label = raw.replace(/^@/, '').split(':')[0];
+          name.textContent = label;
+          avatar.textContent = (label.trim()[0] || 'M').toUpperCase();
+          link.href = '/preferences/#account';
+        };
       })();
 
       // ── Mitch.pro Push Notification Integration ───────────────────

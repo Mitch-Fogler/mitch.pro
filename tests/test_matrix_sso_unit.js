@@ -491,7 +491,17 @@ try {
   assert(matrixPage.includes("navigator.locks.request('mitch-matrix-session'"), 'Concurrent tabs must serialize Matrix SSO');
   assert(!matrixPage.includes('removeLegacyCryptoStorage'), 'Matrix must preserve crypto storage for E2EE keys');
   assert(matrixPage.includes('/matrix/assets/index-BVlPv2dR.js'), 'Matrix bundle URL must load updated E2EE client');
+  assert(matrixPage.includes('/matrix/matrix-galaxy.css?v=5'), 'Matrix must load the current mitch.pro visual integration');
+  assert(matrixPage.includes('id="matrix-context-bar"'), 'Matrix must include the mitch.pro chat workspace shell');
+  assert(matrixPage.includes('id="matrix-account-link"'), 'Matrix shell must expose the signed-in mitch.pro account');
+  assert(matrixPage.includes('Notification settings'), 'Matrix shell must link directly to site notification preferences');
   assert(!matrixPage.includes('__MATRIX_SSO_TARGET__'), 'Matrix page must not depend on __MATRIX_SSO_TARGET__ redirect injection');
+
+  const serverSource = readFileSync(join(REPO_ROOT, 'server.js'), 'utf8');
+  assert(serverSource.includes('MATRIX_MESSAGE_ALERT_COOLDOWN_MS = 5 * 60 * 1000'), 'ordinary Matrix push alerts must have a per-room cooldown');
+  assert(serverSource.includes('MATRIX_MESSAGE_ALERT_DELAY_MS = 15 * 1000'), 'ordinary Matrix push alerts must be batched');
+  assert(serverSource.includes('Date.now() - lastSeen < MATRIX_ACTIVE_WINDOW_MS'), 'active Matrix users must not receive duplicate external message alerts');
+  assert(serverSource.includes('queueMatrixMessageAlert(memberNorm'), 'Matrix message delivery must use the batched alert path');
 
   const resMatrixHtml = await fetch(`${BASE_URL}/matrix/`);
   assert.equal(resMatrixHtml.status, 200);
@@ -803,6 +813,7 @@ try {
   const matrixNotif = bellData.notifications.find(n => n.type === 'matrix' && n.matrixRoomId === '!official_general:mitch.pro');
   assert(matrixNotif, 'Matrix notification must appear in the bell list for recipient');
   assert(matrixNotif.url.includes('/matrix/#/room/'), 'Matrix notification must link to Matrix room');
+  assert(/messages?/i.test(matrixNotif.title), 'Matrix notification should summarize the unread conversation');
 
   // Verify clearing Matrix notification via /api/matrix/notifications/read
   const resRead = await fetch(`${BASE_URL}/api/matrix/notifications/read`, {

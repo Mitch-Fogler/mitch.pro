@@ -8752,11 +8752,19 @@ async function getMatrixRoomInfoForNotifications(roomId, token) {
 
 const matrixUserLastSeen = new Map();
 const matrixPendingEmailAlerts = new Map();
+const matrixPendingMessageAlerts = new Map();
+const matrixLastMessageAlertSent = new Map();
 // Ordinary chat messages are summarized sparingly. Calls and invitations stay
 // more timely, but can still generate at most one email per day per account.
 const MATRIX_MESSAGE_EMAIL_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 const MATRIX_URGENT_EMAIL_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const MATRIX_MESSAGE_EMAIL_DELAY_MS = 10 * 60 * 1000;
+// Give rapid conversations a short batching window, then keep that room quiet
+// for a while. The in-site bell still counts every unread message; only the
+// interruptive web-push/ntfy delivery is reduced.
+const MATRIX_MESSAGE_ALERT_DELAY_MS = 15 * 1000;
+const MATRIX_MESSAGE_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
+const MATRIX_ACTIVE_WINDOW_MS = 75 * 1000;
 const matrixLastEmailSent = new Map(Object.entries(loadJson(MATRIX_EMAIL_SENT_FILE, {})));
 
 function recordMatrixEmailSent(memberNorm) {
@@ -8835,6 +8843,85 @@ function cancelPendingMatrixEmailAlert(memberNorm, roomId) {
       }
     }
   }
+}
+
+function cancelPendingMatrixMessageAlert(memberNorm, roomId) {
+  if (!memberNorm) return;
+  const norm = normalizeEmail(memberNorm);
+  for (const [key, pending] of matrixPendingMessageAlerts.entries()) {
+    if (!key.startsWith(`${norm}:`)) continue;
+    if (roomId && pending.roomId !== roomId) continue;
+    if (pending.timer) clearTimeout(pending.timer);
+    matrixPendingMessageAlerts.delete(key);
+  }
+}
+
+function queueMatrixMessageAlert(memberNorm, details) {
+  const norm = normalizeEmail(memberNorm);
+  if (!norm || !details.roomId) return;
+
+  // Someone actively syncing Matrix already sees the live conversation. Do
+  // not make their browser or phone alert for the same messages again.
+  const lastSeen = matrixUserLastSeen.get(norm) || 0;
+  if (Date.now() - lastSeen < MATRIX_ACTIVE_WINDOW_MS) {
+    cancelPendingMatrixMessageAlert(norm, details.roomId);
+    return;
+  }
+
+  const key = `${norm}:${details.roomId}`;
+  const lastSent = matrixLastMessageAlertSent.get(key) || 0;
+  if (Date.now() - lastSent < MATRIX_MESSAGE_ALERT_COOLDOWN_MS) return;
+
+  const existing = matrixPendingMessageAlerts.get(key);
+  if (existing) {
+    existing.count = Math.max(existing.count + 1, Number(details.count) || 1);
+    existing.previewText = details.previewText;
+    existing.senderDisplayName = details.senderDisplayName;
+    existing.notifTitle = details.notifTitle;
+    return;
+  }
+
+  const pending = {
+    ...details,
+    count: Math.max(1, Number(details.count) || 1),
+    timer: null
+  };
+
+  pending.timer = setTimeout(async () => {
+    matrixPendingMessageAlerts.delete(key);
+
+    const activeAtDelivery = matrixUserLastSeen.get(norm) || 0;
+    if (Date.now() - activeAtDelivery < MATRIX_ACTIVE_WINDOW_MS) return;
+    if (Date.now() - (matrixLastMessageAlertSent.get(key) || 0) < MATRIX_MESSAGE_ALERT_COOLDOWN_MS) return;
+
+    const all = loadJson(MATRIX_NOTIFICATIONS_FILE, {});
+    const list = Array.isArray(all[norm]) ? all[norm] : [];
+    const unread = list.find(n => !n.read && n.roomId === details.roomId && n.type === 'matrix');
+    if (!unread) return;
+
+    const count = Math.max(pending.count, Number(unread.count) || 1);
+    const title = count > 1
+      ? (pending.isDirect
+          ? `${count} messages from ${pending.senderDisplayName}`
+          : `${count} new messages in ${pending.roomTitle || 'Chat'}`)
+      : pending.notifTitle;
+    const body = count > 1 ? `Latest: ${pending.previewText}` : pending.previewText;
+    const url = notificationUrl(pending.notifUrl);
+    const subs = loadPushSubscriptions();
+
+    if (VAPID_PUBLIC && subs[norm]) {
+      await sendWebPushClean(subs, norm, {
+        title,
+        body,
+        url,
+        tag: `matrix-${details.roomId}`,
+      });
+    }
+    await ntfyNotify(norm, title, body, url);
+    matrixLastMessageAlertSent.set(key, Date.now());
+  }, MATRIX_MESSAGE_ALERT_DELAY_MS);
+
+  matrixPendingMessageAlerts.set(key, pending);
 }
 
 function makeMatrixNotificationEmailHtml(email, { title, senderName, roomTitle, previewText, isCall, isInvite, roomUrl }) {
@@ -9056,7 +9143,6 @@ async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, r
     ? `Message from ${senderDisplayName}`
     : (roomTitle ? `${senderDisplayName} in ${roomTitle}` : `Message from ${senderDisplayName}`);
 
-  const subs = loadPushSubscriptions();
   const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
   const profiles = loadJson(PROFILES_FILE, {});
 
@@ -9093,7 +9179,7 @@ async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, r
     const notifUrl = `/matrix/#/room/${encodeURIComponent(roomId)}`;
 
     // 1. Add to Mitch.pro Notification Bell
-    addMatrixNotification(memberNorm, {
+    const bellNotification = addMatrixNotification(memberNorm, {
       roomId,
       type: 'matrix',
       title: notifTitle,
@@ -9105,17 +9191,18 @@ async function dispatchMatrixMessageNotifications(roomId, eventType, bodyText, r
       url: notifUrl
     });
 
-    // 2. Web Push & ntfy
-    if (VAPID_PUBLIC && subs[memberNorm]) {
-      await sendWebPushClean(subs, memberNorm, {
-        title: notifTitle,
-        body: previewText,
-        url: notificationUrl(notifUrl),
-        tag: `matrix-${roomId}`,
-      });
-    }
-
-    ntfyNotify(memberNorm, notifTitle, previewText, notificationUrl(notifUrl));
+    // 2. Batch ordinary web-push/ntfy alerts and suppress them while the
+    // recipient is actively using Matrix. Calls and invitations bypass this.
+    queueMatrixMessageAlert(memberNorm, {
+      roomId,
+      roomTitle,
+      isDirect,
+      senderDisplayName,
+      notifTitle,
+      previewText,
+      notifUrl,
+      count: bellNotification?.count || 1
+    });
 
     // 3. Queue unread email alert for offline users
     const lastSeen = matrixUserLastSeen.get(memberNorm) || 0;
@@ -9863,6 +9950,7 @@ async function handleRequest(req, server) {
         matrixUserLastSeen.set(activeMatrixNorm, Date.now());
         touchUserPresence(activeMatrixNorm, 'Chatting in Matrix', { page: '/matrix/', title: 'Matrix Chat', visible: true });
         cancelPendingMatrixEmailAlert(activeMatrixNorm);
+        cancelPendingMatrixMessageAlert(activeMatrixNorm);
       }
     } catch (_) {}
 
@@ -10070,6 +10158,7 @@ async function handleRequest(req, server) {
       saveJson(MATRIX_NOTIFICATIONS_FILE, allNotifs);
       triggerNotificationRefresh();
       cancelPendingMatrixEmailAlert(norm, roomId);
+      cancelPendingMatrixMessageAlert(norm, roomId);
     }
     return jsonResp(200, { ok: true }, { 'Access-Control-Allow-Origin': '*' });
   }
@@ -15461,6 +15550,7 @@ async function handleRequest(req, server) {
           if (!n.read) matrixChanged = true;
           n.read = true;
           cancelPendingMatrixEmailAlert(norm, n.roomId);
+          cancelPendingMatrixMessageAlert(norm, n.roomId);
         }
       }
       if (matrixChanged) {
