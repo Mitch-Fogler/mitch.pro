@@ -160,9 +160,56 @@ impl DataStore {
                         message TEXT NOT NULL,
                         details TEXT DEFAULT ''
                     );
+                    CREATE TABLE IF NOT EXISTS virtual_machines (
+                        id TEXT PRIMARY KEY,
+                        owner_email TEXT NOT NULL,
+                        owner_user_id TEXT DEFAULT '',
+                        proxmox_vmid INTEGER NOT NULL UNIQUE,
+                        proxmox_node TEXT NOT NULL,
+                        guest_type TEXT NOT NULL DEFAULT 'qemu',
+                        friendly_name TEXT NOT NULL,
+                        hostname TEXT NOT NULL,
+                        operating_system TEXT NOT NULL,
+                        template_vmid INTEGER,
+                        cpu_cores INTEGER NOT NULL DEFAULT 4,
+                        memory_mb INTEGER NOT NULL DEFAULT 4096,
+                        disk_gb INTEGER NOT NULL DEFAULT 40,
+                        ip_address TEXT DEFAULT '',
+                        status TEXT NOT NULL DEFAULT 'assigned',
+                        created_at INTEGER NOT NULL,
+                        updated_at INTEGER NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS vm_audit_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts INTEGER NOT NULL,
+                        actor_email TEXT NOT NULL,
+                        owner_email TEXT DEFAULT '',
+                        vm_record_id TEXT DEFAULT '',
+                        proxmox_vmid INTEGER,
+                        action TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        details TEXT DEFAULT ''
+                    );
+                    CREATE TABLE IF NOT EXISTS vm_usage_samples (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts INTEGER NOT NULL,
+                        day_key TEXT NOT NULL,
+                        hour INTEGER NOT NULL,
+                        minute INTEGER NOT NULL,
+                        owner_email TEXT NOT NULL,
+                        vm_record_id TEXT NOT NULL,
+                        vmid INTEGER,
+                        vm_name TEXT DEFAULT '',
+                        uptime_seconds INTEGER DEFAULT 0,
+                        active_users TEXT DEFAULT '',
+                        is_running INTEGER NOT NULL DEFAULT 1
+                    );
                     CREATE INDEX IF NOT EXISTS idx_app_logs_ts ON app_logs (ts DESC);
                     CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs (level, ts DESC);
-                    CREATE INDEX IF NOT EXISTS idx_app_logs_category ON app_logs (category, ts DESC);",
+                    CREATE INDEX IF NOT EXISTS idx_app_logs_category ON app_logs (category, ts DESC);
+                    CREATE INDEX IF NOT EXISTS idx_virtual_machines_owner ON virtual_machines (owner_email, status);
+                    CREATE INDEX IF NOT EXISTS idx_vm_audit_logs_ts ON vm_audit_logs (ts DESC);
+                    CREATE INDEX IF NOT EXISTS idx_vm_audit_logs_vm ON vm_audit_logs (vm_record_id, ts DESC);",
                 );
                 match result {
                     Ok(()) => return Ok(()),
@@ -331,6 +378,13 @@ impl DataStore {
     /// Clone the inner connection handle (parity tooling convenience).
     pub fn conn_clone(&self) -> &DataStore {
         self
+    }
+
+    /// Locked connection handle for crate-internal data layers (`vm.rs`).
+    /// The VM/Proxmox tables are raw SQL on both sides (lib/data_store.js
+    /// 239-478) — they never live in the JSON document store.
+    pub(crate) fn conn(&self) -> std::sync::MutexGuard<'_, rusqlite::Connection> {
+        self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// List every `json_documents` key (parity tooling:

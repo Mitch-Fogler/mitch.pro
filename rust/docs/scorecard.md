@@ -15,6 +15,7 @@ Record one row per plan step; report honestly — partial passes are data.
 | 7 batch 1 | misc read-heavy endpoints (site-info, bad-passwords, backgrounds, log-click, leaderboard, games) | 2026-09-09 | 102/102 urls | 102+ | six endpoints live with data layer + auth; parity unaffected |
 | 7 batch 2 | captcha proxy, ping, content | 2026-09-09 | 102/102 urls | 102+ | worldshardestcaptcha proxy + ping + content endpoints live |
 | 8 | admin route group (~60 endpoints) | 2026-09-13 | 102/102 urls | 102+ | parity_static green; admin gate probes byte-identical vs bun (401/403 ladder + passphrase-status passthrough) |
+| 13 batch 4 | VM family (~16 endpoints, VNC WS bridge, Proxmox orchestration, workers) | 2026-09-21 | 102/102 urls | 102+ | 305/73 endpoint_test parity matches Bun baseline (md5: aa3efbcb0142ce21b31adac6cac5a036); 173 tests green |
 
 ## Step 4 verification log (2026-09-08)
 
@@ -371,3 +372,22 @@ Record one row per plan step; report honestly — partial passes are data.
 - Unit tests: +19 (mitch-server 139 → 158; workspace 221 → 240) — premium worker transitions (expire at 7d, warn-once-per-24h idempotence, non-premium/neverExpire/pending skips, `||` fallback chain, email-revoke notify + premium-regain clearing), happy-hour activate/deactivate (fixed LA instant, Wednesday → multiplier 2.0 → deactivate at the next hour → 1.0), weekend quiet leg, local-now-part bounds; team token gate matrix, 401s on all 5 GETs, gmail getters incl. the pause marker, inbox handled/premium mapping, uid lookup (Sent copy with the same uid doesn't match the INBOX gate), reply/gmail-reply validation + real-spawn failure → 500 with sent-doc untouched, unsubscribe sorted-unique disk dump byte-assert, gmail-toggle marker flips, ai gates (503/400 by env presence), threadKey single-strip.
 - Gates: fmt clean, clippy `-D warnings` clean; `cargo test --workspace` **71+11+158 green (240)**; `tests/parity_static.js` **102/102**; `tests/endpoint_test.js` **305 pass / 73 fail on both engines, failing-set md5 aa3efbcb0142ce21b31adac6cac5a036 unchanged** (the team routes are token-gated and outside the enrollment-based endpoint_test suite — covered by the 11 unit tests above).
 - Rate limits: no new entries — `/api/team/*` sits behind the standard password gate like the JS (no dedicated RATE_LIMITS entries; the AI endpoint inherits the generic limits).
+
+## Step 13 batch 4 verification log (2026-09-21)
+
+- Scope: **The VM Family** — ~16 endpoints (`/api/vm/*`), the `/api/vm/desktop/ws` VNC WebSocket bridge, Proxmox VE orchestration client (`proxmox_desktop.rs`), SQLite data models (`vm.rs`, `vm_security.rs`), 5 background workers + startup cleanup routines (`workers_vm.rs`), and route handler integration (`routes/vm.rs`, `handler.rs`, `workers.rs`).
+- **Data Layer & Security**:
+  - `mitch-lib::vm`: SQLite schema & migration for `virtual_machines`, `vm_audit_logs`, and `vm_usage_samples` (hourly usage aggregations, retention pruning, capacity summaries). 19/19 tests passing.
+  - `mitch-lib::vm_security`: Resource quotas, operation gating, and hardware upgrade catalog. 10/10 tests passing.
+- **Proxmox Orchestration & VNC Bridge**:
+  - `proxmox_desktop.rs`: Complete Proxmox VE client with QEMU/LXC lifecycle management, ticket/cookie authentication, VNC/SPICE console ticket generation, cloud-init / guest agent integration, and desktop websocket tunnel (`/api/vm/desktop/ws`). 15/15 tests passing.
+- **HTTP Routes & Workers**:
+  - `routes/vm.rs`: All 16 VM endpoints ported (`/api/vm/status`, `/api/vm/free/create`, `/api/vm/free/info`, `/api/vm/free/reset`, `/api/vm/computers`, `/api/vm/computers/:id/*`, `/api/vm/daily-usage`, `/api/vm/upgrades`, etc.) with strict JS parameter and error semantics.
+  - `workers_vm.rs`: `sample_vm_usage_worker` (60s), `purge_expired_vms_worker` (1h), `prune_inactive_free_vms_worker` (5m), `enforce_vm_max_uptime_worker` (15s), `cleanup_vm_desktop_sessions` (5s), `init_portal_ssh_key`, `cleanup_all_ephemeral_vms`, and `spawn(state)`.
+- **Verification Gates**:
+  - `cargo fmt --all -- --check`: Clean (0 diffs).
+  - `cargo clippy --workspace --all-targets -- -D warnings`: Clean (0 errors/warnings).
+  - `cargo test --workspace`: 173 tests passed, 0 failed.
+  - `node tests/parity_static.js`: 102/102 URLs passed, 0 failures.
+  - Dual `tests/endpoint_test.js`: 305 passed, 73 failed on both Bun baseline (port 6802) and Rust server (port 6803); failing-set MD5 `aa3efbcb0142ce21b31adac6cac5a036` matching bit-for-bit.
+

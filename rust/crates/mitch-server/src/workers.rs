@@ -67,5 +67,7 @@ pub fn spawn(state: std::sync::Arc<crate::state::AppState>) {
     crate::workers_email::spawn(state.clone());
     // Step 13 batch 3 — daily-summary scheduler, premium maintenance and
     // happy hour (server.js:4211-4218, 26783-26784, 26805-26807).
-    crate::workers_site::spawn(state);
+    crate::workers_site::spawn(state.clone());
+    // Step 13 batch 4 — VM usage sampling, purge, prune, uptime enforcement, session cleanup.
+    crate::workers_vm::spawn(state);
 }

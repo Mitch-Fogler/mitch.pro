@@ -29,7 +29,9 @@ multer = "3"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 # WS-client bridges: /ssh/ws → the gateway, /livekit/rtc → the SFU, and the
 # blooket-bot microservice pipe (server.js uses Bun's WebSocket client).
-tokio-tungstenite = "0.29"
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+rustls-pki-types = "1"
 # /livekit JWT base64url segments (JS Buffer.toString('base64url')).
 base64 = { workspace = true }
 reqwest = { workspace = true }

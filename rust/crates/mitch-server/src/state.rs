@@ -177,6 +177,39 @@ pub struct AppState {
         std::sync::Mutex<indexmap::IndexMap<String, crate::routes::blooket::BlooketActive>>,
     /// `blooketPinLocks` (server.js:1265) — game PIN → locking admin email.
     pub blooket_pin_locks: std::sync::Mutex<indexmap::IndexMap<String, String>>,
+
+    /// `vmDesktopSessions` (server.js:27083) — one-time desktop-console
+    /// tickets keyed by the random session id. Each record is the JS session
+    /// object kept verbatim (actorEmail, sid, authSessionKey, recordId,
+    /// ownerEmail, vmid, node, wsUrl, authorization, tlsOptions, expiresAt,
+    /// used). TTL 75s (VM_DESKTOP_SESSION_TTL_MS).
+    pub vm_desktop_sessions: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    /// `vmDesktopSockets` (server.js:27084) — the live desktop-bridge sockets
+    /// (a JS Set of ws objects). Each entry carries the JS `ws.data` subset
+    /// the workers/authorization checks read plus a close channel so other
+    /// tasks can force `ws.close(1008, …)` the way the JS does.
+    pub vm_desktop_sockets:
+        std::sync::Mutex<std::collections::HashMap<u64, crate::routes::vm::VmDesktopClient>>,
+    /// Connection id allocator for `vm_desktop_sockets`.
+    pub vm_desktop_next_id: std::sync::atomic::AtomicU64,
+    /// `vmPowerRequests` (server.js:27085) — in-flight create/recreate locks
+    /// keyed `create-<norm>` / `recreate-<norm>` (the power gate is
+    /// `vm_power_gate`).
+    pub vm_power_requests: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    /// `vmPowerGate` (server.js:27086) — one power operation per record.
+    pub vm_power_gate: std::sync::Mutex<mitch_lib::vm_security::VmOperationGate>,
+    /// `vmLeases` (server.js:27282) — recordId → lease object (raw JSON,
+    /// inserted by get_vm_lease exactly like the JS map).
+    pub vm_leases: std::sync::Mutex<std::collections::HashMap<String, serde_json::Value>>,
+    /// `vmPagePresence` (server.js:27283) — recordId → { lastSeen } (only
+    /// `lastSeen` is ever stored/read).
+    pub vm_page_presence: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `lastCapacityNtfy` (server.js:27095) — norm email → last ntfy ms.
+    pub last_capacity_ntfy: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `lastAdminUsageNotice` (server.js:27096) — `owner:recordId:op` → ms.
+    pub last_admin_usage_notice: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `lastAdminRequestNotice` (server.js:27097) — `owner:recordId:admin` → ms.
+    pub last_admin_request_notice: std::sync::Mutex<std::collections::HashMap<String, i64>>,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -351,6 +384,18 @@ impl AppState {
             blooket_queue: std::sync::Mutex::new(Vec::new()),
             blooket_active: std::sync::Mutex::new(indexmap::IndexMap::new()),
             blooket_pin_locks: std::sync::Mutex::new(indexmap::IndexMap::new()),
+            vm_desktop_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
+            vm_desktop_sockets: std::sync::Mutex::new(std::collections::HashMap::new()),
+            vm_desktop_next_id: std::sync::atomic::AtomicU64::new(1),
+            vm_power_requests: std::sync::Mutex::new(std::collections::HashMap::new()),
+            vm_power_gate: std::sync::Mutex::new(mitch_lib::vm_security::VmOperationGate::new(
+                5000,
+            )),
+            vm_leases: std::sync::Mutex::new(std::collections::HashMap::new()),
+            vm_page_presence: std::sync::Mutex::new(std::collections::HashMap::new()),
+            last_capacity_ntfy: std::sync::Mutex::new(std::collections::HashMap::new()),
+            last_admin_usage_notice: std::sync::Mutex::new(std::collections::HashMap::new()),
+            last_admin_request_notice: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 

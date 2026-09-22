@@ -37,6 +37,8 @@ pub mod shop;
 pub mod sso;
 pub mod state;
 pub mod totp;
+pub mod vm;
+pub mod vm_security;
 pub mod webauthn;
 
 /// Library version, matching the workspace version.

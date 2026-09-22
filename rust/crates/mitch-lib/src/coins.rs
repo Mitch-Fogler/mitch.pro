@@ -213,6 +213,50 @@ pub fn add_admin_notification(
     Some(notice)
 }
 
+/// `addVmAdminNotification(targetEmail, title, message, adminEmail, url)`
+/// — server.js:3309-3330. `kind: 'vm_admin_access'` rows in coin_gifts.json.
+pub fn add_vm_admin_notification(
+    store: &DataStore,
+    data_dir: &Path,
+    target_email: &str,
+    title: &str,
+    message: &str,
+    admin_email: &str,
+    url: &str,
+) -> Option<Value> {
+    let norm = normalize_email(target_email);
+    if norm.is_empty() {
+        return None;
+    }
+    let file = data_dir.join("coin_gifts.json");
+    let mut gifts = store.read_document(&file, json!({}));
+    let map = gifts.as_object_mut()?;
+    let notices = map
+        .entry(norm.clone())
+        .or_insert_with(|| json!([]))
+        .as_array_mut()
+        .cloned()
+        .unwrap_or_default();
+    let notice = json!({
+        "id": crate::crypto::random_bytes_hex(12),
+        "kind": "vm_admin_access",
+        "title": if title.is_empty() { "Computer Access Alert" } else { title },
+        "message": message,
+        "from": if admin_email.is_empty() { "admin" } else { admin_email },
+        "source": "mitchdog.com",
+        "url": if url.is_empty() { "/vms/" } else { url },
+        "batchId": "",
+        "ts": now_millis(),
+        "read": false,
+    });
+    let mut next = Vec::with_capacity(notices.len() + 1);
+    next.push(notice.clone());
+    next.extend(notices.into_iter().take(49));
+    map.insert(norm, json!(next));
+    let _ = store.write_document(&file, &gifts);
+    Some(notice)
+}
+
 fn now_millis() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -26,7 +26,7 @@ fn static_regex(pattern: &str) -> regex::Regex {
 }
 
 /// `cleanLogText`: strip ANSI escapes, cap length.
-fn clean_log_text(value: &str, max: usize) -> String {
+pub(crate) fn clean_log_text(value: &str, max: usize) -> String {
     let re = static_regex("\u{1b}\\[[0-9;]*m");
     let mut out: String = re.replace_all(value, "").into();
     if out.len() > max {

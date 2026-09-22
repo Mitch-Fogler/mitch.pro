@@ -870,6 +870,21 @@ pub fn rate_limit_for(endpoint: &str) -> (u32, u32) {
         "/api/jeopardy/state" => (300, 60),
         "/api/jeopardy/final/wager" => (10, 60),
         "/api/jeopardy/final/answer" => (10, 60),
+        // server.js:1618-1626 — the /api/vm RATE_LIMITS rows. The JS applies
+        // them through the global gate (the per-route checkRateLimit calls in
+        // the vm block are dead: the global gate sets _rateLimitChecked
+        // first), which keys on the full pathname — so sub-paths like
+        // /api/vm/computers/<id>/power fall to the default and only the flat
+        // paths below see these numbers.
+        "/api/vm/computers" => (60, 60),
+        "/api/vm/power" => (6, 60),
+        "/api/vm/desktop-session" => (12, 60),
+        "/api/vm/extend" => (10, 60),
+        "/api/vm/heartbeat" => (120, 60),
+        "/api/vm/my-computer/create" => (5, 60),
+        "/api/vm/my-computer/recreate" => (5, 60),
+        "/api/vm/upgrades" => (30, 60),
+        "/api/vm/upgrade" => (15, 60),
         _ => (100, 60), // __default__
     }
 }

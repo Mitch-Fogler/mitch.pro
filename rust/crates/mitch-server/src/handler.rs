@@ -576,10 +576,25 @@ pub async fn handle(
         }
         // The JS falls through on an upgrade failure — reach the /api/ 404
         // below rather than the static pages.
+    } else if is_upgrade && path == "/api/vm/desktop/ws" {
+        if let Some(resp) =
+            crate::routes::vm::handle_desktop_ws_upgrade(&state, headers, &search, ws_upgrade)
+        {
+            return resp;
+        }
     }
 
     // 4c. API route dispatch — the ported route groups (plan Step 7+).
     if path.starts_with("/api/") {
+        // VM family (Step 13 batch 4, server.js:18849-19808).
+        if path.starts_with("/api/vm/") {
+            if let Some(resp) =
+                crate::routes::vm::handle(&state, &method, &path, headers, body_bytes, &search)
+                    .await
+            {
+                return resp;
+            }
+        }
         // Blooket-bot premium endpoints (server.js:11834-11992).
         if path.starts_with("/api/blooket-bot/") {
             if let Some(resp) =

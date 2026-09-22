@@ -27,12 +27,14 @@ mod hosts;
 mod inject;
 mod manifests;
 mod pipeline;
+mod proxmox_desktop;
 mod routes;
 mod state;
 mod static_files;
 mod workers;
 mod workers_email;
 mod workers_site;
+mod workers_vm;
 mod ws;
 
 #[tokio::main]
