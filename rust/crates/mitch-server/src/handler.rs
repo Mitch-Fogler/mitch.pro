@@ -220,9 +220,8 @@ pub fn prepare_rjuhsd_html(
         let school_canonical = format!("https://{req_host_str}{back_path}?school={req_school}");
 
         static TITLE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
-        let title_re = TITLE_RE.get_or_init(|| {
-            regex::Regex::new(r"(?i)<title>.*?</title>").expect("static regex")
-        });
+        let title_re = TITLE_RE
+            .get_or_init(|| regex::Regex::new(r"(?i)<title>.*?</title>").expect("static regex"));
         html = title_re
             .replace(&html, format!("<title>{school_title}</title>"))
             .to_string();
