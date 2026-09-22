@@ -1024,16 +1024,6 @@ pub fn check_rate_limit(
     if WHITELISTED_IPS.contains(&ip) {
         return None;
     }
-    let timing_exempt = endpoint.ends_with("/state")
-        || endpoint.contains("/inbox")
-        || endpoint.contains("/heartbeat")
-        || endpoint.contains("/groups")
-        || endpoint.contains("/dm/send")
-        || endpoint.contains("/canvas/")
-        || endpoint.contains("/blooket-bot/status");
-    if !timing_exempt && limiter.detect_non_human_timing(&format!("{ip}:{endpoint}")) {
-        return Some((429, "Non-human request patterns detected"));
-    }
     if limiter.rate_limited(&format!("ip:{ip}"), endpoint) || limiter.rate_limited(id_key, endpoint)
     {
         return Some((429, "Too many requests, slow down"));

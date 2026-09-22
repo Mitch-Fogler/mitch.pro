@@ -91,11 +91,11 @@ pub fn process_member_fields(
     // A saved display name must be visible to other members (JS comment at
     // server.js:6156) — nickname/displayName win over the generated username.
     let public_name = p
-        .get("nickname")
+        .get("displayName")
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .or_else(|| {
-            p.get("displayName")
+            p.get("nickname")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
         })
