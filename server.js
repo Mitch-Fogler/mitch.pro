@@ -11350,13 +11350,30 @@ async function handleRequest(req, server) {
     }[String(mime || '').toLowerCase()] || '';
   }
 
+  let ffmpegWarned = false;
+  function isFfmpegAvailable() {
+    try {
+      if (typeof Bun !== 'undefined' && typeof Bun.which === 'function') {
+        const found = !!Bun.which('ffmpeg');
+        if (!found && !ffmpegWarned) {
+          ffmpegWarned = true;
+          console.warn('[backgrounds] ffmpeg not found in PATH; background media conversion and thumbnail generation disabled.');
+        }
+        return found;
+      }
+    } catch {}
+    return true;
+  }
+
   const bgConverting = new Set();
 
   function convertBackgroundsToWebm(dir) {
+    if (!isFfmpegAvailable()) return;
     try {
       if (!existsSync(dir)) return;
       const files = readdirSync(dir);
       for (const f of files) {
+        if (!isFfmpegAvailable()) break;
         const ext = extname(f).toLowerCase();
         if (ext === '.mp4' || ext === '.gif') {
           const inputPath = join(dir, f);
@@ -11369,26 +11386,43 @@ async function handleRequest(req, server) {
           if (bgConverting.has(inputPath)) continue;
           bgConverting.add(inputPath);
           console.log(`[backgrounds] Starting async conversion for ${f} -> ${baseName}.webm...`);
-          const proc = spawn('ffmpeg', [
-            '-y',
-            '-i', inputPath,
-            '-c:v', 'libvpx',
-            '-quality', 'realtime',
-            '-cpu-used', '8',
-            '-b:v', '2M',
-            '-an',
-            outputPath
-          ], { stdio: 'ignore' });
-          proc.on('exit', (code) => {
+          try {
+            const proc = spawn('ffmpeg', [
+              '-y',
+              '-i', inputPath,
+              '-c:v', 'libvpx',
+              '-quality', 'realtime',
+              '-cpu-used', '8',
+              '-b:v', '2M',
+              '-an',
+              outputPath
+            ], { stdio: 'ignore' });
+            proc.on('error', (err) => {
+              bgConverting.delete(inputPath);
+              if (err && err.code === 'ENOENT') {
+                ffmpegWarned = true;
+                console.warn('[backgrounds] ffmpeg not found in PATH; skipping conversions.');
+              } else {
+                console.warn(`[backgrounds] ffmpeg error converting ${f}:`, err?.message || err);
+              }
+            });
+            proc.on('exit', (code) => {
+              bgConverting.delete(inputPath);
+              if (code === 0 && existsSync(outputPath) && statSync(outputPath).size > 0) {
+                console.log(`[backgrounds] Successfully converted ${f} -> ${baseName}.webm`);
+                try { unlinkSync(inputPath); } catch {}
+                bgListCacheMtime = -1;
+              } else {
+                console.error(`[backgrounds] Failed to convert ${f} to .webm (exit code ${code})`);
+              }
+            });
+          } catch (spawnErr) {
             bgConverting.delete(inputPath);
-            if (code === 0 && existsSync(outputPath) && statSync(outputPath).size > 0) {
-              console.log(`[backgrounds] Successfully converted ${f} -> ${baseName}.webm`);
-              try { unlinkSync(inputPath); } catch {}
-              bgListCacheMtime = -1;
-            } else {
-              console.error(`[backgrounds] Failed to convert ${f} to .webm (exit code ${code})`);
+            if (spawnErr && spawnErr.code === 'ENOENT') {
+              ffmpegWarned = true;
+              console.warn('[backgrounds] ffmpeg not found in PATH; skipping conversions.');
             }
-          });
+          }
         }
       }
     } catch (err) {
@@ -11399,6 +11433,7 @@ async function handleRequest(req, server) {
   const thumbConverting = new Set();
 
   function generateBackgroundThumbs(dir) {
+    if (!isFfmpegAvailable()) return;
     try {
       if (!existsSync(dir)) return;
       const thumbsDir = join(dir, 'thumbs');
@@ -11407,6 +11442,7 @@ async function handleRequest(req, server) {
       }
       const files = readdirSync(dir);
       for (const f of files) {
+        if (!isFfmpegAvailable()) break;
         if (f === 'thumbs') continue;
         const ext = extname(f).toLowerCase();
         if (ext !== '.webp' && ext !== '.webm' && ext !== '.png' && ext !== '.jpg' && ext !== '.jpeg') continue;
@@ -11423,13 +11459,30 @@ async function handleRequest(req, server) {
         const ffmpegArgs = isVideo
           ? ['-y', '-ss', '00:00:01', '-i', inputPath, '-vframes', '1', '-vf', 'scale=240:-1', '-q:v', '75', thumbFile]
           : ['-y', '-i', inputPath, '-vf', 'scale=240:-1', '-q:v', '75', thumbFile];
-        const proc = spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
-        proc.on('exit', (code) => {
+        try {
+          const proc = spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
+          proc.on('error', (err) => {
+            thumbConverting.delete(inputPath);
+            if (err && err.code === 'ENOENT') {
+              ffmpegWarned = true;
+              console.warn('[backgrounds] ffmpeg not found in PATH; skipping thumbnail generation.');
+            } else {
+              console.warn(`[backgrounds] ffmpeg error generating thumb for ${f}:`, err?.message || err);
+            }
+          });
+          proc.on('exit', (code) => {
+            thumbConverting.delete(inputPath);
+            if (code === 0 && existsSync(thumbFile) && statSync(thumbFile).size > 0) {
+              bgListCacheMtime = -1;
+            }
+          });
+        } catch (spawnErr) {
           thumbConverting.delete(inputPath);
-          if (code === 0 && existsSync(thumbFile) && statSync(thumbFile).size > 0) {
-            bgListCacheMtime = -1;
+          if (spawnErr && spawnErr.code === 'ENOENT') {
+            ffmpegWarned = true;
+            console.warn('[backgrounds] ffmpeg not found in PATH; skipping thumbnail generation.');
           }
-        });
+        }
       }
     } catch (err) {
       console.error('[backgrounds] thumb generation error:', err?.message || err);
@@ -11528,7 +11581,10 @@ async function handleRequest(req, server) {
       const ffmpegArgs = isVideo
         ? ['-y', '-ss', '00:00:01', '-i', filePath, '-vframes', '1', '-vf', 'scale=240:-1', '-q:v', '75', thumbPath]
         : ['-y', '-i', filePath, '-vf', 'scale=240:-1', '-q:v', '75', thumbPath];
-      spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
+      if (isFfmpegAvailable()) {
+        const proc = spawn('ffmpeg', ffmpegArgs, { stdio: 'ignore' });
+        proc.on('error', () => {});
+      }
     } catch {}
 
     items.push({

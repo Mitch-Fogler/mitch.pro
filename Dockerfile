@@ -1,7 +1,7 @@
 FROM oven/bun:1.3.13-alpine
 
-# Install Node.js and SSH client for spawned background child processes
-RUN apk add --no-cache nodejs openssh-client
+# Install Node.js, SSH client, and ffmpeg for spawned background child processes and media processing
+RUN apk add --no-cache nodejs openssh-client ffmpeg
 
 # Set working directory
 WORKDIR /app
