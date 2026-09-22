@@ -7,6 +7,7 @@ import {
   VM_EXTENSION_COOLDOWN_MS,
   VM_COOLDOWN_DURATION_MS,
   VM_OFFPAGE_INACTIVITY_MS,
+  VM_ADMIN_OFFPAGE_INACTIVITY_MS,
   VM_DEFAULT_CPU_CORES,
   VM_DEFAULT_MEMORY_MB,
   VM_DEFAULT_BALLOON_MB,
@@ -164,19 +165,15 @@ let unsafeLoginError = null;
 try { await guestService.enableFriendlyDesktopLogin(301, 'desktop\nroot'); } catch (error) { unsafeLoginError = error; }
 assert(unsafeLoginError?.code === 'INVALID_DESKTOP_LOGIN', 'desktop login setup must reject unsafe usernames');
 
-// --- Desktop Password Validation (min 8 chars, max 128 chars) ---
-const login8 = guestService.validateDesktopLogin('studentuser', '12345678');
-assert(login8.username === 'studentuser' && login8.password === '12345678', '8-character password must be accepted');
-const login128 = guestService.validateDesktopLogin('studentuser', 'A'.repeat(128));
-assert(login128.password.length === 128, '128-character password must be accepted');
+// --- Desktop Password Validation (any non-empty length) ---
+const login1 = guestService.validateDesktopLogin('studentuser', 'x');
+assert(login1.username === 'studentuser' && login1.password === 'x', '1-character password must be accepted');
+const loginLong = guestService.validateDesktopLogin('studentuser', 'A'.repeat(4096));
+assert(loginLong.password.length === 4096, 'Long passwords must be accepted without an artificial maximum');
 
-let shortPassError = null;
-try { guestService.validateDesktopLogin('studentuser', '1234567'); } catch (e) { shortPassError = e; }
-assert(shortPassError?.code === 'INVALID_DESKTOP_LOGIN', '7-character password must be rejected');
-
-let longPassError = null;
-try { guestService.validateDesktopLogin('studentuser', 'A'.repeat(129)); } catch (e) { longPassError = e; }
-assert(longPassError?.code === 'INVALID_DESKTOP_LOGIN', '129-character password must be rejected');
+let emptyPassError = null;
+try { guestService.validateDesktopLogin('studentuser', ''); } catch (e) { emptyPassError = e; }
+assert(emptyPassError?.code === 'INVALID_DESKTOP_LOGIN', 'Empty passwords must be rejected');
 
 let badCharError = null;
 try { guestService.validateDesktopLogin('studentuser', 'password\n123'); } catch (e) { badCharError = e; }
@@ -208,11 +205,15 @@ assert(computeCooldownRemaining(now - 1000, { isAdmin: false, now }) === 0, 'exp
 assert(computeCooldownRemaining(null, { isAdmin: false, now }) === 0, 'no cooldown should report 0 seconds remaining');
 assert(computeCooldownRemaining(now + 1800 * 1000, { isAdmin: true, now }) === 0, 'admin should have 0 cooldown remaining');
 
-// --- 10-minute Off-Page Inactivity Detection ---
+// --- 10-minute Off-Page Inactivity Detection (User) & 30-minute Detection (Admin) ---
 assert(!isVmInactive(now - (9 * 60 * 1000), { now }), 'activity 9 minutes ago must not be considered inactive');
 assert(isVmInactive(now - (10 * 60 * 1000), { now }), 'activity 10 minutes ago must be considered inactive');
 assert(isVmInactive(now - (15 * 60 * 1000), { now }), 'activity 15 minutes ago must be considered inactive');
 assert(!isVmInactive(null, { now }), 'null presence must not be marked inactive');
+assert(!isVmInactive(now - (29 * 60 * 1000), { now, isAdmin: true }), 'admin activity 29 minutes ago must not be inactive');
+assert(isVmInactive(now - (30 * 60 * 1000), { now, isAdmin: true }), 'admin activity 30 minutes ago must be inactive');
+assert(isVmInactive(now - (35 * 60 * 1000), { now, isAdmin: true }), 'admin activity 35 minutes ago must be inactive');
+assert(!isVmInactive(now - (15 * 60 * 1000), { now, isAdmin: true }), 'admin activity 15 minutes ago must not be inactive');
 
 // --- Fleet Capacity Limit ---
 assert(VM_FLEET_MAX_CORES === 36, 'max fleet CPU cores must be 36');
@@ -220,6 +221,7 @@ assert(VM_FLEET_MAX_MEMORY_MB === 98304, 'max fleet memory must be 96 GB (98304 
 assert(VM_COOLDOWN_DURATION_MS === 30 * 60 * 1000, 'cooldown duration must be 30 minutes');
 assert(VM_EXTENSION_COOLDOWN_MS === 24 * 60 * 60 * 1000, 'extension cooldown must be 24 hours');
 assert(VM_OFFPAGE_INACTIVITY_MS === 10 * 60 * 1000, 'offpage inactivity timeout must be 10 minutes');
+assert(VM_ADMIN_OFFPAGE_INACTIVITY_MS === 30 * 60 * 1000, 'admin offpage inactivity timeout must be 30 minutes');
 
 // --- VM Defaults (2 Cores, 4 GB RAM, 64 GB Disk) and Upgrades (Up to 6 Cores, 16 GB RAM, 256 GB Disk) ---
 assert(VM_DAILY_MAX_SECONDS === 6 * 3600, 'daily max VM seconds must be 6 hours (21600 seconds)');

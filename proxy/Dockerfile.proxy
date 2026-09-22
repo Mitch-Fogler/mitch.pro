@@ -1,12 +1,13 @@
 FROM node:20-slim
 
-# Install system dependencies for Xvfb and Mesa graphics drivers
+# Install system dependencies for Xvfb, Mesa graphics drivers, and ffmpeg
 RUN apt-get update && apt-get install -y \
     xvfb \
     libgl1-mesa-dri \
     xauth \
     x11-utils \
     procps \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory

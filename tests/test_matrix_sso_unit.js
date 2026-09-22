@@ -123,6 +123,7 @@ let mockPowerLevels = { users: { '@mitch_admin:mitch.pro': 100 }, users_default:
 const kickedUsers = [];
 const bannedUsers = [];
 const redactedEvents = [];
+const matrixLoginBodies = [];
 let mockDevices = [
   { device_id: 'DEV_CURRENT', last_seen_ts: Date.now() },
   { device_id: 'DEV_OLD_1', last_seen_ts: Date.now() - (10 * 24 * 60 * 60 * 1000) },
@@ -139,12 +140,18 @@ const mockConduit = Bun.serve({
 
     if (path === '/_matrix/client/v3/login' && method === 'POST') {
       const b = await req.json().catch(() => ({}));
+      matrixLoginBodies.push(b);
       const user = b.identifier?.user || 'user';
       const expectedPassword = getMatrixPasswordForUid(testSid);
       if (b.type === 'm.login.password' && user === 'matrixtestuser' && b.password !== expectedPassword) {
         return Response.json({ errcode: 'M_FORBIDDEN', error: 'Invalid password' }, { status: 403 });
       }
-      return Response.json({ user_id: `@${user}:mitch.pro`, access_token: `tok_${user}`, device_id: 'DEV_MOCK', home_server: 'mitch.pro' });
+      return Response.json({
+        user_id: `@${user}:mitch.pro`,
+        access_token: `tok_${user}`,
+        device_id: b.device_id || 'DEV_MOCK',
+        home_server: 'mitch.pro'
+      });
     }
     if ((path === '/_matrix/client/v3/keys/device_signing/upload' || path === '/_matrix/client/v3/room_keys/version') && method === 'POST') {
       const b = await req.json().catch(() => ({}));
@@ -476,11 +483,25 @@ try {
   assert(configData.featuredCommunities.servers.includes('mitch.pro'));
   assert(configData.featuredCommunities.rooms.includes('#general:mitch.pro'));
   const matrixPage = readFileSync(join(REPO_ROOT, 'webserver', 'matrix', 'index.html'), 'utf8');
-  assert(matrixPage.includes('storedSessionIsValid(stored.token, stored.userId)'), 'Matrix must reuse a valid browser device session');
+  assert(matrixPage.includes('storedSessionIsValid(stored.token, stored.userId, stored.deviceId)'), 'Matrix must validate both the user and device before reusing a browser session');
+  assert(matrixPage.includes("body: JSON.stringify(reusableDeviceId ? { device_id: reusableDeviceId } : {})"), 'Matrix SSO refresh must request the browser\'s existing device ID');
+  assert(matrixPage.includes("account in the store doesn't match the account in the constructor"), 'Matrix must detect the Rust crypto-store account mismatch');
+  assert(matrixPage.includes('completePendingMatrixStoreRecovery()'), 'Matrix must repair mismatched IndexedDB stores before restarting Cinny');
+  assert(matrixPage.includes("'matrix-js-sdk::matrix-sdk-crypto'"), 'Matrix recovery must clear the Rust crypto database that contains the mismatched account');
   assert(matrixPage.includes("navigator.locks.request('mitch-matrix-session'"), 'Concurrent tabs must serialize Matrix SSO');
   assert(!matrixPage.includes('removeLegacyCryptoStorage'), 'Matrix must preserve crypto storage for E2EE keys');
   assert(matrixPage.includes('/matrix/assets/index-BVlPv2dR.js'), 'Matrix bundle URL must load updated E2EE client');
+  assert(matrixPage.includes('/matrix/matrix-galaxy.css?v=5'), 'Matrix must load the current mitch.pro visual integration');
+  assert(matrixPage.includes('id="matrix-context-bar"'), 'Matrix must include the mitch.pro chat workspace shell');
+  assert(matrixPage.includes('id="matrix-account-link"'), 'Matrix shell must expose the signed-in mitch.pro account');
+  assert(matrixPage.includes('Notification settings'), 'Matrix shell must link directly to site notification preferences');
   assert(!matrixPage.includes('__MATRIX_SSO_TARGET__'), 'Matrix page must not depend on __MATRIX_SSO_TARGET__ redirect injection');
+
+  const serverSource = readFileSync(join(REPO_ROOT, 'server.js'), 'utf8');
+  assert(serverSource.includes('MATRIX_MESSAGE_ALERT_COOLDOWN_MS = 5 * 60 * 1000'), 'ordinary Matrix push alerts must have a per-room cooldown');
+  assert(serverSource.includes('MATRIX_MESSAGE_ALERT_DELAY_MS = 15 * 1000'), 'ordinary Matrix push alerts must be batched');
+  assert(serverSource.includes('Date.now() - lastSeen < MATRIX_ACTIVE_WINDOW_MS'), 'active Matrix users must not receive duplicate external message alerts');
+  assert(serverSource.includes('queueMatrixMessageAlert(memberNorm'), 'Matrix message delivery must use the batched alert path');
 
   const resMatrixHtml = await fetch(`${BASE_URL}/matrix/`);
   assert.equal(resMatrixHtml.status, 200);
@@ -510,7 +531,8 @@ try {
   console.log('--- 5. Testing authenticated user /api/matrix/sso-login (member PL 0) ---');
   const resUserLogin = await fetch(`${BASE_URL}/api/matrix/sso-login`, {
     method: 'POST',
-    headers: { 'Cookie': `studentId=${testSid}` }
+    headers: { 'Cookie': `studentId=${testSid}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device_id: 'q5KT0JowzT' })
   });
   assert.equal(resUserLogin.status, 200);
   const dataUserLogin = await resUserLogin.json();
@@ -518,6 +540,9 @@ try {
   assert.equal(dataUserLogin.role, 'member');
   assert.equal(dataUserLogin.powerLevel, 0);
   assert.equal(dataUserLogin.officialRoom, '#general:mitch.pro');
+  assert.equal(dataUserLogin.device_id, 'q5KT0JowzT', 'SSO refresh must reuse the requested Matrix device');
+  const reusedDeviceLogin = matrixLoginBodies.find(body => body.identifier?.user === 'matrixtestuser' && body.device_id === 'q5KT0JowzT');
+  assert(reusedDeviceLogin, 'Server must forward the existing device_id to the Matrix homeserver');
   console.log('Regular member auto-provisioning passed:', dataUserLogin.user_id);
 
   // 6. Admin user auto-promotion (Power Level 100)
@@ -788,6 +813,7 @@ try {
   const matrixNotif = bellData.notifications.find(n => n.type === 'matrix' && n.matrixRoomId === '!official_general:mitch.pro');
   assert(matrixNotif, 'Matrix notification must appear in the bell list for recipient');
   assert(matrixNotif.url.includes('/matrix/#/room/'), 'Matrix notification must link to Matrix room');
+  assert(/messages?/i.test(matrixNotif.title), 'Matrix notification should summarize the unread conversation');
 
   // Verify clearing Matrix notification via /api/matrix/notifications/read
   const resRead = await fetch(`${BASE_URL}/api/matrix/notifications/read`, {
@@ -807,9 +833,9 @@ try {
   const matrixNotifAfter = bellDataAfter.notifications.find(n => n.type === 'matrix' && n.matrixRoomId === '!official_general:mitch.pro');
   assert(!matrixNotifAfter, 'Cleared Matrix notification must no longer appear as unread');
 
-  // Verify 24h email alert throttling: email sent timestamp must be recorded in matrix_email_sent.json
+  // Verify email alert throttling: email sent timestamp must be recorded for the per-user cooldown.
   const sentMap = readDocument(join(DATA_DIR, 'matrix_email_sent.json'), {});
-  assert(sentMap[adminNormEmail], 'Admin user must have sent timestamp recorded in matrix_email_sent.json for 24h throttle');
+  assert(sentMap[adminNormEmail], 'Admin user must have sent timestamp recorded in matrix_email_sent.json for email throttling');
   assert(Date.now() - sentMap[adminNormEmail] < 60_000, 'Sent timestamp must be recent');
 
   console.log('Matrix outbound message and invite notifications passed');
