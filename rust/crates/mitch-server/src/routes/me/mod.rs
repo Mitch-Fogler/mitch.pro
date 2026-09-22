@@ -13,7 +13,7 @@
 //! that call is a no-op after the prelude's (server.js:5987 sets
 //! `req._rateLimitChecked`), so the Rust prelude gate covers everything here.
 
-mod account;
+pub(crate) mod account;
 mod cosmetics;
 pub(crate) mod notifications;
 pub(crate) mod security;

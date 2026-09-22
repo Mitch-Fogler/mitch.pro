@@ -7,6 +7,7 @@
 //! games/casino/jeopardy/battleship/chess_vs (12) → team/vm (13).
 
 pub mod admin;
+pub mod auth;
 pub mod battleship;
 pub mod blooket;
 pub mod canvas;

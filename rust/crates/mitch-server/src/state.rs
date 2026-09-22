@@ -62,6 +62,10 @@ pub struct AppState {
     /// `pendingEmailChanges` (server.js:16049) — change token -> record.
     pub pending_email_changes:
         std::sync::Mutex<std::collections::HashMap<String, PendingEmailChange>>,
+    /// `pendingTwoFactor` (server.js:2571) — temp token -> 2FA record.
+    pub pending_two_factor: std::sync::Mutex<std::collections::HashMap<String, PendingTwoFactor>>,
+    /// `SSO_BRIDGE_TOKENS` (server.js:5761) — bridge token -> SSO record.
+    pub sso_bridge_tokens: std::sync::Mutex<std::collections::HashMap<String, SsoBridgeToken>>,
     /// `lastRecaptchaSuccess` (server.js:3597) — sid -> last success ms.
     pub last_recaptcha_success: std::sync::Mutex<std::collections::HashMap<String, i64>>,
     /// `happyHourActive` (server.js:1188) — starts false; the Step 11 worker
@@ -251,6 +255,24 @@ pub struct PendingEmailChange {
     pub attempts: u32,
 }
 
+/// A record in `pendingTwoFactor` (server.js:2571).
+#[derive(Debug, Clone)]
+pub struct PendingTwoFactor {
+    pub norm_email: String,
+    pub twofa_type: String,
+    pub code: Option<String>,
+    pub attempts: u32,
+    pub expires: i64,
+}
+
+/// A record in `SSO_BRIDGE_TOKENS` (server.js:5761).
+#[derive(Debug, Clone)]
+pub struct SsoBridgeToken {
+    pub email: String,
+    pub expires: i64,
+    pub e2e_private_jwk: Option<serde_json::Value>,
+}
+
 /// A record in `userPresence` (server.js:1064, 1112-1116).
 #[derive(Clone)]
 pub struct UserPresence {
@@ -344,6 +366,8 @@ impl AppState {
             matrix_pending_email_alerts: std::sync::Mutex::new(std::collections::HashMap::new()),
             pending_security_codes: std::sync::Mutex::new(std::collections::HashMap::new()),
             pending_email_changes: std::sync::Mutex::new(std::collections::HashMap::new()),
+            pending_two_factor: std::sync::Mutex::new(std::collections::HashMap::new()),
+            sso_bridge_tokens: std::sync::Mutex::new(std::collections::HashMap::new()),
             last_recaptcha_success: std::sync::Mutex::new(std::collections::HashMap::new()),
             happy_hour_active: std::sync::atomic::AtomicBool::new(false),
             computed_happy_hour: std::sync::atomic::AtomicI64::new(computed_happy_hour),

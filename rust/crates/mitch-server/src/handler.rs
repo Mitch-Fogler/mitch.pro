@@ -906,6 +906,12 @@ pub async fn handle(
         {
             return resp;
         }
+        // auth, signup, login, verify, reset, invite, newsletter, SSO
+        if let Some(resp) =
+            crate::routes::auth::handle(&state, &method, &path, headers, &search, body_bytes).await
+        {
+            return resp;
+        }
         // me/* group (Step 9). Runs after misc so /api/me/coins (ported in
         // the merge adaptation) keeps its existing match.
         if let Some(resp) =
