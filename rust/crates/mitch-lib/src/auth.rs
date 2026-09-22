@@ -585,6 +585,38 @@ pub fn encode_uri_component(s: &str) -> String {
     out
 }
 
+/// `decodeURIComponent(value || '')` — JS decodeURIComponent.
+pub fn decode_uri_component(s: &str) -> String {
+    let mut bytes = Vec::with_capacity(s.len());
+    let mut iter = s.as_bytes().iter().copied();
+    while let Some(b) = iter.next() {
+        if b == b'%' {
+            let h1 = iter.next();
+            let h2 = iter.next();
+            if let (Some(h1), Some(h2)) = (h1, h2) {
+                let hex_bytes = [h1, h2];
+                if let Ok(hex_str) = std::str::from_utf8(&hex_bytes) {
+                    if let Ok(val) = u8::from_str_radix(hex_str, 16) {
+                        bytes.push(val);
+                        continue;
+                    }
+                }
+                bytes.push(b'%');
+                bytes.push(h1);
+                bytes.push(h2);
+            } else {
+                bytes.push(b'%');
+                if let Some(h1) = h1 {
+                    bytes.push(h1);
+                }
+            }
+        } else {
+            bytes.push(b);
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 /// `setCookieHeader(name, value, req, maxAge, httpOnly)`.
 pub fn set_cookie_header(
     name: &str,

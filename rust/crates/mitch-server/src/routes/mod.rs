@@ -18,6 +18,7 @@ pub mod friends;
 pub mod games;
 pub mod jeopardy;
 pub mod livekit;
+pub mod marketplace;
 pub mod me;
 pub mod members;
 pub mod misc;

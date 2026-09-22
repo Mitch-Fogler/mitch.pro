@@ -913,6 +913,12 @@ pub async fn handle(
         {
             return resp;
         }
+        // marketplace group (server.js:12040-12390).
+        if let Some(resp) =
+            crate::routes::marketplace::handle(&state, &method, &path, headers, body_bytes).await
+        {
+            return resp;
+        }
         // friends/* group (Step 9 batch 4).
         if let Some(resp) =
             crate::routes::friends::handle(&state, &method, &path, headers, body_bytes).await

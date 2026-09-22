@@ -132,6 +132,62 @@ pub fn get_uid_for_email(store: &DataStore, id_secret: &[u8], email: &str) -> Op
     Some(auth::make_email_id(&norm, gen.max(0) as u64, id_secret))
 }
 
+/// `emailFromHash(hash)` (server.js:6186-6220).
+pub fn email_from_hash(
+    store: &DataStore,
+    data_dir: &Path,
+    id_secret: &[u8],
+    hash: &str,
+) -> Option<String> {
+    if hash.is_empty() {
+        return None;
+    }
+    if hash.contains('@') {
+        return Some(hash.to_string());
+    }
+    let names = store.read_document(&store.base_dir.join(crate::auth::names_file()), json!({}));
+    if let Some(email) = names.get(hash).and_then(|v| v.as_str()) {
+        if !email.is_empty() {
+            return Some(email.to_string());
+        }
+    }
+    let username = normalize_username(hash);
+    let profiles = store.read_document(&data_dir.join("profiles.json"), json!({}));
+    if let Some(map) = profiles.as_object() {
+        for (email, p) in map {
+            if !username.is_empty() {
+                if let Some(u) = p.get("username").and_then(|v| v.as_str()) {
+                    if normalize_username(u) == username {
+                        return Some(email.clone());
+                    }
+                }
+            }
+            if get_uid_for_email(store, id_secret, email).as_deref() == Some(hash) {
+                return Some(email.clone());
+            }
+        }
+    }
+    let stats = store.read_document(&data_dir.join("user_stats.json"), json!({}));
+    if let Some(map) = stats.as_object() {
+        for email in map.keys() {
+            if get_uid_for_email(store, id_secret, email).as_deref() == Some(hash) {
+                return Some(email.clone());
+            }
+        }
+    }
+    let tokens = store.read_document(&data_dir.join("tokens.json"), json!({}));
+    if let Some(map) = tokens.as_object() {
+        for t in map.values() {
+            if let Some(email) = t.get("email").and_then(|v| v.as_str()) {
+                if get_uid_for_email(store, id_secret, email).as_deref() == Some(hash) {
+                    return Some(email.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// `resolveTargetEmail` (server.js:6060-6124): direct/normalized match, then
 /// mask/uid match, then username/displayName exact, then local part, then
 /// substring. All against passwords.json + profiles.json.

@@ -343,6 +343,9 @@ impl DataStore {
     /// Raw content insert — mirrors JS `writeDocument(file, stringData)`.
     pub fn write_document_raw(&self, file: &Path, content: &str) -> Result<(), DataError> {
         if !self.should_store_in_db(file) {
+            if let Some(parent) = file.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
             std::fs::write(file, content)?;
             return Ok(());
         }

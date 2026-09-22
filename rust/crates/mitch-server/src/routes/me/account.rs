@@ -26,6 +26,10 @@ pub(crate) async fn handle(
     if path == "/api/profile" && *method == Method::GET {
         return Some(get_profile(state, headers));
     }
+    if path.starts_with("/api/profile/") && *method == Method::GET {
+        let slug = &path["/api/profile/".len()..];
+        return Some(get_public_profile(state, headers, slug));
+    }
     if path == "/api/profile" && *method == Method::POST {
         return Some(post_profile(state, headers, body_bytes));
     }
@@ -46,6 +50,130 @@ pub(crate) async fn handle(
         return Some(me_root(state, headers));
     }
     None
+}
+
+fn get_public_profile(state: &Arc<AppState>, headers: &HeaderMap, slug_raw: &str) -> Response {
+    let slug = auth::decode_uri_component(slug_raw);
+    let cookies = cookies_of(state, headers);
+    let sid = me_uid(&cookies);
+    let viewer_email = auth::email_from_sid(&state.store, &state.id_secret, &sid);
+    let actual_email = mitch_lib::profile::email_from_hash(
+        &state.store,
+        state.data_dir(),
+        &state.id_secret,
+        &slug,
+    )
+    .unwrap_or(slug);
+    let profiles = state
+        .store
+        .read_document(&data_file(state, "profiles.json"), json!({}));
+    let norm = auth::normalize_email(&actual_email);
+    let mut profile = profiles.get(&norm).cloned().unwrap_or_else(|| {
+        json!({
+            "email": actual_email,
+            "username": mitch_lib::profile::default_username_for_email(&actual_email),
+            "displayName": "",
+            "bio": "",
+            "pfp": "",
+            "background": ""
+        })
+    });
+    let cosm = state
+        .store
+        .read_document(&data_file(state, "cosmetics.json"), json!({}));
+    let processed = mitch_lib::profile::process_member_fields(
+        &state.store,
+        state.data_dir(),
+        &actual_email,
+        Some(&profile),
+        viewer_email.as_deref(),
+    );
+    if let Some(obj) = profile.as_object_mut() {
+        obj.remove("totp_secret");
+        obj.remove("totpSecret");
+        obj.remove("pendingTotpSecret");
+        obj.remove("twofa_enabled");
+        obj.remove("twofa_type");
+        obj.remove("twofaEnabled");
+        obj.remove("twofaType");
+        obj.remove("twoFactorEnabled");
+        let pfp = obj.get("pfp").and_then(|v| v.as_str()).unwrap_or("");
+        obj.insert(
+            "pfp".into(),
+            json!(mitch_lib::profile::sanitize_profile_image_url(
+                pfp, true, 1000, 120_000
+            )),
+        );
+        let bg = obj.get("background").and_then(|v| v.as_str()).unwrap_or("");
+        obj.insert(
+            "background".into(),
+            json!(mitch_lib::profile::sanitize_profile_image_url(
+                bg, false, 1000, 0
+            )),
+        );
+        let website = obj.get("website").and_then(|v| v.as_str()).unwrap_or("");
+        obj.insert(
+            "website".into(),
+            json!(mitch_lib::profile::sanitize_profile_website_url(website)),
+        );
+    }
+    let is_premium = auth::is_premium_email(&state.store, &actual_email);
+    let is_admin = auth::is_admin_email(&state.store, &actual_email);
+    let is_moderator = auth::is_moderator_email(&state.store, &actual_email);
+    let is_tester = auth::is_tester_email(&state.store, &actual_email);
+    let user_stats = state
+        .store
+        .read_document(&data_file(state, "user_stats.json"), json!({}));
+    let stats = user_stats.get(&norm).cloned().unwrap_or(json!({}));
+    let achievements_doc = state
+        .store
+        .read_document(&data_file(state, "achievements.json"), json!({}));
+    let achievements = achievements_doc.get(&norm).cloned().unwrap_or(json!([]));
+    let coins = mitch_lib::coins::get_coins(&state.store, state.data_dir(), &actual_email);
+    let user_cosm = cosm.get(&norm).cloned().unwrap_or(json!({}));
+
+    let mut resp_obj = profile;
+    if let Some(map) = resp_obj.as_object_mut() {
+        map.insert(
+            "displayName".into(),
+            processed.get("displayName").cloned().unwrap_or(json!("")),
+        );
+        map.insert(
+            "email".into(),
+            processed.get("email").cloned().unwrap_or(json!("")),
+        );
+        map.insert("isPremium".into(), json!(is_premium));
+        map.insert("isAdmin".into(), json!(is_admin));
+        map.insert("isModerator".into(), json!(is_moderator));
+        map.insert("isTester".into(), json!(is_tester));
+        map.insert("unlimitedCoins".into(), json!(false));
+        map.insert("coins".into(), json!(coins));
+        map.insert("stats".into(), stats);
+        map.insert("achievements".into(), achievements);
+        map.insert(
+            "totalAchievementsCount".into(),
+            json!(mitch_lib::achievements::ACHIEVEMENT_DEFINITIONS.len()),
+        );
+        map.insert(
+            "activeColor".into(),
+            mitch_lib::shop::public_active_color(
+                &state.store,
+                &actual_email,
+                user_cosm.get("activeColor").unwrap_or(&Value::Null),
+            )
+            .map(|c| json!(c))
+            .unwrap_or(Value::Null),
+        );
+        map.insert(
+            "activeBadge".into(),
+            jsval::or(user_cosm.get("activeBadge"), json!(Value::Null)),
+        );
+        map.insert(
+            "activeProfileEffect".into(),
+            jsval::or(user_cosm.get("activeProfileEffect"), json!(Value::Null)),
+        );
+    }
+    json_response(200, resp_obj)
 }
 
 fn get_profile(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
@@ -1083,5 +1211,134 @@ fn jsval_or_null(v: Option<&Value>) -> Value {
     match v {
         Some(val) if jsval::truthy(val) => val.clone(),
         _ => Value::Null,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::to_bytes;
+    use axum::http::HeaderValue;
+
+    fn test_state() -> (Arc<AppState>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "mitch-server-account-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("data")).unwrap_or_default();
+        let cfg = crate::hosts::SiteConfig::load();
+        let cfg = crate::hosts::SiteConfig {
+            data_dir: dir.join("data"),
+            ..cfg
+        };
+        let store = Arc::new(
+            mitch_lib::data::DataStore::open(&dir, &dir.join("data"))
+                .unwrap_or_else(|e| panic!("store: {e}")),
+        );
+        (Arc::new(AppState::new(cfg, Arc::clone(&store))), dir)
+    }
+
+    #[tokio::test]
+    async fn public_profile_by_slug_returns_sanitized_profile() {
+        let (state, _dir) = test_state();
+        let email = "testuser@student.rjuhsd.us";
+        let norm = auth::normalize_email(email);
+        let profiles_file = data_file(&state, "profiles.json");
+        let _ = state.store.write_document(
+            &profiles_file,
+            &json!({
+                norm.clone(): {
+                    "email": email,
+                    "username": "testuser",
+                    "displayName": "Test User",
+                    "bio": "Hello world",
+                    "pfp": "https://example.com/pfp.png",
+                    "totp_secret": "SUPER_SECRET",
+                    "twofa_enabled": true
+                }
+            }),
+        );
+
+        // Fetch by slug (username)
+        let resp = get_public_profile(&state, &HeaderMap::new(), "testuser");
+        assert_eq!(resp.status(), 200);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let val: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(
+            val.get("username").and_then(|v| v.as_str()),
+            Some("testuser")
+        );
+        assert_eq!(
+            val.get("displayName").and_then(|v| v.as_str()),
+            Some("Test User")
+        );
+        assert_eq!(val.get("bio").and_then(|v| v.as_str()), Some("Hello world"));
+        assert!(val.get("totp_secret").is_none());
+        assert!(val.get("twofa_enabled").is_none());
+        assert_eq!(val.get("coins").and_then(|v| v.as_f64()), Some(0.0));
+    }
+
+    #[tokio::test]
+    async fn authenticated_profile_get_and_post() {
+        let (state, _dir) = test_state();
+        let email = "alice@student.rjuhsd.us";
+        let sess = auth::create_auth_session(
+            &state.store,
+            &state.id_secret,
+            &auth::normalize_email(email),
+            email,
+            "",
+            "",
+            false,
+        );
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            axum::http::header::COOKIE,
+            HeaderValue::from_str(&format!(
+                "mitch_session={}; studentId={}",
+                sess.token, sess.sid
+            ))
+            .unwrap(),
+        );
+
+        // GET profile initially
+        let resp = get_profile(&state, &headers);
+        assert_eq!(resp.status(), 200);
+        let bytes = to_bytes(resp.into_body(), usize::MAX).await.unwrap();
+        let val: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(val.get("username").and_then(|v| v.as_str()), Some("alice"));
+
+        // POST profile update
+        let body = json!({
+            "displayName": "Alice Wonderland",
+            "bio": "Curiouser and curiouser",
+            "pfp": "https://example.com/alice.png",
+            "website": "https://alice.test"
+        });
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let post_resp = post_profile(&state, &headers, &body_bytes);
+        assert_eq!(post_resp.status(), 200);
+
+        // Public profile lookup shows new display name and website
+        let pub_resp = get_public_profile(&state, &HeaderMap::new(), "alice");
+        assert_eq!(pub_resp.status(), 200);
+        let pub_bytes = to_bytes(pub_resp.into_body(), usize::MAX).await.unwrap();
+        let pub_val: Value = serde_json::from_slice(&pub_bytes).unwrap();
+        assert_eq!(
+            pub_val.get("displayName").and_then(|v| v.as_str()),
+            Some("Alice Wonderland")
+        );
+        assert_eq!(
+            pub_val.get("bio").and_then(|v| v.as_str()),
+            Some("Curiouser and curiouser")
+        );
+        assert_eq!(
+            pub_val.get("website").and_then(|v| v.as_str()),
+            Some("https://alice.test/")
+        );
     }
 }
