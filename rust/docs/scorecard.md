@@ -391,3 +391,22 @@ Record one row per plan step; report honestly — partial passes are data.
   - `node tests/parity_static.js`: 102/102 URLs passed, 0 failures.
   - Dual `tests/endpoint_test.js`: 305 passed, 73 failed on both Bun baseline (port 6802) and Rust server (port 6803); failing-set MD5 `aa3efbcb0142ce21b31adac6cac5a036` matching bit-for-bit.
 
+## Step 14 verification log (2026-09-22)
+
+- Scope: **Parity Harness & Static Body Parity Sweep (Step 14 / 14b)**.
+- **Components & Fixes**:
+  - `handler.rs`:
+    - Ported `incomingHost === 'mitch.pro'` canonical redirection at the very top of `handle()` (`mitch.pro` non-compatibility GET/HEAD requests redirect to `https://mitchdog.com` via 308 for anonymous or 302 to SSO bridge if logged in with password cookie, matching `server.js:9285-9295`).
+    - Ported `prepare_rjuhsd_html` matching `server.js:25812-25940` (substituting `primaryHost` with `altHost` in sign-in buttons, updating SSO bridge `href`, handling RJUHSD hub school SEO / meta tag replacements, `\n</body>` replacement).
+    - Fixed search query string formatting in `bell_schedule_redirect`, `blooket_bot_redirect`, directory trailing-slash 302 redirects, and `site_page_block`.
+    - Fixed `site_page_block` gating and redirects (`domain == "rjuhsd.school"` redirects unauthenticated users to `/enroll/?next=...`, while other domains redirect to `/api/sso/bridge?back=...`; `open = page_base == "/" || (members_open && page_base == "/members")`).
+  - `manifests.rs`:
+    - Synced PWA shortcut names with upstream `server.js:25754, 25784` (`"Matrix Chat"`).
+- **Verification Gates**:
+  - `cargo fmt --all -- --check`: Clean (0 diffs).
+  - `cargo clippy --workspace --all-targets -- -D warnings`: Clean (0 errors/warnings).
+  - `cargo test --workspace`: 173 passed, 0 failed.
+  - `bun tests/parity_static.js --body`: 102/102 URLs passed with 0 failures and 0 body diffs (full byte-level parity across all 3 hosts: `mitch.pro`, `rjuhsd.school`, `sexypickleclub.com`).
+  - Dual `tests/endpoint_test.js`: 305 passed, 73 failed on both Bun baseline (port 6802) and Rust server (port 6803); failing-set MD5 `aa3efbcb0142ce21b31adac6cac5a036` matching identically.
+  - `bun run test:unit`: All 20 JS unit test suites passing cleanly.
+

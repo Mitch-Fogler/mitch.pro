@@ -21,7 +21,7 @@ pub fn pickle_manifest() -> serde_json::Value {
             { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
         ],
         "shortcuts": [
-            { "name": "The Cellar", "short_name": "Cellar", "description": "Open encrypted cellar chat", "url": "/cellar/?utm_source=pwa-shortcut", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+            { "name": "Matrix Chat", "short_name": "Matrix", "description": "Open encrypted Matrix chat", "url": "/matrix/?utm_source=pwa-shortcut", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
             { "name": "The Barrel", "short_name": "Barrel", "description": "Live pickle lounge", "url": "/barrel/?utm_source=pwa-shortcut", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
             { "name": "Bulletin", "short_name": "Bulletin", "description": "Official announcements", "url": "/bulletin/?utm_source=pwa-shortcut", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
         ]
@@ -49,7 +49,7 @@ pub fn rjuhsd_manifest() -> serde_json::Value {
         ],
         "shortcuts": [
             { "name": "Bell Schedule", "short_name": "Bells", "description": "Live RJUHSD bell schedules", "url": "/?utm_source=pwa-shortcut#schedule-panel", "icons": [{ "src": "/rjuhsd-assets/icon-192.png", "sizes": "192x192" }] },
-            { "name": "Encrypted Chat", "short_name": "Chat", "description": "Open end-to-end encrypted messages", "url": "/encrypt/?utm_source=pwa-shortcut", "icons": [{ "src": "/rjuhsd-assets/icon-192.png", "sizes": "192x192" }] }
+            { "name": "Matrix Chat", "short_name": "Matrix", "description": "Open end-to-end encrypted Matrix chat", "url": "/matrix/?utm_source=pwa-shortcut", "icons": [{ "src": "/rjuhsd-assets/icon-192.png", "sizes": "192x192" }] }
         ]
     })
 }

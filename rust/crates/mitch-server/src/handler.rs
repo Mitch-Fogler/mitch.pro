@@ -14,7 +14,7 @@ use axum::response::Response;
 use std::sync::Arc;
 
 use crate::errors::{err_resp, json_resp};
-use crate::hosts::{is_pickle_host, is_rjuhsd_host, request_host, sso_back_allowed};
+use crate::hosts::{is_pickle_host, is_rjuhsd_host, request_host, sso_back_allowed, SiteConfig};
 use crate::inject::{inject_readability, inject_shared_head, recaptcha_loader_str};
 use crate::state::AppState;
 use crate::static_files::{pickle_asset_response, redirect, safe_webroot_path, serve_static};
@@ -113,6 +113,225 @@ pub fn query(search: &str) -> std::collections::HashMap<String, String> {
         .collect()
 }
 
+/// `encodeURIComponent` — leaves A-Za-z0-9 and `-_.!~*'()` unescaped.
+pub fn encode_uri_component(v: &str) -> String {
+    let mut out = String::with_capacity(v.len());
+    for b in v.bytes() {
+        match b {
+            b'A'..=b'Z'
+            | b'a'..=b'z'
+            | b'0'..=b'9'
+            | b'-'
+            | b'_'
+            | b'.'
+            | b'!'
+            | b'~'
+            | b'*'
+            | b'\''
+            | b'('
+            | b')' => out.push(b as char),
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
+/// Port of `prepareRjuhsdHtml` from server.js:25812-25940.
+pub fn prepare_rjuhsd_html(
+    raw_html: &str,
+    req_host: Option<&str>,
+    is_rjuhsd: bool,
+    search: &str,
+    cfg: &SiteConfig,
+) -> String {
+    let mut html = inject_shared_head(raw_html);
+    let mut primary_origin = "https://mitch.pro".to_string();
+    let mut primary_host = "mitch.pro".to_string();
+    if let Ok(pu) = url::Url::parse(&cfg.primary) {
+        primary_origin = pu.origin().ascii_serialization();
+        primary_host = pu.host_str().unwrap_or("mitch.pro").to_string();
+    }
+
+    let mut alt_origin = String::new();
+    let mut alt_host = String::new();
+    if !cfg.alternate.is_empty() {
+        if let Ok(au) = url::Url::parse(&cfg.alternate) {
+            alt_origin = au.origin().ascii_serialization();
+            alt_host = au.host_str().unwrap_or("").to_string();
+        }
+    }
+
+    let req_host_str = req_host.filter(|h| !h.is_empty()).unwrap_or(if is_rjuhsd {
+        "rjuhsd.school"
+    } else {
+        &primary_host
+    });
+    let is_preview = !is_rjuhsd;
+    let back_path = if is_preview { "/rjuhsd/" } else { "/" };
+    let back_url = format!("https://{req_host_str}{back_path}");
+
+    let effective_origin = if !alt_origin.is_empty() {
+        &alt_origin
+    } else {
+        &primary_origin
+    };
+
+    if !alt_host.is_empty() && alt_host != primary_host {
+        // 1. Injected alternate domain by default into sign-in buttons
+        let signin_pattern = format!("Sign in with {}", primary_host);
+        let signin_replacement = format!("Sign in with {}", alt_host);
+        html = html.replace(&signin_pattern, &signin_replacement);
+
+        // Update href of js-signin-link / SSO bridge
+        let alt_bridge_url = format!(
+            "{effective_origin}/api/sso/bridge?back={}",
+            encode_uri_component(&back_url)
+        );
+        html = html.replace(
+            "href=\"/api/sso/bridge?back=%2F\"",
+            &format!("href=\"{alt_bridge_url}\""),
+        );
+
+        if html.contains("</body>") {
+            html = html.replace("</body>", "\n</body>");
+        }
+    }
+
+    // SEO & School personalization for server-rendered HTML
+    let req_school = query(search)
+        .into_iter()
+        .find(|(k, _)| k == "school")
+        .map(|(_, v)| v.to_lowercase().trim().to_string())
+        .unwrap_or_default();
+
+    let school_meta = match req_school.as_str() {
+        "woodcreek" => Some(("Woodcreek High School", "Woodcreek", "Timberwolves")),
+        "roseville" => Some(("Roseville High School", "Roseville", "Tigers")),
+        "granitebay" => Some(("Granite Bay High School", "Granite Bay", "Grizzlies")),
+        "antelope" => Some(("Antelope High School", "Antelope", "Titans")),
+        "westpark" => Some(("West Park High School", "West Park", "Panthers")),
+        "oakmont" => Some(("Oakmont High School", "Oakmont", "Vikings")),
+        _ => None,
+    };
+
+    if let Some((name, short, mascot)) = school_meta {
+        let school_title = format!("{name} Bell Schedule | RJUHSD Hub");
+        let school_desc = format!("Live {name} bell schedule, period countdowns, daily times, and calendar for the {mascot} in Roseville Joint Union High School District (RJUHSD).");
+        let school_canonical = format!("https://{req_host_str}{back_path}?school={req_school}");
+
+        static TITLE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let title_re = TITLE_RE.get_or_init(|| {
+            regex::Regex::new(r"(?i)<title>.*?</title>").expect("static regex")
+        });
+        html = title_re
+            .replace(&html, format!("<title>{school_title}</title>"))
+            .to_string();
+
+        static META_DESC_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let meta_desc_re = META_DESC_RE.get_or_init(|| {
+            regex::Regex::new(r#"(?i)(<meta\s+name="description"\s+content=")[^"]*(")"#)
+                .expect("static regex")
+        });
+        html = meta_desc_re
+            .replace(&html, format!("${{1}}{school_desc}${{2}}"))
+            .to_string();
+
+        static LINK_CANONICAL_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let link_canonical_re = LINK_CANONICAL_RE.get_or_init(|| {
+            regex::Regex::new(r#"(?i)(<link\s+rel="canonical"\s+href=")[^"]*(")"#)
+                .expect("static regex")
+        });
+        html = link_canonical_re
+            .replace(&html, format!("${{1}}{school_canonical}${{2}}"))
+            .to_string();
+
+        static OG_TITLE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let og_title_re = OG_TITLE_RE.get_or_init(|| {
+            regex::Regex::new(r#"(?i)(<meta\s+property="og:title"\s+content=")[^"]*(")"#)
+                .expect("static regex")
+        });
+        html = og_title_re
+            .replace(&html, format!("${{1}}{school_title}${{2}}"))
+            .to_string();
+
+        static OG_DESC_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let og_desc_re = OG_DESC_RE.get_or_init(|| {
+            regex::Regex::new(r#"(?i)(<meta\s+property="og:description"\s+content=")[^"]*(")"#)
+                .expect("static regex")
+        });
+        html = og_desc_re
+            .replace(&html, format!("${{1}}{school_desc}${{2}}"))
+            .to_string();
+
+        static OG_URL_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let og_url_re = OG_URL_RE.get_or_init(|| {
+            regex::Regex::new(r#"(?i)(<meta\s+property="og:url"\s+content=")[^"]*(")"#)
+                .expect("static regex")
+        });
+        html = og_url_re
+            .replace(&html, format!("${{1}}{school_canonical}${{2}}"))
+            .to_string();
+
+        static TW_TITLE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let tw_title_re = TW_TITLE_RE.get_or_init(|| {
+            regex::Regex::new(r#"(?i)(<meta\s+name="twitter:title"\s+content=")[^"]*(")"#)
+                .expect("static regex")
+        });
+        html = tw_title_re
+            .replace(&html, format!("${{1}}{school_title}${{2}}"))
+            .to_string();
+
+        static TW_DESC_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let tw_desc_re = TW_DESC_RE.get_or_init(|| {
+            regex::Regex::new(r#"(?i)(<meta\s+name="twitter:description"\s+content=")[^"]*(")"#)
+                .expect("static regex")
+        });
+        html = tw_desc_re
+            .replace(&html, format!("${{1}}{school_desc}${{2}}"))
+            .to_string();
+
+        static HERO_OVERLINE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let hero_overline_re = HERO_OVERLINE_RE.get_or_init(|| {
+            regex::Regex::new(r#"<p class="hero-overline" id="hero-overline">.*?</p>"#)
+                .expect("static regex")
+        });
+        html = hero_overline_re
+            .replace(
+                &html,
+                format!(
+                    r#"<p class="hero-overline" id="hero-overline">{}</p>"#,
+                    name.to_uppercase()
+                ),
+            )
+            .to_string();
+
+        static SCHOOL_HEADING_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let school_heading_re = SCHOOL_HEADING_RE.get_or_init(|| {
+            regex::Regex::new(r#"<span id="school-heading">.*?</span>"#).expect("static regex")
+        });
+        html = school_heading_re
+            .replace(
+                &html,
+                format!(r#"<span id="school-heading">{short}</span>"#),
+            )
+            .to_string();
+
+        static CURRENT_RANGE_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+        let current_range_re = CURRENT_RANGE_RE.get_or_init(|| {
+            regex::Regex::new(r#"<span class="period-range" id="current-range">.*?</span>"#)
+                .expect("static regex")
+        });
+        html = current_range_re
+            .replace(
+                &html,
+                format!(r#"<span class="period-range" id="current-range">{name}</span>"#),
+            )
+            .to_string();
+    }
+
+    html
+}
+
 fn manifest_response(manifest: serde_json::Value) -> Response {
     Response::builder()
         .status(axum::http::StatusCode::OK)
@@ -138,7 +357,12 @@ fn bell_schedule_redirect(path: &str, method: &Method, search: &str) -> Option<R
             .expect("static regex")
     });
     if re.is_match(path) {
-        return Some(redirect(&format!("https://rjuhsd.school/{search}"), 302));
+        let q = if search.is_empty() {
+            String::new()
+        } else {
+            format!("?{search}")
+        };
+        return Some(redirect(&format!("https://rjuhsd.school/{q}"), 302));
     }
     None
 }
@@ -154,7 +378,12 @@ fn blooket_bot_redirect(path: &str, method: &Method, search: &str) -> Option<Res
             .expect("static regex")
     });
     if re.is_match(path) {
-        return Some(redirect(&format!("https://woodcreek.site/{search}"), 302));
+        let q = if search.is_empty() {
+            String::new()
+        } else {
+            format!("?{search}")
+        };
+        return Some(redirect(&format!("https://woodcreek.site/{q}"), 302));
     }
     None
 }
@@ -278,6 +507,38 @@ pub async fn handle(
 ) -> Response {
     let path = uri.path().to_string();
     let search = uri.query().unwrap_or("").to_string();
+
+    // 0. mitch.pro canonical redirect (server.js:9285-9295).
+    let incoming_host = request_host(headers)
+        .split(':')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let is_compatibility_endpoint = path.starts_with("/api/")
+        || path.starts_with("/_matrix/")
+        || path.starts_with("/.well-known/matrix/")
+        || path == "/ws"
+        || path == "/health"
+        || path == "/healthz";
+    if incoming_host == "mitch.pro"
+        && (method == Method::GET || method == Method::HEAD)
+        && !is_compatibility_endpoint
+    {
+        let query_part = if search.is_empty() {
+            String::new()
+        } else {
+            format!("?{search}")
+        };
+        let canonical_destination = format!("https://mitchdog.com{path}{query_part}");
+        if state.check_password_cookie(headers, None) {
+            let encoded = encode_uri_component(&canonical_destination);
+            return redirect(
+                &format!("https://mitch.pro/api/sso/bridge?back={encoded}"),
+                302,
+            );
+        }
+        return redirect(&canonical_destination, 308);
+    }
 
     // 1. Bell/blooket redirects.
     if let Some(resp) = bell_schedule_redirect(&path, &method, &search) {
@@ -778,10 +1039,10 @@ pub async fn handle(
             .ok()
             .map(|h| inject_shared_head(&h))
     };
-    let rjuhsd_hub_html = || -> Option<String> {
+    let rjuhsd_hub_html = |req_host_val: Option<&str>, is_rjuhsd_val: bool| -> Option<String> {
         std::fs::read_to_string(webroot.join("rjuhsd").join("index.html"))
             .ok()
-            .map(|h| inject_shared_head(&h))
+            .map(|h| prepare_rjuhsd_html(&h, req_host_val, is_rjuhsd_val, &search, &state.cfg))
     };
 
     if (path == "/" || path == "/index.html") && pickle_host {
@@ -790,7 +1051,7 @@ pub async fn handle(
         }
     }
     if (path == "/" || path == "/index.html") && rjuhsd_host {
-        if let Some(html) = rjuhsd_hub_html() {
+        if let Some(html) = rjuhsd_hub_html(Some(&req_host), true) {
             return html_response(html);
         }
     }
@@ -820,7 +1081,7 @@ pub async fn handle(
         }
     }
     if path == "/rjuhsd" || path == "/rjuhsd/" || path == "/rjuhsd/index.html" {
-        if let Some(html) = rjuhsd_hub_html() {
+        if let Some(html) = rjuhsd_hub_html(Some(&req_host), rjuhsd_host) {
             return html_response(html);
         }
         return err_resp(404, Some("Not found"), None);
@@ -845,7 +1106,12 @@ pub async fn handle(
                 .map(|m| m.is_dir())
                 .unwrap_or(false)
             {
-                return redirect(&format!("{path}/{search}"), 302);
+                let q = if search.is_empty() {
+                    String::new()
+                } else {
+                    format!("?{search}")
+                };
+                return redirect(&format!("{path}/{q}"), 302);
             }
         }
     }
@@ -1217,7 +1483,12 @@ fn site_page_block(
             .map(|m| m.is_dir())
             .unwrap_or(false);
         if is_dir {
-            return Some(redirect(&format!("{rel}/{query}"), 302));
+            let q = if query.is_empty() {
+                String::new()
+            } else {
+                format!("?{query}")
+            };
+            return Some(redirect(&format!("{rel}/{q}"), 302));
         }
         rel = format!("{as_dir}/");
     }
@@ -1229,9 +1500,10 @@ fn site_page_block(
     if stat.is_none() || stat.map(|s| s.is_dir()).unwrap_or(true) {
         return Some(err_resp(404, Some(not_found_title), Some(not_found_detail)));
     }
-    // Gate: open pages pass; everything else redirects via the SSO bridge.
+    // Gate: open pages pass; everything else redirects.
     let page_base = format!("/{}", rel.trim_start_matches('/').trim_end_matches('/'));
-    let mut open = page_base.is_empty() || members_open;
+    let mut open =
+        page_base.is_empty() || page_base == "/" || (members_open && page_base == "/members");
     if !open {
         let open_index = format!("{page_base}/index");
         open = HTML_OPEN.contains(&page_base.as_str()) || HTML_OPEN.contains(&open_index.as_str());
@@ -1240,15 +1512,27 @@ fn site_page_block(
         // ban + session checks (bans stubbed; sessions come at Step 6).
         if !state.check_password_cookie(headers, None) {
             let _ = bridge_kind;
-            // encodeURIComponent(origin + rel), like the JS.
-            let origin = format!("https://{domain}");
-            let encoded = encode_uri_component(&format!("{origin}{rel}"));
-            return Some(redirect(&format!("/api/sso/bridge?back={encoded}"), 302));
+            if domain == "rjuhsd.school" {
+                return Some(redirect(
+                    &format!("/enroll/?next={}", encode_uri_component(&rel)),
+                    302,
+                ));
+            } else {
+                // encodeURIComponent(origin + rel), like the JS.
+                let origin = format!("https://{domain}");
+                let encoded = encode_uri_component(&format!("{origin}{rel}"));
+                return Some(redirect(&format!("/api/sso/bridge?back={encoded}"), 302));
+            }
         }
     }
     match std::fs::read_to_string(&file) {
         Ok(mut html) => {
-            html = inject_shared_head(&html);
+            if domain == "rjuhsd.school" {
+                let req_host = request_host(headers);
+                html = prepare_rjuhsd_html(&html, Some(&req_host), true, query, &state.cfg);
+            } else {
+                html = inject_shared_head(&html);
+            }
             let rc_key = std::env::var("RECAPTCHA_SITE_KEY")
                 .unwrap_or_default()
                 .trim()
@@ -1272,27 +1556,4 @@ fn site_page_block(
         }
         Err(_) => Some(err_resp(404, None, None)),
     }
-}
-
-/// `encodeURIComponent` — leaves A-Za-z0-9 and `-_.!~*'()` unescaped.
-fn encode_uri_component(v: &str) -> String {
-    let mut out = String::with_capacity(v.len());
-    for b in v.bytes() {
-        match b {
-            b'A'..=b'Z'
-            | b'a'..=b'z'
-            | b'0'..=b'9'
-            | b'-'
-            | b'_'
-            | b'.'
-            | b'!'
-            | b'~'
-            | b'*'
-            | b'\''
-            | b'('
-            | b')' => out.push(b as char),
-            other => out.push_str(&format!("%{other:02X}")),
-        }
-    }
-    out
 }
