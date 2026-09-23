@@ -4,7 +4,7 @@
 # anywhere, mirroring the prod Dockerfile's non-root `bun` user.
 
 FROM lukemathwalker/cargo-chef:latest-rust-1-alpine AS chef
-RUN apk add --no-cache pkgconfig openssl-dev musl-dev make perl
+RUN apk add --no-cache pkgconfig openssl-dev openssl-libs-static musl-dev make perl
 WORKDIR /app
 
 FROM chef AS planner
