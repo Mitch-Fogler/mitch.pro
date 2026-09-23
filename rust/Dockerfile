@@ -4,6 +4,7 @@
 # anywhere, mirroring the prod Dockerfile's non-root `bun` user.
 
 FROM lukemathwalker/cargo-chef:latest-rust-1-alpine AS chef
+RUN apk add --no-cache pkgconfig openssl-dev musl-dev make perl
 WORKDIR /app
 
 FROM chef AS planner
@@ -17,7 +18,7 @@ COPY . .
 RUN cargo build --release --workspace -j 2
 
 FROM alpine:3.20
-RUN apk add --no-cache openssh-client ffmpeg ca-certificates curl
+RUN apk add --no-cache openssh-client ffmpeg ca-certificates curl openssl
 RUN addgroup -g 1000 app && adduser -u 1000 -G app -D -s /bin/sh app
 COPY --from=builder /app/target/release/mitch-* /usr/local/bin/
 USER app
