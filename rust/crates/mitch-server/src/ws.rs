@@ -65,6 +65,16 @@ pub fn broadcast(state: &Arc<AppState>, recipients: WsRecipients, payload: Strin
     }));
 }
 
+/// `broadcastProfileChange` (server.js:8669-8683).
+pub fn broadcast_profile_change(state: &Arc<AppState>, username: &str, updated_at: i64) {
+    let payload = json!({
+        "type": "profile_updated",
+        "handle": username,
+        "updatedAt": updated_at
+    });
+    broadcast(state, WsRecipients::All, payload.to_string());
+}
+
 /// `hasAuthenticatedBroadcastSocket(email)` (server.js:1069-1075).
 pub fn has_authenticated_broadcast_socket(state: &Arc<AppState>, email: &str) -> bool {
     let norm = mitch_lib::auth::normalize_email(email);

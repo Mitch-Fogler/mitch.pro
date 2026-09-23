@@ -438,10 +438,43 @@ fn post_profile(state: &Arc<AppState>, headers: &HeaderMap, body_bytes: &[u8]) -
         });
     }
 
+    let now = mitch_lib::school::now_millis();
+    if let Some(map) = record.as_object_mut() {
+        map.insert("updatedAt".into(), json!(now));
+    }
+
     if let Some(map) = profiles.as_object_mut() {
         map.insert(norm.clone(), record.clone());
     }
     let _ = state.store.write_document(&profiles_path, &profiles);
+
+    crate::ws::broadcast_profile_change(state, &username, now);
+
+    let state_clone = Arc::clone(state);
+    let uid_clone = sid.to_string();
+    let dn_clone = record
+        .get("displayName")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let pfp_clone = record
+        .get("pfp")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    let bio_clone = record
+        .get("bio")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    tokio::spawn(async move {
+        crate::routes::matrix::sync_profile_to_matrix(
+            &state_clone,
+            &uid_clone,
+            dn_clone.as_deref(),
+            pfp_clone.as_deref(),
+            bio_clone.as_deref(),
+            None,
+        )
+        .await;
+    });
 
     json_response(200, json!({ "profile": record }))
 }

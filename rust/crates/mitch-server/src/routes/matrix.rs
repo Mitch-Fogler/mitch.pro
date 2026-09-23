@@ -563,6 +563,205 @@ pub fn is_user_muted_in_matrix_room(
     None
 }
 
+pub fn urlencoding_decode(val: &str) -> String {
+    url::form_urlencoded::parse(format!("v={val}").as_bytes())
+        .find(|(k, _)| k == "v")
+        .map(|(_, v)| v.into_owned())
+        .unwrap_or_else(|| val.to_string())
+}
+
+pub fn find_profile_email_by_matrix_user_id(
+    state: &AppState,
+    matrix_user_id: &str,
+) -> Option<String> {
+    if matrix_user_id.is_empty() {
+        return None;
+    }
+    let clean = if let Some(stripped) = matrix_user_id.strip_prefix('@') {
+        stripped.split(':').next().unwrap_or(stripped)
+    } else {
+        matrix_user_id
+    };
+
+    let matrix_users_file = state.data_dir().join("matrix_users.json");
+    let matrix_users = state.store.read_document(&matrix_users_file, json!({}));
+    if let Some(map) = matrix_users.as_object() {
+        for (uid, uname_val) in map {
+            if let Some(uname) = uname_val.as_str() {
+                if uname.eq_ignore_ascii_case(clean)
+                    || format!("@{uname}:mitch.pro").eq_ignore_ascii_case(matrix_user_id)
+                {
+                    if let Some(email) =
+                        mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, uid)
+                    {
+                        return Some(mitch_lib::auth::normalize_email(&email));
+                    }
+                }
+            }
+        }
+    }
+
+    let profiles_file = state.data_dir().join("profiles.json");
+    let profiles = state.store.read_document(&profiles_file, json!({}));
+    if let Some(map) = profiles.as_object() {
+        for (norm_email, p) in map {
+            if let Some(uname) = p.get("username").and_then(|v| v.as_str()) {
+                if uname.eq_ignore_ascii_case(clean) {
+                    return Some(norm_email.clone());
+                }
+            }
+        }
+    }
+
+    crate::routes::auth::resolve_login_identifier(state, clean)
+}
+
+pub async fn sync_profile_to_matrix(
+    state: &AppState,
+    uid: &str,
+    display_name: Option<&str>,
+    pfp: Option<&str>,
+    bio: Option<&str>,
+    provided_token: Option<&str>,
+) {
+    let matrix_users_file = state.data_dir().join("matrix_users.json");
+    let matrix_users = state.store.read_document(&matrix_users_file, json!({}));
+    let Some(matrix_username) = matrix_users.get(uid).and_then(|v| v.as_str()) else {
+        return; // user has never logged into Matrix
+    };
+
+    let mut token = provided_token.map(str::to_string);
+    let mut user_id = format!("@{matrix_username}:mitch.pro");
+
+    if token.is_none() {
+        let password = get_matrix_password_for_uid(uid, &state.id_secret);
+        let mut req_headers = HeaderMap::new();
+        req_headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+        let login_body = json!({
+            "type": "m.login.password",
+            "identifier": { "type": "m.id.user", "user": matrix_username },
+            "password": password,
+            "initial_device_display_name": "Mitch.pro Profile Sync"
+        });
+        if let Ok((status, _, bytes)) = call_conduit(
+            "/_matrix/client/v3/login",
+            Method::POST,
+            Some(req_headers),
+            Some(Bytes::from(
+                serde_json::to_vec(&login_body).unwrap_or_default(),
+            )),
+        )
+        .await
+        {
+            if status.is_success() {
+                if let Ok(data) = serde_json::from_slice::<Value>(&bytes) {
+                    if let Some(tok) = data.get("access_token").and_then(|v| v.as_str()) {
+                        token = Some(tok.to_string());
+                    }
+                    if let Some(uid_res) = data.get("user_id").and_then(|v| v.as_str()) {
+                        user_id = uid_res.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    let Some(token) = token else {
+        return;
+    };
+
+    let encoded_user_id =
+        url::form_urlencoded::byte_serialize(user_id.as_bytes()).collect::<String>();
+    let mut auth_header = HeaderMap::new();
+    if let Ok(val) = HeaderValue::from_str(&format!("Bearer {token}")) {
+        auth_header.insert("Authorization", val);
+    }
+    auth_header.insert("Content-Type", HeaderValue::from_static("application/json"));
+
+    // 1. Sync display name
+    if let Some(dn) = display_name {
+        let name_val = if dn.is_empty() { matrix_username } else { dn };
+        let name_val = &name_val[..name_val.len().min(40)];
+        let body = json!({ "displayname": name_val });
+        let _ = call_conduit(
+            &format!("/_matrix/client/v3/profile/{encoded_user_id}/displayname"),
+            Method::PUT,
+            Some(auth_header.clone()),
+            Some(Bytes::from(serde_json::to_vec(&body).unwrap_or_default())),
+        )
+        .await;
+    }
+
+    // 2. Sync avatar (pfp -> mxc:// URI)
+    if let Some(pfp_val) = pfp {
+        let raw_pfp = pfp_val.trim();
+        if raw_pfp.is_empty() {
+            let body = json!({ "avatar_url": Value::Null });
+            let _ = call_conduit(
+                &format!("/_matrix/client/v3/profile/{encoded_user_id}/avatar_url"),
+                Method::PUT,
+                Some(auth_header.clone()),
+                Some(Bytes::from(serde_json::to_vec(&body).unwrap_or_default())),
+            )
+            .await;
+        } else if raw_pfp.starts_with("mxc://") {
+            let body = json!({ "avatar_url": raw_pfp });
+            let _ = call_conduit(
+                &format!("/_matrix/client/v3/profile/{encoded_user_id}/avatar_url"),
+                Method::PUT,
+                Some(auth_header.clone()),
+                Some(Bytes::from(serde_json::to_vec(&body).unwrap_or_default())),
+            )
+            .await;
+        } else if raw_pfp.contains("/_matrix/media/") {
+            static MEDIA_RE: OnceLock<regex::Regex> = OnceLock::new();
+            let media_re = MEDIA_RE.get_or_init(|| {
+                regex::Regex::new(r"/_matrix/media/(?:v3|r0)/download/([^/]+)/([^/?#]+)")
+                    .expect("static regex")
+            });
+            if let Some(caps) = media_re.captures(raw_pfp) {
+                let server = &caps[1];
+                let media_id = &caps[2];
+                let body = json!({ "avatar_url": format!("mxc://{server}/{media_id}") });
+                let _ = call_conduit(
+                    &format!("/_matrix/client/v3/profile/{encoded_user_id}/avatar_url"),
+                    Method::PUT,
+                    Some(auth_header.clone()),
+                    Some(Bytes::from(serde_json::to_vec(&body).unwrap_or_default())),
+                )
+                .await;
+            }
+        }
+    }
+
+    // 3. Sync bio (as presence status_msg and MSC1769 custom profile fields)
+    if let Some(bio_val) = bio {
+        let bio_clean = &bio_val.trim()[..bio_val.trim().len().min(300)];
+        let status_body = json!({
+            "presence": "online",
+            "status_msg": bio_clean
+        });
+        let _ = call_conduit(
+            &format!("/_matrix/client/v3/presence/{encoded_user_id}/status"),
+            Method::PUT,
+            Some(auth_header.clone()),
+            Some(Bytes::from(
+                serde_json::to_vec(&status_body).unwrap_or_default(),
+            )),
+        )
+        .await;
+
+        let msc_body = json!({ "bio": bio_clean });
+        let _ = call_conduit(
+            &format!("/_matrix/client/v3/user/{encoded_user_id}/account_data/org.matrix.msc1769.custom_profile_fields"),
+            Method::PUT,
+            Some(auth_header.clone()),
+            Some(Bytes::from(serde_json::to_vec(&msc_body).unwrap_or_default())),
+        )
+        .await;
+    }
+}
+
 pub fn is_matrix_staff_member(
     state: &AppState,
     headers: &HeaderMap,
@@ -969,7 +1168,9 @@ fn api_sso_status(state: &AppState, headers: &HeaderMap) -> Response {
             "authenticated": true,
             "username": username,
             "user_id": format!("@{assigned_username}:mitch.pro"),
-            "displayName": display_name
+            "displayName": display_name,
+            "pfp": prof.get("pfp").and_then(|v| v.as_str()).unwrap_or(""),
+            "bio": prof.get("bio").and_then(|v| v.as_str()).unwrap_or(""),
         }),
     )
 }
@@ -1161,6 +1362,19 @@ async fn api_sso_login(state: &AppState, headers: &HeaderMap, body_bytes: &[u8])
         "member"
     };
 
+    let pfp_val = prof.get("pfp").and_then(|v| v.as_str()).unwrap_or("");
+    let bio_val = prof.get("bio").and_then(|v| v.as_str()).unwrap_or("");
+
+    sync_profile_to_matrix(
+        state,
+        uid,
+        Some(display_name),
+        Some(pfp_val),
+        Some(bio_val),
+        Some(access_token),
+    )
+    .await;
+
     cors_json_response(
         200,
         json!({
@@ -1172,6 +1386,8 @@ async fn api_sso_login(state: &AppState, headers: &HeaderMap, body_bytes: &[u8])
             "base_url": "https://mitchdog.com",
             "username": final_user,
             "displayName": display_name,
+            "pfp": pfp_val,
+            "bio": bio_val,
             "role": role,
             "powerLevel": target_power_level,
             "officialRoom": "#general:mitch.pro",
@@ -2387,6 +2603,46 @@ pub async fn handle_matrix_gateway(
         return Some(cors_json_response(200, json!({ "notifications": [] })));
     }
 
+    // Direct bio updates via MSC1769 account_data
+    static BIO_PUT_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let bio_put_re = BIO_PUT_RE.get_or_init(|| {
+        regex::Regex::new(
+            r"^/_matrix/client/(?:v3|r0)/user/([^/]+)/account_data/org\.matrix\.msc1769\.custom_profile_fields/?$",
+        )
+        .expect("static regex")
+    });
+    if method == Method::PUT {
+        if let Some(caps) = bio_put_re.captures(path) {
+            let target_user_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let decoded_user_id = urlencoding_decode(target_user_id);
+            if let Ok(body) = serde_json::from_slice::<Value>(body_bytes) {
+                if let Some(bio_val) = body.get("bio").and_then(|v| v.as_str()) {
+                    if let Some(norm) =
+                        find_profile_email_by_matrix_user_id(state, &decoded_user_id)
+                    {
+                        let profiles_file = state.data_dir().join("profiles.json");
+                        let mut profiles = state.store.read_document(&profiles_file, json!({}));
+                        if let Some(prof) = profiles.get_mut(&norm).and_then(|v| v.as_object_mut())
+                        {
+                            let bio_clean = &bio_val.trim()[..bio_val.trim().len().min(300)];
+                            prof.insert("bio".to_string(), json!(bio_clean));
+                            let now = now_millis();
+                            prof.insert("updatedAt".to_string(), json!(now));
+                            let uname = prof
+                                .get("username")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let _ = state.store.write_document(&profiles_file, &profiles);
+                            crate::ws::broadcast_profile_change(state, &uname, now);
+                        }
+                    }
+                }
+            }
+            return Some(cors_json_response(200, json!({})));
+        }
+    }
+
     // Intercept readable-message policy before forwarding to homeserver
     static POLICY_SEND_RE: OnceLock<regex::Regex> = OnceLock::new();
     let policy_send_re = POLICY_SEND_RE.get_or_init(|| {
@@ -2634,6 +2890,161 @@ pub async fn handle_matrix_gateway(
                 record_matrix_message_sent(&send_match_room_id, &send_match_sender_key);
             }
 
+            // Matrix -> Mitch.pro Profile Sync on successful PUT
+            if method == Method::PUT && status.is_success() && !body_bytes.is_empty() {
+                static PROFILE_DISPLAY_RE: OnceLock<regex::Regex> = OnceLock::new();
+                let profile_display_re = PROFILE_DISPLAY_RE.get_or_init(|| {
+                    regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/profile/([^/]+)/displayname/?$")
+                        .expect("static regex")
+                });
+                static PROFILE_AVATAR_RE: OnceLock<regex::Regex> = OnceLock::new();
+                let profile_avatar_re = PROFILE_AVATAR_RE.get_or_init(|| {
+                    regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/profile/([^/]+)/avatar_url/?$")
+                        .expect("static regex")
+                });
+                static PRESENCE_STATUS_RE: OnceLock<regex::Regex> = OnceLock::new();
+                let presence_status_re = PRESENCE_STATUS_RE.get_or_init(|| {
+                    regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/presence/([^/]+)/status/?$")
+                        .expect("static regex")
+                });
+
+                if let Some(caps) = profile_display_re.captures(path) {
+                    let target_user_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                    let decoded_user_id = urlencoding_decode(target_user_id);
+                    if let Ok(body) = serde_json::from_slice::<Value>(body_bytes) {
+                        if let Some(displayname_val) =
+                            body.get("displayname").and_then(|v| v.as_str())
+                        {
+                            if let Some(norm) =
+                                find_profile_email_by_matrix_user_id(state, &decoded_user_id)
+                            {
+                                let profiles_file = state.data_dir().join("profiles.json");
+                                let mut profiles =
+                                    state.store.read_document(&profiles_file, json!({}));
+                                if let Some(prof) =
+                                    profiles.get_mut(&norm).and_then(|v| v.as_object_mut())
+                                {
+                                    let dn_clean = &displayname_val.trim()
+                                        [..displayname_val.trim().len().min(40)];
+                                    prof.insert("displayName".to_string(), json!(dn_clean));
+                                    let now = now_millis();
+                                    prof.insert("updatedAt".to_string(), json!(now));
+                                    let uname = prof
+                                        .get("username")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let _ = state.store.write_document(&profiles_file, &profiles);
+                                    crate::ws::broadcast_profile_change(state, &uname, now);
+                                }
+                            }
+                        }
+                    }
+                } else if let Some(caps) = profile_avatar_re.captures(path) {
+                    let target_user_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                    let decoded_user_id = urlencoding_decode(target_user_id);
+                    if let Ok(body) = serde_json::from_slice::<Value>(body_bytes) {
+                        if let Some(norm) =
+                            find_profile_email_by_matrix_user_id(state, &decoded_user_id)
+                        {
+                            let raw_url = body
+                                .get("avatar_url")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            let pfp_val = if let Some(stripped) = raw_url.strip_prefix("mxc://") {
+                                format!("/_matrix/media/v3/download/{stripped}")
+                            } else {
+                                String::new()
+                            };
+                            let profiles_file = state.data_dir().join("profiles.json");
+                            let mut profiles = state.store.read_document(&profiles_file, json!({}));
+                            if let Some(prof) =
+                                profiles.get_mut(&norm).and_then(|v| v.as_object_mut())
+                            {
+                                prof.insert("pfp".to_string(), json!(pfp_val));
+                                let now = now_millis();
+                                prof.insert("updatedAt".to_string(), json!(now));
+                                let uname = prof
+                                    .get("username")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
+                                let _ = state.store.write_document(&profiles_file, &profiles);
+                                crate::ws::broadcast_profile_change(state, &uname, now);
+                            }
+                        }
+                    }
+                } else if let Some(caps) = presence_status_re.captures(path) {
+                    let target_user_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                    let decoded_user_id = urlencoding_decode(target_user_id);
+                    if let Ok(body) = serde_json::from_slice::<Value>(body_bytes) {
+                        if let Some(status_msg) = body.get("status_msg").and_then(|v| v.as_str()) {
+                            if let Some(norm) =
+                                find_profile_email_by_matrix_user_id(state, &decoded_user_id)
+                            {
+                                let profiles_file = state.data_dir().join("profiles.json");
+                                let mut profiles =
+                                    state.store.read_document(&profiles_file, json!({}));
+                                if let Some(prof) =
+                                    profiles.get_mut(&norm).and_then(|v| v.as_object_mut())
+                                {
+                                    let bio_clean =
+                                        &status_msg.trim()[..status_msg.trim().len().min(300)];
+                                    prof.insert("bio".to_string(), json!(bio_clean));
+                                    let now = now_millis();
+                                    prof.insert("updatedAt".to_string(), json!(now));
+                                    let uname = prof
+                                        .get("username")
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or("")
+                                        .to_string();
+                                    let _ = state.store.write_document(&profiles_file, &profiles);
+                                    crate::ws::broadcast_profile_change(state, &uname, now);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Matrix profile GET hook: augment with bio and status_msg
+            if method == Method::GET && status.is_success() {
+                static PROFILE_GET_RE: OnceLock<regex::Regex> = OnceLock::new();
+                let profile_get_re = PROFILE_GET_RE.get_or_init(|| {
+                    regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/profile/([^/]+)$")
+                        .expect("static regex")
+                });
+                if let Some(caps) = profile_get_re.captures(path) {
+                    let target_user_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                    let decoded_user_id = urlencoding_decode(target_user_id);
+                    if let Some(norm) =
+                        find_profile_email_by_matrix_user_id(state, &decoded_user_id)
+                    {
+                        let profiles_file = state.data_dir().join("profiles.json");
+                        let profiles = state.store.read_document(&profiles_file, json!({}));
+                        if let Some(prof) = profiles.get(&norm) {
+                            if let Some(bio) = prof.get("bio").and_then(|v| v.as_str()) {
+                                if !bio.is_empty() {
+                                    if let Ok(mut profile_data) =
+                                        serde_json::from_slice::<Value>(&bytes)
+                                    {
+                                        if let Some(obj) = profile_data.as_object_mut() {
+                                            if !obj.contains_key("bio") {
+                                                obj.insert("bio".to_string(), json!(bio));
+                                            }
+                                            if !obj.contains_key("status_msg") {
+                                                obj.insert("status_msg".to_string(), json!(bio));
+                                            }
+                                            return Some(cors_json_response(200, profile_data));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             let ct = upstream_headers
                 .get("content-type")
                 .and_then(|v| v.to_str().ok());
@@ -2713,5 +3124,88 @@ mod tests {
         let resp_opt = handle_well_known(&Method::OPTIONS, "/.well-known/matrix/client", &headers);
         assert!(resp_opt.is_some());
         assert_eq!(resp_opt.unwrap().status(), StatusCode::NO_CONTENT);
+    }
+
+    fn test_state() -> (Arc<AppState>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "mitch-server-matrix-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("data")).unwrap_or_default();
+        let cfg = crate::hosts::SiteConfig::load();
+        let cfg = crate::hosts::SiteConfig {
+            data_dir: dir.join("data"),
+            ..cfg
+        };
+        let store = Arc::new(
+            mitch_lib::data::DataStore::open(&dir, &dir.join("data"))
+                .unwrap_or_else(|e| panic!("store: {e}")),
+        );
+        (Arc::new(AppState::new(cfg, Arc::clone(&store))), dir)
+    }
+
+    #[tokio::test]
+    async fn test_matrix_profile_sync_helpers() {
+        let (state, _dir) = test_state();
+
+        let email = "syncuser@student.rjuhsd.us";
+        let norm = mitch_lib::auth::normalize_email(email);
+        let uid = mitch_lib::auth::make_email_id(email, 0, &state.id_secret);
+
+        let profiles_file = state.data_dir().join("profiles.json");
+        let profiles = json!({
+            &norm: {
+                "username": "syncuser",
+                "displayName": "Sync User",
+                "bio": "Hello from mitch.pro",
+                "pfp": "/images/avatar.png"
+            }
+        });
+        let _ = state.store.write_document(&profiles_file, &profiles);
+
+        let matrix_users_file = state.data_dir().join("matrix_users.json");
+        let matrix_users = json!({
+            &uid: "syncuser"
+        });
+        let _ = state
+            .store
+            .write_document(&matrix_users_file, &matrix_users);
+
+        // 1. Resolve by @syncuser:mitch.pro
+        assert_eq!(
+            find_profile_email_by_matrix_user_id(&state, "@syncuser:mitch.pro"),
+            Some(norm.clone())
+        );
+        // 2. Resolve by username directly
+        assert_eq!(
+            find_profile_email_by_matrix_user_id(&state, "syncuser"),
+            Some(norm.clone())
+        );
+
+        // 3. Test direct bio PUT via MSC1769 endpoint
+        let bio_body = json!({ "bio": "New bio from Matrix client" });
+        let bio_path = "/_matrix/client/v3/user/%40syncuser%3Amitch.pro/account_data/org.matrix.msc1769.custom_profile_fields";
+        let resp = handle_matrix_gateway(
+            &state,
+            &Method::PUT,
+            bio_path,
+            &HeaderMap::new(),
+            "",
+            &serde_json::to_vec(&bio_body).unwrap(),
+        )
+        .await;
+        assert!(resp.is_some());
+        assert_eq!(resp.unwrap().status(), StatusCode::OK);
+
+        // Verify bio was updated in profiles.json
+        let updated_profiles = state.store.read_document(&profiles_file, json!({}));
+        let prof = updated_profiles.get(&norm).unwrap();
+        assert_eq!(
+            prof.get("bio").unwrap().as_str().unwrap(),
+            "New bio from Matrix client"
+        );
     }
 }
