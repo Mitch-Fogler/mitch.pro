@@ -41,6 +41,20 @@ pub const HTML_OPEN: &[&str] = &[
     "/larp/index",
     "/larp/rezero",
     "/larp/rezero/index",
+    "/games",
+    "/games/index",
+    "/game-portal",
+    "/game-portal/index",
+    "/msn-games",
+    "/msn-games/index",
+    "/matrix",
+    "/matrix/index",
+    "/index-sales",
+    "/index-sales/index",
+    "/rjuhsd",
+    "/rjuhsd/index",
+    "/sexypickleclub",
+    "/sexypickleclub/index",
 ];
 
 /// `PROTECTED_FILES`.
@@ -48,6 +62,12 @@ pub const PROTECTED_FILES: &[&str] = &["senpai-cafe.webp", "adrian-lopez.webp"];
 
 /// `PUBLIC_ASSETS` allowlist.
 pub const PUBLIC_ASSETS: &[&str] = &[
+    "/community-refresh.css",
+    "/guest-preview.js",
+    "/home-friends.js",
+    "/home.css",
+    "/home-refresh.css",
+    "/home-dayboard.js",
     "/auth.js",
     "/sync.js",
     "/auth-non-enrolled.js",
@@ -59,6 +79,7 @@ pub const PUBLIC_ASSETS: &[&str] = &[
     "/mitch-coins.js",
     "/mitch-coins.css",
     "/mitchcoin.png",
+    "/mitchcoin.webp",
     "/app.css",
     "/relaunch.css",
     "/site-galaxy.css",
@@ -72,6 +93,8 @@ pub const PUBLIC_ASSETS: &[&str] = &[
     "/rjuhsd-assets/app.js",
     "/rjuhsd-assets/styles.css",
     "/rjuhsd-assets/reference-theme.css",
+    "/rjuhsd-assets/redesign.css",
+    "/preferences-school.css",
     "/rjuhsd-assets/woodcreek.png",
     "/rjuhsd-assets/calendar.js",
     "/rjuhsd-assets/woodcreek-logo.png",
@@ -103,6 +126,9 @@ pub const PUBLIC_ASSETS: &[&str] = &[
     "/icon-512.png",
     "/home-burning-cherry.webp",
     "/robots.txt",
+    "/sitemap.xml",
+    "/verify-open.json",
+    "/casino/casino-refresh.css",
 ];
 
 /// Query-string map (URLSearchParams-like, first value wins).
