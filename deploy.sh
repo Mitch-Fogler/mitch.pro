@@ -30,17 +30,6 @@ fi
 cd "$PROJECT_DIR"
 CADDYFILE_PATH="$PROJECT_DIR/caddy/Caddyfile"
 
-# If invoked via an external path like /usr/local/bin/deploy.sh, directly dispatch to the repo deploy script
-if [ "${DEPLOY_DISPATCHED:-0}" != "1" ]; then
-    for candidate in "$PROJECT_DIR/deploy.sh" "$PROJECT_DIR/tools/deploy.sh"; do
-        if [ -f "$candidate" ] && [ "$REAL_SCRIPT_PATH" != "$(readlink -f "$candidate" 2>/dev/null || echo "$candidate")" ]; then
-            echo "[deploy] Dispatching execution to repository $candidate..."
-            export DEPLOY_DISPATCHED=1
-            exec /bin/bash "$candidate" "$@"
-        fi
-    done
-fi
-
 # Determine repo owner to drop privileges cleanly when running as root without sudo
 REPO_OWNER="$(stat -c '%U' "$PROJECT_DIR" 2>/dev/null || echo "${SUDO_USER:-mitch}")"
 [ -z "$REPO_OWNER" ] || [ "$REPO_OWNER" = "root" ] && REPO_OWNER="${SUDO_USER:-mitch}"
@@ -150,16 +139,6 @@ CURRENT_BRANCH=$(run_git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master
 echo "[deploy] Pulling latest code from GitHub ($CURRENT_BRANCH)..."
 run_git pull origin "$CURRENT_BRANCH" || git -C "$PROJECT_DIR" pull origin "$CURRENT_BRANCH" || true
 NEW_COMMIT=$(run_git rev-parse HEAD 2>/dev/null || echo "")
-
-# Keep /usr/local/bin/deploy.sh synchronized with repo if running as root
-if [ "$(id -u)" -eq 0 ] && [ -f "$PROJECT_DIR/deploy.sh" ]; then
-    if ! cmp -s "$PROJECT_DIR/deploy.sh" /usr/local/bin/deploy.sh 2>/dev/null; then
-        echo "[deploy] Synchronizing /usr/local/bin/deploy.sh with repository..."
-        cp -f "$PROJECT_DIR/deploy.sh" /usr/local/bin/deploy.sh.tmp 2>/dev/null || true
-        chmod 755 /usr/local/bin/deploy.sh.tmp 2>/dev/null || true
-        mv -f /usr/local/bin/deploy.sh.tmp /usr/local/bin/deploy.sh 2>/dev/null || true
-    fi
-fi
 
 # 2b. Fast path: check if this update only modifies static webroot files or docs
 CHANGED_FILES=""
