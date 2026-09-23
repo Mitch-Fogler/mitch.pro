@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mitch-pro-cache-v42';
+const CACHE_NAME = 'mitch-pro-cache-v43';
 const ASSETS = [
   '/favicon.ico',
   '/manifest.json',

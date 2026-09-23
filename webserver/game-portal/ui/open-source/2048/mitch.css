@@ -1,0 +1,10 @@
+body { background: #080611; color: #f8f5ff; font-family: Figtree, system-ui, sans-serif; }
+.mitch-game-header { min-height: 54px; display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid #dbbfff26; color: #d3c4e5; font-size: 13px; font-weight: 700; }
+.mitch-game-header img { object-fit: contain; }
+.container { margin-top: 0; }
+.title, .game-intro strong, .important { color: #f8f5ff; }
+.game-container { background: #382066; }
+.grid-cell { background: #ffffff22; }
+.score-container, .best-container, .restart-button, .retry-button, .keep-playing-button { background: #74315e; color: #fff; }
+.mitch-credit { padding-top: 18px; color: #ab9ebc; font-size: 12px; line-height: 1.5; }
+.mitch-credit a { color: #d0a4ff; }

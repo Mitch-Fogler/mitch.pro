@@ -50,7 +50,7 @@ try {
 
   console.log('\n--- 3. Testing authorized POST /api/cache/refresh with Bearer token ---');
   // First load a static asset so cache is populated
-  await fetch(`${BASE_URL}/game-portal/portal.js`);
+  await fetch(`${BASE_URL}/game-portal/ui/app.js`);
 
   const authRes = await fetch(`${BASE_URL}/api/cache/refresh`, {
     method: 'POST',
@@ -76,7 +76,7 @@ try {
       'X-Deploy-Token': TEST_SECRET,
       'Host': 'mitch.pro'
     },
-    body: JSON.stringify({ files: ['game-portal/portal.js'] })
+    body: JSON.stringify({ files: ['game-portal/ui/app.js'] })
   });
   assert.equal(selectiveRes.status, 200, 'Selective refresh must return 200');
   const selectiveData = await selectiveRes.json();
