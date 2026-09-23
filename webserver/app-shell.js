@@ -38,7 +38,7 @@
     { href: '/vms/', label: 'VM Lab', badge: 'FREE', icon: '▣', match: function (p) { return p.indexOf('/vms') === 0; } },
     { href: '/matrix/', label: 'Chat', icon: '◉', match: function (p) { return p.indexOf('/matrix') === 0 || p.indexOf('/encrypt') === 0 || p.indexOf('/public-chat') === 0; } },
     { href: '/game-portal/', label: 'Games', icon: '◆', match: function (p) { return p.indexOf('/games') === 0 || p.indexOf('/game-portal') === 0; } },
-    { href: 'https://woodcreek.site/', label: 'Blooket Bot', icon: '▣', match: function () { return false; } },
+    { href: 'https://woodcreek.site/', label: 'Blooket Bot currently blocked :(', icon: '▣', match: function () { return false; } },
     { href: '/members/', label: 'People', icon: '●', match: function (p) { return p.indexOf('/members') === 0 || p.indexOf('/friends') === 0 || p.indexOf('/profile') === 0; } },
     { href: 'https://rjuhsd.school/', label: 'Schedule', icon: '◷', match: function () { return false; } }
   ];
@@ -83,7 +83,7 @@
     if (document.querySelector('link[href="/portal-redesign.css"], link[href^="/portal-redesign.css?"]')) return;
     var link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = '/portal-redesign.css?v=16';
+    link.href = '/portal-redesign.css?v=17';
     (document.head || document.getElementsByTagName('head')[0]).appendChild(link);
   }
 
@@ -261,6 +261,12 @@
       var a = document.createElement('a');
       a.href = item.href;
       a.textContent = item.label;
+      if (item.href === 'https://woodcreek.site/') {
+        a.classList.add('nav-blooket-status');
+        a.style.setProperty('font-size', '10px', 'important');
+        a.style.setProperty('line-height', '1.2', 'important');
+        a.style.setProperty('white-space', 'normal', 'important');
+      }
       if (item.badge) {
         var badge = document.createElement('span');
         badge.className = 'nav-pill-free';

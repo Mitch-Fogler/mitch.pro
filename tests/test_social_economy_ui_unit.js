@@ -5,6 +5,7 @@ const friends = readFileSync('webserver/friends/index.html', 'utf8');
 const coins = readFileSync('webserver/coins/index.html', 'utf8');
 const coinWidget = readFileSync('webserver/mitch-coins.js', 'utf8');
 const casino = readFileSync('webserver/casino/index.html', 'utf8');
+const casinoStyles = readFileSync('webserver/casino/casino-refresh.css', 'utf8');
 const notifications = readFileSync('webserver/notifications/index.html', 'utf8');
 const broadcast = readFileSync('webserver/broadcast.js', 'utf8');
 const shellCss = readFileSync('webserver/mitch-ui.css', 'utf8');
@@ -22,6 +23,9 @@ for (const game of ['rock-paper-scissors', 'lucky-seven', 'color-card', 'triple-
 }
 assert((casino.match(/data-category=/g) || []).length >= 15, 'Casino needs a large filterable game library');
 assert(casino.includes("$$('.casino-filter')") && casino.includes('id="card-plinko"'), 'Casino filters and new games must be wired');
+assert(casino.includes('/casino/casino-refresh.css?v=1') && casino.includes('id="casino-visible-count"'), 'Casino needs its new visual system and live library count');
+assert(casino.includes("id === 'card-blackjack' ? 'block' : 'none'"), 'Blackjack state must not appear in unrelated game rooms');
+assert(casinoStyles.includes('.fs-art') && casinoStyles.includes('@media (max-width: 760px)'), 'Casino rooms need an immersive and responsive layout');
 
 assert(notifications.includes('id="loadError"') && notifications.includes('async function boot()'), 'Notification settings need distinct login and load failures');
 assert(broadcast.includes('aria-controls="sw-notif-panel"') && broadcast.includes('sw-notif-type'), 'Notification tray needs accessible state and notification types');
