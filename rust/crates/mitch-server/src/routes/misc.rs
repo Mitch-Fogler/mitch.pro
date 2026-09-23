@@ -42,6 +42,10 @@ pub async fn handle(
     if path == "/api/guest-session" && *method == Method::GET {
         return Some(guest_session(state, headers));
     }
+    if (path == "/api/health" || path == "/health" || path == "/healthz") && *method == Method::GET
+    {
+        return Some(health_check());
+    }
     if path == "/api/dev/test-access" {
         return Some(dev_test_access(state, method, headers));
     }
@@ -983,6 +987,16 @@ fn cache_refresh(
     )
 }
 
+fn health_check() -> Response {
+    json_response(
+        200,
+        json!({
+            "status": "ok",
+            "uptime": 0
+        }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1023,5 +1037,11 @@ mod tests {
         assert!(!is_private_ip("172.32.0.1"));
         assert!(!is_private_ip("8.8.8.8"));
         assert!(!is_private_ip("1.1.1.1"));
+    }
+
+    #[test]
+    fn test_health_check() {
+        let res = health_check();
+        assert_eq!(res.status(), StatusCode::OK);
     }
 }

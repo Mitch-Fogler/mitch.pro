@@ -12,12 +12,13 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json -j 2
 COPY . .
-RUN cargo build --release --workspace
+RUN cargo build --release --workspace -j 2
 
 FROM alpine:3.20
-RUN addgroup -S app && adduser -S app -G app
+RUN apk add --no-cache openssh-client ffmpeg ca-certificates curl
+RUN addgroup -g 1000 app && adduser -u 1000 -G app -D -s /bin/sh app
 COPY --from=builder /app/target/release/mitch-* /usr/local/bin/
 USER app
 # Each service selects its binary via MITCH_SERVICE; compose sets this.

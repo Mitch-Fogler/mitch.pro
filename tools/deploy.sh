@@ -145,8 +145,10 @@ if [ "$(id -u)" -eq 0 ] && [ "$REPO_OWNER" != "root" ]; then
 fi
 OLD_COMMIT=$(run_git rev-parse HEAD 2>/dev/null || echo "")
 run_git checkout -- caddy/Caddyfile 2>/dev/null || true
-echo "[deploy] Pulling latest code from GitHub..."
-run_git pull origin master || git -C "$PROJECT_DIR" pull origin master || true
+CURRENT_BRANCH=$(run_git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+[ "$CURRENT_BRANCH" = "HEAD" ] && CURRENT_BRANCH="master"
+echo "[deploy] Pulling latest code from GitHub ($CURRENT_BRANCH)..."
+run_git pull origin "$CURRENT_BRANCH" || git -C "$PROJECT_DIR" pull origin "$CURRENT_BRANCH" || true
 NEW_COMMIT=$(run_git rev-parse HEAD 2>/dev/null || echo "")
 
 # Keep /usr/local/bin/deploy.sh synchronized with repo if running as root

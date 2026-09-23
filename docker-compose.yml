@@ -14,7 +14,9 @@ services:
 
   # Production Slot A: Blue Webserver
   webserver-blue:
-    build: .
+    build:
+      context: ${WEBSERVER_BUILD_CONTEXT:-./rust}
+      dockerfile: ${WEBSERVER_DOCKERFILE:-Dockerfile}
     container_name: mitch-webserver-blue
     restart: unless-stopped
     depends_on:
@@ -36,6 +38,9 @@ services:
       # with process.env.PVE_SSH_KEY_PATH === undefined.
       - ./.env:/app/.env:ro
     environment:
+      - MITCH_BASE=/app
+      - MITCH_SERVICE=mitch-server
+      - PORT=6800
       - PIA_USER
       - PIA_PASS
       - PIA_USERNAME
@@ -93,7 +98,9 @@ services:
 
   # Production Slot B: Green Webserver
   webserver-green:
-    build: .
+    build:
+      context: ${WEBSERVER_BUILD_CONTEXT:-./rust}
+      dockerfile: ${WEBSERVER_DOCKERFILE:-Dockerfile}
     container_name: mitch-webserver-green
     restart: unless-stopped
     depends_on:
@@ -111,6 +118,9 @@ services:
       - /opt/userdata:/opt/userdata
       - ./.env:/app/.env:ro
     environment:
+      - MITCH_BASE=/app
+      - MITCH_SERVICE=mitch-server
+      - PORT=6800
       - PIA_USER
       - PIA_PASS
       - PIA_USERNAME
