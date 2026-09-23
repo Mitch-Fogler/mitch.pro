@@ -1368,7 +1368,12 @@ pub async fn handle(
                 .unwrap_or("site admin");
             return banned_response(reason, by);
         }
-        if !state.check_password_cookie(headers, None) && path != "/" {
+        if !state.check_password_cookie(headers, None)
+            && path != "/"
+            && path != "/index.html"
+            && path != "/index-sales.html"
+            && path != "/index-sales"
+        {
             return redirect("/enroll/", 302);
         }
     }
@@ -1412,9 +1417,39 @@ pub async fn handle(
         && path != "/admin.html"
         && path != "/roblox.html"
     {
-        let file_path: Option<std::path::PathBuf> = if path == "/" {
-            // Unauthenticated stub → index-sales.html (Step 6 adds the authed branch).
-            Some(webroot.join("index-sales.html"))
+        let mut is_sales_page = false;
+        let mut set_trial_cookie = false;
+        let file_path: Option<std::path::PathBuf> = if path == "/" || path == "/index.html" {
+            let cookie_header = headers
+                .get(axum::http::header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            let cookies = mitch_lib::auth::get_cookies_from_header_value(
+                cookie_header,
+                &state.store,
+                &state.id_secret,
+                node_env_test,
+            );
+            let sid = cookies
+                .get("studentId")
+                .filter(|s| !s.is_empty())
+                .or_else(|| cookies.get("id"))
+                .unwrap_or("");
+            let is_authenticated = !sid.is_empty()
+                && mitch_lib::auth::valid_id(sid, &state.id_secret)
+                && !state.is_revoked_id(sid)
+                && state.check_password_cookie(headers, Some(sid));
+            let wants_trial =
+                query(&search).contains_key("trial") || cookies.get("mitch_trial") == Some("1");
+            if is_authenticated || wants_trial {
+                if query(&search).contains_key("trial") {
+                    set_trial_cookie = true;
+                }
+                safe_webroot_path(&webroot, "index.html")
+            } else {
+                is_sales_page = true;
+                safe_webroot_path(&webroot, "index-sales.html")
+            }
         } else if path.ends_with('/') {
             safe_webroot_path(
                 &webroot,
@@ -1423,13 +1458,55 @@ pub async fn handle(
         } else {
             safe_webroot_path(&webroot, &path)
         };
+        if let Some(ref fp) = file_path {
+            if fp.to_string_lossy().ends_with("index-sales.html") {
+                is_sales_page = true;
+            }
+        }
         if let Some(fp) = file_path {
             if fp.exists() && std::fs::metadata(&fp).map(|m| !m.is_dir()).unwrap_or(false) {
                 if let Ok(raw) = std::fs::read(&fp) {
+                    if path == "/vms/desktop"
+                        || path == "/vms/desktop/"
+                        || path == "/vms/desktop/index.html"
+                        || path.starts_with("/matrix/public/element-call/")
+                    {
+                        return Response::builder()
+                            .status(StatusCode::OK)
+                            .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+                            .header(axum::http::header::CACHE_CONTROL, "public, max-age=86400")
+                            .body(axum::body::Body::from(raw))
+                            .expect("vm desktop response");
+                    }
                     if let Ok(mut html) = String::from_utf8(raw) {
-                        return html_response(crate::pipeline::inject_page(
-                            &state, headers, &path, &html_base, &mut html,
-                        ));
+                        let body_str = crate::pipeline::inject_page(
+                            &state,
+                            headers,
+                            &path,
+                            &html_base,
+                            &mut html,
+                            is_sales_page,
+                        );
+                        let mut resp = html_response(body_str);
+                        if set_trial_cookie {
+                            let node_env_production =
+                                std::env::var("NODE_ENV").unwrap_or_default() == "production";
+                            let secure_flag =
+                                std::env::var("SESSION_COOKIE_SECURE").unwrap_or_default();
+                            let cookie = mitch_lib::auth::set_cookie_header(
+                                "mitch_trial",
+                                "1",
+                                &secure_flag,
+                                node_env_production,
+                                86400,
+                                false,
+                            );
+                            if let Ok(hv) = axum::http::HeaderValue::from_str(&cookie) {
+                                resp.headers_mut()
+                                    .append(axum::http::header::SET_COOKIE, hv);
+                            }
+                        }
+                        return resp;
                     }
                 }
             }

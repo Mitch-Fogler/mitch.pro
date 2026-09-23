@@ -17,6 +17,7 @@ pub fn inject_page(
     path: &str,
     _html_base: &str,
     html: &mut String,
+    is_sales_page: bool,
 ) -> String {
     let cfg: &SiteConfig = &state.cfg;
     let mut raw = std::mem::take(html);
@@ -54,11 +55,44 @@ pub fn inject_page(
         path == "/unsubscribe" || path == "/unsubscribe/" || path == "/unsubscribe/index.html";
     let load_recaptcha = !rc_key.is_empty() && !has_v2_script && !is_unsubscribe_page;
 
-    let is_embedded = is_embedded_game_runtime(path);
-    let is_authenticated_html = state.check_password_cookie(headers, None);
+    let is_standalone_game_portal =
+        path == "/game-portal" || path == "/game-portal/" || path == "/game-portal/index.html";
+    let is_embedded = is_standalone_game_portal
+        || (path.starts_with("/games/") && path != "/games/" && path != "/games/index.html");
+
+    let node_env_test = std::env::var("NODE_ENV").unwrap_or_default() == "test";
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_header,
+        &state.store,
+        &state.id_secret,
+        node_env_test,
+    );
+    let page_sid = cookies
+        .get("studentId")
+        .filter(|s| !s.is_empty())
+        .or_else(|| cookies.get("id"))
+        .unwrap_or("");
+    let is_authenticated_html = !page_sid.is_empty()
+        && mitch_lib::auth::valid_id(page_sid, &state.id_secret)
+        && !state.is_revoked_id(page_sid)
+        && state.check_password_cookie(headers, Some(page_sid));
+
+    let is_rjuhsd = crate::hosts::is_rjuhsd_host(headers);
+    let is_pickle = crate::hosts::is_pickle_host(headers);
+
+    if !is_sales_page && !is_rjuhsd && !is_pickle && (!is_embedded || is_standalone_game_portal) {
+        inject_str.push_str("<link rel=\"stylesheet\" href=\"/community-refresh.css?v=4\">\n");
+        if !is_authenticated_html {
+            inject_str.push_str("<script src=\"/guest-preview.js?v=1\" defer></script>\n");
+        }
+    }
 
     if is_authenticated_html && !is_embedded && !raw.contains("/broadcast.js") {
-        inject_str.push_str("<script src=\"/broadcast.js?v=4\" defer></script>\n");
+        inject_str.push_str("<script src=\"/broadcast.js?v=9\" defer></script>\n");
     } else if !is_authenticated_html && raw.contains("/broadcast.js") {
         raw = strip_broadcast(&raw);
     }

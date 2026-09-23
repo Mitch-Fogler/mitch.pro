@@ -205,6 +205,22 @@ services:
       - MITCH_SERVICE=mitch-mail
       - MITCH_BASE=/app
       - MAIL_RS_PORT=6902
+      - PIA_USER
+      - PIA_PASS
+      - PIA_USERNAME
+      - PIA_PASSWORD
+      - SUPPORT_USER
+      - SUPPORT_PASS
+      - NOREPLY_USER
+      - NOREPLY_PASS
+      - MAIL_SMTP_HOST
+      - MAIL_IMAP_HOST
+      - NTFY_TOPIC
+      - SUPPORT_EMAIL
+      - GMAIL_USER_ALT
+      - GMAIL_USER
+      - GMAIL_PASS_ALT
+      - GMAIL_PASS
 
   # Rust ssh-gateway (plan Step 3 of the Rust rewrite). Runs in parallel with
   # the JS gateway; cutover is a one-line change of the webserver's
