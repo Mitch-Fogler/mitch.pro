@@ -93,6 +93,15 @@
     </header>
 
 
+    <div id="matrix-context-bar" aria-hidden="true" style="display:none">
+      <div class="matrix-context-title"><span>COMMUNITY</span><b>Matrix chat</b></div>
+      <p>Private rooms, direct messages, voice and video on your mitch.pro account.</p>
+      <div class="matrix-context-links">
+        <a href="/members/">Find people</a>
+        <a href="/preferences/#notifications">Notification settings</a>
+      </div>
+    </div>
+
     <!-- Mitch.pro SSO Connect Banner (only shown if guest/logged out) -->
     <div id="mitch-sso-banner">
       <span id="mitch-sso-msg">✨ Connect your account for instant single sign-on</span>
@@ -555,13 +564,29 @@
           if (!status || !status.authenticated) {
             name.textContent = 'Sign in';
             avatar.textContent = 'M';
+            avatar.style.backgroundImage = '';
             link.href = '/api/sso/bridge?back=/matrix/';
+            link.removeAttribute('title');
             return;
           }
           const raw = String(status.displayName || status.username || status.user_id || 'Account');
           const label = raw.replace(/^@/, '').split(':')[0];
           name.textContent = label;
-          avatar.textContent = (label.trim()[0] || 'M').toUpperCase();
+          if (status.pfp) {
+            avatar.textContent = '';
+            avatar.style.backgroundImage = 'url("' + status.pfp + '")';
+            avatar.style.backgroundSize = 'cover';
+            avatar.style.backgroundPosition = 'center';
+            avatar.style.backgroundRepeat = 'no-repeat';
+          } else {
+            avatar.style.backgroundImage = '';
+            avatar.textContent = (label.trim()[0] || 'M').toUpperCase();
+          }
+          if (status.bio) {
+            link.title = status.bio;
+          } else {
+            link.removeAttribute('title');
+          }
           link.href = '/preferences/#account';
         };
       })();

@@ -8492,6 +8492,196 @@ async function loginOrRegisterMatrixUser(uid, desiredUsername, displayName, requ
   return { ...loginData, username: assignedUser };
 }
 
+// ── Sync mitch.pro profile fields → Matrix/Conduit ──────────────────────────
+// Called fire-and-forget after POST /api/profile saves and during Matrix SSO.
+// Synchronizes displayName, pfp (avatar), and bio (status message / profile)
+// to Conduit so Cinny and other Matrix clients stay updated.
+async function syncProfileToMatrix(uid, { displayName, pfp, bio, token: providedToken } = {}) {
+  try {
+    const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+    const matrixUsername = matrixUsers[uid];
+    if (!matrixUsername) return; // user has never logged into Matrix — nothing to sync
+
+    let token = providedToken || null;
+    let userId = `@${matrixUsername}:mitch.pro`;
+
+    if (!token) {
+      // Get a fresh token via password-login
+      const password = getMatrixPasswordForUid(uid);
+      let loginRes;
+      try {
+        loginRes = await callConduit('/_matrix/client/v3/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'm.login.password',
+            identifier: { type: 'm.id.user', user: matrixUsername },
+            password,
+            initial_device_display_name: 'Mitch.pro Profile Sync'
+          })
+        });
+      } catch (err) {
+        console.warn('[profile-sync] Conduit unreachable, skipping Matrix sync:', err?.message);
+        return;
+      }
+
+      const loginData = await loginRes.json();
+      if (!loginRes.ok || !loginData.access_token) {
+        console.warn('[profile-sync] Matrix login failed for uid', uid, loginData?.errcode);
+        return;
+      }
+      token = loginData.access_token;
+      if (loginData.user_id) userId = loginData.user_id;
+    }
+
+    const encodedUserId = encodeURIComponent(userId);
+    const authHeader = { 'Authorization': `Bearer ${token}` };
+
+    // 1. Sync display name
+    if (displayName !== undefined) {
+      const nameVal = String(displayName || matrixUsername).trim().slice(0, 40);
+      try {
+        await callConduit(`/_matrix/client/v3/profile/${encodedUserId}/displayname`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeader },
+          body: JSON.stringify({ displayname: nameVal })
+        });
+      } catch (e) {
+        console.warn('[profile-sync] displayname PUT failed:', e?.message);
+      }
+    }
+
+    // 2. Sync avatar (pfp → mxc:// URI)
+    if (pfp !== undefined) {
+      try {
+        const rawPfp = String(pfp || '').trim();
+        if (!rawPfp) {
+          // Clear avatar
+          await callConduit(`/_matrix/client/v3/profile/${encodedUserId}/avatar_url`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...authHeader },
+            body: JSON.stringify({ avatar_url: null })
+          });
+        } else if (rawPfp.startsWith('mxc://')) {
+          await callConduit(`/_matrix/client/v3/profile/${encodedUserId}/avatar_url`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', ...authHeader },
+            body: JSON.stringify({ avatar_url: rawPfp })
+          });
+        } else if (rawPfp.includes('/_matrix/media/')) {
+          const mediaMatch = rawPfp.match(/\/_matrix\/media\/(?:v3|r0)\/download\/([^/]+)\/([^/?#]+)/);
+          if (mediaMatch) {
+            await callConduit(`/_matrix/client/v3/profile/${encodedUserId}/avatar_url`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', ...authHeader },
+              body: JSON.stringify({ avatar_url: `mxc://${mediaMatch[1]}/${mediaMatch[2]}` })
+            });
+          }
+        } else {
+          let imageBuffer, contentType;
+
+          if (rawPfp.startsWith('data:')) {
+            const commaIdx = rawPfp.indexOf(',');
+            const meta = rawPfp.slice(5, commaIdx);
+            contentType = meta.split(';')[0] || 'image/png';
+            imageBuffer = Buffer.from(rawPfp.slice(commaIdx + 1), 'base64');
+          } else if (rawPfp.startsWith('http://') || rawPfp.startsWith('https://')) {
+            const fetchRes = await fetch(rawPfp, { signal: AbortSignal.timeout(8000) });
+            if (!fetchRes.ok) throw new Error(`Failed to fetch pfp: ${fetchRes.status}`);
+            contentType = (fetchRes.headers.get('content-type') || 'image/jpeg').split(';')[0];
+            imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
+          }
+
+          if (imageBuffer && imageBuffer.length > 0) {
+            const uploadRes = await callConduit('/_matrix/media/v3/upload', {
+              method: 'POST',
+              headers: {
+                'Content-Type': contentType,
+                'Content-Length': String(imageBuffer.length),
+                ...authHeader
+              },
+              body: imageBuffer
+            });
+            const uploadData = await uploadRes.json();
+            if (uploadRes.ok && uploadData.content_uri) {
+              await callConduit(`/_matrix/client/v3/profile/${encodedUserId}/avatar_url`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', ...authHeader },
+                body: JSON.stringify({ avatar_url: uploadData.content_uri })
+              });
+            } else {
+              console.warn('[profile-sync] Media upload failed:', uploadData?.errcode);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('[profile-sync] avatar sync failed:', e?.message);
+      }
+    }
+
+    // 3. Sync bio (as Matrix presence status_msg and MSC1769 custom profile fields)
+    if (bio !== undefined) {
+      const bioVal = String(bio || '').trim().slice(0, 300);
+      try {
+        await callConduit(`/_matrix/client/v3/presence/${encodedUserId}/status`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeader },
+          body: JSON.stringify({
+            presence: 'online',
+            status_msg: bioVal
+          })
+        });
+      } catch (e) {
+        console.warn('[profile-sync] presence status_msg failed:', e?.message);
+      }
+
+      try {
+        await callConduit(`/_matrix/client/v3/user/${encodedUserId}/account_data/org.matrix.msc1769.custom_profile_fields`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...authHeader },
+          body: JSON.stringify({ bio: bioVal })
+        });
+      } catch (_) {}
+    }
+  } catch (err) {
+    console.warn('[profile-sync] unexpected error:', err?.message);
+  }
+}
+function findProfileEmailByMatrixUserId(matrixUserId) {
+  if (!matrixUserId) return '';
+  const clean = matrixUserId.startsWith('@') ? matrixUserId.slice(1).split(':')[0] : matrixUserId;
+  const matrixUsers = loadJson(MATRIX_USERS_FILE, {});
+  for (const [uid, uname] of Object.entries(matrixUsers)) {
+    if (uname.toLowerCase() === clean.toLowerCase() || `@${uname}:mitch.pro`.toLowerCase() === matrixUserId.toLowerCase()) {
+      const email = emailFromSid(uid);
+      if (email) return normalizeEmail(email);
+    }
+  }
+  const profiles = loadJson(PROFILES_FILE, {});
+  for (const [normEmail, p] of Object.entries(profiles)) {
+    if (p && p.username && p.username.toLowerCase() === clean.toLowerCase()) {
+      return normEmail;
+    }
+  }
+  return resolveLoginIdentifier(clean) || '';
+}
+
+function broadcastProfileChange(username, updatedAt) {
+  _dmAddrIdx = null;
+  _displayEmailProfiles = null;
+  _displayEmailProfilesTs = 0;
+  const payload = JSON.stringify({
+    type: 'profile_updated',
+    handle: username,
+    updatedAt: updatedAt || Date.now()
+  });
+  for (const ws of allSockets) {
+    if (ws.data?.isBroadcast) {
+      try { ws.send(payload); } catch {}
+    }
+  }
+}
+
 async function resolveMatrixAccount(req, parsedBody = null) {
   const userCandidates = [];
   if (parsedBody && typeof parsedBody === 'object') {
@@ -9647,6 +9837,32 @@ async function handleRequest(req, server) {
       } catch (_) {}
     }
 
+    // Direct Matrix client profile bio update handler
+    const bioPutMatch = (method === 'PUT') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/profile\/([^/]+)\/bio(?:\/)?$/);
+    if (bioPutMatch) {
+      const targetUserId = decodeURIComponent(bioPutMatch[1]);
+      const norm = findProfileEmailByMatrixUserId(targetUserId);
+      if (norm && capturedBodyText) {
+        try {
+          const body = JSON.parse(capturedBodyText);
+          if (body.bio !== undefined) {
+            const profiles = loadJson(PROFILES_FILE, {});
+            if (profiles[norm]) {
+              profiles[norm].bio = String(body.bio || '').trim().slice(0, 300);
+              profiles[norm].updatedAt = Date.now();
+              try { writeDocument(PROFILES_FILE, profiles); } catch (_) {}
+              broadcastProfileChange(profiles[norm].username, profiles[norm].updatedAt);
+            }
+          }
+        } catch (_) {}
+      }
+      return jsonResp(200, {}, {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+      });
+    }
+
     const sendMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/send\/([^/]+)(?:\/([^/]+))?$/);
     const stateMatch = (method === 'PUT' || method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/state\/([^/]+)(?:\/([^/]+))?$/);
     const inviteMatch = (method === 'POST') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/rooms\/([^/]+)\/invite$/);
@@ -9985,6 +10201,94 @@ async function handleRequest(req, server) {
           console.warn('[matrix-invite-push] Dispatch error:', e?.message || e);
         });
       }
+
+      // Bidirectional Matrix -> Mitch.pro Profile Sync
+      const profileDisplayMatch = (method === 'PUT') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/profile\/([^/]+)\/displayname(?:\/)?$/);
+      if (profileDisplayMatch && capturedBodyText) {
+        try {
+          const body = JSON.parse(capturedBodyText);
+          const targetUserId = decodeURIComponent(profileDisplayMatch[1]);
+          const norm = findProfileEmailByMatrixUserId(targetUserId);
+          if (norm && body.displayname !== undefined) {
+            const profiles = loadJson(PROFILES_FILE, {});
+            if (profiles[norm]) {
+              profiles[norm].displayName = String(body.displayname || '').trim().slice(0, 40);
+              profiles[norm].updatedAt = Date.now();
+              try { writeDocument(PROFILES_FILE, profiles); } catch (_) {}
+              broadcastProfileChange(profiles[norm].username, profiles[norm].updatedAt);
+            }
+          }
+        } catch (e) {
+          console.warn('[matrix-profile-sync] displayname sync failed:', e?.message || e);
+        }
+      }
+
+      const profileAvatarMatch = (method === 'PUT') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/profile\/([^/]+)\/avatar_url(?:\/)?$/);
+      if (profileAvatarMatch && capturedBodyText) {
+        try {
+          const body = JSON.parse(capturedBodyText);
+          const targetUserId = decodeURIComponent(profileAvatarMatch[1]);
+          const norm = findProfileEmailByMatrixUserId(targetUserId);
+          if (norm) {
+            const profiles = loadJson(PROFILES_FILE, {});
+            if (profiles[norm]) {
+              const rawUrl = body.avatar_url;
+              if (rawUrl && typeof rawUrl === 'string' && rawUrl.startsWith('mxc://')) {
+                profiles[norm].pfp = '/_matrix/media/v3/download/' + rawUrl.replace('mxc://', '');
+              } else if (!rawUrl) {
+                profiles[norm].pfp = '';
+              }
+              profiles[norm].updatedAt = Date.now();
+              try { writeDocument(PROFILES_FILE, profiles); } catch (_) {}
+              broadcastProfileChange(profiles[norm].username, profiles[norm].updatedAt);
+            }
+          }
+        } catch (e) {
+          console.warn('[matrix-profile-sync] avatar sync failed:', e?.message || e);
+        }
+      }
+
+      const presenceStatusMatch = (method === 'PUT') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/presence\/([^/]+)\/status(?:\/)?$/);
+      if (presenceStatusMatch && capturedBodyText) {
+        try {
+          const body = JSON.parse(capturedBodyText);
+          const targetUserId = decodeURIComponent(presenceStatusMatch[1]);
+          const norm = findProfileEmailByMatrixUserId(targetUserId);
+          if (norm && body.status_msg !== undefined) {
+            const profiles = loadJson(PROFILES_FILE, {});
+            if (profiles[norm]) {
+              profiles[norm].bio = String(body.status_msg || '').trim().slice(0, 300);
+              profiles[norm].updatedAt = Date.now();
+              try { writeDocument(PROFILES_FILE, profiles); } catch (_) {}
+              broadcastProfileChange(profiles[norm].username, profiles[norm].updatedAt);
+            }
+          }
+        } catch (e) {
+          console.warn('[matrix-profile-sync] status sync failed:', e?.message || e);
+        }
+      }
+    }
+
+    const profileGetMatch = (method === 'GET') && path.match(/^\/_matrix\/client\/(?:v3|r0)\/profile\/([^/]+)$/);
+    if (profileGetMatch && upstreamRes.ok) {
+      try {
+        const targetUserId = decodeURIComponent(profileGetMatch[1]);
+        const norm = findProfileEmailByMatrixUserId(targetUserId);
+        if (norm) {
+          const profiles = loadJson(PROFILES_FILE, {});
+          const prof = profiles[norm];
+          if (prof && prof.bio) {
+            const profileData = await upstreamRes.json();
+            if (!profileData.bio) profileData.bio = prof.bio;
+            if (!profileData.status_msg) profileData.status_msg = prof.bio;
+            return jsonResp(200, profileData, {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+              'Access-Control-Allow-Headers': 'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+            });
+          }
+        }
+      } catch (_) {}
     }
 
     const resHeaders = new Headers(upstreamRes.headers);
@@ -10054,6 +10358,13 @@ async function handleRequest(req, server) {
           normEmail: norm,
           userId: authResult.user_id
         });
+        // Sync profile fields (displayName, avatar/pfp, bio) to Matrix
+        syncProfileToMatrix(uid, {
+          displayName,
+          pfp: prof.pfp || '',
+          bio: prof.bio || '',
+          token: authResult.access_token
+        }).catch(() => {});
       }
       const baseUrl = matrixSsoTargetOrigin();
 
@@ -10074,6 +10385,8 @@ async function handleRequest(req, server) {
         base_url: baseUrl,
         username: authResult.username,
         displayName,
+        pfp: prof.pfp || '',
+        bio: prof.bio || '',
         role,
         powerLevel: targetPowerLevel,
         officialRoom: '#general:mitch.pro',
@@ -10107,7 +10420,9 @@ async function handleRequest(req, server) {
       authenticated: true,
       username,
       user_id: `@${assignedUsername}:mitch.pro`,
-      displayName
+      displayName,
+      pfp: prof.pfp || '',
+      bio: prof.bio || ''
     }, {
       'Access-Control-Allow-Origin': '*'
     });
@@ -17209,19 +17524,16 @@ async function handleRequest(req, server) {
         console.error(`[profile] verification failed after saving profile for ${norm}`);
         return jsonResp(503, { error: 'Profile could not be verified. Please try again.' });
       }
-      _dmAddrIdx = null;
-      _displayEmailProfiles = null;
-      _displayEmailProfilesTs = 0;
+      broadcastProfileChange(savedProfile.username, savedProfile.updatedAt);
 
-      const profileUpdatePayload = JSON.stringify({
-        type: 'profile_updated',
-        handle: savedProfile.username,
-        updatedAt: savedProfile.updatedAt
-      });
-      for (const ws of allSockets) {
-        if (ws.data?.isBroadcast) {
-          try { ws.send(profileUpdatePayload); } catch {}
-        }
+      // Fire-and-forget: push displayName + avatar + bio to the user's Matrix account
+      const uid = getUidForEmail(norm);
+      if (uid) {
+        syncProfileToMatrix(uid, {
+          displayName: savedProfile.displayName || '',
+          pfp: savedProfile.pfp || '',
+          bio: savedProfile.bio || ''
+        }).catch(() => {});
       }
 
       return jsonResp(200, {
