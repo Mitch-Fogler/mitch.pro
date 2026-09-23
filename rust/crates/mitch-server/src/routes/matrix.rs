@@ -122,6 +122,54 @@ fn cors_json_response(status: u16, val: Value) -> Response {
     )
 }
 
+fn proxy_response_with_cors(
+    status: StatusCode,
+    upstream_headers: &HeaderMap,
+    body: Bytes,
+) -> Response {
+    let mut builder = Response::builder()
+        .status(status)
+        .header("Access-Control-Allow-Origin", "*")
+        .header(
+            "Access-Control-Allow-Methods",
+            "GET, POST, PUT, DELETE, OPTIONS",
+        )
+        .header(
+            "Access-Control-Allow-Headers",
+            "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+        )
+        .header("Access-Control-Max-Age", "86400");
+
+    if let Some(headers_mut) = builder.headers_mut() {
+        for (name, value) in upstream_headers.iter() {
+            let lower = name.as_str().to_ascii_lowercase();
+            if lower == "connection"
+                || lower == "keep-alive"
+                || lower == "proxy-authenticate"
+                || lower == "proxy-authorization"
+                || lower == "te"
+                || lower == "trailers"
+                || lower == "transfer-encoding"
+                || lower == "upgrade"
+                || lower == "content-length"
+                || lower.starts_with("access-control-")
+            {
+                continue;
+            }
+            headers_mut.insert(name.clone(), value.clone());
+        }
+    }
+
+    builder
+        .body(axum::body::Body::from(body))
+        .unwrap_or_else(|_| {
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::empty())
+                .expect("static empty response")
+        })
+}
+
 fn unreachable_regex() -> regex::Regex {
     regex::Regex::new("a^").unwrap_or_else(|_| match regex::Regex::new("") {
         Ok(r) => r,
@@ -190,17 +238,43 @@ fn conduit_port() -> String {
     std::env::var("CONDUIT_PORT").unwrap_or_else(|_| "6167".to_string())
 }
 
+static CONDUIT_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn conduit_client() -> &'static reqwest::Client {
+    CONDUIT_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new())
+    })
+}
+
 pub async fn call_conduit(
     subpath: &str,
     method: Method,
     headers: Option<HeaderMap>,
     body: Option<Bytes>,
 ) -> Result<(StatusCode, HeaderMap, Bytes), String> {
+    call_conduit_with_timeout(
+        subpath,
+        method,
+        headers,
+        body,
+        Some(std::time::Duration::from_secs(30)),
+    )
+    .await
+}
+
+pub async fn call_conduit_with_timeout(
+    subpath: &str,
+    method: Method,
+    headers: Option<HeaderMap>,
+    body: Option<Bytes>,
+    timeout: Option<std::time::Duration>,
+) -> Result<(StatusCode, HeaderMap, Bytes), String> {
     let port = conduit_port();
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = conduit_client();
 
     let req_method = match method {
         Method::POST => reqwest::Method::POST,
@@ -213,12 +287,21 @@ pub async fn call_conduit(
     for host in conduit_candidate_hosts() {
         let url = format!("http://{host}:{port}{subpath}");
         let mut rb = client.request(req_method.clone(), &url);
+        if let Some(to) = timeout {
+            rb = rb.timeout(to);
+        }
         rb = rb.header("Host", "mitch.pro");
 
         if let Some(ref h) = headers {
             for (k, v) in h.iter() {
                 let name = k.as_str().to_lowercase();
-                if name != "host" && name != "content-length" {
+                if name != "host"
+                    && name != "content-length"
+                    && name != "connection"
+                    && name != "keep-alive"
+                    && name != "transfer-encoding"
+                    && name != "upgrade"
+                {
                     rb = rb.header(k.as_str(), v.as_bytes());
                 }
             }
@@ -2869,8 +2952,14 @@ pub async fn handle_matrix_gateway(
         Some(Bytes::copy_from_slice(body_bytes))
     };
 
-    let conduit_res =
-        call_conduit(&full_path, method.clone(), Some(headers.clone()), body_opt).await;
+    let conduit_res = call_conduit_with_timeout(
+        &full_path,
+        method.clone(),
+        Some(headers.clone()),
+        body_opt,
+        Some(std::time::Duration::from_secs(300)),
+    )
+    .await;
 
     match conduit_res {
         Ok((status, upstream_headers, bytes)) => {
@@ -2883,6 +2972,47 @@ pub async fn handle_matrix_gateway(
                         .unwrap_or_else(|e| e.into_inner());
                     seen.insert(acc.norm_email.clone(), now_millis());
                     crate::ws::touch_user_presence(state, &acc.norm_email, "Chatting in Matrix");
+                }
+            }
+
+            // Cache access token from successful login responses
+            static LOGIN_RE: OnceLock<regex::Regex> = OnceLock::new();
+            let login_re = LOGIN_RE.get_or_init(|| {
+                regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/login").expect("static regex")
+            });
+            if method == Method::POST && status.is_success() && login_re.is_match(path) {
+                if let Ok(login_data) = serde_json::from_slice::<Value>(&bytes) {
+                    if let Some(token) = login_data.get("access_token").and_then(|v| v.as_str()) {
+                        let user_id = login_data
+                            .get("user_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("");
+                        let username = if let Some(stripped) = user_id.strip_prefix('@') {
+                            stripped.split(':').next().unwrap_or(stripped)
+                        } else {
+                            user_id
+                        };
+                        let norm_email =
+                            crate::routes::auth::resolve_login_identifier(state, username)
+                                .or_else(|| find_profile_email_by_matrix_user_id(state, user_id))
+                                .unwrap_or_default();
+                        let uid = if !norm_email.is_empty() {
+                            mitch_lib::auth::make_email_id(&norm_email, 0, &state.id_secret)
+                        } else {
+                            String::new()
+                        };
+                        let mut map = token_to_account_map()
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner());
+                        map.insert(
+                            token.to_string(),
+                            MatrixAccount {
+                                uid,
+                                norm_email,
+                                user_id: user_id.to_string(),
+                            },
+                        );
+                    }
                 }
             }
 
@@ -3045,10 +3175,7 @@ pub async fn handle_matrix_gateway(
                 }
             }
 
-            let ct = upstream_headers
-                .get("content-type")
-                .and_then(|v| v.to_str().ok());
-            Some(cors_response(status, bytes, ct))
+            Some(proxy_response_with_cors(status, &upstream_headers, bytes))
         }
         Err(err) => Some(cors_json_response(
             502,
