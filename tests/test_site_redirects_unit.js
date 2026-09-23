@@ -34,6 +34,17 @@ for (const file of ['webserver/index.html', 'webserver/index-sales.html', 'webse
 }
 
 const home = readFileSync('webserver/index.html', 'utf8');
+const homeFriends = readFileSync('webserver/home-friends.js', 'utf8');
+const homeRefresh = readFileSync('webserver/home-refresh.css', 'utf8');
+for (const destination of ['/game-portal/', '/matrix/', '/vms/', '/members/', '/preferences/', '/shop/']) {
+  assert(home.includes(`href="${destination}"`), `Homepage must preserve ${destination} navigation`);
+}
+for (const id of ['home-search', 'links', 'daily-login-widget', 'member-side-rail', 'vm-workspace-panel']) {
+  assert(home.includes(`id="${id}"`), `Homepage must preserve the ${id} integration`);
+}
+assert(home.includes('/home-refresh.css?v=1') && home.includes('/home-friends.js?v=3'), 'Homepage refresh assets need cache-busted URLs');
+assert(homeFriends.includes("hero.after(section)"), 'Friends activity should live inside the dashboard');
+assert(homeRefresh.includes('prefers-reduced-motion') && homeRefresh.includes('var(--t-ac)'), 'Homepage refresh must respect motion and theme preferences');
 const location = { href: 'https://mitch.pro/' };
 const context = vm.createContext({ URL, location, window: { location }, localStorage: { getItem() { throw new Error('School links must bypass game launch preferences'); } } });
 vm.runInContext(home.slice(home.indexOf('function launchSite('), home.indexOf('function openInNewTab(')), context);

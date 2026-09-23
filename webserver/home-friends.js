@@ -1,11 +1,11 @@
 (() => {
-  const bar = document.querySelector('.home-masthead');
-  if (!bar || document.querySelector('.home-friends')) return;
+  const hero = document.querySelector('#mainpage .hud-topbar');
+  if (!hero || document.querySelector('.home-friends')) return;
   const section = document.createElement('section');
   section.className = 'home-friends';
   section.setAttribute('aria-label', 'Friends activity');
   section.innerHTML = '<header><h2>Friends <span class="home-friend-count"></span></h2><a href="https://mitchdog.com/members/">See All</a></header><div class="home-friend-list"></div>';
-  bar.after(section);
+  hero.after(section);
   const list = section.querySelector('.home-friend-list');
   function activityLabel(friend) {
     if (!friend.online) return 'Offline';
