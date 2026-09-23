@@ -1221,4 +1221,137 @@ mod tests {
             Some("Needs review")
         );
     }
+
+    #[tokio::test]
+    async fn marketplace_mediator_undo_refunds_buyer() {
+        let (state, _dir) = test_state();
+        let seller = "seller@student.rjuhsd.us";
+        let buyer = "buyer@student.rjuhsd.us";
+        let mediator = "mediator@student.rjuhsd.us";
+
+        let seller_headers = auth_headers(&state, seller);
+        let buyer_headers = auth_headers(&state, buyer);
+        let mediator_headers = auth_headers(&state, mediator);
+
+        coins::add_coins(&state.store, state.data_dir(), buyer, 100.0, 1.0, "init");
+
+        // List text service with mediator
+        let list_body = json!({
+            "type": "text",
+            "description": "Tutoring Session",
+            "price": 40.0,
+            "mediator": mediator,
+            "recaptcha_token": "test"
+        });
+        let _ = marketplace_list(
+            &state,
+            &seller_headers,
+            &serde_json::to_vec(&list_body).unwrap(),
+        )
+        .await;
+
+        let mp_file = data_file(&state, "marketplace.json");
+        let mp = state.store.read_document(&mp_file, json!([]));
+        let listing_id = mp.as_array().unwrap()[0]
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .to_string();
+
+        // Buy listing -> placed into escrow
+        let buy_body = json!({
+            "listingId": listing_id,
+            "recaptcha_token": "test"
+        });
+        let buy_resp = marketplace_buy(
+            &state,
+            &buyer_headers,
+            &serde_json::to_vec(&buy_body).unwrap(),
+        )
+        .await;
+        assert_eq!(buy_resp.status(), 200);
+
+        // Buyer coins deducted
+        assert_eq!(
+            coins::get_coins(&state.store, state.data_dir(), buyer),
+            60.0
+        );
+
+        // Mediator undos trade
+        let undo_body = json!({
+            "listingId": listing_id,
+            "action": "undo"
+        });
+        let med_resp = marketplace_mediate(
+            &state,
+            &mediator_headers,
+            &serde_json::to_vec(&undo_body).unwrap(),
+        );
+        assert_eq!(med_resp.status(), 200);
+
+        // Buyer gets full refund (60 + 40 = 100)
+        assert_eq!(
+            coins::get_coins(&state.store, state.data_dir(), buyer),
+            100.0
+        );
+        // Seller gets nothing
+        assert_eq!(
+            coins::get_coins(&state.store, state.data_dir(), seller),
+            0.0
+        );
+
+        // Listing status is undone
+        let mp_after = state.store.read_document(&mp_file, json!([]));
+        assert_eq!(
+            mp_after.as_array().unwrap()[0]
+                .get("status")
+                .and_then(|v| v.as_str()),
+            Some("undone")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_auto_finalize_sweep() {
+        let (state, _dir) = test_state();
+        let seller = "seller@student.rjuhsd.us";
+        let buyer = "buyer@student.rjuhsd.us";
+
+        let now = mitch_lib::school::now_millis();
+        let bought_at = now - (25 * 3600 * 1000); // 25 hours ago
+
+        let mp_file = data_file(&state, "marketplace.json");
+        let initial_listing = json!([{
+            "id": "mp_test_123",
+            "type": "text",
+            "description": "Old Tutoring Session",
+            "price": 35.0,
+            "seller": seller,
+            "buyer": buyer,
+            "status": "pending",
+            "bought_at": bought_at
+        }]);
+        let _ = state.store.write_document(&mp_file, &initial_listing);
+
+        assert_eq!(
+            coins::get_coins(&state.store, state.data_dir(), seller),
+            0.0
+        );
+
+        // Run sweep
+        auto_finalize_marketplace(&state);
+
+        // Verify seller received coins
+        assert_eq!(
+            coins::get_coins(&state.store, state.data_dir(), seller),
+            35.0
+        );
+
+        // Verify listing status is now finalized
+        let mp_after = state.store.read_document(&mp_file, json!([]));
+        let arr = mp_after.as_array().unwrap();
+        assert_eq!(
+            arr[0].get("status").and_then(|v| v.as_str()),
+            Some("finalized")
+        );
+    }
 }
