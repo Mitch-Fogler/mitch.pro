@@ -214,6 +214,10 @@ pub struct AppState {
     pub last_admin_usage_notice: std::sync::Mutex<std::collections::HashMap<String, i64>>,
     /// `lastAdminRequestNotice` (server.js:27097) — `owner:recordId:admin` → ms.
     pub last_admin_request_notice: std::sync::Mutex<std::collections::HashMap<String, i64>>,
+    /// `latestAdminBroadcast` (server.js:1334) — polling fallback for broadcasts.
+    pub latest_admin_broadcast: std::sync::Mutex<Option<AdminBroadcastEvent>>,
+    /// `webauthnChallenges` (server.js:5643) — in-memory WebAuthn challenge store.
+    pub webauthn_challenges: mitch_lib::webauthn::ChallengeStore,
 }
 
 /// A record in `e2eUsers` (server.js:15384). `priv_key`/`server_pub_hex` are
@@ -282,6 +286,20 @@ pub struct UserPresence {
 
 /// `PRESENCE_FALLBACK_TTL_MS` (server.js:1065).
 pub const PRESENCE_FALLBACK_TTL_MS: i64 = 45_000;
+
+/// `AdminBroadcastEvent` (server.js:1334, 1346-1352).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AdminBroadcastEvent {
+    #[serde(rename = "broadcastId")]
+    pub broadcast_id: String,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub message: String,
+    #[serde(rename = "createdAt")]
+    pub created_at: i64,
+    #[serde(rename = "expiresAt")]
+    pub expires_at: i64,
+}
 
 impl AppState {
     pub fn new(cfg: SiteConfig, store: Arc<mitch_lib::data::DataStore>) -> Self {
@@ -420,6 +438,8 @@ impl AppState {
             last_capacity_ntfy: std::sync::Mutex::new(std::collections::HashMap::new()),
             last_admin_usage_notice: std::sync::Mutex::new(std::collections::HashMap::new()),
             last_admin_request_notice: std::sync::Mutex::new(std::collections::HashMap::new()),
+            latest_admin_broadcast: std::sync::Mutex::new(None),
+            webauthn_challenges: mitch_lib::webauthn::ChallengeStore::new(),
         }
     }
 
@@ -535,6 +555,36 @@ impl AppState {
             .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
             .and_then(|v| v.get("active").and_then(|a| a.as_bool()))
             .unwrap_or(false)
+    }
+
+    /// `activeAdminBroadcast(now = Date.now())` (server.js:1336-1342).
+    pub fn active_admin_broadcast(&self) -> Option<AdminBroadcastEvent> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let mut guard = self
+            .latest_admin_broadcast
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(event) = guard.as_ref() {
+            if event.expires_at <= now {
+                *guard = None;
+                return None;
+            }
+            return Some(event.clone());
+        }
+        None
+    }
+
+    /// `isRevoked(id)` (server.js:2927-2930).
+    pub fn is_revoked_id(&self, sid: &str) -> bool {
+        if sid.is_empty() {
+            return false;
+        }
+        let file = self.cfg.data_dir.join("revoked.json");
+        let doc = self.store.read_document(&file, serde_json::json!({}));
+        doc.as_object().is_some_and(|m| m.contains_key(sid))
     }
 }
 

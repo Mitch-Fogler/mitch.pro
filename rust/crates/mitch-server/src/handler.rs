@@ -1018,6 +1018,57 @@ pub async fn handle(
         {
             return resp;
         }
+        // webauthn / passkeys group (server.js:16288-16503, 26046-26058).
+        if path.starts_with("/api/webauthn/") {
+            if let Some(resp) =
+                crate::routes::webauthn::handle(&state, &method, &path, headers, body_bytes).await
+            {
+                return resp;
+            }
+        }
+        // Polling fallback for networks that block or interrupt WebSockets (server.js:13745-13755).
+        if path == "/api/broadcast/latest" && method == Method::GET {
+            let cookie_header = headers
+                .get(axum::http::header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("");
+            let cookies = mitch_lib::auth::get_cookies_from_header_value(
+                cookie_header,
+                &state.store,
+                &state.id_secret,
+                node_env_test,
+            );
+            let sid = cookies
+                .get("studentId")
+                .filter(|s| !s.is_empty())
+                .or_else(|| cookies.get("id"))
+                .unwrap_or("");
+            if sid.is_empty()
+                || !mitch_lib::auth::valid_id(sid, &state.id_secret)
+                || state.is_revoked_id(sid)
+                || !state.check_password_cookie(headers, Some(sid))
+            {
+                return json_resp(
+                    401,
+                    serde_json::json!({ "error": "authentication required" }),
+                );
+            }
+            let active_event = state.active_admin_broadcast();
+            let is_active = active_event.is_some();
+            let mut resp = json_resp(
+                200,
+                serde_json::json!({
+                    "ok": true,
+                    "active": is_active,
+                    "event": active_event,
+                }),
+            );
+            resp.headers_mut().insert(
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("private, no-store, max-age=0"),
+            );
+            return resp;
+        }
         // me/* group (Step 9). Runs after misc so /api/me/coins (ported in
         // the merge adaptation) keeps its existing match.
         if let Some(resp) =

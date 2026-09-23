@@ -33,3 +33,4 @@ pub mod push;
 pub mod ssh_ws;
 pub mod team;
 pub mod vm;
+pub mod webauthn;

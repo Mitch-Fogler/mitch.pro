@@ -22,6 +22,7 @@ services:
     depends_on:
       - conduit
       - livekit
+      - mail-rs
     ports:
       - "127.0.0.1:6811:6800"
     volumes:
@@ -72,6 +73,7 @@ services:
       - LIVEKIT_PORT=7880
       - LIVEKIT_API_KEY=mitchlivekit
       - LIVEKIT_API_SECRET=mitch-secret-livekit-matrix-key-2026
+      - MAIL_RS_HOST=mail-rs
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       # Proxmox bridge — explicit pass-through so the loader doesn't
@@ -106,6 +108,7 @@ services:
     depends_on:
       - conduit
       - livekit
+      - mail-rs
     ports:
       - "127.0.0.1:6812:6800"
     volumes:
@@ -152,6 +155,7 @@ services:
       - LIVEKIT_PORT=7880
       - LIVEKIT_API_KEY=mitchlivekit
       - LIVEKIT_API_SECRET=mitch-secret-livekit-matrix-key-2026
+      - MAIL_RS_HOST=mail-rs
       - NODE_ENV=production
       - SESSION_COOKIE_SECURE=1
       - PVE_SSH_HOST

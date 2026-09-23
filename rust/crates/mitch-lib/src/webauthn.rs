@@ -276,7 +276,8 @@ fn verify_es256(key: &CoseKey, message: &[u8], signature: &[u8]) -> bool {
     let Ok(vk) = VerifyingKey::from_sec1_bytes(&sec1) else {
         return false;
     };
-    let Ok(sig) = Signature::from_slice(signature) else {
+    let Ok(sig) = Signature::from_der(signature).or_else(|_| Signature::from_slice(signature))
+    else {
         return false;
     };
     vk.verify(message, &sig).is_ok()
@@ -293,9 +294,10 @@ pub fn verify_authentication_signature(
     let cose: serde_cbor::Value =
         serde_cbor::from_slice(cose_public_key_bytes).map_err(|e| format!("stored key: {e}"))?;
     let key = cose_es256_key(&cose).ok_or("stored key not COSE ES256")?;
-    let client_hash = sha256_hex_str(client_data_json_b64url.as_bytes());
+    let client_data_bytes = decode_b64url_bytes(client_data_json_b64url)?;
+    let client_hash = sha256_bytes(&client_data_bytes);
     let mut signed = authenticator_data.to_vec();
-    signed.extend_from_slice(client_hash.as_bytes());
+    signed.extend_from_slice(&client_hash);
     if !verify_es256(&key, &signed, signature) {
         return Err("signature verification failed".into());
     }
@@ -420,7 +422,8 @@ pub fn verify_registration(
                 }
             })
             .ok_or("attStmt missing sig")?;
-        let client_hash = sha256_bytes(client_data_json_b64url.as_bytes());
+        let client_data_bytes = decode_b64url_bytes(client_data_json_b64url)?;
+        let client_hash = sha256_bytes(&client_data_bytes);
         let mut signed = auth_data.clone();
         signed.extend_from_slice(&client_hash);
         if !verify_es256(&key, &signed, &sig) {

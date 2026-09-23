@@ -339,37 +339,66 @@ pub fn handle(
         if !ctx.is_any_admin(state) {
             return Some(forbidden());
         }
-        let msg = body.get("msg").cloned();
-        let typ = body.get("type").cloned().unwrap_or(Value::Null);
-        // WS fan-out (server.js:12729-12735): `message: undefined` drops the
-        // key from the JSON payload (a present null is kept).
-        let payload_type = if typ.as_str() == Some("jumpscare") {
-            "admin_jumpscare"
-        } else {
-            "admin_broadcast"
-        };
-        let mut payload = serde_json::Map::new();
-        payload.insert("type".into(), json!(payload_type));
-        if let Some(m) = &msg {
-            payload.insert("message".into(), m.clone());
+        let typ_str = body
+            .get("type")
+            .and_then(|v| v.as_str())
+            .unwrap_or("normal");
+        let is_jumpscare = typ_str == "jumpscare";
+        let msg_str = body
+            .get("msg")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        if !is_jumpscare && msg_str.is_empty() {
+            return Some(json_response(400, json!({ "error": "message required" })));
         }
-        crate::ws::broadcast(
-            state,
-            crate::ws::WsRecipients::All,
-            Value::Object(payload).to_string(),
-        );
+        let msg_truncated = &msg_str[..msg_str.len().min(500)];
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let random_hex = mitch_lib::crypto::random_bytes_hex(6);
+        let event = crate::state::AdminBroadcastEvent {
+            broadcast_id: format!("{}-{random_hex}", mitch_lib::crypto::to_base36(now)),
+            event_type: if is_jumpscare {
+                "admin_jumpscare".to_string()
+            } else {
+                "admin_broadcast".to_string()
+            },
+            message: msg_truncated.to_string(),
+            created_at: now as i64,
+            expires_at: (now + 5 * 60 * 1000) as i64,
+        };
+        {
+            let mut guard = state
+                .latest_admin_broadcast
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            *guard = Some(event.clone());
+        }
+        let payload_str = serde_json::to_string(&event).unwrap_or_default();
+        crate::ws::broadcast(state, crate::ws::WsRecipients::All, payload_str);
+        let recipients = state.ws_broadcasts.lock().map(|m| m.len()).unwrap_or(0);
         mitch_lib::admin::log_admin_action(
             &state.store,
             &state.cfg.data_dir,
             &ctx.email(state),
-            if payload_type == "admin_jumpscare" {
+            if is_jumpscare {
                 "jumpscare"
             } else {
                 "broadcast"
             },
-            json!({ "message": msg.unwrap_or(Value::Null) }),
+            json!({ "message": msg_truncated }),
         );
-        return Some(json_response(200, json!({ "ok": true })));
+        return Some(json_response(
+            200,
+            json!({
+                "ok": true,
+                "recipients": recipients,
+                "broadcastId": event.broadcast_id,
+                "expiresAt": event.expires_at,
+            }),
+        ));
     }
 
     // POST /api/admin/send-notification (any admin/moderator).

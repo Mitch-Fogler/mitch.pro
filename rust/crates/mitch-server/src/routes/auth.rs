@@ -167,7 +167,7 @@ fn is_premium_email(state: &AppState, email: &str) -> bool {
 
 // ── HTML builders ──────────────────────────────────────────────────────────
 
-fn make_verification_code_html(
+pub(crate) fn make_verification_code_html(
     state: &AppState,
     action_label: &str,
     code: &str,

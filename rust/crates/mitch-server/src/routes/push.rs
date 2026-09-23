@@ -81,7 +81,7 @@ pub(crate) async fn send_web_push(
         .map(|v| v.trim().to_string())
         .unwrap_or_default();
     let info = web_push::SubscriptionInfo::new(&endpoint, &p256dh, &auth);
-    let Ok(sig_builder) = web_push::VapidSignatureBuilder::from_base64(
+    let Ok(mut sig_builder) = web_push::VapidSignatureBuilder::from_base64(
         &vapid_private,
         web_push::URL_SAFE_NO_PAD,
         &info,
@@ -89,6 +89,7 @@ pub(crate) async fn send_web_push(
         tracing::warn!("vapid signature builder init failed");
         return false;
     };
+    sig_builder.add_claim("sub", "mailto:support@mitch.pro");
     let Ok(sig) = sig_builder.build() else {
         tracing::warn!("vapid signature build failed");
         return false;
@@ -202,7 +203,11 @@ pub fn send_email_bg(state: &Arc<AppState>, to: &str, subject: &str, body: &str)
         tracing::warn!("refusing to send — recipient looks masked: {to}");
         return;
     }
-    let sender = "noreply@mitch.pro";
+    let sender = if to.trim().to_lowercase().ends_with("@student.rjuhsd.us") {
+        "gmail"
+    } else {
+        "noreply"
+    };
     let url = mail_service_url(state);
     let body = body.to_string();
     let subject = subject.to_string();
@@ -216,21 +221,42 @@ pub fn send_email_bg(state: &Arc<AppState>, to: &str, subject: &str, body: &str)
             "dry_run": false,
         });
         let client = reqwest::Client::new();
-        let _ = client
+        match client
             .post(format!("{url}/send"))
             .json(&payload)
             .timeout(std::time::Duration::from_secs(30))
             .send()
-            .await;
+            .await
+        {
+            Ok(resp) => {
+                if !resp.status().is_success() {
+                    let status = resp.status();
+                    let err = resp.text().await.unwrap_or_default();
+                    tracing::warn!("mail service rejected send to {to} ({status}): {err}");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("mail service send to {url}/send failed: {e}");
+            }
+        }
     });
 }
 
 fn mail_service_url(_state: &Arc<AppState>) -> String {
+    let host = std::env::var("MAIL_RS_HOST")
+        .or_else(|_| std::env::var("MAIL_SERVICE_HOST"))
+        .unwrap_or_else(|_| {
+            if std::env::var("NODE_ENV").unwrap_or_default() == "production" {
+                "mail-rs".to_string()
+            } else {
+                "127.0.0.1".to_string()
+            }
+        });
     let port = std::env::var("MAIL_RS_PORT")
         .ok()
         .and_then(|p| p.parse::<u16>().ok())
         .unwrap_or(6902);
-    format!("http://127.0.0.1:{port}")
+    format!("http://{host}:{port}")
 }
 
 #[allow(unused)]

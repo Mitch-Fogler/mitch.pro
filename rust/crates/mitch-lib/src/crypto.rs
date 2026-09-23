@@ -238,6 +238,23 @@ pub fn argon2_hash(password: &str) -> String {
 /// `Disconnect` reason codes for russh teardown parity.
 pub const DISCONNECT_BY_APPLICATION: &str = "ByApplication";
 
+const BASE36: &[u8] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+
+/// `Date.now().toString(36)` — lowercase base36 representation of an unsigned integer.
+pub fn to_base36(mut n: u64) -> String {
+    if n == 0 {
+        return "0".to_string();
+    }
+    let mut buf = [0u8; 13]; // 2^64 < 36^13
+    let mut i = buf.len();
+    while n > 0 {
+        i -= 1;
+        buf[i] = BASE36[(n % 36) as usize];
+        n /= 36;
+    }
+    String::from_utf8_lossy(&buf[i..]).into_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
