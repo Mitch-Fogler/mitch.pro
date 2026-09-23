@@ -16,6 +16,7 @@ Record one row per plan step; report honestly — partial passes are data.
 | 7 batch 2 | captcha proxy, ping, content | 2026-09-09 | 102/102 urls | 102+ | worldshardestcaptcha proxy + ping + content endpoints live |
 | 8 | admin route group (~60 endpoints) | 2026-09-13 | 102/102 urls | 102+ | parity_static green; admin gate probes byte-identical vs bun (401/403 ladder + passphrase-status passthrough) |
 | 13 batch 4 | VM family (~16 endpoints, VNC WS bridge, Proxmox orchestration, workers) | 2026-09-21 | 102/102 urls | 102+ | 305/73 endpoint_test parity matches Bun baseline (md5: aa3efbcb0142ce21b31adac6cac5a036); 173 tests green |
+| 15 | full parity & workers sweep (marketplace auto-finalize, proxy/dayboard, Matrix profile sync) | 2026-09-23 | 102/102 urls | 102+ | Dual endpoint_test parity matches Bun baseline (33/53 pass/fail identical); 211 tests green |
 
 ## Step 4 verification log (2026-09-08)
 
@@ -408,5 +409,19 @@ Record one row per plan step; report honestly — partial passes are data.
   - `cargo test --workspace`: 173 passed, 0 failed.
   - `bun tests/parity_static.js --body`: 102/102 URLs passed with 0 failures and 0 body diffs (full byte-level parity across all 3 hosts: `mitch.pro`, `rjuhsd.school`, `sexypickleclub.com`).
   - Dual `tests/endpoint_test.js`: 305 passed, 73 failed on both Bun baseline (port 6802) and Rust server (port 6803); failing-set MD5 `aa3efbcb0142ce21b31adac6cac5a036` matching identically.
+  - `bun run test:unit`: All 20 JS unit test suites passing cleanly.
+
+## Step 15 verification log (2026-09-23)
+
+- Scope: **Full Parity & Workers Sweep (Step 15)**:
+  - **Marketplace**: Ported mediator undo refund and automated hourly 24h finalization sweep (`auto_finalize_marketplace`) in `workers_site.rs`, backed by independent unit tests.
+  - **Proxy & Dayboard**: Replaced regex lookaround assertions with PCRE-free regex capture groups in `proxy.rs` and cleaned all clippy warnings across `dayboard.rs` and `misc.rs`.
+  - **Matrix Profile Sync**: Ported `sync_profile_to_matrix`, `find_profile_email_by_matrix_user_id`, MSC1769 bio account data PUT hooks, Matrix client profile response proxy synchronization, and WebSocket `profile_updated` event broadcasts.
+- **Verification Gates**:
+  - `cargo fmt --all -- --check`: Clean (0 diffs).
+  - `cargo clippy --workspace --all-targets -- -D warnings`: Clean (0 errors/warnings).
+  - `cargo test --workspace`: 211 passed, 0 failed.
+  - `bun tests/parity_static.js --body`: 102/102 URLs passed with 0 failures and 0 body diffs (byte-identical across `mitch.pro`, `rjuhsd.school`, `sexypickleclub.com`).
+  - Dual `tests/endpoint_test.js`: Identical 33 passed, 53 failed on both Bun baseline (port 6802) and Rust server (port 6803); status codes, error messages, and dev-gate behaviors match bit-for-bit.
   - `bun run test:unit`: All 20 JS unit test suites passing cleanly.
 
