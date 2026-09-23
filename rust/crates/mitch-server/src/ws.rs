@@ -232,6 +232,15 @@ pub async fn notify_friends_online(state: &Arc<AppState>, email: &str) {
     }
 }
 
+/// `triggerNotificationRefresh()` (server.js:8824).
+pub fn trigger_notification_refresh(state: &AppState) {
+    let payload = json!({ "type": "notifications_refresh" });
+    let _ = state.ws_tx.send(Arc::new(WsEnvelope {
+        payload: payload.to_string(),
+        recipients: WsRecipients::All,
+    }));
+}
+
 /// The 10s sweeper (server.js:1129-1136) — drop entries with no socket and a
 /// stale lastSeen, broadcasting offline for each.
 pub fn sweep_presence(state: &Arc<AppState>) {

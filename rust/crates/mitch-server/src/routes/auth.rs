@@ -127,7 +127,7 @@ fn is_valid_username(name: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-')
 }
 
-fn resolve_login_identifier(state: &AppState, input: &str) -> Option<String> {
+pub(crate) fn resolve_login_identifier(state: &AppState, input: &str) -> Option<String> {
     let ident = input.trim().to_lowercase();
     if ident.is_empty() {
         return None;

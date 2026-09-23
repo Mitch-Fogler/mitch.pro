@@ -602,6 +602,22 @@ pub async fn handle(
         }
     }
 
+    // Matrix client/server discovery, Conduit reverse-proxy, and Cinny config
+    // (server.js:7433-7667). Runs before IP ban and password gates so clients
+    // and federation peers can connect.
+    if path.starts_with("/.well-known/matrix/")
+        || path.starts_with("/_matrix/")
+        || path == "/matrix/config.json"
+    {
+        if let Some(resp) = crate::routes::matrix::handle_matrix_gateway(
+            &state, &method, &path, headers, &search, body_bytes,
+        )
+        .await
+        {
+            return resp;
+        }
+    }
+
     // 3b2. IP ban gate — server.js:7677-7684, immediately after getRealIp.
     // Bans apply to every path except the appeal set.
     {
@@ -870,6 +886,16 @@ pub async fn handle(
             if let Some(resp) =
                 crate::routes::team::handle(&state, &method, &path, headers, body_bytes, &search)
                     .await
+            {
+                return resp;
+            }
+        }
+        // Matrix SSO login, status, notifications read, report room, and moderation suite.
+        if path.starts_with("/api/matrix/") {
+            if let Some(resp) = crate::routes::matrix::handle_api(
+                &state, &method, &path, headers, &search, body_bytes,
+            )
+            .await
             {
                 return resp;
             }
