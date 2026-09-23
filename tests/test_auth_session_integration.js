@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { Database } from 'bun:sqlite';
@@ -47,9 +47,9 @@ function sessionCookie(response) {
   return header.split(';', 1)[0];
 }
 
-async function post(path, payload) {
+async function post(path, payload, cookie = '') {
   return fetch(base + path, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
     body: JSON.stringify(payload),
   });
 }
@@ -77,20 +77,37 @@ try {
   assert.equal(verified.status, 200, await verified.text());
   const signupCookie = sessionCookie(verified);
   const meAfterSignup = await fetch(base + '/api/me', { headers: { Cookie: signupCookie } });
-  assert.equal(meAfterSignup.status, 200, await meAfterSignup.text());
+  assert.equal(meAfterSignup.status, 200, await meAfterSignup.clone().text());
+  assert.equal((await meAfterSignup.json()).rawEmail, email, 'newly verified account must resolve immediately');
 
   const wrongPassword = await post('/api/login', { email, password: password.trim(), recaptcha_token: 'test' });
   assert.equal(wrongPassword.status, 401, 'signup must preserve password whitespace');
   const login = await post('/api/login', { email, password, recaptcha_token: 'test' });
   assert.equal(login.status, 200, await login.text());
   const loginCookie = sessionCookie(login);
-  assert.equal((await fetch(base + '/api/me', { headers: { Cookie: loginCookie } })).status, 200);
+  const meAfterLogin = await fetch(base + '/api/me', { headers: { Cookie: loginCookie } });
+  assert.equal(meAfterLogin.status, 200);
+  assert.equal((await meAfterLogin.json()).rawEmail, email);
+
+  const coinsFile = join(dataDir, 'coins.json');
+  const coinData = JSON.stringify({ [email]: 1250 });
+  if (process.platform === 'win32') writeFileSync(coinsFile, coinData);
+  else {
+    const coinDb = new Database(join(dataDir, 'mitchpro.db'));
+    coinDb.query('INSERT OR REPLACE INTO json_documents (path, content, updated_at) VALUES (?, ?, ?)')
+      .run('data/coins.json', coinData, Date.now());
+    coinDb.close();
+  }
+  const overBalance = await post('/api/casino/coinflip', { amount: 1300, side: 'heads' }, loginCookie);
+  assert.equal(overBalance.status, 400, 'bets must not exceed the wallet');
+  const highBet = await post('/api/casino/coinflip', { amount: 1000, side: 'heads' }, loginCookie);
+  assert.equal(highBet.status, 200, await highBet.text());
 
   await stop();
   await start();
   assert.equal((await fetch(base + '/api/me', { headers: { Cookie: loginCookie } })).status, 200,
     'session must survive a server restart');
-  console.log('Auth integration: signup, login, exact passwords, and persistent sessions passed.');
+  console.log('Auth and casino integration: signup, login, identity cache, high bets, balance guard, and persistent sessions passed.');
 } finally {
   await stop();
   const prefix = resolve(tmpdir()) + sep;

@@ -2732,6 +2732,8 @@ function issueLoginSession(normEmail, originalEmail = normEmail) {
   if (names[studentId] !== originalEmail) {
     names[studentId] = originalEmail;
     writeDocument(NAMES_FILE, names);
+    cachedNames = null;
+    lastNamesLoad = 0;
   }
   return studentId;
 }
@@ -7395,7 +7397,7 @@ const DEFAULT_SHOP_CATALOG = [
   { id: 'debug_helper', name: 'Debug Helper AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2200, desc: 'A coding-focused assistant personality.' },
   { id: 'story_mode', name: 'Story Mode AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 1800, desc: 'A more creative writing personality.' },
   { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
-  { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
+  { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks the VIP Slots room for 24 hours.' },
   { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
   { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
   { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' },
@@ -7407,7 +7409,7 @@ const DEFAULT_SHOP_CATALOG = [
   { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' },
   { id: 'loaded_dice', name: 'Loaded Lucky Dice (30m)', section: 'Casino Exploits', type: 'utility', costType: 'loaded_dice', cost: 600, desc: 'Exploit casino physics! Forces guaranteed winning rolls, spins, coinflips, and jackpots across all casino games for 30 minutes.' },
   { id: 'casino_glitch_chip', name: 'Quantum Glitch Chip (20m)', section: 'Casino Exploits', type: 'utility', costType: 'casino_glitch_chip', cost: 1000, desc: 'Exploit memory overflow in payout contracts! Multiplies all casino winnings by an insane 5X for 20 minutes.' },
-  { id: 'infinite_luck_charm', name: 'Infinite Coins Exploit Charm (30m)', section: 'Casino Exploits', type: 'utility', costType: 'infinite_luck_charm', cost: 1500, desc: 'The ultimate casino exploit! Combines Loaded Dice auto-wins, 10X glitch payout multiplier, VIP unlimited max betting, and 100% loss refund for 30 minutes.' }
+  { id: 'infinite_luck_charm', name: 'Infinite Coins Exploit Charm (30m)', section: 'Casino Exploits', type: 'utility', costType: 'infinite_luck_charm', cost: 1500, desc: 'Combines Loaded Dice, 10X glitch payouts, VIP Slots access, and loss refunds for 30 minutes.' }
 ];
 let SHOP_CATALOG = [...DEFAULT_SHOP_CATALOG];
 try {
@@ -7488,7 +7490,7 @@ function shopPerkFor(item) {
     profile_neon_frame: 'Bright neon profile frame with stronger profile presence.',
     speedrun_ai: 'Fast-response premium AI personality.',
     debug_helper: 'Stronger coding-focused assistant personality.',
-    vip_pass: '24 hours of unlimited casino max bets.',
+    vip_pass: '24 hours of VIP Slots access.',
     daily_bonus_plus: 'Premium daily-bonus preference toggle.',
     canvas_lock_pass: 'Canvas-tool preference for protecting important pixel work.',
     quick_access_pass: 'Convenience toggle for faster navigation.',
@@ -15655,7 +15657,7 @@ async function handleRequest(req, server) {
             { id: 'debug_helper', name: 'Debug Helper AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2200, desc: 'A coding-focused assistant personality.' },
             { id: 'story_mode', name: 'Story Mode AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 1800, desc: 'A more creative writing personality.' },
             { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
-            { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
+            { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks the VIP Slots room for 24 hours.' },
             { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
             { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
             { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' }
@@ -25372,10 +25374,6 @@ async function handleRequest(req, server) {
       if (!Number.isFinite(bet) || bet < min) return { error: `Minimum bet is ${min} coins.` };
       if (bet > bal) return { error: 'You do not have enough coins for that bet.' };
 
-      const stats = loadUserStats();
-      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
-      if (!isVip && bet > 500) return { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass or Infinite Luck Charm in the shop for unlimited betting!' };
-
       return { bet: Number(bet.toFixed(2)), bal };
     }
 
@@ -25613,10 +25611,6 @@ async function handleRequest(req, server) {
       const bet = Number(body.amount);
       const bal = getCoins(email);
       if (!Number.isFinite(bet) || bet < 1 || bet > bal) return jsonResp(400, { error: 'invalid bet' });
-
-      const stats = loadUserStats();
-      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
-      if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
 
       casinoIntake += bet; saveCasinoStats();
       addCoins(email, -bet);
@@ -25965,9 +25959,8 @@ async function handleRequest(req, server) {
       if (isVipRoom && !isVip) return jsonResp(403, { error: 'VIP pass required' });
 
       const freeSpins = stats[norm]?.slots_free_spins || 0;
-      const isFreeSpin = freeSpins > 0 && !isVipRoom;
-
       const bet = Number(body.amount);
+      const isFreeSpin = freeSpins > 0 && !isVipRoom && bet <= 500;
       if (isVipRoom && bet < 100) return jsonResp(400, { error: 'VIP minimum bet is 100 coins' });
       
       if (isFreeSpin) {
@@ -25976,7 +25969,6 @@ async function handleRequest(req, server) {
         saveUserStats(stats);
       } else {
         if (!Number.isFinite(bet) || bet < 1 || bet > getCoins(email)) return jsonResp(400, { error: 'invalid bet' });
-        if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
       }
 
       const symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣'];
