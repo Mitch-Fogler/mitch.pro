@@ -2,75 +2,65 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#090a10">
-  <meta name="description" content="Play hundreds of browser games and earn MitchCoins while you play.">
-  <title>Game Portal | mitch.pro</title>
-  <script src="/theme.js?v=11"></script>
-  <link rel="stylesheet" href="/game-portal/game-portal.css?v=2">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d1d">
+  <meta name="description" content="Play games on mitch.pro and earn MitchCoins while you play.">
+  <title>mitch.games — super duper games</title>
+  <link rel="icon" href="/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./ui/style.css">
+  <script defer src="https://unpkg.com/lucide@0.542.0/dist/umd/lucide.min.js"></script>
+  <script defer src="./ui/app.js"></script>
 </head>
-<body class="game-portal-page" data-shell="off">
-  <header class="portal-bar">
-    <a class="portal-brand" href="https://mitchdog.com/" aria-label="mitchdog.com home">
-      <span class="brand-mark"><img src="/icon-192.png" alt="" width="38" height="38"></span>
-      <span class="brand-name">mitch<span>.pro</span><small>Games</small></span>
-    </a>
-    <label class="portal-search">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m16.5 16.5 4 4"></path></svg>
-      <input id="game-search" type="search" autocomplete="off" placeholder="Find a game..." aria-label="Search games">
-      <kbd>/</kbd>
-    </label>
-    <a class="portal-wallet" id="portal-wallet" href="https://mitchdog.com/coins/">
-      <img src="/mitchcoin.png" alt="" width="30" height="30">
-      <span><small>MitchCoins</small><strong id="wallet-balance">—</strong></span>
-    </a>
-  </header>
-
-  <main class="portal-main">
-    <section class="portal-heading" aria-labelledby="portal-title">
-      <div class="portal-title-wrap"><span class="library-count"><i></i><span id="game-count">Loading</span> games</span><h1 id="portal-title">Games</h1></div>
-      <div class="reward-card" id="reward-card">
-        <div class="reward-copy">
-          <img src="/mitchcoin.png" alt="" width="34" height="34">
-          <span><strong id="reward-title">Earn 2 per minute</strong><small id="reward-detail">Play any game to start earning</small></span>
-        </div>
-        <div class="reward-meter" aria-hidden="true"><i id="reward-progress"></i></div>
-      </div>
-    </section>
-    <section class="featured-section" id="featured-section" aria-labelledby="featured-title">
-      <div class="section-heading featured-heading"><h2 id="featured-title">Featured</h2><button class="shuffle-button" id="surprise-game" type="button"><span aria-hidden="true">↻</span> Shuffle</button></div>
-      <div class="featured-grid" id="featured-games"></div>
-    </section>
-    <div class="browse-bar">
-      <strong>Browse</strong>
-      <nav class="category-strip" id="category-strip" aria-label="Game categories"></nav>
+<body data-shell="off">
+  <div class="shell">
+    <aside class="sidebar" id="sidebar" aria-label="Game navigation">
+      <a class="brand" href="./" aria-label="mitch.games home"><img src="/icon-192.png" alt="mitch.games"></a>
+      <div class="side-group-label">LIBRARY</div>
+      <nav class="side-nav" aria-label="Library">
+        <button class="side-link" type="button" data-view="all"><i data-lucide="compass"></i><span>Discover</span></button>
+        <button class="side-link" type="button" data-view="favorites"><i data-lucide="heart"></i><span>Saved</span></button>
+        <button class="side-link" type="button" data-view="recent"><i data-lucide="history"></i><span>Recently played</span></button>
+      </nav>
+      <div class="side-group-label media-label">WATCH</div>
+      <nav class="side-nav" aria-label="Watch inside mitch.games">
+        <button class="side-link" type="button" data-platform="youtube"><span class="social-logo youtube"><img src="./ui/icons/youtube.svg" alt=""></span><span>YouTube</span></button>
+        <button class="side-link" type="button" data-platform="tiktok"><span class="social-logo tiktok"><img src="./ui/icons/tiktok.svg" alt=""></span><span>TikTok</span></button>
+        <button class="side-link" type="button" data-platform="instagram"><span class="social-logo instagram"><img src="./ui/icons/instagram.svg" alt=""></span><span>Instagram</span></button>
+      </nav>
+      <div class="side-group-label categories-label">CATEGORIES</div>
+      <nav class="side-categories" id="side-categories" aria-label="Categories"></nav>
+      <section class="sidebar-recent" id="sidebar-recent" aria-label="Jump back in" hidden>
+        <div class="side-group-label">JUMP BACK IN</div>
+        <div class="sidebar-recent-list" id="sidebar-recent-list"></div>
+      </section>
+      <div class="sidebar-foot"><span>PART OF MITCH.PRO</span><a href="https://mitchdog.com/">Back to the site <i data-lucide="arrow-up-right"></i></a></div>
+    </aside>
+    <div class="content">
+      <header class="topbar">
+        <button class="mobile-menu icon-button" id="mobile-menu" type="button" aria-label="Open menu" aria-expanded="false"><i data-lucide="menu"></i></button>
+        <span class="topbar-location"><span class="location-dot"></span> mitch.games <span class="topbar-slash">/</span> <strong id="current-view-name">Discover</strong></span>
+        <div class="topbar-actions"><a class="wallet-link" id="wallet-link" href="/coins/" aria-label="MitchCoins balance"><img src="/mitchcoin.png" alt=""><span id="wallet-balance">—</span></a><label class="search-box"><i data-lucide="search"></i><input id="search" type="search" placeholder="Search games" autocomplete="off" aria-label="Search games"><kbd>/</kbd></label><button class="icon-button shuffle-button" id="shuffle" type="button" aria-label="Play a random game" title="Play a random game"><i data-lucide="shuffle"></i></button></div>
+      </header>
+      <main class="main">
+        <div class="page-intro"><div><div class="eyebrow"><span class="eyebrow-line"></span> THE GAME ROOM</div><h1 id="page-title">super duper games</h1><p id="library-count">Loading games…</p></div><div class="coin-summary"><img src="/mitchcoin.png" alt=""><div class="coin-summary-copy"><strong id="reward-title">Checking rewards</strong><small id="reward-detail">MitchCoins</small><span class="reward-meter" aria-hidden="true"><i id="reward-progress"></i></span></div></div></div>
+        <section class="media-room" id="media-room" aria-labelledby="media-title" hidden>
+          <div class="media-heading"><span class="section-index">WATCH / IN HERE</span><div class="media-heading-title"><span class="social-logo youtube" id="media-brand"><img id="media-brand-logo" src="./ui/icons/youtube.svg" alt=""></span><h1 id="media-title">YouTube</h1></div><p>Selected public clips from around the game room.</p></div>
+          <div class="media-tabs" role="group" aria-label="Choose a platform"><button type="button" data-media-tab="youtube">YouTube</button><button type="button" data-media-tab="tiktok">TikTok</button><button type="button" data-media-tab="instagram">Instagram</button></div>
+          <div class="media-feed"><div class="media-watch"><div class="media-stage" id="media-stage"><iframe id="media-frame" title="Embedded media" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-presentation" referrerpolicy="strict-origin-when-cross-origin"></iframe></div><div class="media-watch-bar"><div><small id="media-position">1 / 4</small><strong id="media-play-title"></strong></div><div class="media-watch-controls"><button id="media-prev" type="button" aria-label="Previous clip"><i data-lucide="arrow-left"></i></button><button id="media-next" type="button" aria-label="Next clip"><i data-lucide="arrow-right"></i></button></div></div></div><div class="media-feed-rail"><span class="section-index">UP NEXT</span><div id="media-feed-list" class="media-feed-list"></div></div></div>
+          <p class="media-note">Curated public posts use each platform’s official embed. This is not a signed-in or personalized feed.</p>
+        </section>
+        <section class="spotlight" id="spotlight" aria-label="Featured game"><div class="spotlight-art"><img id="spotlight-image" alt="" src="/game-portal/icons/slope.webp"><span class="spotlight-index">FEATURED / 001</span></div><div class="spotlight-info"><span class="spotlight-kicker"><span class="pulse"></span> IN THE SPOTLIGHT</span><div><span id="spotlight-meta" class="spotlight-category">Arcade</span><h2 id="spotlight-title">Slope</h2><p>A fast run from the mitch.pro game library.</p></div><button id="spotlight-play" class="play-button" type="button">Play Slope <i data-lucide="arrow-up-right"></i></button></div></section>
+        <section id="quick-picks-section" class="quick-section"><div class="section-heading"><div><span class="section-index">02 — PICKS</span><h2>On the shelf</h2></div><span class="section-note">A few places to start</span></div><div class="quick-grid" id="quick-grid"></div></section>
+        <section class="catalog-section" aria-label="All games"><div class="section-heading catalog-heading-row"><div><span class="section-index">03 — LIBRARY</span><h2 id="catalog-heading">Browse games</h2></div><span class="result-count" id="result-count"></span></div><div class="filters" id="filters" aria-label="Filter by category"></div><div class="game-grid" id="game-grid"></div><div id="empty-state" class="empty-state" hidden><i data-lucide="search-x"></i><h3>Nothing here yet</h3><p>Try another search or category.</p><button id="clear-filters" type="button">Clear filters</button></div><button id="load-more" class="load-more" type="button" hidden>Show more games <i data-lucide="arrow-down"></i></button></section>
+      </main>
+      <footer class="footer"><span>mitch.games</span><span>Games and artwork belong to their respective creators. <a href="./ui/THIRD_PARTY_NOTICES.md">Open-source credits</a></span></footer>
     </div>
-    <section class="recent-section" id="recent-section" hidden aria-labelledby="recent-title">
-      <div class="section-heading"><h2 id="recent-title">Play again</h2></div>
-      <div class="game-grid game-grid-recent" id="recent-games"></div>
-    </section>
-    <section aria-labelledby="all-games-title">
-      <div class="section-heading"><h2 id="all-games-title">All games</h2><span id="results-label"></span></div>
-      <div class="game-grid" id="game-grid" aria-live="polite"><div class="game-loading"><i></i><span>Loading games</span></div></div>
-      <div class="portal-empty" id="portal-empty" hidden>No games match that search.</div>
-      <button class="load-more" id="load-more" type="button" hidden>Show more games</button>
-    </section>
-  </main>
-
-  <section class="game-player" id="game-player" hidden role="dialog" aria-modal="true" aria-labelledby="player-title">
-    <header class="player-bar">
-      <button class="player-close" id="player-close" type="button" aria-label="Close game">←</button>
-      <div class="player-name"><small>Now playing</small><strong id="player-title">Game</strong></div>
-      <div class="player-earning" id="player-earning"><i></i><span id="player-reward">Earning 2/min</span></div>
-      <a class="player-tool" id="player-new-tab" href="#" target="_blank" rel="noopener">New tab</a>
-      <button class="player-tool" id="player-fullscreen" type="button">Fullscreen</button>
-    </header>
-    <div class="player-stage" id="player-stage">
-      <div class="player-loading" id="player-loading"><i></i><span>Starting game</span></div>
-      <iframe id="game-frame" title="Game" allow="autoplay; fullscreen; gamepad; clipboard-read; clipboard-write" allowfullscreen sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-modals allow-downloads"></iframe>
-    </div>
-  </section>
-  <div class="coin-toast" id="coin-toast" role="status" aria-live="polite">+2 MitchCoins</div>
-  <script src="/game-portal/portal.js?v=3" defer></script>
+  </div>
+  <button id="menu-scrim" class="menu-scrim" type="button" aria-label="Close menu" hidden></button>
+  <section id="player" class="player" role="dialog" aria-modal="true" aria-labelledby="player-title" hidden><div class="player-bar"><button id="player-back" type="button"><i data-lucide="arrow-left"></i> Back to games</button><strong id="player-title"></strong><div class="player-actions"><span class="player-reward" id="player-reward">Checking MitchCoins</span><span id="open-source-credit" hidden>Open-source game</span><button id="player-fullscreen" type="button" title="Fullscreen" aria-label="Fullscreen"><i data-lucide="maximize"></i></button><a id="player-new-tab" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open game in new tab"><i data-lucide="external-link"></i></a></div></div><iframe id="player-frame" title="Game" allow="fullscreen; autoplay; gamepad" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups allow-modals allow-downloads"></iframe></section>
+  <div class="coin-toast" id="coin-toast" role="status" aria-live="polite"></div>
 </body>
 </html>
