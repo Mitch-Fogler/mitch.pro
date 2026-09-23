@@ -604,26 +604,30 @@
     body.casino-page .card { padding: 14px; }
   }
 </style>
+<link rel="stylesheet" href="/casino/casino-refresh.css?v=1">
 </head>
 <body class="casino-page">
 <main class="app-main casino-main">
   <header class="page-head">
     <div>
-      <div class="casino-kicker">Virtual coins</div>
-      <h1>Casino</h1>
-      <p class="page-sub">Slots, tables, and quick games — one wallet, history in the sidebar.</p>
+      <div class="casino-kicker">MITCH.PRO / THE ARCADE FLOOR</div>
+      <h1>The Casino<span>.</span></h1>
+      <p class="page-sub">Sixteen games. One MitchCoins wallet. No real-money betting.</p>
     </div>
-    <div class="wallet"><span>MitchCoins</span><strong id="balance" class="mitch-coin-amount">Loading...</strong></div>
+    <div class="wallet"><img src="/mitchcoin.png" alt=""><span>Your MitchCoins</span><strong id="balance" class="mitch-coin-amount">Loading...</strong></div>
   </header>
 
   <section class="hero">
     <div class="hero-copy">
-      <h2>Pick a room. Place a wager.</h2>
-      <p>Slots, tables, and quick games — all on virtual coins. History stays in the sidebar.</p>
+      <div class="hero-overline"><span></span> OPEN FLOOR / 16 GAMES</div>
+      <h2>Pick your game.<br>Set your wager.</h2>
+      <p>Your wager follows you between rooms. Every result uses your virtual MitchCoins balance.</p>
+      <div class="hero-reels" aria-hidden="true"><span>7</span><span>7</span><span>7</span></div>
+      <small class="hero-fineprint">MitchCoins have no cash value and cannot be redeemed for money.</small>
     </div>
     <aside class="betbox">
-      <div class="kicker">Bankroll</div>
-      <h2>Set your wager.</h2>
+      <div class="kicker">THE WAGER DESK</div>
+      <h2>Set your wager</h2>
       <div>
         <label for="bet">Bet amount</label>
         <input id="bet" type="number" min="1" step="1" value="50" inputmode="numeric">
@@ -636,10 +640,11 @@
         <button class="btn" data-bet="500" type="button">500</button>
         <button class="btn" data-bet="1000" type="button">1000</button>
       </div>
-      <div class="meta">You can wager any amount you have. Keno picks: <strong id="keno-count">0 / 10</strong>.</div>
+      <div class="meta">Bet up to your available balance. Keno picks: <strong id="keno-count">0 / 10</strong>.</div>
     </aside>
   </section>
 
+  <div class="casino-library-head"><div><span class="casino-kicker">GAME LIBRARY / 01</span><h2>Choose a room</h2></div><span id="casino-visible-count">16 games</span></div>
   <nav class="casino-filterbar" aria-label="Filter casino games">
     <button class="casino-filter active" type="button" data-filter="all">All games</button>
     <button class="casino-filter" type="button" data-filter="quick">Quick</button>
@@ -653,6 +658,7 @@
       <article class="card wide" id="card-slots" data-category="quick">
         <div class="card-head"><div><div class="kicker">Reels</div><h2>Slots</h2></div><div class="card-options"><a href="/casino-guide.html#slots" class="opt-btn help" title="How to play">?</a><div class="icon">777</div></div></div>
         <p>Classic reels with doubles, triples, sevens, bells, and diamond jackpots.</p>
+        <div class="slot-reels" aria-hidden="true"><span>7</span><span>7</span><span>7</span></div>
         <div class="controls">
           <button class="btn primary" onclick="goFullscreen('card-slots')" type="button">Play Slots</button>
           <div style="display:none;">
@@ -818,18 +824,18 @@
 
     <aside class="side">
       <section class="cpanel">
-        <h2>Global Gambling Feed</h2>
+        <h2>Live on the floor</h2>
         <div id="global-feed" class="history"><div class="empty">Loading feed...</div></div>
       </section>
       <section class="cpanel">
-        <h2>Recent History</h2>
+        <h2>Your recent games</h2>
         <div id="history" class="history"><div class="empty">Loading history...</div></div>
       </section>
     </aside>
   </section>
 </main>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
-<div id="result" class="result" style="display:none;"><div><div class="title">Choose a room.</div><div class="meta">Results, payouts, cards, numbers, and symbols show here.</div></div></div>
+<div id="result" class="result" style="display:none;"><div><div class="title">No play yet</div><div class="meta">Your result and payout will appear here.</div></div></div>
 <div id="blackjack-table" class="cpanel" style="display:none;"><div class="empty">No active hand.</div></div>
 
 <script>
@@ -1048,6 +1054,10 @@
   });
   bindChoices();
   buildKeno();
+  function updateVisibleCount() {
+    var count = $$('.games > .card:not(.is-filtered)').length;
+    $('#casino-visible-count').textContent = count + (count === 1 ? ' game' : ' games');
+  }
   $$('.casino-filter').forEach(function (button) {
     button.onclick = function () {
       var filter = button.dataset.filter;
@@ -1055,8 +1065,10 @@
       $$('.games > .card').forEach(function (card) {
         card.classList.toggle('is-filtered', filter !== 'all' && !String(card.dataset.category || '').split(/\s+/).includes(filter));
       });
+      updateVisibleCount();
     };
   });
+  updateVisibleCount();
 
   $("#slots").onclick = function () { play(async function () {
     var d = await post("/api/casino/slots", { amount: bet() });
@@ -1217,6 +1229,22 @@
     // Move elements
     overlay.querySelector('.fs-main').appendChild(head);
     overlay.querySelector('.fs-main').appendChild(desc);
+    var art = document.createElement('div');
+    art.className = 'fs-art' + (id === 'card-slots' ? ' fs-art-slots' : '');
+    art.setAttribute('aria-hidden', 'true');
+    var symbol = head.querySelector('.icon');
+    if (id === 'card-slots') {
+      for (var reel = 0; reel < 3; reel++) {
+        var tile = document.createElement('span');
+        tile.textContent = '7';
+        art.appendChild(tile);
+      }
+    } else {
+      var mark = document.createElement('span');
+      mark.textContent = symbol ? symbol.textContent : '◆';
+      art.appendChild(mark);
+    }
+    overlay.querySelector('.fs-main').appendChild(art);
     overlay.querySelector('.fs-controls-box').appendChild(ctrl);
     overlay.querySelector('.fs-res-target').appendChild(document.getElementById('result'));
     overlay.querySelector('.fs-bj-target').appendChild(document.getElementById('blackjack-table'));
@@ -1229,7 +1257,7 @@
     if (playBtn) playBtn.style.display = 'none';
     
     document.getElementById('result').style.display = 'block';
-    document.getElementById('blackjack-table').style.display = 'block';
+    document.getElementById('blackjack-table').style.display = id === 'card-blackjack' ? 'block' : 'none';
 
     // Sync balance and results
     const sync = () => { 

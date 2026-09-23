@@ -24,9 +24,10 @@ assert.match(server, /path === '\/api\/admin\/vms\/credentials'[\s\S]*if \(!acto
 assert.match(vmAdmin, /overview\.viewerIsOwner/, 'VM admin UI must only render credentials for owners');
 assert.match(vmAdmin, /Set new login/, 'owners must be able to replace credentials for older VMs');
 
-for (const label of ['Home', 'VM Lab', 'Chat', 'Games', 'Blooket Bot', 'People', 'Schedule']) {
+for (const label of ['Home', 'VM Lab', 'Chat', 'Games', 'People', 'Schedule']) {
   assert(shell.includes(`label: '${label}'`), `shared masthead must include ${label}`);
 }
+assert(shell.includes("label: 'Blooket Bot currently blocked :('"), 'shared masthead must show the requested Blooket status');
 assert.match(shell, /unified-masthead/, 'home and interior mastheads must share one class');
 assert.match(shellCss, /Shared homepage masthead across every mitch\.pro page/, 'shared masthead styling must be global');
 assert.match(tester, /tester-workbench\.css\?v=2/, 'tester page must load its custom design');

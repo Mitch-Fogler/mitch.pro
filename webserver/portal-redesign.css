@@ -394,3 +394,4 @@ body.mitch-design .mitch-banner-btn.decline { color: var(--t-fg); border-color: 
   html { scroll-behavior: auto !important; }
   body.mitch-design *, body.mitch-design *::before, body.mitch-design *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+#app-topbar .app-nav .nav-blooket-status { flex: 0 0 132px; max-width: 132px; font-size: 10px !important; line-height: 1.2; white-space: normal !important; overflow-wrap: break-word; }

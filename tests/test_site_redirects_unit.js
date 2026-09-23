@@ -36,13 +36,14 @@ for (const file of ['webserver/index.html', 'webserver/index-sales.html', 'webse
 const home = readFileSync('webserver/index.html', 'utf8');
 const homeFriends = readFileSync('webserver/home-friends.js', 'utf8');
 const homeRefresh = readFileSync('webserver/home-refresh.css', 'utf8');
-for (const destination of ['/game-portal/', '/matrix/', '/vms/', '/members/', '/preferences/', '/shop/']) {
+for (const destination of ['/game-portal/', '/matrix/', '/vms/', '/members/', '/preferences/', '/shop/', '/casino/']) {
   assert(home.includes(`href="${destination}"`), `Homepage must preserve ${destination} navigation`);
 }
 for (const id of ['home-search', 'links', 'daily-login-widget', 'member-side-rail', 'vm-workspace-panel']) {
   assert(home.includes(`id="${id}"`), `Homepage must preserve the ${id} integration`);
 }
-assert(home.includes('/home-refresh.css?v=1') && home.includes('/home-friends.js?v=3'), 'Homepage refresh assets need cache-busted URLs');
+assert(home.includes('/home-refresh.css?v=2') && home.includes('/home-friends.js?v=3'), 'Homepage refresh assets need cache-busted URLs');
+assert(home.includes('Blooket Bot currently blocked :('), 'Homepage hotbar must show the requested Blooket status');
 assert(homeFriends.includes("hero.after(section)"), 'Friends activity should live inside the dashboard');
 assert(homeRefresh.includes('prefers-reduced-motion') && homeRefresh.includes('var(--t-ac)'), 'Homepage refresh must respect motion and theme preferences');
 const location = { href: 'https://mitch.pro/' };
@@ -59,7 +60,7 @@ assert.equal(bellScheduleRedirect(new URL(shortcut.url, 'https://mitch.pro')), R
 for (const file of ['webserver/app-shell.js', 'webserver/index.html', 'webserver/index-sales.html', 'data/sites']) {
   assert(readFileSync(file, 'utf8').includes('https://woodcreek.site/'), `${file} must point Blooket Bot to woodcreek.site`);
 }
-assert(readFileSync('webserver/app-shell.js', 'utf8').includes("label: 'Blooket Bot'"), 'Blooket Bot must be in the shared top navigation');
+assert(readFileSync('webserver/app-shell.js', 'utf8').includes("label: 'Blooket Bot currently blocked :('"), 'Blooket status must be in the shared top navigation');
 
 // Top-left brand logo on rjuhsd.school must use mitch.pro logo (/icon-192.png)
 const rjuhsdHtml = readFileSync('webserver/rjuhsd/index.html', 'utf8');
