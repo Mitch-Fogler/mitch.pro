@@ -135,7 +135,10 @@ pub fn handle_http(
             true,
         ));
     }
-    if (path == "/livekit/sfu/get" || path == "/livekit/get_token")
+    if (path == "/livekit/sfu/get"
+        || path == "/livekit/get_token"
+        || path == "/livekit/token"
+        || path == "/livekit/jwt")
         && (method == Method::POST || method == Method::GET)
     {
         return Some(token_endpoint(state, method, headers, search, body_bytes));

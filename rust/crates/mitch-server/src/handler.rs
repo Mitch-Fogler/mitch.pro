@@ -637,13 +637,93 @@ pub async fn handle(
                 return banned_response(reason, by);
             }
         }
+
+        // Dynamically track the user's last known IP address (server.js:10478-10495)
+        let cookie_header = headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let cookies = mitch_lib::auth::get_cookies_from_header_value(
+            cookie_header,
+            &state.store,
+            &state.id_secret,
+            node_env_test,
+        );
+        let sid = cookies
+            .get("studentId")
+            .filter(|s| !s.is_empty())
+            .or_else(|| cookies.get("id"))
+            .unwrap_or("");
+        if !sid.is_empty() && mitch_lib::auth::valid_id(sid, &state.id_secret) {
+            if let Some(email) =
+                mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid)
+            {
+                let norm = mitch_lib::auth::normalize_email(&email);
+                if !norm.is_empty() {
+                    let ips_file = state.data_dir().join("last_known_ips.json");
+                    let mut ips = state.store.read_document(&ips_file, serde_json::json!({}));
+                    if ips.get(&norm).and_then(|v| v.as_str()) != Some(&ip) {
+                        if let Some(obj) = ips.as_object_mut() {
+                            obj.insert(norm, serde_json::json!(ip));
+                            let _ = state.store.write_document(&ips_file, &ips);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Direct unsubscribe links by token (server.js:10291-10476)
+    if method == Method::GET && path.starts_with("/unsubscribe/") {
+        if let Some(resp) = handle_unsubscribe(&state, &path) {
+            return resp;
+        }
+    }
+
+    // Open verification endpoint (server.js:10517-10548)
+    if path == "/verify-open.json" {
+        return crate::routes::misc::verify_open(&method);
+    }
+
+    // Open general proxy removed -> game proxy redirects & 410 gone (server.js:10777-10791)
+    if let Some(resp) = crate::routes::proxy::prox_redirect_or_gone(&path, &search) {
+        return resp;
+    }
+
+    // GameMonetize thumbnail proxy (server.js:10838-10877)
+    if let Some(resp) = crate::routes::proxy::gm_icon_proxy(&state, &path).await {
+        return resp;
+    }
+
+    // Fixed-origin game proxy (server.js:10878-10947)
+    if let Some(resp) =
+        crate::routes::proxy::game_proxy(&state, &method, &path, &search, headers).await
+    {
+        return resp;
+    }
+
+    // SvelteKit _app/ redirect to pirate voyage (server.js:10949-10955)
+    if let Some(resp) = crate::routes::proxy::pirate_voyage_app_redirect(&path, &search, headers) {
+        return resp;
+    }
+
+    // Pirate Voyage proxy (server.js:10956-11112)
+    if let Some(resp) = crate::routes::proxy::pirate_voyage_proxy(
+        &state, &method, &path, &search, headers, body_bytes,
+    )
+    .await
+    {
+        return resp;
     }
 
     // 3c. Admin gate — server.js:7945-7973, which sits BEFORE the captcha
     // proxy, the maintenance gate, the banned check, and password enforcement.
     // Every /api/admin/* path except passphrase-status requires a valid sid,
     // isAnyAdminId, and (for full admins) the X-Admin-Passphrase header.
-    if path.starts_with("/api/admin/") && path != "/api/admin/passphrase-status" {
+    if path.starts_with("/api/admin/")
+        && path != "/api/admin/passphrase-status"
+        && path != "/api/admin/cache/refresh"
+    {
         if let Some(resp) = crate::routes::admin::admin_gate(&state, headers) {
             return resp;
         }
@@ -918,7 +998,7 @@ pub async fn handle(
                 return resp;
             }
         }
-        if path.starts_with("/api/admin/") {
+        if path.starts_with("/api/admin/") && path != "/api/admin/cache/refresh" {
             if let Some(resp) =
                 crate::routes::admin::handle(&state, &method, &path, headers, &search, &body).await
             {
@@ -1610,4 +1690,248 @@ fn site_page_block(
         }
         Err(_) => Some(err_resp(404, None, None)),
     }
+}
+
+fn is_hex_32_to_64(s: &str) -> bool {
+    (32..=64).contains(&s.len()) && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn handle_unsubscribe(state: &Arc<AppState>, path: &str) -> Option<Response> {
+    let token = path.strip_prefix("/unsubscribe/")?.trim();
+    if token.is_empty() || token == "index.html" || !is_hex_32_to_64(token) {
+        return None;
+    }
+    let tokens_file = state.data_dir().join("unsubscribe_tokens.json");
+    let tokens = state
+        .store
+        .read_document(&tokens_file, serde_json::json!({}));
+    let mut matched_email: Option<String> = None;
+    if let Some(obj) = tokens.as_object() {
+        for (k, v) in obj {
+            if v.as_str() == Some(token) {
+                matched_email = Some(k.clone());
+                break;
+            }
+        }
+    }
+    if let Some(email) = matched_email {
+        let norm_email = email.to_ascii_lowercase().trim().to_string();
+        let unsub_file = state.data_dir().join("newsletter_unsub.json");
+        let unsub = state
+            .store
+            .read_document(&unsub_file, serde_json::json!([]));
+        let mut list: Vec<String> = unsub
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !list.contains(&norm_email) {
+            list.push(norm_email);
+            list.sort();
+            list.dedup();
+            let _ = state
+                .store
+                .write_document(&unsub_file, &serde_json::json!(list));
+        }
+        Some(unsubscribe_success_html(&email))
+    } else {
+        Some(unsubscribe_invalid_html())
+    }
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn unsubscribe_success_html(email: &str) -> Response {
+    let clean_email = html_escape(email);
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Unsubscribed successfully — mitch.pro</title>
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <style>
+    body {{
+      background: var(--bg);
+      color: var(--t-fg);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }}
+    .glass-card {{
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 40px 30px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      text-align: center;
+    }}
+    h1 {{
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      margin: 0 0 10px 0;
+      color: var(--t-fg);
+    }}
+    p {{
+      color: var(--t-fg2);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin: 0 0 24px 0;
+    }}
+    .email-display {{
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--line);
+      padding: 12px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.95rem;
+      color: var(--t-ac);
+      font-weight: bold;
+      margin-bottom: 24px;
+      word-break: break-all;
+    }}
+    .btn {{
+      display: inline-block;
+      width: 100%;
+      background: var(--t-ac);
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }}
+    .btn:hover {{
+      opacity: 0.9;
+    }}
+    .icon {{
+      font-size: 3.5rem;
+      margin-bottom: 15px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="glass-card">
+    <div class="icon">👋</div>
+    <h1>Unsubscribed</h1>
+    <p>You have been successfully removed from our newsletter updates.</p>
+    <div class="email-display">{clean_email}</div>
+    <a class="btn" href="/">Return Home</a>
+  </div>
+</body>
+</html>"#
+    );
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(axum::body::Body::from(html))
+        .unwrap_or_else(|_| crate::errors::err_resp(500, None, None))
+}
+
+fn unsubscribe_invalid_html() -> Response {
+    let html = r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invalid Unsubscribe Link — mitch.pro</title>
+  <link rel="stylesheet" href="/open.css">
+  <script src="/theme.js"></script>
+  <style>
+    body {
+      background: var(--bg);
+      color: var(--t-fg);
+      font-family: system-ui, -apple-system, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .glass-card {
+      background: var(--panel);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 40px 30px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      text-align: center;
+    }
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      margin: 0 0 10px 0;
+      color: var(--rose);
+    }
+    p {
+      color: var(--t-fg2);
+      font-size: 0.95rem;
+      line-height: 1.6;
+      margin: 0 0 24px 0;
+    }
+    .btn {
+      display: inline-block;
+      width: 100%;
+      background: var(--t-ac);
+      color: #fff;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      font-size: 0.95rem;
+      cursor: pointer;
+      text-decoration: none;
+      transition: opacity 0.2s;
+    }
+    .btn:hover {
+      opacity: 0.9;
+    }
+    .icon {
+      font-size: 3.5rem;
+      margin-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="glass-card">
+    <div class="icon">⚠️</div>
+    <h1>Invalid Link</h1>
+    <p>This unsubscribe link is invalid or has expired.</p>
+    <a class="btn" href="/">Return Home</a>
+  </div>
+</body>
+</html>"#;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .body(axum::body::Body::from(html))
+        .unwrap_or_else(|_| crate::errors::err_resp(500, None, None))
 }

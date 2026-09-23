@@ -129,6 +129,78 @@ impl StaticCache {
         }
         Some(entry)
     }
+
+    pub fn stats(&self) -> (usize, usize, u64) {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        (inner.map.len(), inner.bytes, self.max_bytes)
+    }
+
+    pub fn clear(&self, webroot: &Path, base_dir: &Path, specific_files: &[String]) -> ClearResult {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if !specific_files.is_empty() {
+            let mut evicted = 0;
+            let mut reloaded = 0;
+            for item in specific_files {
+                let item = item.trim();
+                if item.is_empty() {
+                    continue;
+                }
+                let clean = item.trim_start_matches('/');
+                let mut candidates = Vec::new();
+                if let Some(p) = safe_webroot_path(webroot, &format!("/{clean}")) {
+                    candidates.push(p);
+                }
+                candidates.push(webroot.join(clean));
+                candidates.push(base_dir.join(clean));
+
+                for p in candidates {
+                    if let Some(old) = inner.map.remove(&p) {
+                        inner.bytes = inner.bytes.saturating_sub(old.size);
+                        inner.order.retain(|k| k != &p);
+                        evicted += 1;
+                    }
+                    if p.is_file() {
+                        if let Ok(data) = std::fs::read(&p) {
+                            if let Ok(md) = std::fs::metadata(&p) {
+                                let size = data.len();
+                                let entry = CacheEntry {
+                                    data: Arc::new(data),
+                                    mtime_ms: mtime_of(&md),
+                                    size,
+                                    checked_at: now_ms(),
+                                };
+                                inner.map.insert(p.clone(), entry);
+                                inner.order.push(p);
+                                inner.bytes += size;
+                                reloaded += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            ClearResult {
+                evicted,
+                reloaded,
+                full: false,
+            }
+        } else {
+            let count = inner.map.len();
+            inner.map.clear();
+            inner.order.clear();
+            inner.bytes = 0;
+            ClearResult {
+                evicted: count,
+                reloaded: 0,
+                full: true,
+            }
+        }
+    }
+}
+
+pub struct ClearResult {
+    pub evicted: usize,
+    pub reloaded: usize,
+    pub full: bool,
 }
 
 fn mtime_of(md: &std::fs::Metadata) -> u128 {

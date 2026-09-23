@@ -15,6 +15,7 @@ pub mod blooket;
 pub mod canvas;
 pub mod casino;
 pub mod chess_vs;
+pub mod dayboard;
 pub mod dm;
 pub mod e2e;
 pub mod friends;

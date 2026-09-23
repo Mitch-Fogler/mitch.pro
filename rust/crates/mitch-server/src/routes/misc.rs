@@ -36,6 +36,39 @@ pub async fn handle(
     if path == "/api/site-info" && *method == Method::GET {
         return Some(site_info(state));
     }
+    if path == "/api/verify-open" || path == "/verify-open.json" {
+        return Some(verify_open(method));
+    }
+    if path == "/api/guest-session" && *method == Method::GET {
+        return Some(guest_session(state, headers));
+    }
+    if path == "/api/dev/test-access" {
+        return Some(dev_test_access(state, method, headers));
+    }
+    if path == "/api/cache/refresh"
+        || path == "/api/admin/cache/refresh"
+        || path == "/api/refresh-cache"
+    {
+        let ip = crate::handler::get_real_ip(headers, None);
+        return Some(cache_refresh(state, method, headers, &ip, body));
+    }
+    if path == "/api/weather" && *method == Method::GET {
+        return Some(crate::routes::dayboard::weather().await);
+    }
+    if path == "/api/school-calendar" && *method == Method::GET {
+        return Some(crate::routes::dayboard::school_calendar().await);
+    }
+    if path == "/api/school-info" && *method == Method::GET {
+        let school_key = if let Some(query) = _search.strip_prefix('?') {
+            url::form_urlencoded::parse(query.as_bytes())
+                .find(|(k, _)| k == "school")
+                .map(|(_, v)| v.to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        return Some(crate::routes::dayboard::school_info(&school_key).await);
+    }
     if path == "/api/bad-passwords" && *method == Method::GET {
         return Some(bad_passwords(state));
     }
@@ -543,4 +576,452 @@ fn me_coins(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
             "stats": stats,
         }),
     )
+}
+
+/// `OPTIONS|GET|HEAD /api/verify-open` & `/verify-open.json` — server.js:10517-10548.
+pub fn verify_open(method: &Method) -> Response {
+    if *method == Method::OPTIONS {
+        return Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .header("access-control-allow-origin", "*")
+            .header("access-control-allow-methods", "GET, HEAD, OPTIONS")
+            .header("access-control-allow-headers", "*")
+            .header("cache-control", "no-cache, no-store, must-revalidate")
+            .body(axum::body::Body::empty())
+            .unwrap_or_else(|_| crate::errors::err_resp(500, None, None));
+    }
+    if *method == Method::GET || *method == Method::HEAD {
+        let payload = json!({
+            "status": "open",
+            "domain": "mitch.pro",
+            "verified": true,
+            "token": "mitch-open-verified-2026",
+        });
+        let body = if *method == Method::HEAD {
+            axum::body::Body::empty()
+        } else {
+            axum::body::Body::from(serde_json::to_string(&payload).unwrap_or_default())
+        };
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json; charset=utf-8")
+            .header("access-control-allow-origin", "*")
+            .header("access-control-allow-methods", "GET, HEAD, OPTIONS")
+            .header("access-control-allow-headers", "*")
+            .header("cache-control", "no-cache, no-store, must-revalidate")
+            .header("pragma", "no-cache")
+            .body(body)
+            .unwrap_or_else(|_| crate::errors::err_resp(500, None, None));
+    }
+    crate::errors::err_resp(405, None, None)
+}
+
+/// `GET /api/guest-session` — server.js:10584-10590.
+fn guest_session(state: &Arc<AppState>, headers: &HeaderMap) -> Response {
+    if state.check_password_cookie(headers, None) {
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header("content-type", "application/json")
+            .header("cache-control", "no-store")
+            .body(axum::body::Body::from(r#"{"authenticated":true}"#))
+            .unwrap_or_else(|_| crate::errors::err_resp(500, None, None));
+    }
+
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_header,
+        &state.store,
+        &state.id_secret,
+        false,
+    );
+    let guest_token = cookies.get("mitch_guest").unwrap_or("");
+
+    let secret = mitch_lib::crypto::hmac_sha256(&state.id_secret, b"guest-preview-v1");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    let preview = mitch_lib::guest::guest_preview(guest_token, &secret, now);
+    let secure_flag = std::env::var("SESSION_COOKIE_SECURE").unwrap_or_default();
+    let node_env_prod = std::env::var("NODE_ENV").unwrap_or_default() == "production";
+    let cookie_hdr = mitch_lib::auth::set_cookie_header(
+        "mitch_guest",
+        &preview.token,
+        &secure_flag,
+        node_env_prod,
+        31536000,
+        true,
+    );
+
+    let body = json!({
+        "authenticated": false,
+        "expiresAt": preview.expires_at,
+        "serverNow": preview.server_now,
+    });
+
+    let mut resp = Response::builder()
+        .status(StatusCode::OK)
+        .header("content-type", "application/json")
+        .header("cache-control", "no-store")
+        .body(axum::body::Body::from(
+            serde_json::to_string(&body).unwrap_or_default(),
+        ))
+        .unwrap_or_else(|_| crate::errors::err_resp(500, None, None));
+
+    if let Ok(hv) = axum::http::HeaderValue::from_str(&cookie_hdr) {
+        resp.headers_mut()
+            .append(axum::http::header::SET_COOKIE, hv);
+    }
+    resp
+}
+
+const DEV_TEST_EMAIL: &str = "admin@mitch.pro";
+
+fn dev_test_access_enabled() -> bool {
+    let node_env = std::env::var("NODE_ENV").unwrap_or_default();
+    let dev_access = std::env::var("DEV_TEST_ACCESS").unwrap_or_default();
+    node_env != "production" && dev_access == "1"
+}
+
+fn is_private_ip(ip: &str) -> bool {
+    if ip.is_empty() {
+        return false;
+    }
+    if ip == "127.0.0.1" || ip == "::1" || ip == "localhost" {
+        return true;
+    }
+    if ip.starts_with("10.")
+        || ip.starts_with("192.168.")
+        || ip.starts_with("169.254.")
+        || ip.starts_with("100.")
+    {
+        return true;
+    }
+    if let Some(rest) = ip.strip_prefix("172.") {
+        if let Some(dot) = rest.find('.') {
+            if let Ok(octet) = rest[..dot].parse::<u8>() {
+                if (16..=31).contains(&octet) {
+                    return true;
+                }
+            }
+        }
+    }
+    if ip.len() >= 2 {
+        let prefix = &ip[..2].to_ascii_lowercase();
+        if prefix == "fc" || prefix == "fd" {
+            return true;
+        }
+        if ip.len() >= 4 {
+            let p4 = &ip[..4].to_ascii_lowercase();
+            if p4 == "fe80" || p4 == "fe90" || p4 == "fea0" || p4 == "feb0" {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn dev_test_request_allowed(headers: &HeaderMap) -> bool {
+    if !dev_test_access_enabled() {
+        return false;
+    }
+    let host = crate::hosts::request_host(headers);
+    let hostname = host.split(':').next().unwrap_or("").to_ascii_lowercase();
+    hostname == "localhost"
+        || hostname == "127.0.0.1"
+        || hostname == "::1"
+        || is_private_ip(&hostname)
+}
+
+/// `GET|POST /api/dev/test-access` — server.js:10564-10582.
+fn dev_test_access(state: &Arc<AppState>, method: &Method, headers: &HeaderMap) -> Response {
+    if !dev_test_request_allowed(headers) {
+        return crate::errors::err_resp(404, None, None);
+    }
+    if *method == Method::GET {
+        return json_response(200, json!({ "enabled": true, "label": "Test Mitch.pro" }));
+    }
+    if *method == Method::POST {
+        mitch_lib::profile::ensure_profile_defaults(
+            &state.store,
+            state.data_dir(),
+            &state.id_secret,
+            DEV_TEST_EMAIL,
+            DEV_TEST_EMAIL,
+            &json!({}),
+        );
+        let user_agent = headers
+            .get(axum::http::header::USER_AGENT)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        let ip = crate::handler::get_real_ip(headers, None);
+        let session = mitch_lib::auth::create_auth_session(
+            &state.store,
+            &state.id_secret,
+            DEV_TEST_EMAIL,
+            DEV_TEST_EMAIL,
+            user_agent,
+            &ip,
+            true, // dev_superuser
+        );
+        let secure_flag = std::env::var("SESSION_COOKIE_SECURE").unwrap_or_default();
+        let node_env_production = std::env::var("NODE_ENV").unwrap_or_default() == "production";
+        let max_age = mitch_lib::auth::AUTH_SESSION_TTL_MS / 1000;
+        let mut resp = json_response(
+            200,
+            json!({
+                "success": true,
+                "devTest": true,
+                "roles": ["owner", "admin", "moderator", "premium"],
+                "id": session.sid,
+                "email": DEV_TEST_EMAIL,
+            }),
+        );
+        let append = |resp: &mut Response, value: String| {
+            if let Ok(hv) = axum::http::HeaderValue::from_str(&value) {
+                resp.headers_mut()
+                    .append(axum::http::header::SET_COOKIE, hv);
+            }
+        };
+        append(
+            &mut resp,
+            mitch_lib::auth::set_cookie_header(
+                "mitch_session",
+                &session.token,
+                &secure_flag,
+                node_env_production,
+                max_age,
+                true,
+            ),
+        );
+        append(
+            &mut resp,
+            mitch_lib::auth::set_cookie_header(
+                "studentId",
+                &session.sid,
+                &secure_flag,
+                node_env_production,
+                max_age,
+                false,
+            ),
+        );
+        append(
+            &mut resp,
+            mitch_lib::auth::clear_cookie_header(
+                "password",
+                &secure_flag,
+                node_env_production,
+                false,
+            ),
+        );
+        append(
+            &mut resp,
+            mitch_lib::auth::clear_cookie_header("id", &secure_flag, node_env_production, false),
+        );
+        return resp;
+    }
+    crate::errors::err_resp(405, None, None)
+}
+
+fn is_authorized_cache_refresh(
+    state: &Arc<AppState>,
+    headers: &HeaderMap,
+    client_ip: &str,
+) -> bool {
+    if std::env::var("NODE_ENV").unwrap_or_default() == "test" {
+        return true;
+    }
+    let configured_secret = std::env::var("DEPLOY_SECRET")
+        .or_else(|_| std::env::var("SECRET_KEY"))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    let auth_header = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    let bearer_token = if auth_header.to_ascii_lowercase().starts_with("bearer ") {
+        auth_header[7..].trim()
+    } else {
+        ""
+    };
+    let token_header = headers
+        .get("x-deploy-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    let token = if !bearer_token.is_empty() {
+        bearer_token
+    } else {
+        token_header
+    };
+
+    if !configured_secret.is_empty() && !token.is_empty() && token == configured_secret {
+        return true;
+    }
+
+    let raw_mitch = headers
+        .get("x-mitch-client-ip")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    let raw_real = headers
+        .get("x-real-ip")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    let xff = headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .trim();
+    let is_direct_loopback = raw_mitch.is_empty()
+        && raw_real.is_empty()
+        && xff.is_empty()
+        && (client_ip == "127.0.0.1" || client_ip == "::1");
+
+    if is_direct_loopback {
+        let internal_refresh = headers
+            .get("x-internal-refresh")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .trim();
+        if internal_refresh == "1" {
+            return true;
+        }
+    }
+
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_header,
+        &state.store,
+        &state.id_secret,
+        false,
+    );
+    let sid = cookies.auth_sid();
+    if mitch_lib::auth::valid_id(&sid, &state.id_secret)
+        && mitch_lib::auth::is_any_admin_id(&state.store, &state.id_secret, &sid, false)
+    {
+        return true;
+    }
+
+    false
+}
+
+/// `GET|POST /api/cache/refresh` (and aliases) — server.js:10624-10655.
+fn cache_refresh(
+    state: &Arc<AppState>,
+    method: &Method,
+    headers: &HeaderMap,
+    client_ip: &str,
+    body: &Value,
+) -> Response {
+    if *method == Method::GET {
+        let (size, bytes, max_bytes) = state.static_cache.stats();
+        return json_response(
+            200,
+            json!({
+                "cacheSize": size,
+                "cacheBytes": bytes,
+                "maxBytes": max_bytes,
+            }),
+        );
+    }
+    if *method != Method::POST {
+        return crate::errors::err_resp(405, Some("method not allowed"), None);
+    }
+    if !is_authorized_cache_refresh(state, headers, client_ip) {
+        return json_response(
+            401,
+            json!({
+                "error": "unauthorized",
+                "message": "Valid deploy token or secret key required",
+            }),
+        );
+    }
+
+    let mut files_to_refresh = Vec::new();
+    if let Some(files) = body.get("files").and_then(|v| v.as_array()) {
+        for f in files {
+            if let Some(s) = f.as_str() {
+                let st = s.trim();
+                if !st.is_empty() {
+                    files_to_refresh.push(st.to_string());
+                }
+            }
+        }
+    }
+
+    let result =
+        state
+            .static_cache
+            .clear(&state.cfg.webroot, &state.cfg.base_dir, &files_to_refresh);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    json_response(
+        200,
+        json!({
+            "success": true,
+            "message": "Static cache refreshed",
+            "evicted": result.evicted,
+            "reloaded": result.reloaded,
+            "full": result.full,
+            "selective": !result.full,
+            "timestamp": now,
+        }),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_verify_open_options() {
+        let res = verify_open(&Method::OPTIONS);
+        assert_eq!(res.status(), StatusCode::NO_CONTENT);
+        assert_eq!(
+            res.headers()
+                .get("access-control-allow-origin")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "*"
+        );
+    }
+
+    #[test]
+    fn test_verify_open_get() {
+        let res = verify_open(&Method::GET);
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(
+            res.headers().get("content-type").unwrap().to_str().unwrap(),
+            "application/json; charset=utf-8"
+        );
+    }
+
+    #[test]
+    fn test_is_private_ip() {
+        assert!(is_private_ip("127.0.0.1"));
+        assert!(is_private_ip("::1"));
+        assert!(is_private_ip("localhost"));
+        assert!(is_private_ip("10.0.0.1"));
+        assert!(is_private_ip("192.168.1.100"));
+        assert!(is_private_ip("172.16.0.5"));
+        assert!(is_private_ip("172.31.255.255"));
+        assert!(!is_private_ip("172.32.0.1"));
+        assert!(!is_private_ip("8.8.8.8"));
+        assert!(!is_private_ip("1.1.1.1"));
+    }
 }
