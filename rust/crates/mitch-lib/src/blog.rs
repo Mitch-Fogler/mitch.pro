@@ -239,6 +239,138 @@ pub fn sanitize_blog_html(input: &str, fallback_text: &str) -> String {
     crate::jsval::js_slice_utf16(&out, 60_000)
 }
 
+/// `slugifyBlogTitle` (server.js:6603).
+pub fn slugify_blog_title(title: &str) -> String {
+    let t = if title.trim().is_empty() {
+        "post"
+    } else {
+        title
+    };
+    static QUOTE_RE: OnceLock<Regex> = OnceLock::new();
+    static NON_ALPHANUM_RE: OnceLock<Regex> = OnceLock::new();
+    let quote_re =
+        QUOTE_RE.get_or_init(|| Regex::new(r#"['"]"#).unwrap_or_else(|_| unreachable_regex()));
+    let non_alphanum_re = NON_ALPHANUM_RE
+        .get_or_init(|| Regex::new(r"[^a-z0-9]+").unwrap_or_else(|_| unreachable_regex()));
+
+    let lower = t.to_lowercase();
+    let stripped = quote_re.replace_all(&lower, "");
+    let dashed = non_alphanum_re.replace_all(&stripped, "-");
+    let trimmed = dashed.trim_matches('-');
+    let sliced = crate::jsval::js_slice_utf16(trimmed, 70);
+    if sliced.is_empty() {
+        "post".to_string()
+    } else {
+        sliced
+    }
+}
+
+/// `blogExcerpt` (server.js:6656).
+pub fn blog_excerpt(body: &str) -> String {
+    static SPACE_RE: OnceLock<Regex> = OnceLock::new();
+    let space_re =
+        SPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap_or_else(|_| unreachable_regex()));
+    let text = space_re.replace_all(body, " ").trim().to_string();
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() > 220 {
+        format!("{}...", chars[..217].iter().collect::<String>())
+    } else {
+        text
+    }
+}
+
+/// `blogHtmlToText` (server.js:6668).
+pub fn blog_html_to_text(html: &str) -> String {
+    static BR_RE: OnceLock<Regex> = OnceLock::new();
+    static BLOCK_END_RE: OnceLock<Regex> = OnceLock::new();
+    static TAG_RE: OnceLock<Regex> = OnceLock::new();
+    static SPACE_RE: OnceLock<Regex> = OnceLock::new();
+    static NBSP_RE: OnceLock<Regex> = OnceLock::new();
+
+    let br_re = BR_RE
+        .get_or_init(|| Regex::new(r"(?i)<\s*br\s*/?>").unwrap_or_else(|_| unreachable_regex()));
+    let block_end_re = BLOCK_END_RE.get_or_init(|| {
+        Regex::new(r"(?i)</(p|div|h1|h2|h3|li|blockquote|pre)>")
+            .unwrap_or_else(|_| unreachable_regex())
+    });
+    let tag_re =
+        TAG_RE.get_or_init(|| Regex::new(r"<[^>]+>").unwrap_or_else(|_| unreachable_regex()));
+    let space_re =
+        SPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap_or_else(|_| unreachable_regex()));
+    let nbsp_re =
+        NBSP_RE.get_or_init(|| Regex::new(r"(?i)&nbsp;").unwrap_or_else(|_| unreachable_regex()));
+
+    let s = br_re.replace_all(html, "\n");
+    let s = block_end_re.replace_all(&s, "\n");
+    let s = tag_re.replace_all(&s, " ");
+    let s = nbsp_re.replace_all(&s, " ");
+    let s = s
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+    let s = space_re.replace_all(&s, " ");
+    s.trim().to_string()
+}
+
+/// `sanitizeBlogTags` (server.js:6724).
+pub fn sanitize_blog_tags(value: &serde_json::Value) -> Vec<String> {
+    static NON_TAG_CHARS: OnceLock<Regex> = OnceLock::new();
+    static SPACE_RE: OnceLock<Regex> = OnceLock::new();
+    let non_tag_re = NON_TAG_CHARS
+        .get_or_init(|| Regex::new(r"[^\w .#-]+").unwrap_or_else(|_| unreachable_regex()));
+    let space_re =
+        SPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap_or_else(|_| unreachable_regex()));
+
+    let raw_list: Vec<String> = if let Some(arr) = value.as_array() {
+        arr.iter()
+            .map(|v| match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            })
+            .collect()
+    } else if let Some(s) = value.as_str() {
+        s.split(',').map(|p| p.to_string()).collect()
+    } else {
+        Vec::new()
+    };
+
+    let mut tags: Vec<String> = Vec::new();
+    for part in raw_list {
+        let stripped = non_tag_re.replace_all(&part, "");
+        let spaced = space_re.replace_all(&stripped, " ");
+        let trimmed = spaced.trim();
+        let tag = crate::jsval::js_slice_utf16(trimmed, 32);
+        if !tag.is_empty()
+            && !tags
+                .iter()
+                .any(|existing| existing.eq_ignore_ascii_case(&tag))
+        {
+            tags.push(tag);
+        }
+        if tags.len() >= 8 {
+            break;
+        }
+    }
+    tags
+}
+
+/// `sanitizeBlogCategory` (server.js:6735).
+pub fn sanitize_blog_category(value: &str) -> String {
+    static NON_CAT_CHARS: OnceLock<Regex> = OnceLock::new();
+    static SPACE_RE: OnceLock<Regex> = OnceLock::new();
+    let non_cat_re = NON_CAT_CHARS
+        .get_or_init(|| Regex::new(r"[^\w .#-]+").unwrap_or_else(|_| unreachable_regex()));
+    let space_re =
+        SPACE_RE.get_or_init(|| Regex::new(r"\s+").unwrap_or_else(|_| unreachable_regex()));
+
+    let stripped = non_cat_re.replace_all(value, "");
+    let spaced = space_re.replace_all(&stripped, " ");
+    let trimmed = spaced.trim();
+    crate::jsval::js_slice_utf16(trimmed, 40)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,5 +421,37 @@ mod tests {
         // empty input falls back to text
         assert_eq!(sanitize_blog_html("", "a\n\nb"), "<p>a</p><p>b</p>");
         assert_eq!(sanitize_blog_html("", ""), "");
+    }
+
+    #[test]
+    fn test_slugify_and_helpers() {
+        assert_eq!(slugify_blog_title("Hello, World! 123"), "hello-world-123");
+        assert_eq!(slugify_blog_title("   "), "post");
+        assert_eq!(
+            slugify_blog_title("Mitch's \"Secret\" Post"),
+            "mitchs-secret-post"
+        );
+        assert_eq!(blog_excerpt("a   b   c"), "a b c");
+        assert_eq!(
+            blog_excerpt(&"a".repeat(300)),
+            format!("{}...", "a".repeat(217))
+        );
+        assert_eq!(
+            blog_html_to_text("<p>Hello<br>World &amp; Friends</p><div>&nbsp;Test&quot;</div>"),
+            "Hello World & Friends Test\""
+        );
+        let tags = sanitize_blog_tags(&serde_json::json!([
+            "tag1",
+            "tag2#cool",
+            "tag1",
+            "a".repeat(50)
+        ]));
+        assert_eq!(tags.len(), 3);
+        assert_eq!(tags[0], "tag1");
+        assert_eq!(tags[1], "tag2#cool");
+        assert_eq!(
+            sanitize_blog_category("  Announcements & News!! "),
+            "Announcements News"
+        );
     }
 }

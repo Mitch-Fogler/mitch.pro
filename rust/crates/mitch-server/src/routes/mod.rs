@@ -8,7 +8,9 @@
 
 pub mod admin;
 pub mod auth;
+pub mod backgrounds;
 pub mod battleship;
+pub mod blog;
 pub mod blooket;
 pub mod canvas;
 pub mod casino;

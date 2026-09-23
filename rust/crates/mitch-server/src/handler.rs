@@ -919,6 +919,23 @@ pub async fn handle(
         {
             return resp;
         }
+        // backgrounds group (server.js:9500-9544, 11370-11684).
+        if path.starts_with("/api/backgrounds/") || path.starts_with("/api/bg/") {
+            if let Some(resp) =
+                crate::routes::backgrounds::handle(&state, &method, &path, headers, body_bytes)
+                    .await
+            {
+                return resp;
+            }
+        }
+        // blog group (server.js:11308-11369, 11685-11943).
+        if path.starts_with("/api/blog/") {
+            if let Some(resp) =
+                crate::routes::blog::handle(&state, &method, &path, headers, body_bytes).await
+            {
+                return resp;
+            }
+        }
         // marketplace group (server.js:12040-12390).
         if let Some(resp) =
             crate::routes::marketplace::handle(&state, &method, &path, headers, body_bytes).await
