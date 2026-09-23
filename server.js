@@ -2731,7 +2731,7 @@ function issueLoginSession(normEmail, originalEmail = normEmail) {
   const names = loadJson(NAMES_FILE, {});
   if (names[studentId] !== originalEmail) {
     names[studentId] = originalEmail;
-    saveJson(NAMES_FILE, names);
+    writeDocument(NAMES_FILE, names);
   }
   return studentId;
 }
@@ -2963,7 +2963,10 @@ function loadAuthSessions() {
 }
 
 function saveAuthSessions(sessions) {
-  saveJson(AUTH_SESSIONS_FILE, sessions);
+  // A login must never claim success if the session was not persisted.
+  // saveJson intentionally swallows storage errors for best-effort data, but
+  // authentication is not best-effort.
+  writeDocument(AUTH_SESSIONS_FILE, sessions);
 }
 
 function hashSessionToken(token) {
@@ -3063,7 +3066,7 @@ function rotateSessionGeneration(normEmail) {
 
 function authSuccessResponse(req, payload, normEmail, originalEmail = normEmail, options = {}) {
   const session = createAuthSession(normEmail, originalEmail, req, options);
-  const headers = new Headers({ 'Content-Type': 'application/json' });
+  const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' });
   headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
   headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
   headers.append('Set-Cookie', clearCookieHeader('password', req, false));
@@ -16507,7 +16510,9 @@ async function handleRequest(req, server) {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         let email = (body.email || '').trim().toLowerCase();
-        const password = (body.password || '').trim();
+        // Preserve the exact password the user entered; trimming it here made
+        // some newly created accounts impossible to sign into as expected.
+        const password = String(body.password || '');
         if (!email || !password)
           return jsonResp(400, { success: false, message: 'Email and password required.' });
         const normEmail = normalizeEmail(email);

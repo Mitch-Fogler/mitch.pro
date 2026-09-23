@@ -770,9 +770,34 @@ function postLoginDestination() {
   try { next = new URLSearchParams(window.location.search).get('next') || ''; } catch (_) {}
   if (next) {
     if (/^\/[^/\\]/.test(next) || next === '/') return next;
-    if (/^https:\/\/([a-z0-9-]+\.)*(mitch\.pro|rjuhsd\.school)(\/|$|\?)/i.test(next)) return next;
+    if (/^https:\/\/(mitchdog\.com|([a-z0-9-]+\.)*(mitch\.pro|rjuhsd\.school))(\/|$|\?)/i.test(next)) {
+      var target = new URL(next);
+      if (target.origin === window.location.origin) return next;
+      // mitch.pro permanently redirects to mitchdog.com, so keep its
+      // destination on the current cookie-owning host.
+      if (target.hostname === 'mitch.pro' && window.location.hostname === 'mitchdog.com') {
+        return target.pathname + target.search + target.hash;
+      }
+      return '/api/sso/bridge?back=' + encodeURIComponent(next);
+    }
   }
   return '/';
+}
+
+async function confirmAuthSession(expectedEmail) {
+  var expected = String(expectedEmail || '').toLowerCase().trim();
+  for (var attempt = 0; attempt < 3; attempt++) {
+    try {
+      var response = await fetch('/api/me', { credentials: 'include', cache: 'no-store' });
+      if (response.ok) {
+        var me = await response.json();
+        var actual = String(me.rawEmail || me.normEmail || '').toLowerCase().trim();
+        if (actual && (!expected || actual === expected)) return;
+      }
+    } catch (_) {}
+    if (attempt < 2) await new Promise(function (resolve) { setTimeout(resolve, 350); });
+  }
+  throw new Error('Sign-in could not be confirmed. Please try again.');
 }
 
 function updateBtn() {
@@ -1142,6 +1167,7 @@ async function submit(isResend = false) {
   try {
     const r = await fetch('/api/signup', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, username, nickname, gradYear, gender, referralSource, referralDetails, recaptcha_token: captcha, refCode: window._inviteRef || '' })
     });
@@ -1192,18 +1218,23 @@ async function verifySignup() {
   try {
     const r = await fetch('/api/verify-signup', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, code, recaptcha_token: captcha })
     });
     const d = await r.json();
     if (d.success) {
-      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      try { await confirmAuthSession(d.email); }
+      catch (_) {
+        tmsg.className = 'err';
+        tmsg.innerHTML = 'Account created, but sign-in could not be confirmed. <a href="/enroll/">Sign in again</a>.';
+        return;
+      }
       tmsg.textContent = 'Success! Setting up encrypted chat key...';
       await restoreE2EKeysAfterAuth(window._signupPassword || '');
       tmsg.className = 'ok';
       tmsg.innerHTML = 'Success! Welcome to mitch.pro. Redirecting...';
-      setTimeout(() => window.location.href = "/", 2000);
+      setTimeout(() => window.location.href = postLoginDestination(), 800);
     } else {
       tmsg.className = 'err';
       tmsg.textContent = d.message || 'Invalid code.';
@@ -1365,8 +1396,7 @@ async function login() {
     });
     const d = await r.json();
     if (d.success) {
-      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      await confirmAuthSession(d.email);
       msg.textContent = 'Signed in — restoring secure chat key...';
       await restoreE2EKeysAfterAuth(password);
       window.location.href = postLoginDestination();
@@ -1415,8 +1445,7 @@ async function verifyLogin2fa() {
     });
     const d = await r.json();
     if (d.success) {
-      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      await confirmAuthSession(d.email);
       msg.textContent = 'Verified — restoring secure chat key...';
       await restoreE2EKeysAfterAuth(window._loginPassword || '');
       window.location.href = postLoginDestination();
@@ -1476,8 +1505,7 @@ async function loginWithPasskey() {
     });
     const d = await r.json();
     if (d.success) {
-      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      await confirmAuthSession(d.email);
       msg.className = 'ok';
       msg.textContent = 'Signed in.';
       window.location.href = postLoginDestination();
@@ -1531,8 +1559,7 @@ async function claimToken(mode) {
     });
     const d = await r.json();
     if (d.success) {
-      var secureFlag = location.protocol === 'https:' ? ';Secure' : '';
-      document.cookie = "studentId=" + d.id + ";path=/;max-age=31536000" + secureFlag + ";SameSite=Lax";
+      await confirmAuthSession(d.email);
       tmsg.textContent = 'Success! Restoring encrypted chat key...';
       // New password just verified — restore if the backup was wrapped with
       // it, otherwise set up a fresh key for the new password.
