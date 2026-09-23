@@ -78,6 +78,19 @@ pub fn spawn(state: std::sync::Arc<AppState>) {
                 }
             });
         }
+
+        // auto_finalize_marketplace — hourly sweep
+        {
+            let state = state.clone();
+            let mut tick = tokio::time::interval(std::time::Duration::from_secs(3600));
+            tick.tick().await;
+            tokio::spawn(async move {
+                loop {
+                    tick.tick().await;
+                    crate::routes::marketplace::auto_finalize_marketplace(&state);
+                }
+            });
+        }
     });
 }
 
