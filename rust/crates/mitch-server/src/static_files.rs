@@ -269,7 +269,38 @@ fn mime_type(ext: &str) -> Option<&'static str> {
     })
 }
 
-fn cache_control_for(ext: &str, content_type: &str) -> Vec<(HeaderName, String)> {
+fn is_hashed_asset(url_path: &str) -> bool {
+    url_path.starts_with("/matrix/assets/")
+        || url_path.starts_with("/matrix/public/element-call/assets/")
+        || {
+            let filename = url_path.rsplit('/').next().unwrap_or("");
+            if let Some(dash) = filename.rfind('-') {
+                let rest = &filename[dash + 1..];
+                if let Some(dot) = rest.find('.') {
+                    let hash = &rest[..dot];
+                    let ext = &rest[dot + 1..];
+                    hash.len() >= 8
+                        && hash.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                        && matches!(
+                            ext.to_ascii_lowercase().as_str(),
+                            "js" | "css" | "wasm" | "woff" | "woff2" | "ttf" | "png" | "svg"
+                        )
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        }
+}
+
+fn cache_control_for(ext: &str, content_type: &str, url_path: &str) -> Vec<(HeaderName, String)> {
+    if is_hashed_asset(url_path) {
+        return vec![(
+            header::CACHE_CONTROL,
+            "public, max-age=31536000, immutable".to_string(),
+        )];
+    }
     let is_code = matches!(ext, "html" | "htm" | "js" | "css")
         || content_type.contains("text/html")
         || content_type.contains("javascript")
@@ -346,6 +377,7 @@ pub fn serve_static(
     cache: &StaticCache,
     webroot: &std::path::Path,
     url_path: &str,
+    req_headers: Option<&axum::http::HeaderMap>,
     transform_html: impl Fn(String) -> String,
 ) -> Response {
     let Some(mut file_path) = safe_webroot_path(webroot, url_path) else {
@@ -368,9 +400,6 @@ pub fn serve_static(
         }
     }
 
-    let Some(entry) = cache.get(&file_path) else {
-        return err_resp(404, None, None);
-    };
     let ext = file_path
         .to_string_lossy()
         .rsplit('.')
@@ -378,11 +407,28 @@ pub fn serve_static(
         .unwrap_or("")
         .to_lowercase();
 
+    let accepts_gzip = req_headers
+        .and_then(|h| h.get(axum::http::header::ACCEPT_ENCODING))
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.contains("gzip"))
+        .unwrap_or(false);
+    let gz_path = PathBuf::from(format!("{}.gz", file_path.display()));
+    let can_serve_gzip = accepts_gzip && ext != "html" && ext != "htm" && gz_path.exists();
+    let target_file_path = if can_serve_gzip { gz_path } else { file_path };
+
+    let Some(entry) = cache.get(&target_file_path) else {
+        return err_resp(404, None, None);
+    };
+
     let content_type = mime_type(&ext)
         .unwrap_or("application/octet-stream")
         .to_string();
     let mut headers: Vec<(HeaderName, String)> = vec![(header::CONTENT_TYPE, content_type.clone())];
-    headers.extend(cache_control_for(&ext, &content_type));
+    if can_serve_gzip {
+        headers.push((axum::http::header::CONTENT_ENCODING, "gzip".to_string()));
+        headers.push((axum::http::header::VARY, "Accept-Encoding".to_string()));
+    }
+    headers.extend(cache_control_for(&ext, &content_type, url_path));
     apply_common_headers(&mut headers, url_path);
 
     let body: axum::body::Body = if content_type.contains("text/html") {

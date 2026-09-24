@@ -244,7 +244,7 @@ fn conduit_client() -> &'static reqwest::Client {
     CONDUIT_CLIENT.get_or_init(|| {
         reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(10))
-            .tcp_keepalive(std::time::Duration::from_secs(30))
+            .pool_max_idle_per_host(0)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new())
     })
@@ -291,6 +291,7 @@ pub async fn call_conduit_with_timeout(
             rb = rb.timeout(to);
         }
         rb = rb.header("Host", "mitch.pro");
+        rb = rb.header("Connection", "close");
 
         if let Some(ref h) = headers {
             for (k, v) in h.iter() {
@@ -546,6 +547,94 @@ pub async fn ensure_official_general_room(secret: &[u8]) -> Result<String, Strin
     .await
 }
 
+pub async fn sync_matrix_user_to_official_rooms(
+    secret: &[u8],
+    user_id: &str,
+    user_token: &str,
+    target_power_level: i64,
+) {
+    for (alias, name, topic) in OFFICIAL_ROOMS {
+        let Ok(room_id) = ensure_official_room(secret, alias, name, topic).await else {
+            continue;
+        };
+
+        // 1. Join user to official room
+        if !user_token.is_empty() {
+            let encoded_room = url::form_urlencoded::byte_serialize(room_id.as_bytes()).collect::<String>();
+            let mut join_headers = HeaderMap::new();
+            join_headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+            if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {user_token}")) {
+                join_headers.insert("Authorization", hv);
+            }
+            let _ = call_conduit(
+                &format!("/_matrix/client/v3/join/{encoded_room}"),
+                Method::POST,
+                Some(join_headers),
+                Some(Bytes::from_static(b"{}")),
+            ).await;
+        }
+
+        // 2. Fetch current power levels
+        let Ok(admin_token) = get_system_admin_matrix_token(secret).await else {
+            continue;
+        };
+        let encoded_room = url::form_urlencoded::byte_serialize(room_id.as_bytes()).collect::<String>();
+        let mut pl_headers = HeaderMap::new();
+        if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {admin_token}")) {
+            pl_headers.insert("Authorization", hv);
+        }
+        if let Ok((status, _, bytes)) = call_conduit(
+            &format!("/_matrix/client/v3/rooms/{encoded_room}/state/m.room.power_levels"),
+            Method::GET,
+            Some(pl_headers.clone()),
+            None,
+        ).await {
+            if status.is_success() {
+                let mut pl_data: Value = serde_json::from_slice(&bytes).unwrap_or(json!({}));
+                if !pl_data.is_object() {
+                    pl_data = json!({});
+                }
+                if pl_data.get("users").and_then(|v| v.as_object()).is_none() {
+                    pl_data["users"] = json!({});
+                }
+                if pl_data.get("events").and_then(|v| v.as_object()).is_none() {
+                    pl_data["events"] = json!({});
+                }
+                let mut pl_changed = false;
+                for call_ev in &["org.matrix.msc3401.call.member", "org.matrix.msc3401.call", "org.matrix.msc4143.rtc.member"] {
+                    if pl_data["events"].get(call_ev).and_then(|v| v.as_i64()) != Some(0) {
+                        pl_data["events"][call_ev] = json!(0);
+                        pl_changed = true;
+                    }
+                }
+                let current_pl = pl_data["users"].get(user_id).and_then(|v| v.as_i64()).unwrap_or(0);
+                if current_pl != target_power_level {
+                    if target_power_level > 0 {
+                        pl_data["users"][user_id] = json!(target_power_level);
+                    } else if let Some(users_obj) = pl_data["users"].as_object_mut() {
+                        users_obj.remove(user_id);
+                    }
+                    pl_changed = true;
+                }
+                if pl_changed {
+                    let mut put_headers = HeaderMap::new();
+                    put_headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+                    if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {admin_token}")) {
+                        put_headers.insert("Authorization", hv);
+                    }
+                    let _ = call_conduit(
+                        &format!("/_matrix/client/v3/rooms/{encoded_room}/state/m.room.power_levels"),
+                        Method::PUT,
+                        Some(put_headers),
+                        Some(Bytes::from(serde_json::to_vec(&pl_data).unwrap_or_default())),
+                    ).await;
+                }
+            }
+        }
+    }
+}
+
+
 pub fn check_matrix_slowmode(room_id: &str, sender_key: &str, slowmode_seconds: i64) -> i64 {
     if slowmode_seconds <= 0 {
         return 0;
@@ -651,6 +740,10 @@ pub fn urlencoding_decode(val: &str) -> String {
         .find(|(k, _)| k == "v")
         .map(|(_, v)| v.into_owned())
         .unwrap_or_else(|| val.to_string())
+}
+
+pub fn urlencoding_encode(val: &str) -> String {
+    url::form_urlencoded::byte_serialize(val.as_bytes()).collect()
 }
 
 pub fn find_profile_email_by_matrix_user_id(
@@ -1444,6 +1537,14 @@ async fn api_sso_login(state: &AppState, headers: &HeaderMap, body_bytes: &[u8])
     } else {
         "member"
     };
+
+    sync_matrix_user_to_official_rooms(
+        &state.id_secret,
+        user_id,
+        access_token,
+        target_power_level,
+    )
+    .await;
 
     let pfp_val = prof.get("pfp").and_then(|v| v.as_str()).unwrap_or("");
     let bio_val = prof.get("bio").and_then(|v| v.as_str()).unwrap_or("");
@@ -2563,13 +2664,9 @@ async fn mod_prune_stale(state: &AppState, headers: &HeaderMap, body_bytes: &[u8
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    let user_token = auth_header.trim_start_matches("Bearer ").trim();
+    let user_token = auth_header.trim_start_matches("Bearer ").trim().to_string();
 
-    if user_token.is_empty() && sid.is_empty() {
-        return cors_json_response(401, json!({ "error": "unauthorized" }));
-    }
-
-    let current_device_id = body_json
+    let mut current_device_id = body_json
         .get("currentDeviceId")
         .and_then(|v| v.as_str())
         .or_else(|| {
@@ -2577,56 +2674,937 @@ async fn mod_prune_stale(state: &AppState, headers: &HeaderMap, body_bytes: &[u8
                 .get("x-matrix-device-id")
                 .and_then(|v| v.to_str().ok())
         })
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_string();
 
-    if !user_token.is_empty() {
-        let mut dev_headers = HeaderMap::new();
-        if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {user_token}")) {
-            dev_headers.insert("Authorization", hv);
+    let max_age_days = body_json
+        .get("maxAgeDays")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(7.0);
+    let prune_all_except_current = body_json
+        .get("pruneAllExceptCurrent")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let target_uid = if !sid.is_empty() && mitch_lib::auth::valid_id(sid, &state.id_secret) {
+        sid.to_string()
+    } else {
+        String::new()
+    };
+    let mut target_username = String::new();
+
+    if !target_uid.is_empty() {
+        let matrix_users_file = state.data_dir().join("matrix_users.json");
+        let matrix_users = state.store.read_document(&matrix_users_file, json!({}));
+        if let Some(name) = matrix_users.get(&target_uid).and_then(|v| v.as_str()) {
+            target_username = name.to_string();
         }
+    }
 
-        if let Ok((status, _, bytes)) = call_conduit(
-            "/_matrix/client/v3/devices",
-            Method::GET,
-            Some(dev_headers.clone()),
-            None,
-        )
-        .await
-        {
-            if status.is_success() {
-                let dev_data: Value = serde_json::from_slice(&bytes).unwrap_or(json!({}));
-                let devices = dev_data
-                    .get("devices")
-                    .and_then(|v| v.as_array())
-                    .cloned()
-                    .unwrap_or_default();
-                let mut pruned = Vec::new();
-                for d in devices {
-                    let d_id = d.get("device_id").and_then(|v| v.as_str()).unwrap_or("");
-                    if !d_id.is_empty() && d_id != current_device_id {
-                        let _ = call_conduit(
-                            &format!(
-                                "/_matrix/client/v3/devices/{}",
-                                url::form_urlencoded::byte_serialize(d_id.as_bytes())
-                                    .collect::<String>()
-                            ),
-                            Method::DELETE,
-                            Some(dev_headers.clone()),
-                            None,
-                        )
-                        .await;
-                        pruned.push(d_id.to_string());
+    if user_token.is_empty() {
+        return cors_json_response(
+            401,
+            json!({ "error": "Authentication required to prune devices" }),
+        );
+    }
+
+    let mut dev_headers = HeaderMap::new();
+    if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {user_token}")) {
+        dev_headers.insert("Authorization", hv);
+    }
+
+    if let Ok((status, _, bytes)) = call_conduit(
+        "/_matrix/client/v3/account/whoami",
+        Method::GET,
+        Some(dev_headers.clone()),
+        None,
+    )
+    .await
+    {
+        if status.is_success() {
+            if let Ok(who) = serde_json::from_slice::<Value>(&bytes) {
+                if let Some(did) = who.get("device_id").and_then(|v| v.as_str()) {
+                    if current_device_id.is_empty() {
+                        current_device_id = did.to_string();
                     }
                 }
-                return cors_json_response(
-                    200,
-                    json!({ "ok": true, "pruned": pruned.len(), "devices": pruned }),
-                );
+                if let Some(uid) = who.get("user_id").and_then(|v| v.as_str()) {
+                    if target_username.is_empty() {
+                        let local = uid
+                            .strip_prefix('@')
+                            .unwrap_or(uid)
+                            .split(':')
+                            .next()
+                            .unwrap_or("");
+                        target_username = local.to_string();
+                    }
+                }
             }
         }
     }
 
-    cors_json_response(200, json!({ "ok": true, "pruned": 0, "devices": [] }))
+    if let Ok((status, _, bytes)) = call_conduit(
+        "/_matrix/client/v3/devices",
+        Method::GET,
+        Some(dev_headers.clone()),
+        None,
+    )
+    .await
+    {
+        if status.is_success() {
+            let dev_data: Value = serde_json::from_slice(&bytes).unwrap_or(json!({}));
+            let devices = dev_data
+                .get("devices")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let now = now_millis();
+            let max_age_ms = (max_age_days.max(1.0) * 86_400_000.0) as i64;
+            let mut to_delete = Vec::new();
+
+            for dev in &devices {
+                let d_id = dev.get("device_id").and_then(|v| v.as_str()).unwrap_or("");
+                if d_id.is_empty() {
+                    continue;
+                }
+                if !current_device_id.is_empty() && d_id == current_device_id {
+                    continue;
+                }
+                if prune_all_except_current {
+                    to_delete.push(d_id.to_string());
+                    continue;
+                }
+                let last_seen = dev.get("last_seen_ts").and_then(|v| v.as_i64()).unwrap_or(0);
+                if last_seen == 0 || (now - last_seen) > max_age_ms {
+                    to_delete.push(d_id.to_string());
+                }
+            }
+
+            if !to_delete.is_empty() {
+                let del_body = serde_json::to_vec(&json!({ "devices": to_delete })).unwrap_or_default();
+                let del_res = call_conduit(
+                    "/_matrix/client/v3/delete_devices",
+                    Method::POST,
+                    Some(dev_headers.clone()),
+                    Some(Bytes::from(del_body)),
+                )
+                .await;
+
+                if let Ok((del_status, _, _)) = del_res {
+                    if del_status == StatusCode::UNAUTHORIZED && !target_uid.is_empty() {
+                        let conduit_pass = get_matrix_password_for_uid(&target_uid, &state.id_secret);
+                        let uia_body = serde_json::to_vec(&json!({
+                            "devices": to_delete,
+                            "auth": {
+                                "type": "m.login.password",
+                                "identifier": { "type": "m.id.user", "user": target_username },
+                                "password": conduit_pass
+                            }
+                        }))
+                        .unwrap_or_default();
+                        let _ = call_conduit(
+                            "/_matrix/client/v3/delete_devices",
+                            Method::POST,
+                            Some(dev_headers.clone()),
+                            Some(Bytes::from(uia_body)),
+                        )
+                        .await;
+                    }
+                }
+            }
+
+            let pruned_count = to_delete.len();
+            let remaining_count = devices.len().saturating_sub(pruned_count);
+            return cors_json_response(
+                200,
+                json!({
+                    "ok": true,
+                    "prunedCount": pruned_count,
+                    "prunedDevices": to_delete,
+                    "remainingCount": remaining_count
+                }),
+            );
+        }
+    }
+
+    cors_json_response(
+        500,
+        json!({ "ok": false, "error": "Failed to list user devices" }),
+    )
+}
+
+async fn translate_matrix_password(
+    state: &AppState,
+    headers: &HeaderMap,
+    path: &str,
+    body_bytes: &[u8],
+) -> (bool, Vec<u8>) {
+    let Ok(mut parsed) = serde_json::from_slice::<Value>(body_bytes) else {
+        return (false, body_bytes.to_vec());
+    };
+    if !parsed.is_object() {
+        return (false, body_bytes.to_vec());
+    }
+
+    let has_auth_password = parsed
+        .get("auth")
+        .and_then(|a| a.get("password"))
+        .and_then(|p| p.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+    let has_root_password = parsed
+        .get("password")
+        .and_then(|p| p.as_str())
+        .map(|s| !s.is_empty())
+        .unwrap_or(false);
+
+    if !has_auth_password && !has_root_password {
+        return (false, body_bytes.to_vec());
+    }
+
+    let Some(account) = resolve_matrix_account(state, headers, Some(&parsed)).await else {
+        return (false, body_bytes.to_vec());
+    };
+    if account.uid.is_empty() || account.norm_email.is_empty() {
+        return (false, body_bytes.to_vec());
+    }
+
+    let passwords = state.store.read_document(&state.data_dir().join("passwords.json"), json!({}));
+    let stored_hash = passwords.get(&account.norm_email).and_then(|v| v.as_str()).unwrap_or("");
+    let conduit_pass = get_matrix_password_for_uid(&account.uid, &state.id_secret);
+    let mut changed = false;
+
+    if has_auth_password {
+        let entered = parsed["auth"]["password"].as_str().unwrap_or("").to_string();
+        if entered == conduit_pass {
+            // Already internal conduit password
+        } else if !stored_hash.is_empty() {
+            let valid = mitch_lib::crypto::argon2_verify(stored_hash, &entered);
+            if valid {
+                parsed["auth"]["password"] = json!(conduit_pass);
+                changed = true;
+                if path.contains("/account/password") && parsed.get("new_password").is_some() {
+                    if let Some(new_p) = parsed.get("new_password").and_then(|v| v.as_str()) {
+                        let new_hash = mitch_lib::crypto::argon2_hash(new_p);
+                        if !new_hash.is_empty() {
+                            let mut pw_map = passwords.clone();
+                            if let Some(obj) = pw_map.as_object_mut() {
+                                obj.insert(account.norm_email.clone(), json!(new_hash));
+                                let _ = state.store.write_document(&state.data_dir().join("passwords.json"), &pw_map);
+                            }
+                            parsed["new_password"] = json!(conduit_pass);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if has_root_password {
+        let entered = parsed["password"].as_str().unwrap_or("").to_string();
+        if entered == conduit_pass {
+            // Already internal conduit password
+        } else if !stored_hash.is_empty() {
+            let valid = mitch_lib::crypto::argon2_verify(stored_hash, &entered);
+            if valid {
+                parsed["password"] = json!(conduit_pass);
+                changed = true;
+            }
+        }
+    }
+
+    if changed {
+        (true, serde_json::to_vec(&parsed).unwrap_or_else(|_| body_bytes.to_vec()))
+    } else {
+        (false, body_bytes.to_vec())
+    }
+}
+
+
+pub fn record_matrix_email_sent(state: &AppState, member_norm: &str) {
+    let norm = mitch_lib::auth::normalize_email(member_norm);
+    if norm.is_empty() {
+        return;
+    }
+    let email_sent_file = state.data_dir().join("matrix_email_sent.json");
+    let mut sent_map = state.store.read_document(&email_sent_file, json!({}));
+    if !sent_map.is_object() {
+        sent_map = json!({});
+    }
+    if let Some(obj) = sent_map.as_object_mut() {
+        obj.insert(norm, json!(now_millis()));
+        let _ = state.store.write_document(&email_sent_file, &sent_map);
+    }
+}
+
+pub fn add_matrix_notification(state: &AppState, target_norm: &str, notif: &Value) {
+    if target_norm.is_empty() {
+        return;
+    }
+    let notif_file = state.data_dir().join("matrix_notifications.json");
+    let mut all = state.store.read_document(&notif_file, json!({}));
+    if !all.is_object() {
+        all = json!({});
+    }
+
+    let room_id = notif.get("roomId").and_then(|v| v.as_str()).unwrap_or("");
+    let n_type = notif.get("type").and_then(|v| v.as_str()).unwrap_or("matrix");
+    let sender = notif.get("sender").and_then(|v| v.as_str()).unwrap_or("Someone");
+    let room_title = notif.get("roomTitle").and_then(|v| v.as_str()).unwrap_or("");
+    let is_direct = notif.get("isDirect").and_then(|v| v.as_bool()).unwrap_or(false);
+    let now = now_millis();
+
+    let list = match all.get_mut(target_norm).and_then(|v| v.as_array_mut()) {
+        Some(l) => l,
+        None => {
+            if let Some(obj) = all.as_object_mut() {
+                obj.insert(target_norm.to_string(), json!([]));
+                obj.get_mut(target_norm).unwrap().as_array_mut().unwrap()
+            } else {
+                return;
+            }
+        }
+    };
+
+    let existing_idx = list.iter().position(|n| {
+        n.get("read") != Some(&json!(true))
+            && n.get("roomId").and_then(|v| v.as_str()) == Some(room_id)
+            && n.get("type").and_then(|v| v.as_str()) == Some(n_type)
+    });
+
+    if let Some(idx) = existing_idx {
+        let mut existing = list.remove(idx);
+        let count = existing.get("count").and_then(|v| v.as_i64()).unwrap_or(1) + 1;
+        existing["count"] = json!(count);
+        existing["ts"] = json!(now);
+        if let Some(detail) = notif.get("detail").and_then(|v| v.as_str()) {
+            if !detail.is_empty() {
+                existing["detail"] = json!(detail);
+            }
+        }
+        if n_type == "matrix_call" {
+            existing["title"] = json!(format!("📞 Active call from {sender}"));
+        } else if n_type == "matrix_invite" {
+            if let Some(t) = notif.get("title").and_then(|v| v.as_str()) {
+                existing["title"] = json!(t);
+            }
+        } else {
+            let updated_title = if is_direct {
+                format!("{count} messages from {sender}")
+            } else if !room_title.is_empty() {
+                format!("{count} new messages in {room_title}")
+            } else {
+                format!("{count} new messages in chat")
+            };
+            existing["title"] = json!(updated_title);
+        }
+        list.insert(0, existing);
+    } else {
+        let item_id = notif
+            .get("id")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("matrix:{room_id}:{now}"));
+        let default_title = if is_direct {
+            format!("Message from {sender}")
+        } else if !room_title.is_empty() {
+            format!("New message from {sender} in {room_title}")
+        } else {
+            "New message in chat".to_string()
+        };
+        let title = notif
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&default_title);
+        let body = notif
+            .get("body")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Matrix Chat");
+        let detail = notif.get("detail").and_then(|v| v.as_str()).unwrap_or("");
+        let enc_room = urlencoding_encode(room_id);
+        let default_url = format!("/matrix/#/room/{enc_room}");
+        let url = notif.get("url").and_then(|v| v.as_str()).unwrap_or(&default_url);
+
+        let item = json!({
+            "id": item_id,
+            "type": n_type,
+            "roomId": room_id,
+            "title": title,
+            "body": body,
+            "detail": detail,
+            "sender": sender,
+            "roomTitle": room_title,
+            "isDirect": is_direct,
+            "count": 1,
+            "ts": now,
+            "url": url,
+            "read": false
+        });
+        list.insert(0, item);
+    }
+
+    if list.len() > 50 {
+        list.truncate(50);
+    }
+
+    let _ = state.store.write_document(&notif_file, &all);
+    crate::ws::trigger_notification_refresh(state);
+}
+
+#[derive(Clone)]
+struct MatrixRoomCachedInfo {
+    members: Vec<String>,
+    name: String,
+    ts: i64,
+}
+
+static ROOM_INFO_CACHE: OnceLock<Mutex<HashMap<String, MatrixRoomCachedInfo>>> = OnceLock::new();
+fn room_info_cache() -> &'static Mutex<HashMap<String, MatrixRoomCachedInfo>> {
+    ROOM_INFO_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+async fn get_matrix_room_info_for_notifications(
+    room_id: &str,
+    token: &str,
+    secret: &[u8],
+) -> (Vec<String>, String) {
+    let now = now_millis();
+    {
+        let cache = room_info_cache().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = cache.get(room_id) {
+            if now.saturating_sub(entry.ts) < 30_000 && !entry.members.is_empty() {
+                return (entry.members.clone(), entry.name.clone());
+            }
+        }
+    }
+
+    let mut members = Vec::new();
+    let mut name = String::new();
+
+    let mut headers = HeaderMap::new();
+    let eff_token = if !token.is_empty() {
+        token.to_string()
+    } else {
+        get_system_admin_matrix_token(secret).await.unwrap_or_default()
+    };
+    if !eff_token.is_empty() {
+        let auth_val = if eff_token.to_lowercase().starts_with("bearer ") {
+            eff_token
+        } else {
+            format!("Bearer {eff_token}")
+        };
+        if let Ok(hv) = HeaderValue::from_str(&auth_val) {
+            headers.insert("authorization", hv);
+        }
+    }
+
+    let enc_room = urlencoding_encode(room_id);
+    let mem_subpath = format!("/_matrix/client/v3/rooms/{enc_room}/joined_members");
+    if let Ok((status, _, bytes)) = call_conduit(&mem_subpath, Method::GET, Some(headers.clone()), None).await {
+        if status.is_success() {
+            if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
+                if let Some(joined) = val.get("joined").and_then(|v| v.as_object()) {
+                    members = joined.keys().cloned().collect();
+                }
+            }
+        }
+    }
+
+    let name_subpath = format!("/_matrix/client/v3/rooms/{enc_room}/state/m.room.name");
+    if let Ok((status, _, bytes)) = call_conduit(&name_subpath, Method::GET, Some(headers.clone()), None).await {
+        if status.is_success() {
+            if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
+                if let Some(n) = val.get("name").and_then(|v| v.as_str()) {
+                    name = n.to_string();
+                }
+            }
+        }
+    }
+    if name.is_empty() {
+        let alias_subpath = format!("/_matrix/client/v3/rooms/{enc_room}/state/m.room.canonical_alias");
+        if let Ok((status, _, bytes)) = call_conduit(&alias_subpath, Method::GET, Some(headers.clone()), None).await {
+            if status.is_success() {
+                if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
+                    if let Some(a) = val.get("alias").and_then(|v| v.as_str()) {
+                        name = a.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    if !members.is_empty() {
+        let mut cache = room_info_cache().lock().unwrap_or_else(|e| e.into_inner());
+        cache.insert(
+            room_id.to_string(),
+            MatrixRoomCachedInfo {
+                members: members.clone(),
+                name: name.clone(),
+                ts: now,
+            },
+        );
+    }
+
+    (members, name)
+}
+
+fn resolve_member_norm(state: &AppState, member_id: &str) -> String {
+    let local_part = member_id
+        .strip_prefix('@')
+        .unwrap_or(member_id)
+        .split(':')
+        .next()
+        .unwrap_or("");
+    if local_part.is_empty() {
+        return String::new();
+    }
+
+    let matrix_users_file = state.data_dir().join("matrix_users.json");
+    let matrix_users = state.store.read_document(&matrix_users_file, json!({}));
+    if let Some(obj) = matrix_users.as_object() {
+        for (sid, name_val) in obj {
+            let name_str = name_val.as_str().unwrap_or("");
+            if name_str.eq_ignore_ascii_case(local_part)
+                || format!("@{name_str}:mitch.pro").eq_ignore_ascii_case(member_id)
+            {
+                if let Some(em) = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid) {
+                    let norm = mitch_lib::auth::normalize_email(&em);
+                    if !norm.is_empty() {
+                        return norm;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(em) = crate::routes::auth::resolve_login_identifier(state, local_part) {
+        let norm = mitch_lib::auth::normalize_email(&em);
+        if !norm.is_empty() {
+            return norm;
+        }
+    }
+
+    let profiles_file = state.data_dir().join("profiles.json");
+    let profiles = state.store.read_document(&profiles_file, json!({}));
+    if let Some(obj) = profiles.as_object() {
+        for (email_key, prof_val) in obj {
+            if let Some(uname) = prof_val.get("username").and_then(|v| v.as_str()) {
+                if uname.eq_ignore_ascii_case(local_part) {
+                    return email_key.clone();
+                }
+            }
+        }
+    }
+
+    String::new()
+}
+
+async fn resolve_sender_info(
+    state: &AppState,
+    headers: &HeaderMap,
+    body_val: Option<&Value>,
+) -> (String, String, String) {
+    let mut sender_user_id = String::new();
+    let mut sender_display_name = String::from("Someone");
+    let mut sender_norm_email = String::new();
+
+    if let Some(acc) = resolve_matrix_account(state, headers, body_val).await {
+        sender_user_id = acc.user_id;
+        sender_norm_email = acc.norm_email;
+    }
+
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim_start_matches("Bearer ").trim().to_string())
+        .unwrap_or_default();
+
+    if sender_user_id.is_empty() && !token.is_empty() {
+        let map = token_to_account_map().lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(acc) = map.get(&token) {
+            sender_user_id = acc.user_id.clone();
+            if sender_norm_email.is_empty() {
+                sender_norm_email = acc.norm_email.clone();
+            }
+        }
+    }
+
+    if sender_norm_email.is_empty() && !sender_user_id.is_empty() {
+        sender_norm_email = resolve_member_norm(state, &sender_user_id);
+    }
+
+    if !sender_norm_email.is_empty() {
+        let profiles_file = state.data_dir().join("profiles.json");
+        let profiles = state.store.read_document(&profiles_file, json!({}));
+        if let Some(prof) = profiles.get(&sender_norm_email) {
+            if let Some(name) = prof
+                .get("displayName")
+                .or_else(|| prof.get("nickname"))
+                .or_else(|| prof.get("username"))
+                .and_then(|v| v.as_str())
+            {
+                if !name.trim().is_empty() {
+                    sender_display_name = name.trim().to_string();
+                }
+            }
+        }
+        if sender_display_name == "Someone" {
+            if let Some(local) = sender_norm_email.split('@').next() {
+                if !local.is_empty() {
+                    sender_display_name = local.to_string();
+                }
+            }
+        }
+    } else if !sender_user_id.is_empty() {
+        let local = sender_user_id
+            .strip_prefix('@')
+            .unwrap_or(&sender_user_id)
+            .split(':')
+            .next()
+            .unwrap_or("");
+        if !local.is_empty() {
+            sender_display_name = local.to_string();
+        }
+    }
+
+    (sender_user_id, sender_display_name, sender_norm_email)
+}
+
+async fn dispatch_matrix_message_notifications(
+    state: &Arc<AppState>,
+    room_id: &str,
+    event_type: &str,
+    body_bytes: &[u8],
+    headers: &HeaderMap,
+) {
+    if event_type != "m.room.message" && event_type != "m.room.encrypted" {
+        return;
+    }
+
+    let parsed: Option<Value> = serde_json::from_slice(body_bytes).ok();
+    let preview_text = if event_type == "m.room.encrypted" {
+        "🔒 Encrypted message".to_string()
+    } else if let Some(ref p) = parsed {
+        match p.get("msgtype").and_then(|v| v.as_str()) {
+            Some("m.image") => "📷 Sent an image".to_string(),
+            Some("m.file") => "📎 Sent an attachment".to_string(),
+            _ => {
+                if let Some(b) = p.get("body").and_then(|v| v.as_str()) {
+                    let stripped = b.replace("<", "&lt;").replace(">", "&gt;");
+                    let trimmed = stripped.trim();
+                    let len = trimmed.chars().count().min(120);
+                    trimmed.chars().take(len).collect::<String>()
+                } else {
+                    "New message".to_string()
+                }
+            }
+        }
+    } else {
+        "New message".to_string()
+    };
+
+    let (sender_user_id, sender_display_name, sender_norm_email) =
+        resolve_sender_info(state, headers, parsed.as_ref()).await;
+
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim_start_matches("Bearer ").trim())
+        .unwrap_or("");
+
+    let (members, room_name) =
+        get_matrix_room_info_for_notifications(room_id, token, &state.id_secret).await;
+    if members.is_empty() {
+        return;
+    }
+
+    let is_direct = members.len() <= 2;
+    let room_title = if !room_name.is_empty() {
+        room_name
+    } else if is_direct {
+        String::new()
+    } else {
+        "General".to_string()
+    };
+
+    let notif_title = if is_direct {
+        format!("Message from {sender_display_name}")
+    } else if !room_title.is_empty() {
+        format!("New message from {sender_display_name} in {room_title}")
+    } else {
+        format!("Message from {sender_display_name}")
+    };
+
+    let notif_body = if is_direct {
+        "Matrix Direct Message".to_string()
+    } else if !room_title.is_empty() {
+        format!("Matrix • {room_title}")
+    } else {
+        "Matrix Group Message".to_string()
+    };
+
+    let enc_room = urlencoding_encode(room_id);
+    let notif_url = format!("/matrix/#/room/{enc_room}");
+
+    let vapid_public = std::env::var("VAPID_PUBLIC_KEY").unwrap_or_default();
+    let subs = if !vapid_public.is_empty() {
+        state.store.read_document(&state.data_dir().join("push_subs.json"), json!({}))
+    } else {
+        json!({})
+    };
+
+    for member_id in &members {
+        if !sender_user_id.is_empty() && member_id.eq_ignore_ascii_case(&sender_user_id) {
+            continue;
+        }
+
+        let member_norm = resolve_member_norm(state, member_id);
+        if member_norm.is_empty() || member_norm == sender_norm_email {
+            continue;
+        }
+
+        let notif_key = if is_direct { "dm" } else { "group" };
+        if !crate::routes::dm::notif_allowed(state, &member_norm, notif_key) {
+            continue;
+        }
+
+        add_matrix_notification(
+            state,
+            &member_norm,
+            &json!({
+                "roomId": room_id,
+                "type": "matrix",
+                "title": notif_title,
+                "body": notif_body,
+                "detail": preview_text,
+                "sender": sender_display_name,
+                "roomTitle": room_title,
+                "isDirect": is_direct,
+                "url": notif_url,
+            }),
+        );
+
+        if !vapid_public.is_empty() {
+            if let Some(sub) = subs.get(&member_norm) {
+                let push_payload = json!({
+                    "title": notif_title,
+                    "body": preview_text,
+                    "url": notif_url,
+                    "tag": format!("matrix-{room_id}"),
+                });
+                let st = state.clone();
+                let vp = vapid_public.clone();
+                let mn = member_norm.clone();
+                let sb = sub.clone();
+                tokio::spawn(async move {
+                    let _ = crate::routes::push::send_web_push(&st, &vp, &mn, &sb, &push_payload).await;
+                });
+            }
+        }
+    }
+}
+
+async fn dispatch_matrix_invite_notifications(
+    state: &Arc<AppState>,
+    room_id: &str,
+    body_bytes: &[u8],
+    headers: &HeaderMap,
+) {
+    let parsed: Value = serde_json::from_slice(body_bytes).unwrap_or(json!({}));
+    let target_user_id = parsed.get("user_id").and_then(|v| v.as_str()).unwrap_or("");
+    if target_user_id.is_empty() {
+        return;
+    }
+
+    let (_, sender_display_name, _) =
+        resolve_sender_info(state, headers, Some(&parsed)).await;
+
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim_start_matches("Bearer ").trim())
+        .unwrap_or("");
+
+    let (_, room_name) =
+        get_matrix_room_info_for_notifications(room_id, token, &state.id_secret).await;
+    let room_title = if !room_name.is_empty() {
+        room_name
+    } else {
+        "a chat room".to_string()
+    };
+
+    let member_norm = resolve_member_norm(state, target_user_id);
+    if member_norm.is_empty() {
+        return;
+    }
+
+    if !crate::routes::dm::notif_allowed(state, &member_norm, "dm") {
+        return;
+    }
+
+    let notif_title = "Chat Room Invite".to_string();
+    let notif_body = format!("{sender_display_name} invited you to join {room_title}");
+    let enc_room = urlencoding_encode(room_id);
+    let notif_url = format!("/matrix/#/room/{enc_room}");
+
+    add_matrix_notification(
+        state,
+        &member_norm,
+        &json!({
+            "roomId": room_id,
+            "type": "matrix_invite",
+            "title": notif_title,
+            "body": format!("{sender_display_name} invited you"),
+            "detail": format!("Invited you to join room \"{room_title}\""),
+            "sender": sender_display_name,
+            "roomTitle": room_title,
+            "url": notif_url,
+        }),
+    );
+
+    let vapid_public = std::env::var("VAPID_PUBLIC_KEY").unwrap_or_default();
+    if !vapid_public.is_empty() {
+        let subs = state.store.read_document(&state.data_dir().join("push_subs.json"), json!({}));
+        if let Some(sub) = subs.get(&member_norm) {
+            let push_payload = json!({
+                "title": notif_title,
+                "body": notif_body,
+                "url": notif_url,
+                "tag": format!("matrix-invite-{room_id}"),
+            });
+            let st = state.clone();
+            let vp = vapid_public.clone();
+            let mn = member_norm.clone();
+            let sb = sub.clone();
+            tokio::spawn(async move {
+                let _ = crate::routes::push::send_web_push(&st, &vp, &mn, &sb, &push_payload).await;
+            });
+        }
+    }
+
+    record_matrix_email_sent(state, &member_norm);
+}
+
+async fn dispatch_matrix_call_notifications(
+    state: &Arc<AppState>,
+    room_id: &str,
+    _event_type: &str,
+    body_bytes: &[u8],
+    headers: &HeaderMap,
+) {
+    let parsed: Value = serde_json::from_slice(body_bytes).unwrap_or(json!({}));
+    if let Some(memberships) = parsed.get("memberships").and_then(|v| v.as_array()) {
+        if memberships.is_empty() {
+            return;
+        }
+    }
+
+    let (sender_user_id, sender_display_name, sender_norm_email) =
+        resolve_sender_info(state, headers, Some(&parsed)).await;
+
+    let token = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.trim_start_matches("Bearer ").trim())
+        .unwrap_or("");
+
+    let (members, room_name) =
+        get_matrix_room_info_for_notifications(room_id, token, &state.id_secret).await;
+    if members.is_empty() {
+        return;
+    }
+
+    let is_direct = members.len() <= 2;
+    let room_title = if !room_name.is_empty() {
+        room_name
+    } else if is_direct {
+        String::new()
+    } else {
+        "General".to_string()
+    };
+
+    let notif_title = if is_direct {
+        format!("📞 Incoming Call from {sender_display_name}")
+    } else if !room_title.is_empty() {
+        format!("📞 Call in {room_title}")
+    } else {
+        format!("📞 Group call from {sender_display_name}")
+    };
+
+    let notif_body = if !room_title.is_empty() {
+        format!("Incoming voice/video call in {room_title}. Tap to join!")
+    } else {
+        format!("{sender_display_name} is calling you. Tap to answer!")
+    };
+
+    let enc_room = urlencoding_encode(room_id);
+    let notif_url = format!("/matrix/#/room/{enc_room}");
+
+    let vapid_public = std::env::var("VAPID_PUBLIC_KEY").unwrap_or_default();
+    let subs = if !vapid_public.is_empty() {
+        state.store.read_document(&state.data_dir().join("push_subs.json"), json!({}))
+    } else {
+        json!({})
+    };
+
+    for member_id in &members {
+        if !sender_user_id.is_empty() && member_id.eq_ignore_ascii_case(&sender_user_id) {
+            continue;
+        }
+
+        let member_norm = resolve_member_norm(state, member_id);
+        if member_norm.is_empty() || member_norm == sender_norm_email {
+            continue;
+        }
+
+        if !crate::routes::dm::notif_allowed(state, &member_norm, if is_direct { "dm" } else { "group" }) {
+            continue;
+        }
+
+        let call_body = if is_direct {
+            "Matrix Voice/Video Call".to_string()
+        } else if !room_title.is_empty() {
+            format!("Group Call in {room_title}")
+        } else {
+            "Group Call in Chat".to_string()
+        };
+
+        add_matrix_notification(
+            state,
+            &member_norm,
+            &json!({
+                "roomId": room_id,
+                "type": "matrix_call",
+                "title": notif_title,
+                "body": call_body,
+                "detail": format!("{sender_display_name} started a call. Click to join."),
+                "sender": sender_display_name,
+                "roomTitle": room_title,
+                "isDirect": is_direct,
+                "url": notif_url,
+            }),
+        );
+
+        if !vapid_public.is_empty() {
+            if let Some(sub) = subs.get(&member_norm) {
+                let push_payload = json!({
+                    "title": notif_title,
+                    "body": notif_body,
+                    "url": notif_url,
+                    "tag": format!("matrix-call-{room_id}"),
+                    "requireInteraction": true,
+                    "type": "call",
+                });
+                let st = state.clone();
+                let vp = vapid_public.clone();
+                let mn = member_norm.clone();
+                let sb = sub.clone();
+                tokio::spawn(async move {
+                    let _ = crate::routes::push::send_web_push(&st, &vp, &mn, &sb, &push_payload).await;
+                });
+            }
+        }
+    }
 }
 
 /// Gateway dispatcher for Matrix paths: `/_matrix/*`, `/.well-known/matrix/*`, `/matrix/config.json`.
@@ -2845,7 +3823,8 @@ pub async fn handle_matrix_gateway(
 
     if method == Method::PUT || method == Method::POST {
         if let Some(caps) = send_re.captures(path) {
-            let target_room_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let raw_room_id = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let target_room_id = urlencoding_decode(raw_room_id);
             let event_type = caps.get(2).map(|m| m.as_str()).unwrap_or("");
             is_chat_send_event = event_type == "m.room.message"
                 || event_type == "m.room.encrypted"
@@ -2854,14 +3833,14 @@ pub async fn handle_matrix_gateway(
                 || event_type.starts_with("org.matrix.msc2677.reaction");
 
             if is_chat_send_event {
-                send_match_room_id = target_room_id.to_string();
+                send_match_room_id = target_room_id.clone();
                 let parsed_payload: Option<Value> = serde_json::from_slice(body_bytes).ok();
                 let sender_account =
                     resolve_matrix_account(state, headers, parsed_payload.as_ref()).await;
 
                 let is_staff = is_matrix_staff_member(state, headers, sender_account.as_ref());
                 if !is_staff {
-                    let room_settings = load_matrix_room_settings(state, target_room_id);
+                    let room_settings = load_matrix_room_settings(state, &target_room_id);
                     if room_settings.get("roomMuted").and_then(|v| v.as_bool()) == Some(true) {
                         return Some(cors_json_response(
                             403,
@@ -2886,7 +3865,7 @@ pub async fn handle_matrix_gateway(
                     }
 
                     if let Some(mute) =
-                        is_user_muted_in_matrix_room(state, target_room_id, &sender_ids)
+                        is_user_muted_in_matrix_room(state, &target_room_id, &sender_ids)
                     {
                         let reason = mute.get("reason").and_then(|v| v.as_str()).unwrap_or("");
                         let reason_part = if !reason.is_empty() {
@@ -2913,7 +3892,7 @@ pub async fn handle_matrix_gateway(
                             .cloned()
                             .unwrap_or_else(|| "anonymous".to_string());
                         let wait_sec =
-                            check_matrix_slowmode(target_room_id, &s_key, slowmode_seconds);
+                            check_matrix_slowmode(&target_room_id, &s_key, slowmode_seconds);
                         if wait_sec > 0 {
                             let mut resp = cors_json_response(
                                 429,
@@ -2946,7 +3925,15 @@ pub async fn handle_matrix_gateway(
         format!("{path}?{search}")
     };
 
-    let body_opt = if body_bytes.is_empty() {
+    let (body_changed, translated_body) = if !body_bytes.is_empty() {
+        translate_matrix_password(state, headers, path, body_bytes).await
+    } else {
+        (false, Vec::new())
+    };
+
+    let body_opt = if body_changed {
+        Some(Bytes::from(translated_body))
+    } else if body_bytes.is_empty() {
         None
     } else {
         Some(Bytes::copy_from_slice(body_bytes))
@@ -3018,6 +4005,41 @@ pub async fn handle_matrix_gateway(
 
             if status.is_success() && is_chat_send_event && !send_match_room_id.is_empty() {
                 record_matrix_message_sent(&send_match_room_id, &send_match_sender_key);
+            }
+
+            if status.is_success() && (*method == Method::PUT || *method == Method::POST) {
+                if let Some(caps) = send_re.captures(path) {
+                    let room_id = urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
+                    let event_type = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                    if event_type == "m.call.invite" {
+                        dispatch_matrix_call_notifications(state, &room_id, event_type, body_bytes, headers).await;
+                    } else if event_type == "m.room.message" || event_type == "m.room.encrypted" {
+                        dispatch_matrix_message_notifications(state, &room_id, event_type, body_bytes, headers).await;
+                    }
+                } else {
+                    static INVITE_RE: OnceLock<regex::Regex> = OnceLock::new();
+                    let invite_re = INVITE_RE.get_or_init(|| {
+                        regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/rooms/([^/]+)/invite/?$")
+                            .expect("static regex")
+                    });
+                    if let Some(caps) = invite_re.captures(path) {
+                        let room_id = urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
+                        dispatch_matrix_invite_notifications(state, &room_id, body_bytes, headers).await;
+                    } else {
+                        static STATE_RE: OnceLock<regex::Regex> = OnceLock::new();
+                        let state_re = STATE_RE.get_or_init(|| {
+                            regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/rooms/([^/]+)/state/([^/]+)")
+                                .expect("static regex")
+                        });
+                        if let Some(caps) = state_re.captures(path) {
+                            let room_id = urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
+                            let event_type = caps.get(2).map(|m| m.as_str()).unwrap_or("");
+                            if event_type == "m.call.member" || event_type == "org.matrix.msc3401.call.member" {
+                                dispatch_matrix_call_notifications(state, &room_id, event_type, body_bytes, headers).await;
+                            }
+                        }
+                    }
+                }
             }
 
             // Matrix -> Mitch.pro Profile Sync on successful PUT

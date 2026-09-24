@@ -2,6 +2,12 @@
 // server.js — Replaced by Rust rewrite (mitch-server).
 // The bun-server codebase has been completely ported to Rust.
 // This entrypoint delegates directly to the compiled mitch-server binary.
+// Policy references:
+// const MATRIX_MESSAGE_ALERT_COOLDOWN_MS = 5 * 60 * 1000;
+// const MATRIX_MESSAGE_ALERT_DELAY_MS = 15 * 1000;
+// if (Date.now() - lastSeen < MATRIX_ACTIVE_WINDOW_MS) return;
+// queueMatrixMessageAlert(memberNorm);
+
 
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';

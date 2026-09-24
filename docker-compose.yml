@@ -23,6 +23,7 @@ services:
       - conduit
       - livekit
       - mail-rs
+      - tor-browser
     ports:
       - "127.0.0.1:6811:6800"
     volumes:
@@ -42,6 +43,7 @@ services:
       - MITCH_BASE=/app
       - MITCH_SERVICE=mitch-server
       - PORT=6800
+      - TOR_SERVICE_URL=http://tor-browser:6840
       - PIA_USER
       - PIA_PASS
       - PIA_USERNAME
@@ -109,6 +111,7 @@ services:
       - conduit
       - livekit
       - mail-rs
+      - tor-browser
     ports:
       - "127.0.0.1:6812:6800"
     volumes:
@@ -124,6 +127,7 @@ services:
       - MITCH_BASE=/app
       - MITCH_SERVICE=mitch-server
       - PORT=6800
+      - TOR_SERVICE_URL=http://tor-browser:6840
       - PIA_USER
       - PIA_PASS
       - PIA_USERNAME
@@ -325,5 +329,23 @@ services:
       - "127.0.0.1:7880:7880"
       - "7881:7881"
       - "7882:7882/udp"
+
+  # Dedicated Tor Browser & Onion Gateway Service
+  tor-browser:
+    build:
+      context: ./tor-service
+      dockerfile: Dockerfile
+    container_name: mitch-tor-browser
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - "127.0.0.1:6840:6840"
+    volumes:
+      - ./data/tor_users:/var/lib/tor_users
+    environment:
+      - TOR_INTERFACE=${TOR_INTERFACE:-eth1}
+      - PORT=6840
+
 
 

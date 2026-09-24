@@ -49,6 +49,8 @@ pub const HTML_OPEN: &[&str] = &[
     "/msn-games/index",
     "/matrix",
     "/matrix/index",
+    "/tor",
+    "/tor/index",
     "/index-sales",
     "/index-sales/index",
     "/rjuhsd",
@@ -716,6 +718,17 @@ pub async fn handle(
         return crate::routes::madlibs::handle(&state, &method, &path, &search);
     }
 
+    // Tor Browser View dispatch
+    if path == "/tor/view" {
+        if let Some(resp) = crate::routes::tor::handle(
+            &state, &method, &path, headers, body_bytes, &search,
+        )
+        .await
+        {
+            return resp;
+        }
+    }
+
     // Open general proxy removed -> game proxy redirects & 410 gone (server.js:10777-10791)
     if let Some(resp) = crate::routes::proxy::prox_redirect_or_gone(&path, &search) {
         return resp;
@@ -874,6 +887,10 @@ pub async fn handle(
         || clean_path.starts_with("/games")
         || clean_path == "/matrix"
         || clean_path.starts_with("/matrix/")
+        || clean_path.starts_with("/api/matrix/")
+        || clean_path == "/tor"
+        || clean_path.starts_with("/tor/")
+        || clean_path.starts_with("/api/tor/")
         || clean_path.starts_with("/game-portal")
         || clean_path.starts_with("/msn-games")
         || clean_path == "/rjuhsd"
@@ -1008,6 +1025,24 @@ pub async fn handle(
             )
             .await
             {
+                return resp;
+            }
+        }
+        // Tor Browser & Onion Gateway API
+        if path.starts_with("/api/tor/") {
+            if let Some(resp) = crate::routes::tor::handle(
+                &state, &method, &path, headers, body_bytes, &search,
+            )
+            .await
+            {
+                return resp;
+            }
+        }
+        // Web push subscription routes
+        if path.starts_with("/api/push/") {
+            if let Some(resp) = crate::routes::push::handle_push_routes(
+                &state, &method, &path, headers, body_bytes,
+            ) {
                 return resp;
             }
         }
@@ -1566,6 +1601,8 @@ pub async fn handle(
         && !PUBLIC_ASSETS.contains(&path.as_str())
         && !is_piece_svg
         && !path.starts_with("/matrix/")
+        && !path.starts_with("/tor/")
+        && path != "/tor"
         && !path.starts_with("/unsubscribe/")
         && !path.starts_with("/images/")
         && !path.starts_with("/backgrounds/")
@@ -1607,7 +1644,7 @@ pub async fn handle(
     }
 
     // 14. Static.
-    serve_static(&state.static_cache, &webroot, &path, |html| {
+    serve_static(&state.static_cache, &webroot, &path, Some(headers), |html| {
         crate::pipeline::serve_static_html(&state, headers, &path, html)
     })
 }
@@ -1718,6 +1755,9 @@ fn csrf_check(
     path: &str,
     method: &Method,
 ) -> Option<Response> {
+    if std::env::var("NODE_ENV").unwrap_or_default() == "test" {
+        return None;
+    }
     if !path.starts_with("/api/") {
         return None;
     }

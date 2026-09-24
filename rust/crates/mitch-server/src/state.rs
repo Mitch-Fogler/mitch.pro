@@ -611,6 +611,7 @@ pub const PUBLIC_API_PATHS: &[&str] = &[
     "/api/stats",
     "/api/next",
     "/api/sso/bridge",
+    "/api/sso/bridge/handoff",
     "/api/sso/exchange",
     "/api/weather",
     "/api/school-calendar",
@@ -623,6 +624,10 @@ pub const PUBLIC_API_PATHS: &[&str] = &[
     "/api/madlibs",
     "/api/madlibs/random",
     "/api/madlibs/list",
+    "/api/matrix/sso-status",
+    "/api/matrix/sso-login",
+    "/api/tor/status",
+    "/api/tor/newnym",
 ];
 
 /// `CSRF_EXEMPT_PATHS` (server.js:5705-5728) — verbatim. Team POSTs are NOT

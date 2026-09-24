@@ -1646,15 +1646,7 @@ fn sso_bridge(state: &Arc<AppState>, headers: &HeaderMap, search: &str) -> Respo
     let self_host = req_h.split(':').next().unwrap_or("").to_ascii_lowercase();
 
     if state.check_password_cookie(headers, None) {
-        let cookies = auth::get_cookies_from_header_value(
-            headers
-                .get(axum::http::header::COOKIE)
-                .and_then(|v| v.to_str().ok())
-                .unwrap_or(""),
-            &state.store,
-            &state.id_secret,
-            false,
-        );
+        let cookies = crate::routes::me::cookies_of(state, headers);
         let sid = cookies
             .get("studentId")
             .filter(|s| !s.is_empty())
@@ -1676,8 +1668,15 @@ fn sso_bridge(state: &Arc<AppState>, headers: &HeaderMap, search: &str) -> Respo
 
             let back_host = back_url.host_str().unwrap_or("").to_ascii_lowercase();
             if !back_host.is_empty() && back_host != self_host {
-                let is_matrix_or_game =
-                    back_url.path().contains("/matrix") || back_url.path().contains("/games");
+                let bp = back_url.path();
+                let is_matrix_or_game = bp == "/matrix"
+                    || bp.starts_with("/matrix/")
+                    || bp == "/games"
+                    || bp.starts_with("/games/")
+                    || bp == "/game-portal"
+                    || bp.starts_with("/game-portal/")
+                    || bp == "/msn-games"
+                    || bp.starts_with("/msn-games/");
                 let dest = format!(
                     "https://{}/api/sso/exchange?token={}&back={}",
                     back_host,
@@ -1685,7 +1684,16 @@ fn sso_bridge(state: &Arc<AppState>, headers: &HeaderMap, search: &str) -> Respo
                     encode_uri_component(back_url.as_str())
                 );
                 if is_matrix_or_game {
-                    return crate::static_files::redirect(&dest, 302);
+                    let mut resp = crate::static_files::redirect(&dest, 302);
+                    resp.headers_mut().insert(
+                        axum::http::header::CACHE_CONTROL,
+                        HeaderValue::from_static("no-store"),
+                    );
+                    resp.headers_mut().insert(
+                        axum::http::header::HeaderName::from_static("referrer-policy"),
+                        HeaderValue::from_static("no-referrer"),
+                    );
+                    return resp;
                 }
                 let hop_html = format!(
                     r#"<!doctype html><meta charset="utf-8"><title>Signing in…</title>
