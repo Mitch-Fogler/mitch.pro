@@ -37,7 +37,7 @@ MAX_USER_INSTANCES = 500
 
 # Search Engines & Well-Known Darknet Sites
 ONION_DREAD = "http://dreadytofatroptsdj6io7l3xptbet6onnhkg2wvd7bp5rlxgtioyd.onion"
-ONION_AHMIA_SEARCH = "http://juhanurmih5wuwwkgackafnxnabcqbxpwzfdtnx4hh4gnqrrvbxafwhyd.onion/search/?q="
+ONION_AHMIA_SEARCH = "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/search/?q="
 ONION_TORCH_SEARCH = "http://xmh57jrknzkhv6y3ls3ubitzfqnkrwxhopf5aygthi7d6rfdvdmeny.onion/sub/search.php?q="
 ONION_DUCKDUCKGO = "http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion"
 
