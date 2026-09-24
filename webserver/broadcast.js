@@ -138,7 +138,7 @@
         var bChat = /chat|matrix|encrypt/i.test(String(b.activity || b.playing || '') + ' ' + String(b.page || ''));
         return Number(bChat) - Number(aChat) || String(a.displayName || a.handle || '').localeCompare(String(b.displayName || b.handle || ''));
       });
-      root.querySelector('.site-presence-count').textContent = online.length + ' online';
+      root.querySelector('.site-presence-count').textContent = online.length + (online.length === 1 ? ' user online' : ' users online');
       var list = root.querySelector('.site-presence-list');
       list.replaceChildren();
       if (!online.length) { list.innerHTML = '<div class="site-presence-empty">Nobody else is active right now.</div>'; return; }
