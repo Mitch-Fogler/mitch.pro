@@ -2731,7 +2731,9 @@ function issueLoginSession(normEmail, originalEmail = normEmail) {
   const names = loadJson(NAMES_FILE, {});
   if (names[studentId] !== originalEmail) {
     names[studentId] = originalEmail;
-    saveJson(NAMES_FILE, names);
+    writeDocument(NAMES_FILE, names);
+    cachedNames = null;
+    lastNamesLoad = 0;
   }
   return studentId;
 }
@@ -2963,7 +2965,10 @@ function loadAuthSessions() {
 }
 
 function saveAuthSessions(sessions) {
-  saveJson(AUTH_SESSIONS_FILE, sessions);
+  // A login must never claim success if the session was not persisted.
+  // saveJson intentionally swallows storage errors for best-effort data, but
+  // authentication is not best-effort.
+  writeDocument(AUTH_SESSIONS_FILE, sessions);
 }
 
 function hashSessionToken(token) {
@@ -3063,7 +3068,7 @@ function rotateSessionGeneration(normEmail) {
 
 function authSuccessResponse(req, payload, normEmail, originalEmail = normEmail, options = {}) {
   const session = createAuthSession(normEmail, originalEmail, req, options);
-  const headers = new Headers({ 'Content-Type': 'application/json' });
+  const headers = new Headers({ 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' });
   headers.append('Set-Cookie', setCookieHeader(AUTH_COOKIE, session.token, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), true));
   headers.append('Set-Cookie', setCookieHeader('studentId', session.sid, req, Math.floor(AUTH_SESSION_TTL_MS / 1000), false));
   headers.append('Set-Cookie', clearCookieHeader('password', req, false));
@@ -7355,7 +7360,6 @@ function canGrantPremiumId(sid) {
   return canGrantPremiumEmail(emailFromSid(sid) || '');
 }
 
-const SHOP_PRICE_MULTIPLIER = 1.85;
 const DEFAULT_SHOP_CATALOG = [
   { id: 'premium', name: 'Premium', section: 'Premium', type: 'premium', cost: 5000, desc: 'Unlock Premium Chat, 2X typing/logic coin rewards, 2X Clicker/Riches offline gains, larger canvas brushes, exclusive profile frames/badges, and the epic chance to have an arcade game named after you!' },
   { id: 'neon_purple', name: 'Neon Purple Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A bright purple username for chat, profiles, and leaderboards.' },
@@ -7392,7 +7396,7 @@ const DEFAULT_SHOP_CATALOG = [
   { id: 'debug_helper', name: 'Debug Helper AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2200, desc: 'A coding-focused assistant personality.' },
   { id: 'story_mode', name: 'Story Mode AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 1800, desc: 'A more creative writing personality.' },
   { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
-  { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
+  { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks the VIP Slots room for 24 hours.' },
   { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
   { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
   { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' },
@@ -7404,15 +7408,51 @@ const DEFAULT_SHOP_CATALOG = [
   { id: 'slots_free_spin', name: 'Slots Free Spins (5x)', section: 'Utility', type: 'utility', costType: 'slots_free_spin', cost: 200, desc: 'Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!' },
   { id: 'loaded_dice', name: 'Loaded Lucky Dice (30m)', section: 'Casino Exploits', type: 'utility', costType: 'loaded_dice', cost: 600, desc: 'Exploit casino physics! Forces guaranteed winning rolls, spins, coinflips, and jackpots across all casino games for 30 minutes.' },
   { id: 'casino_glitch_chip', name: 'Quantum Glitch Chip (20m)', section: 'Casino Exploits', type: 'utility', costType: 'casino_glitch_chip', cost: 1000, desc: 'Exploit memory overflow in payout contracts! Multiplies all casino winnings by an insane 5X for 20 minutes.' },
-  { id: 'infinite_luck_charm', name: 'Infinite Coins Exploit Charm (30m)', section: 'Casino Exploits', type: 'utility', costType: 'infinite_luck_charm', cost: 1500, desc: 'The ultimate casino exploit! Combines Loaded Dice auto-wins, 10X glitch payout multiplier, VIP unlimited max betting, and 100% loss refund for 30 minutes.' }
+  { id: 'infinite_luck_charm', name: 'Infinite Coins Exploit Charm (30m)', section: 'Casino Exploits', type: 'utility', costType: 'infinite_luck_charm', cost: 1500, desc: 'Combines Loaded Dice, 10X glitch payouts, VIP Slots access, and loss refunds for 30 minutes.' }
 ];
-let SHOP_CATALOG = [...DEFAULT_SHOP_CATALOG];
+// Retired items remain in the legacy catalog above so old purchases can still be equipped.
+// They are not offered for sale: the AI personas and preference-only passes no longer
+// provide a meaningful shop benefit.
+const RETIRED_SHOP_IDS = new Set([
+  'sarcastic_mentor', 'hacker_persona', 'study_coach', 'debug_helper',
+  'story_mode', 'speedrun_ai', 'canvas_lock_pass', 'quick_access_pass',
+  'daily_bonus_plus'
+]);
+const SHOP_PRICE_BY_ID = {
+  premium: 500,
+  neon_purple: 20, electric_blue: 20, mint_flash: 25, rose_spark: 25,
+  ember_red: 30, void_white: 30, gold_glow: 75, rainbow_name: 100,
+  verified_badge: 45, artist_badge: 30, chess_badge: 30,
+  builder_badge: 35, lucky_badge: 40, premium_star_badge: 70,
+  owner_fan_badge: 25, chat_sparkles: 35, chat_shadow: 35,
+  chat_wave: 45, chat_terminal: 45, chat_prism: 75,
+  profile_grid: 35, profile_stars: 55, profile_scanlines: 35,
+  profile_gold_frame: 80, profile_neon_frame: 80,
+  focus_theme: 25, arcade_theme: 40, midnight_theme: 40,
+  vip_pass: 90, streak_freeze: 35, happy_hour_ticket: 55,
+  double_down_ticket: 90, bad_beat_insurance: 75,
+  happy_hour_extension: 25, slots_free_spin: 40,
+  loaded_dice: 300, casino_glitch_chip: 450, infinite_luck_charm: 900
+};
+const NEW_SHOP_PERKS = [
+  { id: 'happy_hour_sprint', name: 'Coin Sprint · 10 min', section: 'Game Boosts', type: 'utility', costType: 'happy_hour_ticket', durationMinutes: 10, cost: 20, desc: 'Double eligible game and canvas coin rewards for 10 minutes.' },
+  { id: 'happy_hour_marathon', name: 'Coin Marathon · 60 min', section: 'Game Boosts', type: 'utility', costType: 'happy_hour_ticket', durationMinutes: 60, cost: 95, desc: 'A full hour of double eligible game and canvas coin rewards.' },
+  { id: 'double_down_sprint', name: 'Double Down · 10 min', section: 'Casino Boosts', type: 'utility', costType: 'double_down_ticket', durationMinutes: 10, cost: 35, desc: 'Double casino win profit for ten minutes.' },
+  { id: 'insurance_sprint', name: 'Bet Insurance · 10 min', section: 'Casino Boosts', type: 'utility', costType: 'bad_beat_insurance', durationMinutes: 10, cost: 30, desc: 'Refund losing casino bets for ten minutes.' },
+  { id: 'slots_free_spin_single', name: 'Free Slot Spin', section: 'Casino Boosts', type: 'utility', costType: 'slots_free_spin', spinCount: 1, cost: 12, desc: 'One slot spin with no coins at risk; keep any winnings.' },
+  { id: 'vip_hour', name: 'VIP Slots · 1 hour', section: 'Casino Boosts', type: 'pass', costType: 'vip_casino_pass', durationMinutes: 60, cost: 20, desc: 'Try the VIP Slots room for one hour.' }
+];
+const ACTIVE_DEFAULT_SHOP_CATALOG = [
+  ...DEFAULT_SHOP_CATALOG.filter(item => !RETIRED_SHOP_IDS.has(item.id)).map(item => ({ ...item, cost: SHOP_PRICE_BY_ID[item.id] ?? item.cost })),
+  ...NEW_SHOP_PERKS
+];
+let SHOP_CATALOG = [...ACTIVE_DEFAULT_SHOP_CATALOG];
 try {
   const catalogPath = join(DATA_DIR, 'shop_catalog.json');
   if (existsSync(catalogPath)) {
     const loaded = JSON.parse(readFileSync(catalogPath, 'utf8'));
     if (Array.isArray(loaded) && loaded.length > 0) {
-      SHOP_CATALOG = loaded.filter(item => item.id !== 'og_badge');
+      SHOP_CATALOG = loaded.filter(item => item.id !== 'og_badge' && !RETIRED_SHOP_IDS.has(item.id));
     }
   }
 } catch (e) {
@@ -7468,8 +7508,8 @@ function activeShopItemById(itemId) {
 function shopTierFor(item) {
   if (!item) return 'common';
   if (item.type === 'premium') return 'legendary';
-  if (item.premiumOnly || ['rainbow_name', 'speedrun_ai', 'profile_gold_frame', 'profile_neon_frame', 'chat_prism'].includes(item.id)) return 'elite';
-  if (['lucky_badge', 'chat_wave', 'debug_helper', 'daily_bonus_plus', 'profile_stars'].includes(item.id)) return 'rare';
+  if (item.premiumOnly || ['rainbow_name', 'profile_gold_frame', 'profile_neon_frame', 'chat_prism'].includes(item.id)) return 'elite';
+  if (['lucky_badge', 'chat_wave', 'profile_stars'].includes(item.id)) return 'rare';
   if (['vip_pass', 'arcade_theme', 'midnight_theme', 'verified_badge', 'og_badge'].includes(item.id)) return 'uncommon';
   return 'common';
 }
@@ -7483,12 +7523,11 @@ function shopPerkFor(item) {
     chat_prism: 'Premium prism chat accent with the most noticeable chat style.',
     profile_gold_frame: 'High-status profile frame for premium members.',
     profile_neon_frame: 'Bright neon profile frame with stronger profile presence.',
-    speedrun_ai: 'Fast-response premium AI personality.',
-    debug_helper: 'Stronger coding-focused assistant personality.',
-    vip_pass: '24 hours of unlimited casino max bets.',
-    daily_bonus_plus: 'Premium daily-bonus preference toggle.',
-    canvas_lock_pass: 'Canvas-tool preference for protecting important pixel work.',
-    quick_access_pass: 'Convenience toggle for faster navigation.',
+    vip_pass: '24 hours of VIP Slots access.',
+    happy_hour_sprint: '10 minutes of double eligible game rewards.',
+    happy_hour_marathon: '60 minutes of double eligible game rewards.',
+    slots_free_spin_single: 'One no-risk slot spin.',
+    vip_hour: 'One hour of VIP Slots access.',
   };
   return perks[item.id] || ({
     name_color: 'Changes your visible identity color.',
@@ -7496,36 +7535,12 @@ function shopPerkFor(item) {
     chat_effect: 'Adds a style effect to chat identity.',
     profile_effect: 'Upgrades your public profile look.',
     site_theme: 'Unlocks a site accent you can toggle on or off.',
-    ai_personality: 'Unlocks a selectable AI assistant personality.',
-    canvas_tool: 'Unlocks a canvas or site preference toggle.',
   }[item.costType] || '');
 }
 
 function shopBaseCostFor(item) {
   if (!item) return 0;
-  const multipliers = {
-    premium: 1.8,
-    name_color: 2.05,
-    chat_badge: 1.95,
-    chat_effect: 2.1,
-    profile_effect: 2.15,
-    site_theme: 1.8,
-    ai_personality: 2.35,
-    vip_casino_pass: 3.2,
-    canvas_tool: 2.2,
-  };
-  const idMultipliers = {
-    rainbow_name: 2.35,
-    gold_glow: 2.2,
-    chat_prism: 2.35,
-    profile_gold_frame: 2.35,
-    profile_neon_frame: 2.35,
-    debug_helper: 2.55,
-    speedrun_ai: 2.7,
-    daily_bonus_plus: 2.5,
-  };
-  const mult = item.priceMultiplier || idMultipliers[item.id] || multipliers[item.costType] || multipliers[item.type] || SHOP_PRICE_MULTIPLIER;
-  return Math.max(1, Math.ceil((Number(item.cost || 0) * mult) / 25) * 25);
+  return Math.max(1, Math.ceil(Number(item.cost) || 0));
 }
 
 function premiumDiscountFor(item) {
@@ -7538,10 +7553,7 @@ function premiumDiscountFor(item) {
     chat_prism: 0.09,
     profile_gold_frame: 0.07,
     profile_neon_frame: 0.07,
-    speedrun_ai: 0.05,
-    debug_helper: 0.08,
     vip_pass: 0.04,
-    daily_bonus_plus: 0.06,
     focus_theme: 0.20,
     arcade_theme: 0.18,
     midnight_theme: 0.18,
@@ -7553,8 +7565,6 @@ function premiumDiscountFor(item) {
     chat_effect: 0.15,
     profile_effect: 0.10,
     site_theme: 0.18,
-    ai_personality: 0.09,
-    canvas_tool: 0.11,
     vip_casino_pass: 0.04,
   };
   return item.premiumOnly ? 0.06 : (byType[item.costType] || 0.10);
@@ -7569,18 +7579,18 @@ function shopCostFor(item, email) {
     const data = dailyLogins[norm] || { lastClaimDate: '', streak: 0, streakFreezes: 0 };
     const freezes = data.streakFreezes || 0;
     if (freezes === 0) {
-      baseCost = 150;
+      baseCost = 35;
     } else if (freezes === 1) {
-      baseCost = 600;
+      baseCost = 60;
     } else if (freezes === 2) {
-      baseCost = 2000;
+      baseCost = 90;
     } else {
-      baseCost = 5000;
+      baseCost = 90;
     }
   }
 
   if (isPremiumEmail(email) && item.type !== 'premium') {
-    return Math.max(1, Math.ceil(baseCost * (1 - premiumDiscountFor(item)) / 25) * 25);
+    return Math.max(1, Math.ceil(baseCost * (1 - premiumDiscountFor(item))));
   }
   return baseCost;
 }
@@ -7658,11 +7668,7 @@ function ownsShopItem(email, item, inventory = buildInventory(email)) {
   if (!item) return false;
   if (item.type === 'premium') return isPremiumEmail(email);
   if (item.costType === 'ai_personality') return inventory.ai.includes(item.id);
-  if (item.costType === 'vip_casino_pass') {
-    const stats = loadUserStats();
-    return (stats[normalizeEmail(email)]?.vip_casino_until || 0) > Date.now();
-  }
-  if (['streak_freeze', 'happy_hour_ticket', 'happy_hour_extension', 'double_down_ticket', 'bad_beat_insurance', 'slots_free_spin', 'loaded_dice', 'casino_glitch_chip', 'infinite_luck_charm'].includes(item.costType)) {
+  if (['vip_casino_pass', 'streak_freeze', 'happy_hour_ticket', 'happy_hour_extension', 'double_down_ticket', 'bad_beat_insurance', 'slots_free_spin', 'loaded_dice', 'casino_glitch_chip', 'infinite_luck_charm'].includes(item.costType)) {
     return false;
   }
   const cfg = SHOP_TYPE_CONFIG[item.costType];
@@ -7687,7 +7693,7 @@ function injectReadability(html, urlPath) {
 
 function injectBroadcast(html) {
   if (html.includes('/broadcast.js')) return html;
-  const tag = '<script src="/broadcast.js?v=9" defer></script>';
+  const tag = '<script src="/broadcast.js?v=10" defer></script>';
   const bi = html.lastIndexOf('</body>');
   return bi >= 0 ? html.slice(0, bi) + tag + html.slice(bi) : html + tag;
 }
@@ -13227,8 +13233,7 @@ async function handleRequest(req, server) {
       } else if (type === 'vip_casino_pass') {
         const stats = loadUserStats();
         if (!stats[norm]) stats[norm] = {};
-        if (stats[norm].vip_casino_until > Date.now()) return jsonResp(400, { error: 'You already have an active VIP pass.' });
-        stats[norm].vip_casino_until = Date.now() + (24 * 3600 * 1000);
+        stats[norm].vip_casino_until = Math.max(Date.now(), stats[norm].vip_casino_until || 0) + ((item.durationMinutes || 1440) * 60 * 1000);
         saveUserStats(stats);
       } else if (type === 'streak_freeze') {
         const data = dailyLogins[norm] || { lastClaimDate: '', streak: 0, streakFreezes: 0 };
@@ -13243,21 +13248,21 @@ async function handleRequest(req, server) {
         if (!stats[norm]) stats[norm] = {};
         const currentHHUntil = stats[norm].personal_happy_hour_until || 0;
         const baseTime = Math.max(Date.now(), currentHHUntil);
-        stats[norm].personal_happy_hour_until = baseTime + (30 * 60 * 1000);
+        stats[norm].personal_happy_hour_until = baseTime + ((item.durationMinutes || 30) * 60 * 1000);
         saveUserStats(stats);
       } else if (type === 'double_down_ticket') {
         const stats = loadUserStats();
         if (!stats[norm]) stats[norm] = {};
         const currentDoubleUntil = stats[norm].double_down_until || 0;
         const baseTime = Math.max(Date.now(), currentDoubleUntil);
-        stats[norm].double_down_until = baseTime + (30 * 60 * 1000);
+        stats[norm].double_down_until = baseTime + ((item.durationMinutes || 30) * 60 * 1000);
         saveUserStats(stats);
       } else if (type === 'bad_beat_insurance') {
         const stats = loadUserStats();
         if (!stats[norm]) stats[norm] = {};
         const currentInsuredUntil = stats[norm].bad_beat_insurance_until || 0;
         const baseTime = Math.max(Date.now(), currentInsuredUntil);
-        stats[norm].bad_beat_insurance_until = baseTime + (30 * 60 * 1000);
+        stats[norm].bad_beat_insurance_until = baseTime + ((item.durationMinutes || 30) * 60 * 1000);
         saveUserStats(stats);
       } else if (type === 'happy_hour_extension') {
         const stats = loadUserStats();
@@ -13271,7 +13276,7 @@ async function handleRequest(req, server) {
       } else if (type === 'slots_free_spin') {
         const stats = loadUserStats();
         if (!stats[norm]) stats[norm] = {};
-        stats[norm].slots_free_spins = (stats[norm].slots_free_spins || 0) + 5;
+        stats[norm].slots_free_spins = (stats[norm].slots_free_spins || 0) + (item.spinCount || 5);
         saveUserStats(stats);
       } else if (type === 'loaded_dice') {
         const stats = loadUserStats();
@@ -15615,53 +15620,13 @@ async function handleRequest(req, server) {
               rmSync(catalogPath);
             }
           } catch {}
-          // Reload hardcoded catalog
-          SHOP_CATALOG = [
-            { id: 'premium', name: 'Premium', section: 'Premium', type: 'premium', cost: 5000, desc: 'Unlock Premium Chat, 2X typing/logic coin rewards, 2X Clicker/Riches offline gains, larger canvas brushes, exclusive profile frames/badges, and the epic chance to have an arcade game named after you!' },
-            { id: 'neon_purple', name: 'Neon Purple Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A bright purple username for chat, profiles, and leaderboards.' },
-            { id: 'electric_blue', name: 'Electric Blue Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 500, desc: 'A sharp electric-blue username style.' },
-            { id: 'mint_flash', name: 'Mint Flash Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 550, desc: 'A clean mint username with a fresh glow.' },
-            { id: 'rose_spark', name: 'Rose Spark Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 550, desc: 'A warm rose username style with a soft highlight.' },
-            { id: 'ember_red', name: 'Ember Red Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 650, desc: 'A deep red username with a bolder presence.' },
-            { id: 'void_white', name: 'Void White Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 750, desc: 'A high-contrast white username for dark pages.' },
-            { id: 'gold_glow', name: 'Golden Glow Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 900, premiumOnly: true, desc: 'A premium gold username glow.' },
-            { id: 'rainbow_name', name: 'Rainbow Name', section: 'Name Colors', type: 'cosmetic', costType: 'name_color', cost: 2500, adminOnly: true, desc: 'An admin-only animated rainbow username.' },
-            { id: 'verified_badge', name: 'Verified Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 1000, desc: 'Adds a verified check badge beside your name.' },
-            { id: 'artist_badge', name: 'Artist Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 900, desc: 'A badge for canvas builders and pixel artists.' },
-            { id: 'chess_badge', name: 'Chess Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 900, desc: 'A badge for chess regulars.' },
-            { id: 'builder_badge', name: 'Builder Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 950, desc: 'A badge for people who help build the community.' },
-            { id: 'lucky_badge', name: 'Lucky Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 1200, desc: 'A rare-feeling badge for casino winners.' },
-            { id: 'premium_star_badge', name: 'Premium Star Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 1400, premiumOnly: true, desc: 'A premium star badge for your profile and chats.' },
-            { id: 'owner_fan_badge', name: 'Mitch Fan Badge', section: 'Badges', type: 'cosmetic', costType: 'chat_badge', cost: 800, desc: 'A simple badge for fans of the site.' },
-            { id: 'chat_sparkles', name: 'Chat Sparkles', section: 'Chat Effects', type: 'cosmetic', costType: 'chat_effect', cost: 850, desc: 'Adds a subtle sparkle effect to your chat identity.' },
-            { id: 'chat_shadow', name: 'Chat Shadow', section: 'Chat Effects', type: 'cosmetic', costType: 'chat_effect', cost: 850, desc: 'Adds a dark shadow accent to your chat identity.' },
-            { id: 'chat_wave', name: 'Chat Wave', section: 'Chat Effects', type: 'cosmetic', costType: 'chat_effect', cost: 1000, desc: 'A gentle animated wave effect for your chat name.' },
-            { id: 'chat_terminal', name: 'Terminal Chat Style', section: 'Chat Effects', type: 'cosmetic', costType: 'chat_effect', cost: 1100, desc: 'A monospace terminal-style chat accent.' },
-            { id: 'chat_prism', name: 'Prism Chat Style', section: 'Chat Effects', type: 'cosmetic', costType: 'chat_effect', cost: 1600, premiumOnly: true, desc: 'A premium prism accent for chat.' },
-            { id: 'profile_grid', name: 'Profile Grid Background', section: 'Profile Effects', type: 'cosmetic', costType: 'profile_effect', cost: 900, desc: 'Adds a clean grid effect to your profile.' },
-            { id: 'profile_stars', name: 'Profile Starfield', section: 'Profile Effects', type: 'cosmetic', costType: 'profile_effect', cost: 1200, desc: 'Adds a starfield-style profile effect.' },
-            { id: 'profile_scanlines', name: 'Profile Scanlines', section: 'Profile Effects', type: 'cosmetic', costType: 'profile_effect', cost: 950, desc: 'Adds a retro scanline texture to your profile.' },
-            { id: 'profile_gold_frame', name: 'Gold Profile Frame', section: 'Profile Effects', type: 'cosmetic', costType: 'profile_effect', cost: 1800, premiumOnly: true, desc: 'A premium gold frame accent for your profile.' },
-            { id: 'profile_neon_frame', name: 'Neon Profile Frame', section: 'Profile Effects', type: 'cosmetic', costType: 'profile_effect', cost: 1800, premiumOnly: true, desc: 'A premium neon frame accent for your profile.' },
-            { id: 'focus_theme', name: 'Focus Theme', section: 'Site Themes', type: 'cosmetic', costType: 'site_theme', cost: 700, desc: 'A calm, low-distraction site accent.' },
-            { id: 'arcade_theme', name: 'Arcade Theme', section: 'Site Themes', type: 'cosmetic', costType: 'site_theme', cost: 900, desc: 'A brighter arcade-style site accent.' },
-            { id: 'midnight_theme', name: 'Midnight Theme', section: 'Site Themes', type: 'cosmetic', costType: 'site_theme', cost: 900, desc: 'A darker midnight accent for the site.' },
-            { id: 'sarcastic_mentor', name: 'Sarcastic Mentor AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2000, desc: 'Unlock a witty assistant personality.' },
-            { id: 'hacker_persona', name: 'Hacker Persona AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2000, desc: 'A movie-hacker flavored assistant voice.' },
-            { id: 'study_coach', name: 'Story Mode AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 1800, desc: 'A study coach AI helper.' },
-            { id: 'debug_helper', name: 'Debug Helper AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2200, desc: 'A coding-focused assistant personality.' },
-            { id: 'story_mode', name: 'Story Mode AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 1800, desc: 'A more creative writing personality.' },
-            { id: 'speedrun_ai', name: 'Speedrun AI', section: 'AI Personalities', type: 'ai', costType: 'ai_personality', cost: 2400, premiumOnly: true, desc: 'A premium fast-answer assistant personality.' },
-            { id: 'vip_pass', name: 'VIP Casino Pass (24h)', section: 'Passes', type: 'pass', costType: 'vip_casino_pass', cost: 250, desc: 'Unlocks unlimited max bet amount in all casino games for 24 hours.' },
-            { id: 'canvas_lock_pass', name: 'Canvas Lock Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1200, desc: 'Unlocks a saved canvas-tool preference toggle.' },
-            { id: 'quick_access_pass', name: 'Quick Access Pass', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 800, desc: 'Unlocks a quick-access preference toggle.' },
-            { id: 'daily_bonus_plus', name: 'Daily Bonus Plus', section: 'Passes', type: 'cosmetic', costType: 'canvas_tool', cost: 1500, premiumOnly: true, desc: 'Unlocks a premium daily-bonus preference toggle.' }
-          ];
+          // Reload the current catalog and prices.
+          SHOP_CATALOG = [...ACTIVE_DEFAULT_SHOP_CATALOG];
           logAdminAction(adminEmail, 'shop_catalog_reset', {});
         } else {
-          SHOP_CATALOG = catalog;
-          saveJson(catalogPath, catalog);
-          logAdminAction(adminEmail, 'shop_catalog_save', { itemsCount: catalog.length });
+          SHOP_CATALOG = catalog.filter(item => !RETIRED_SHOP_IDS.has(item.id));
+          saveJson(catalogPath, SHOP_CATALOG);
+          logAdminAction(adminEmail, 'shop_catalog_save', { itemsCount: SHOP_CATALOG.length });
         }
         return jsonResp(200, { success: true });
       } catch (e) { return jsonResp(400, { success: false, error: String(e) }); }
@@ -16507,7 +16472,9 @@ async function handleRequest(req, server) {
       try {
         if (!await tryParseJson()) return jsonResp(400, { success: false, message: 'bad json' });
         let email = (body.email || '').trim().toLowerCase();
-        const password = (body.password || '').trim();
+        // Preserve the exact password the user entered; trimming it here made
+        // some newly created accounts impossible to sign into as expected.
+        const password = String(body.password || '');
         if (!email || !password)
           return jsonResp(400, { success: false, message: 'Email and password required.' });
         const normEmail = normalizeEmail(email);
@@ -17334,7 +17301,7 @@ async function handleRequest(req, server) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + asstTag + contents.slice(bi) : contents + asstTag;
         }
-        const bcastTag = '<script src="/broadcast.js?v=9" defer><\/script>';
+        const bcastTag = '<script src="/broadcast.js?v=10" defer><\/script>';
         if (!contents.includes('/broadcast.js')) {
           const bi = contents.lastIndexOf('<\/body>');
           contents = bi >= 0 ? contents.slice(0, bi) + bcastTag + contents.slice(bi) : contents + bcastTag;
@@ -25367,10 +25334,6 @@ async function handleRequest(req, server) {
       if (!Number.isFinite(bet) || bet < min) return { error: `Minimum bet is ${min} coins.` };
       if (bet > bal) return { error: 'You do not have enough coins for that bet.' };
 
-      const stats = loadUserStats();
-      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
-      if (!isVip && bet > 500) return { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass or Infinite Luck Charm in the shop for unlimited betting!' };
-
       return { bet: Number(bet.toFixed(2)), bal };
     }
 
@@ -25608,10 +25571,6 @@ async function handleRequest(req, server) {
       const bet = Number(body.amount);
       const bal = getCoins(email);
       if (!Number.isFinite(bet) || bet < 1 || bet > bal) return jsonResp(400, { error: 'invalid bet' });
-
-      const stats = loadUserStats();
-      const isVip = stats[norm] && ((stats[norm].vip_casino_until || 0) > Date.now() || (stats[norm].infinite_luck_until || 0) > Date.now());
-      if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
 
       casinoIntake += bet; saveCasinoStats();
       addCoins(email, -bet);
@@ -25960,9 +25919,8 @@ async function handleRequest(req, server) {
       if (isVipRoom && !isVip) return jsonResp(403, { error: 'VIP pass required' });
 
       const freeSpins = stats[norm]?.slots_free_spins || 0;
-      const isFreeSpin = freeSpins > 0 && !isVipRoom;
-
       const bet = Number(body.amount);
+      const isFreeSpin = freeSpins > 0 && !isVipRoom && bet <= 500;
       if (isVipRoom && bet < 100) return jsonResp(400, { error: 'VIP minimum bet is 100 coins' });
       
       if (isFreeSpin) {
@@ -25971,7 +25929,6 @@ async function handleRequest(req, server) {
         saveUserStats(stats);
       } else {
         if (!Number.isFinite(bet) || bet < 1 || bet > getCoins(email)) return jsonResp(400, { error: 'invalid bet' });
-        if (!isVip && bet > 500) return jsonResp(400, { error: 'Maximum bet is 500 coins. Buy a VIP Casino Pass in the shop for unlimited betting!' });
       }
 
       const symbols = ['🍒', '🍋', '🍊', '🍇', '🔔', '💎', '7️⃣'];
@@ -27031,7 +26988,7 @@ async function handleRequest(req, server) {
           }
 
           if (isAuthenticatedHtml && !isEmbeddedGameRuntime && !raw.includes(Buffer.from('/broadcast.js'))) {
-            injectStr += '<script src="/broadcast.js?v=9" defer></script>\n';
+            injectStr += '<script src="/broadcast.js?v=10" defer></script>\n';
           } else if (!isAuthenticatedHtml && raw.includes(Buffer.from('/broadcast.js'))) {
             raw = Buffer.from(stripBroadcast(raw.toString('utf8')));
           }

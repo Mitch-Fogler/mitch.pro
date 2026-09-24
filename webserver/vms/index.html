@@ -8,17 +8,16 @@
   <link rel="icon" href="/favicon.ico">
   <link rel="stylesheet" href="/portal-redesign.css?v=16">
   <link rel="stylesheet" href="/vms/portal.css?v=3">
+  <link rel="stylesheet" href="/vms/portal-polish.css?v=2">
 </head>
 <body class="computer-portal">
   <main class="computer-shell">
     <header class="computer-hero">
       <div class="computer-heading">
-        <span class="computer-heading-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
-        </span>
-        <div><p class="eyebrow">Desktop</p><h1>My Computer</h1></div>
+        <h1>My Computer</h1>
+        <p>Manage, access, and monitor your personal desktop.</p>
       </div>
-      <button class="quiet-button" id="refresh-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18.5 9A7 7 0 0 0 6.2 6.2L4 8m16 8-2.2 2.2A7 7 0 0 1 5.5 15"/></svg><span>Refresh</span></button>
+      <button class="quiet-button" id="refresh-button" type="button" aria-label="Refresh computer status"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5"/><path d="M18.5 9A7 7 0 0 0 6.2 6.2L4 8m16 8-2.2 2.2A7 7 0 0 1 5.5 15"/></svg><span>Refresh</span></button>
     </header>
     <p id="refresh-status" class="refresh-status" role="status"></p>
 
@@ -161,6 +160,6 @@
   </dialog>
 
   <script src="/app-shell.js?v=17" defer></script>
-  <script src="/vms/portal.js?v=4" defer></script>
+  <script src="/vms/portal.js?v=5" defer></script>
 </body>
 </html>

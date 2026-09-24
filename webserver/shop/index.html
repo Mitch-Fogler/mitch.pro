@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>The Market - mitch.pro</title>
+<title>Shop — mitch.pro</title>
 <script src="/theme.js?v=11"></script>
 <link rel="stylesheet" href="/app.css">
 <script src="/api.js"></script>
@@ -383,17 +383,19 @@
     .price { font-size: 0.95rem; }
   }
 </style>
-<link rel="stylesheet" href="/shop/market.css?v=1">
+<link rel="stylesheet" href="/shop/market.css?v=2">
 </head>
 <body class="shop-page">
 <main class="app-main" id="market-page">
   <header class="page-head">
-    <div>
-      <h1>Market</h1>
-      <p class="subline" id="shop-note">Loading catalog…</p>
+    <div class="shop-intro">
+      <span class="shop-eyebrow">MITCH.PRO / SHOP</span>
+      <h1>Spend coins.<br><em>Make it yours.</em></h1>
+      <p class="subline" id="shop-note">Loading the shop…</p>
+      <div class="shop-hero-links"><a href="/inventory/">Your inventory ↗</a><a href="/casino/">Try the casino ↗</a></div>
     </div>
     <div class="panel balance-panel">
-      <div class="balance-label">Your Balance</div>
+      <div class="balance-label">AVAILABLE TO SPEND</div>
       <div class="balance-value mitch-coin-amount"><span id="balance">...</span> <small>MitchCoins</small></div>
       <div class="state-row">
         <span class="pill" id="premium-pill">checking premium</span>
@@ -401,23 +403,29 @@
         <span class="pill" id="discount-pill" style="display:none;"></span>
       </div>
       <div class="panel-actions" style="margin-top:0.75rem;display:flex;gap:0.45rem;flex-wrap:wrap;">
-        <a class="mini-btn btn" href="/inventory/">Open Inventory</a>
-        <a class="mini-btn btn" href="/vms/#upgrades" style="border-color:color-mix(in srgb,var(--t-ac) 45%,var(--t-bd));color:var(--t-ac)">🖥 Cloud PC Upgrades</a>
+        <a class="mini-btn btn" href="/inventory/">View inventory ↗</a>
+        <a class="mini-btn btn" href="/vms/#upgrades">Cloud PC upgrades ↗</a>
       </div>
     </div>
   </header>
 
-  <div id="active-buffs-bar" class="panel" style="display:none;margin-bottom:1.15rem;background:rgba(192,132,252,0.06);border:1px solid rgba(192,132,252,0.25);border-radius:var(--t-radius, 8px);padding:0.85rem 1.15rem;">
+  <div id="active-buffs-bar" class="panel" style="display:none;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
       <strong style="font-size:0.85rem;color:var(--t-ac);text-transform:uppercase;letter-spacing:0.06em;display:flex;align-items:center;gap:0.4rem;">
-        ⚡ Active Boosts & Casino Exploits
+        Active perks
       </strong>
       <span id="active-buffs-count" class="pill good">0 Active</span>
     </div>
     <div id="active-buffs-list" style="display:flex;flex-wrap:wrap;gap:0.5rem;"></div>
   </div>
 
-  <div class="shop-tools"><label><span>⌕</span><input id="shop-search" type="search" placeholder="Search cosmetics, perks, and passes" autocomplete="off"></label><span class="shop-stock"><i></i><b id="shop-stock-count">0</b> items in stock</span></div>
+  <section class="shop-feature" aria-label="Featured perks">
+    <div class="shop-feature-heading"><div><span class="shop-eyebrow">GOOD PLACE TO START</span><h2>Picked for your next session.</h2></div><span class="shop-feature-aside">01 / 03</span></div>
+    <div class="shop-feature-grid" id="shop-feature-grid"></div>
+  </section>
+
+  <div class="shop-catalog-heading"><div><span class="shop-eyebrow">THE FULL SHELF</span><h2>Find your thing.</h2></div><span class="shop-stock"><b id="shop-stock-count">0</b> items</span></div>
+  <div class="shop-tools"><label><span aria-hidden="true">⌕</span><input id="shop-search" type="search" placeholder="Search the shop" autocomplete="off" aria-label="Search the shop"></label></div>
   <div id="tabs" class="tabs"></div>
   <div id="market"></div>
 
@@ -551,7 +559,7 @@
 
   function owns(item) {
     if (item.type === 'premium') return isPremium;
-    if (item.costType === 'vip_casino_pass') return vipUntil > Date.now();
+    if (item.costType === 'vip_casino_pass') return false;
     if (item.costType === 'ai_personality') return (inventory.ai || []).includes(item.id);
     const bucket = typeToBucket[item.costType];
     return !!bucket && (inventory.cosmetics[bucket] || []).includes(item.id);
@@ -662,6 +670,17 @@
 
   function render() {
     renderTabs();
+    const picks = ['happy_hour_sprint', 'neon_purple', 'vip_hour'].map(id => items.find(item => item.id === id)).filter(Boolean);
+    const featureGrid = document.getElementById('shop-feature-grid');
+    featureGrid.innerHTML = picks.map((item, index) => `
+      <button type="button" class="feature-item" data-feature="${esc(item.id)}" aria-label="Details for ${esc(item.name)}">
+        <span class="feature-index">${String(index + 1).padStart(2, '0')} / ${esc(item.section)}</span>
+        <span class="feature-name">${esc(item.name)}</span>
+        <span class="feature-bottom"><b>${esc(item.cost)} MitchCoins</b><span aria-hidden="true">↗</span></span>
+      </button>
+    `).join('');
+    document.querySelector('.shop-feature').style.display = picks.length ? '' : 'none';
+    featureGrid.querySelectorAll('[data-feature]').forEach(button => button.addEventListener('click', () => openModal(button.dataset.feature)));
     const market = document.getElementById('market');
     let filtered = activeTab === 'all' ? items : items.filter(item => slug(item.section) === activeTab);
     if (shopQuery) filtered = filtered.filter(item => [item.name,item.desc,item.perk,item.section,item.tier].some(value => String(value || '').toLowerCase().includes(shopQuery)));
@@ -704,10 +723,6 @@
   }
 
   async function getShopCaptchaToken(action) {
-    for (let i = 0; i < 50; i++) {
-      if (window.getCaptchaToken && window.grecaptcha) break;
-      await new Promise(r => setTimeout(r, 100));
-    }
     if (window.getCaptchaToken) {
       return await window.getCaptchaToken(action) || '';
     }
@@ -767,7 +782,8 @@
   async function giftPremium() {
     const targetEmail = document.getElementById('gift-target-email').value.trim();
     if (!targetEmail) return showStatus('Please enter a friend\'s email address', false);
-    if (!(await customConfirm('Gift Premium', `Are you sure you want to gift Lifetime Premium to ${targetEmail}? This costs 5,000 coins and is limited to one gift ever.`))) return;
+    const premiumPrice = items.find(item => item.id === 'premium')?.cost || 500;
+    if (!(await customConfirm('Gift Premium', `Are you sure you want to gift Lifetime Premium to ${targetEmail}? This costs ${premiumPrice} coins and is limited to one gift ever.`))) return;
     const recaptcha_token = await getShopCaptchaToken('gift_premium');
     try {
       const r = await fetch('/api/coins/gift-premium', {
@@ -844,8 +860,8 @@
       discount.style.display = isPremium ? '' : 'none';
       discount.textContent = isPremium ? (itemData.premiumDiscountNote || 'premium discounts vary by item') : '';
       document.getElementById('shop-note').textContent = isAdmin
-        ? 'Admin accounts automatically own every shop item and can toggle supported items on or off.'
-        : 'Prices now scale by rarity and usefulness. Premium discounts vary per item, so cooler perks keep their own special pricing.';
+        ? 'Your account has shop access. Browse perks below or send coins to someone from the admin panel.'
+        : 'Looks for chat, profiles, game sessions, and the casino. Start small or save up for something permanent.';
 
       const status = inventory.status || {};
       const activeBuffs = [];
@@ -904,56 +920,6 @@
     }
   }
 
-  const itemExplanations = {
-    premium: "<strong>Premium Lifetime Membership</strong> unlocks the ultimate features of the platform. You get double coin rewards for Typing Races & Logic Puzzles, double offline progression in Clicker & Richard's Riches, a larger canvas painting brush (up to 3x3), exclusive golden name options, VIP forum threads, priority support channels, and the potential to sponsor your own custom arcade game name on the site!",
-    loaded_dice: "<strong>Loaded Lucky Dice:</strong> Exploit the casino physics engine! Forces guaranteed winning rolls, spins, coinflips, plinko drops, scratch cards, and roulette bets for 30 minutes. Rake in infinite coins!",
-    casino_glitch_chip: "<strong>Quantum Glitch Chip:</strong> Exploit a memory overflow vulnerability in casino payout smart contracts! Multiplies all casino winnings by an insane 5X factor for 20 minutes.",
-    infinite_luck_charm: "<strong>Infinite Coins Exploit Charm:</strong> The holy grail of casino hacks! Combines Loaded Dice auto-wins, 10X glitch payout multiplier, VIP unlimited max betting, and 100% bad beat loss refund for 30 full minutes. Allows accumulating millions or infinite coins quickly.",
-    neon_purple: "<strong>Neon Purple Name:</strong> Equipping this styling option instantly colors your name across all public spaces including Chat, Profiles, and Leaderboards. Perfect for standing out with a vibrant look.",
-    electric_blue: "<strong>Electric Blue Name:</strong> Equipping this styling option colors your name in electric blue. Stand out in chat and game leaderboards.",
-    mint_flash: "<strong>Violet Flash Name:</strong> A luminous violet accent for your chat username. Gives messages a cosmic glow.",
-    rose_spark: "<strong>Rose Spark Name:</strong> A clean pinkish-red glow for your username, highlighting your messages on all pages.",
-    ember_red: "<strong>Ember Red Name:</strong> A deep crimson styling option for your username. Expressive and bold.",
-    void_white: "<strong>Void White Name:</strong> A high-contrast modern clean white styling option, optimized for dark mode interfaces.",
-    gold_glow: "<strong>Golden Glow Name:</strong> A golden username styling option with a premium neon-gold glow outline. Reserved for premium members.",
-    rainbow_name: "<strong>Rainbow Name:</strong> An animated rainbow styling option that continuously cycles your username through the color spectrum.",
-    verified_badge: "<strong>Verified Badge:</strong> Adds a blue verified checkmark badge next to your username in chat. Shows authenticity.",
-    og_badge: "<strong>OG Badge:</strong> Adds an 'OG' early adopter badge next to your username, proving you were a user before the masses.",
-    artist_badge: "<strong>Artist Badge:</strong> Displays a paint palette badge next to your username, celebrating creative pixel artists.",
-    chess_badge: "<strong>Chess Badge:</strong> Displays a chess knight icon next to your name, signaling a competitive player.",
-    builder_badge: "<strong>Builder Badge:</strong> Displays a hammer icon, representing contributors who helped build the site.",
-    lucky_badge: "<strong>Lucky Badge:</strong> Displays a clover or diamond icon, celebrating casino enthusiasts.",
-    premium_star_badge: "<strong>Premium Star Badge:</strong> Adds a golden star next to your username, exclusive to premium members.",
-    owner_fan_badge: "<strong>Mitch Fan Badge:</strong> Displays a custom hearts/mitch icon, celebrating your support for the site creator.",
-    chat_sparkles: "<strong>Chat Sparkles:</strong> Emits small sparkly particle icons from your text messages in chat rooms.",
-    chat_shadow: "<strong>Chat Shadow:</strong> Applies a dark shadow drop effect behind your messages in chat for high legibility.",
-    chat_wave: "<strong>Chat Wave:</strong> Animates your chat messages with a gentle vertical wave pattern.",
-    chat_terminal: "<strong>Terminal Chat Style:</strong> Formats your chat message text in a violet monospace terminal style.",
-    chat_prism: "<strong>Prism Chat Style:</strong> Colors your chat messages with a continuous horizontal color gradient.",
-    profile_grid: "<strong>Profile Grid Background:</strong> Decorates your user profile page card with a sleek grid background vector.",
-    profile_stars: "<strong>Profile Starfield:</strong> Animates your profile background with floating stars and cosmic dust.",
-    profile_scanlines: "<strong>Profile Scanlines:</strong> Applies a retro CRT television scanline overlay to your profile page.",
-    profile_gold_frame: "<strong>Gold Profile Frame:</strong> Adds an elegant golden border around your profile card card.",
-    profile_neon_frame: "<strong>Neon Profile Frame:</strong> Adds a glowing hot-pink neon border around your profile card card.",
-    focus_theme: "<strong>Focus Theme:</strong> A calm grey/black minimalist theme preset for the entire website layout.",
-    arcade_theme: "<strong>Arcade Theme:</strong> A retro arcade preset theme with bright neon accents and custom gridlines.",
-    midnight_theme: "<strong>Midnight Theme:</strong> An ultra-dark black color preset theme, optimized for late night browsing.",
-    sarcastic_mentor: "<strong>Sarcastic Mentor AI:</strong> Unlocks a witty and sarcastic AI personality in the assistant console. Expect humorous sass and banter alongside useful responses.",
-    hacker_persona: "<strong>Hacker Persona AI:</strong> A cyber-themed hacker voice for the AI assistant. Emulates vintage cyberpunk aesthetics.",
-    study_coach: "<strong>Study Coach AI:</strong> A calm, supportive, and focused homework assistant voice to help you stay on track.",
-    debug_helper: "<strong>Debug Helper AI:</strong> A programming-focused AI assistant personality that gives direct, code-heavy, structured help.",
-    story_mode: "<strong>Story Mode AI:</strong> A creative writing partner AI personality, designed to help with creative writing.",
-    speedrun_ai: "<strong>Speedrun AI:</strong> A super-fast, direct-to-the-point AI assistant voice that answers with zero filler.",
-    vip_pass: "<strong>VIP Casino Pass:</strong> Allows you to bet unlimited coins in all casino games for 24 hours, bypassing the default 500-coin limit. Essential for high stakes players.",
-    canvas_lock_pass: "<strong>Canvas Lock Pass:</strong> Unlocks a preference switch on the canvas page to save and lock your zoom level and tools.",
-    daily_bonus_plus: "<strong>Daily Bonus Plus:</strong> Boosts your daily log-in MitchCoin rewards by +50 coins every day.",
-    streak_freeze: "<strong>Streak Freeze:</strong> Automatically consumes itself to protect your login streak if you miss a day. Keeps your rewards scaling!",
-    happy_hour_ticket: "<strong>Personal Happy Hour (30m):</strong> Triggers 30 minutes of double MitchCoins (2X) payout on all arcade games, keyboard races, logic puzzles, and canvas paints.",
-    double_down_ticket: "<strong>Double Down Ticket (30m):</strong> Active for 30 minutes. If active, doubles the payout (net profit) of any casino wins! Essential for high stakes players.",
-    bad_beat_insurance: "<strong>Bad Beat Insurance (30m):</strong> Active for 30 minutes. If active, refunds your entire bet if you lose any casino game round. Great for high stakes players.",
-    happy_hour_extension: "<strong>Happy Hour Extension (15m):</strong> Extends your active Personal Happy Hour by an additional 15 minutes. Note: Requires active Personal Happy Hour to purchase.",
-    slots_free_spin: "<strong>Slots Free Spins (5x):</strong> Adds 5 free spins to your account. Free spins let you play slots with zero coins at risk while keeping all winnings!"
-  };
 
   const modal = document.getElementById('info-modal');
   const modalClose = modal.querySelector('.modal-close-btn');
@@ -973,7 +939,7 @@
     if (active) tags.push('<span class="pill">active</span>');
     if (item.discountPct) tags.push(`<span class="pill gold">${item.discountPct}% off</span>`);
 
-    const expl = itemExplanations[item.id] || "No additional information is available for this item.";
+    const expl = esc(item.perk || item.desc || '');
 
     details.innerHTML = `
       <div class="modal-header">
