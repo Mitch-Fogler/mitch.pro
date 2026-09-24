@@ -335,7 +335,7 @@ async def browse_handler(request: web.Request) -> web.Response:
                 status=502
             )
 
-        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
+        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True, verify=False)
         timeout = httpx.Timeout(60.0, connect=30.0)
 
         headers = {
@@ -422,7 +422,7 @@ async def resource_handler(request: web.Request) -> web.Response:
         parsed_target = urllib.parse.urlparse(target_url)
 
         inst = await pool.get_instance(user_id)
-        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
+        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True, verify=False)
         timeout = httpx.Timeout(45.0, connect=20.0)
 
         headers = {
