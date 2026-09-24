@@ -430,8 +430,14 @@ pub fn valid_push_subscription(value: &serde_json::Value) -> bool {
     };
     let endpoint = obj.get("endpoint").and_then(|v| v.as_str()).unwrap_or("");
     let keys = obj.get("keys").and_then(|v| v.as_object());
-    let p256dh = keys.and_then(|k| k.get("p256dh")).and_then(|v| v.as_str()).unwrap_or("");
-    let auth = keys.and_then(|k| k.get("auth")).and_then(|v| v.as_str()).unwrap_or("");
+    let p256dh = keys
+        .and_then(|k| k.get("p256dh"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let auth = keys
+        .and_then(|k| k.get("auth"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     if !endpoint.starts_with("https://") {
         return false;
     }
@@ -460,17 +466,30 @@ pub fn handle_push_routes(
             || !mitch_lib::auth::valid_id(sid, &state.id_secret)
             || state.is_revoked_id(sid)
         {
-            return Some(crate::errors::json_resp(401, serde_json::json!({ "error": "auth required" })));
+            return Some(crate::errors::json_resp(
+                401,
+                serde_json::json!({ "error": "auth required" }),
+            ));
         }
-        let email = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid).unwrap_or_default();
+        let email = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid)
+            .unwrap_or_default();
         if email.is_empty() {
-            return Some(crate::errors::json_resp(403, serde_json::json!({ "error": "email not found" })));
+            return Some(crate::errors::json_resp(
+                403,
+                serde_json::json!({ "error": "email not found" }),
+            ));
         }
         let Ok(body) = serde_json::from_slice::<serde_json::Value>(body_bytes) else {
-            return Some(crate::errors::json_resp(400, serde_json::json!({ "error": "bad json" })));
+            return Some(crate::errors::json_resp(
+                400,
+                serde_json::json!({ "error": "bad json" }),
+            ));
         };
         if !valid_push_subscription(&body) {
-            return Some(crate::errors::json_resp(400, serde_json::json!({ "error": "invalid push subscription" })));
+            return Some(crate::errors::json_resp(
+                400,
+                serde_json::json!({ "error": "invalid push subscription" }),
+            ));
         }
         let norm = mitch_lib::auth::normalize_email(&email);
         let subs_file = state.data_dir().join("push_subs.json");
@@ -479,7 +498,10 @@ pub fn handle_push_routes(
             map.insert(norm, body);
             let _ = state.store.write_document(&subs_file, &subs);
         }
-        return Some(crate::errors::json_resp(200, serde_json::json!({ "success": true })));
+        return Some(crate::errors::json_resp(
+            200,
+            serde_json::json!({ "success": true }),
+        ));
     }
 
     if path == "/api/push/unsubscribe" && *method == axum::http::Method::POST {
@@ -493,11 +515,18 @@ pub fn handle_push_routes(
             || !mitch_lib::auth::valid_id(sid, &state.id_secret)
             || state.is_revoked_id(sid)
         {
-            return Some(crate::errors::json_resp(401, serde_json::json!({ "error": "auth required" })));
+            return Some(crate::errors::json_resp(
+                401,
+                serde_json::json!({ "error": "auth required" }),
+            ));
         }
-        let email = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid).unwrap_or_default();
+        let email = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid)
+            .unwrap_or_default();
         if email.is_empty() {
-            return Some(crate::errors::json_resp(403, serde_json::json!({ "error": "email not found" })));
+            return Some(crate::errors::json_resp(
+                403,
+                serde_json::json!({ "error": "email not found" }),
+            ));
         }
         let norm = mitch_lib::auth::normalize_email(&email);
         let subs_file = state.data_dir().join("push_subs.json");
@@ -506,9 +535,11 @@ pub fn handle_push_routes(
             map.remove(&norm);
             let _ = state.store.write_document(&subs_file, &subs);
         }
-        return Some(crate::errors::json_resp(200, serde_json::json!({ "success": true })));
+        return Some(crate::errors::json_resp(
+            200,
+            serde_json::json!({ "success": true }),
+        ));
     }
 
     None
 }
-

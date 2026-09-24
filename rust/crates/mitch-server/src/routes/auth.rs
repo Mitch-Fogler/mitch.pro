@@ -1312,7 +1312,10 @@ fn newsletter_unsubscribe_direct(
         unsub.sort();
         unsub.dedup();
         let _ = state.store.write_document(&unsub_file, &json!(unsub));
-        let _ = std::fs::write(&unsub_file, mitch_lib::data::js_stringify_pretty(&json!(unsub)));
+        let _ = std::fs::write(
+            &unsub_file,
+            mitch_lib::data::js_stringify_pretty(&json!(unsub)),
+        );
     }
 
     json_resp(200, json!({ "success": true, "email": norm_email }))

@@ -143,11 +143,7 @@ pub(crate) fn newsletter_unsub_set(state: &AppState) -> HashSet<String> {
 
 /// Checks whether an email address (or its delivery / canonical counterpart)
 /// is in the unsubscribed set.
-pub(crate) fn is_unsubscribed(
-    state: &AppState,
-    unsub_set: &HashSet<String>,
-    email: &str,
-) -> bool {
+pub(crate) fn is_unsubscribed(state: &AppState, unsub_set: &HashSet<String>, email: &str) -> bool {
     let low = email.to_lowercase().trim().to_string();
     if low.is_empty() {
         return false;
@@ -1370,7 +1366,11 @@ mod tests {
         assert!(is_unsubscribed(&state, &set, "store_unsub@example.com"));
         assert!(is_unsubscribed(&state, &set, "disk_unsub@example.com"));
         assert!(is_unsubscribed(&state, &set, "firstlast@student.rjuhsd.us"));
-        assert!(is_unsubscribed(&state, &set, "first.last@student.rjuhsd.us"));
+        assert!(is_unsubscribed(
+            &state,
+            &set,
+            "first.last@student.rjuhsd.us"
+        ));
         assert!(!is_unsubscribed(&state, &set, "active_user@example.com"));
 
         let _ = std::fs::remove_dir_all(dir);

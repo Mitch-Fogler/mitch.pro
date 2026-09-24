@@ -56,19 +56,21 @@ jobs:
           echo "only_static=$ONLY_STATIC" >> "$GITHUB_OUTPUT"
           echo "Is only static changes: $ONLY_STATIC"
 
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          bun-version: latest
+          components: rustfmt, clippy
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
 
       - name: Run unit tests
         # Integration tests are skipped here because they need a clean data/
         # and SSH into the live environment. They are run from the VPS via
         # tools/deploy.sh before the blue/green swap.
-        run: bun run test:unit
+        run: cargo test --manifest-path rust/Cargo.toml --workspace
 
   deploy:
     name: Build & Blue-Green Deploy

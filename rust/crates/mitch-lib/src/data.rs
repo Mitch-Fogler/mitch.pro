@@ -998,7 +998,7 @@ mod tests {
         store.write_document(&file, &value).unwrap();
         let back = store.read_document(&file, Value::Null);
         assert_eq!(back, value);
-        std::fs::remove_dir_all(base.parent().unwrap()).ok();
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]

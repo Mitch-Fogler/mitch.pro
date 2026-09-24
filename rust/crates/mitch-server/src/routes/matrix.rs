@@ -560,7 +560,8 @@ pub async fn sync_matrix_user_to_official_rooms(
 
         // 1. Join user to official room
         if !user_token.is_empty() {
-            let encoded_room = url::form_urlencoded::byte_serialize(room_id.as_bytes()).collect::<String>();
+            let encoded_room =
+                url::form_urlencoded::byte_serialize(room_id.as_bytes()).collect::<String>();
             let mut join_headers = HeaderMap::new();
             join_headers.insert("Content-Type", HeaderValue::from_static("application/json"));
             if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {user_token}")) {
@@ -571,14 +572,16 @@ pub async fn sync_matrix_user_to_official_rooms(
                 Method::POST,
                 Some(join_headers),
                 Some(Bytes::from_static(b"{}")),
-            ).await;
+            )
+            .await;
         }
 
         // 2. Fetch current power levels
         let Ok(admin_token) = get_system_admin_matrix_token(secret).await else {
             continue;
         };
-        let encoded_room = url::form_urlencoded::byte_serialize(room_id.as_bytes()).collect::<String>();
+        let encoded_room =
+            url::form_urlencoded::byte_serialize(room_id.as_bytes()).collect::<String>();
         let mut pl_headers = HeaderMap::new();
         if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {admin_token}")) {
             pl_headers.insert("Authorization", hv);
@@ -588,7 +591,9 @@ pub async fn sync_matrix_user_to_official_rooms(
             Method::GET,
             Some(pl_headers.clone()),
             None,
-        ).await {
+        )
+        .await
+        {
             if status.is_success() {
                 let mut pl_data: Value = serde_json::from_slice(&bytes).unwrap_or(json!({}));
                 if !pl_data.is_object() {
@@ -601,13 +606,20 @@ pub async fn sync_matrix_user_to_official_rooms(
                     pl_data["events"] = json!({});
                 }
                 let mut pl_changed = false;
-                for call_ev in &["org.matrix.msc3401.call.member", "org.matrix.msc3401.call", "org.matrix.msc4143.rtc.member"] {
+                for call_ev in &[
+                    "org.matrix.msc3401.call.member",
+                    "org.matrix.msc3401.call",
+                    "org.matrix.msc4143.rtc.member",
+                ] {
                     if pl_data["events"].get(call_ev).and_then(|v| v.as_i64()) != Some(0) {
                         pl_data["events"][call_ev] = json!(0);
                         pl_changed = true;
                     }
                 }
-                let current_pl = pl_data["users"].get(user_id).and_then(|v| v.as_i64()).unwrap_or(0);
+                let current_pl = pl_data["users"]
+                    .get(user_id)
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
                 if current_pl != target_power_level {
                     if target_power_level > 0 {
                         pl_data["users"][user_id] = json!(target_power_level);
@@ -618,22 +630,27 @@ pub async fn sync_matrix_user_to_official_rooms(
                 }
                 if pl_changed {
                     let mut put_headers = HeaderMap::new();
-                    put_headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+                    put_headers
+                        .insert("Content-Type", HeaderValue::from_static("application/json"));
                     if let Ok(hv) = HeaderValue::from_str(&format!("Bearer {admin_token}")) {
                         put_headers.insert("Authorization", hv);
                     }
                     let _ = call_conduit(
-                        &format!("/_matrix/client/v3/rooms/{encoded_room}/state/m.room.power_levels"),
+                        &format!(
+                            "/_matrix/client/v3/rooms/{encoded_room}/state/m.room.power_levels"
+                        ),
                         Method::PUT,
                         Some(put_headers),
-                        Some(Bytes::from(serde_json::to_vec(&pl_data).unwrap_or_default())),
-                    ).await;
+                        Some(Bytes::from(
+                            serde_json::to_vec(&pl_data).unwrap_or_default(),
+                        )),
+                    )
+                    .await;
                 }
             }
         }
     }
 }
-
 
 pub fn check_matrix_slowmode(room_id: &str, sender_key: &str, slowmode_seconds: i64) -> i64 {
     if slowmode_seconds <= 0 {
@@ -1538,13 +1555,8 @@ async fn api_sso_login(state: &AppState, headers: &HeaderMap, body_bytes: &[u8])
         "member"
     };
 
-    sync_matrix_user_to_official_rooms(
-        &state.id_secret,
-        user_id,
-        access_token,
-        target_power_level,
-    )
-    .await;
+    sync_matrix_user_to_official_rooms(&state.id_secret, user_id, access_token, target_power_level)
+        .await;
 
     let pfp_val = prof.get("pfp").and_then(|v| v.as_str()).unwrap_or("");
     let bio_val = prof.get("bio").and_then(|v| v.as_str()).unwrap_or("");
@@ -2774,14 +2786,18 @@ async fn mod_prune_stale(state: &AppState, headers: &HeaderMap, body_bytes: &[u8
                     to_delete.push(d_id.to_string());
                     continue;
                 }
-                let last_seen = dev.get("last_seen_ts").and_then(|v| v.as_i64()).unwrap_or(0);
+                let last_seen = dev
+                    .get("last_seen_ts")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0);
                 if last_seen == 0 || (now - last_seen) > max_age_ms {
                     to_delete.push(d_id.to_string());
                 }
             }
 
             if !to_delete.is_empty() {
-                let del_body = serde_json::to_vec(&json!({ "devices": to_delete })).unwrap_or_default();
+                let del_body =
+                    serde_json::to_vec(&json!({ "devices": to_delete })).unwrap_or_default();
                 let del_res = call_conduit(
                     "/_matrix/client/v3/delete_devices",
                     Method::POST,
@@ -2792,7 +2808,8 @@ async fn mod_prune_stale(state: &AppState, headers: &HeaderMap, body_bytes: &[u8
 
                 if let Ok((del_status, _, _)) = del_res {
                     if del_status == StatusCode::UNAUTHORIZED && !target_uid.is_empty() {
-                        let conduit_pass = get_matrix_password_for_uid(&target_uid, &state.id_secret);
+                        let conduit_pass =
+                            get_matrix_password_for_uid(&target_uid, &state.id_secret);
                         let uia_body = serde_json::to_vec(&json!({
                             "devices": to_delete,
                             "auth": {
@@ -2869,13 +2886,21 @@ async fn translate_matrix_password(
         return (false, body_bytes.to_vec());
     }
 
-    let passwords = state.store.read_document(&state.data_dir().join("passwords.json"), json!({}));
-    let stored_hash = passwords.get(&account.norm_email).and_then(|v| v.as_str()).unwrap_or("");
+    let passwords = state
+        .store
+        .read_document(&state.data_dir().join("passwords.json"), json!({}));
+    let stored_hash = passwords
+        .get(&account.norm_email)
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let conduit_pass = get_matrix_password_for_uid(&account.uid, &state.id_secret);
     let mut changed = false;
 
     if has_auth_password {
-        let entered = parsed["auth"]["password"].as_str().unwrap_or("").to_string();
+        let entered = parsed["auth"]["password"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         if entered == conduit_pass {
             // Already internal conduit password
         } else if !stored_hash.is_empty() {
@@ -2890,7 +2915,10 @@ async fn translate_matrix_password(
                             let mut pw_map = passwords.clone();
                             if let Some(obj) = pw_map.as_object_mut() {
                                 obj.insert(account.norm_email.clone(), json!(new_hash));
-                                let _ = state.store.write_document(&state.data_dir().join("passwords.json"), &pw_map);
+                                let _ = state.store.write_document(
+                                    &state.data_dir().join("passwords.json"),
+                                    &pw_map,
+                                );
                             }
                             parsed["new_password"] = json!(conduit_pass);
                         }
@@ -2914,12 +2942,14 @@ async fn translate_matrix_password(
     }
 
     if changed {
-        (true, serde_json::to_vec(&parsed).unwrap_or_else(|_| body_bytes.to_vec()))
+        (
+            true,
+            serde_json::to_vec(&parsed).unwrap_or_else(|_| body_bytes.to_vec()),
+        )
     } else {
         (false, body_bytes.to_vec())
     }
 }
-
 
 pub fn record_matrix_email_sent(state: &AppState, member_norm: &str) {
     let norm = mitch_lib::auth::normalize_email(member_norm);
@@ -2948,18 +2978,34 @@ pub fn add_matrix_notification(state: &AppState, target_norm: &str, notif: &Valu
     }
 
     let room_id = notif.get("roomId").and_then(|v| v.as_str()).unwrap_or("");
-    let n_type = notif.get("type").and_then(|v| v.as_str()).unwrap_or("matrix");
-    let sender = notif.get("sender").and_then(|v| v.as_str()).unwrap_or("Someone");
-    let room_title = notif.get("roomTitle").and_then(|v| v.as_str()).unwrap_or("");
-    let is_direct = notif.get("isDirect").and_then(|v| v.as_bool()).unwrap_or(false);
+    let n_type = notif
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("matrix");
+    let sender = notif
+        .get("sender")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Someone");
+    let room_title = notif
+        .get("roomTitle")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let is_direct = notif
+        .get("isDirect")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let now = now_millis();
 
     let list = match all.get_mut(target_norm).and_then(|v| v.as_array_mut()) {
         Some(l) => l,
         None => {
             if let Some(obj) = all.as_object_mut() {
-                obj.insert(target_norm.to_string(), json!([]));
-                obj.get_mut(target_norm).unwrap().as_array_mut().unwrap()
+                obj.entry(target_norm.to_string()).or_insert_with(|| json!([]));
+                if let Some(l) = obj.get_mut(target_norm).and_then(|v| v.as_array_mut()) {
+                    l
+                } else {
+                    return;
+                }
             } else {
                 return;
             }
@@ -3023,7 +3069,10 @@ pub fn add_matrix_notification(state: &AppState, target_norm: &str, notif: &Valu
         let detail = notif.get("detail").and_then(|v| v.as_str()).unwrap_or("");
         let enc_room = urlencoding_encode(room_id);
         let default_url = format!("/matrix/#/room/{enc_room}");
-        let url = notif.get("url").and_then(|v| v.as_str()).unwrap_or(&default_url);
+        let url = notif
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&default_url);
 
         let item = json!({
             "id": item_id,
@@ -3085,7 +3134,9 @@ async fn get_matrix_room_info_for_notifications(
     let eff_token = if !token.is_empty() {
         token.to_string()
     } else {
-        get_system_admin_matrix_token(secret).await.unwrap_or_default()
+        get_system_admin_matrix_token(secret)
+            .await
+            .unwrap_or_default()
     };
     if !eff_token.is_empty() {
         let auth_val = if eff_token.to_lowercase().starts_with("bearer ") {
@@ -3100,7 +3151,9 @@ async fn get_matrix_room_info_for_notifications(
 
     let enc_room = urlencoding_encode(room_id);
     let mem_subpath = format!("/_matrix/client/v3/rooms/{enc_room}/joined_members");
-    if let Ok((status, _, bytes)) = call_conduit(&mem_subpath, Method::GET, Some(headers.clone()), None).await {
+    if let Ok((status, _, bytes)) =
+        call_conduit(&mem_subpath, Method::GET, Some(headers.clone()), None).await
+    {
         if status.is_success() {
             if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
                 if let Some(joined) = val.get("joined").and_then(|v| v.as_object()) {
@@ -3111,7 +3164,9 @@ async fn get_matrix_room_info_for_notifications(
     }
 
     let name_subpath = format!("/_matrix/client/v3/rooms/{enc_room}/state/m.room.name");
-    if let Ok((status, _, bytes)) = call_conduit(&name_subpath, Method::GET, Some(headers.clone()), None).await {
+    if let Ok((status, _, bytes)) =
+        call_conduit(&name_subpath, Method::GET, Some(headers.clone()), None).await
+    {
         if status.is_success() {
             if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
                 if let Some(n) = val.get("name").and_then(|v| v.as_str()) {
@@ -3121,8 +3176,11 @@ async fn get_matrix_room_info_for_notifications(
         }
     }
     if name.is_empty() {
-        let alias_subpath = format!("/_matrix/client/v3/rooms/{enc_room}/state/m.room.canonical_alias");
-        if let Ok((status, _, bytes)) = call_conduit(&alias_subpath, Method::GET, Some(headers.clone()), None).await {
+        let alias_subpath =
+            format!("/_matrix/client/v3/rooms/{enc_room}/state/m.room.canonical_alias");
+        if let Ok((status, _, bytes)) =
+            call_conduit(&alias_subpath, Method::GET, Some(headers.clone()), None).await
+        {
             if status.is_success() {
                 if let Ok(val) = serde_json::from_slice::<Value>(&bytes) {
                     if let Some(a) = val.get("alias").and_then(|v| v.as_str()) {
@@ -3167,7 +3225,9 @@ fn resolve_member_norm(state: &AppState, member_id: &str) -> String {
             if name_str.eq_ignore_ascii_case(local_part)
                 || format!("@{name_str}:mitch.pro").eq_ignore_ascii_case(member_id)
             {
-                if let Some(em) = mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid) {
+                if let Some(em) =
+                    mitch_lib::auth::email_from_sid(&state.store, &state.id_secret, sid)
+                {
                     let norm = mitch_lib::auth::normalize_email(&em);
                     if !norm.is_empty() {
                         return norm;
@@ -3220,7 +3280,9 @@ async fn resolve_sender_info(
         .unwrap_or_default();
 
     if sender_user_id.is_empty() && !token.is_empty() {
-        let map = token_to_account_map().lock().unwrap_or_else(|e| e.into_inner());
+        let map = token_to_account_map()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if let Some(acc) = map.get(&token) {
             sender_user_id = acc.user_id.clone();
             if sender_norm_email.is_empty() {
@@ -3348,7 +3410,9 @@ async fn dispatch_matrix_message_notifications(
 
     let vapid_public = std::env::var("VAPID_PUBLIC_KEY").unwrap_or_default();
     let subs = if !vapid_public.is_empty() {
-        state.store.read_document(&state.data_dir().join("push_subs.json"), json!({}))
+        state
+            .store
+            .read_document(&state.data_dir().join("push_subs.json"), json!({}))
     } else {
         json!({})
     };
@@ -3397,7 +3461,8 @@ async fn dispatch_matrix_message_notifications(
                 let mn = member_norm.clone();
                 let sb = sub.clone();
                 tokio::spawn(async move {
-                    let _ = crate::routes::push::send_web_push(&st, &vp, &mn, &sb, &push_payload).await;
+                    let _ =
+                        crate::routes::push::send_web_push(&st, &vp, &mn, &sb, &push_payload).await;
                 });
             }
         }
@@ -3416,8 +3481,7 @@ async fn dispatch_matrix_invite_notifications(
         return;
     }
 
-    let (_, sender_display_name, _) =
-        resolve_sender_info(state, headers, Some(&parsed)).await;
+    let (_, sender_display_name, _) = resolve_sender_info(state, headers, Some(&parsed)).await;
 
     let token = headers
         .get("authorization")
@@ -3464,7 +3528,9 @@ async fn dispatch_matrix_invite_notifications(
 
     let vapid_public = std::env::var("VAPID_PUBLIC_KEY").unwrap_or_default();
     if !vapid_public.is_empty() {
-        let subs = state.store.read_document(&state.data_dir().join("push_subs.json"), json!({}));
+        let subs = state
+            .store
+            .read_document(&state.data_dir().join("push_subs.json"), json!({}));
         if let Some(sub) = subs.get(&member_norm) {
             let push_payload = json!({
                 "title": notif_title,
@@ -3542,7 +3608,9 @@ async fn dispatch_matrix_call_notifications(
 
     let vapid_public = std::env::var("VAPID_PUBLIC_KEY").unwrap_or_default();
     let subs = if !vapid_public.is_empty() {
-        state.store.read_document(&state.data_dir().join("push_subs.json"), json!({}))
+        state
+            .store
+            .read_document(&state.data_dir().join("push_subs.json"), json!({}))
     } else {
         json!({})
     };
@@ -3557,7 +3625,11 @@ async fn dispatch_matrix_call_notifications(
             continue;
         }
 
-        if !crate::routes::dm::notif_allowed(state, &member_norm, if is_direct { "dm" } else { "group" }) {
+        if !crate::routes::dm::notif_allowed(
+            state,
+            &member_norm,
+            if is_direct { "dm" } else { "group" },
+        ) {
             continue;
         }
 
@@ -3600,7 +3672,8 @@ async fn dispatch_matrix_call_notifications(
                 let mn = member_norm.clone();
                 let sb = sub.clone();
                 tokio::spawn(async move {
-                    let _ = crate::routes::push::send_web_push(&st, &vp, &mn, &sb, &push_payload).await;
+                    let _ =
+                        crate::routes::push::send_web_push(&st, &vp, &mn, &sb, &push_payload).await;
                 });
             }
         }
@@ -4012,9 +4085,15 @@ pub async fn handle_matrix_gateway(
                     let room_id = urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
                     let event_type = caps.get(2).map(|m| m.as_str()).unwrap_or("");
                     if event_type == "m.call.invite" {
-                        dispatch_matrix_call_notifications(state, &room_id, event_type, body_bytes, headers).await;
+                        dispatch_matrix_call_notifications(
+                            state, &room_id, event_type, body_bytes, headers,
+                        )
+                        .await;
                     } else if event_type == "m.room.message" || event_type == "m.room.encrypted" {
-                        dispatch_matrix_message_notifications(state, &room_id, event_type, body_bytes, headers).await;
+                        dispatch_matrix_message_notifications(
+                            state, &room_id, event_type, body_bytes, headers,
+                        )
+                        .await;
                     }
                 } else {
                     static INVITE_RE: OnceLock<regex::Regex> = OnceLock::new();
@@ -4023,19 +4102,29 @@ pub async fn handle_matrix_gateway(
                             .expect("static regex")
                     });
                     if let Some(caps) = invite_re.captures(path) {
-                        let room_id = urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
-                        dispatch_matrix_invite_notifications(state, &room_id, body_bytes, headers).await;
+                        let room_id =
+                            urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
+                        dispatch_matrix_invite_notifications(state, &room_id, body_bytes, headers)
+                            .await;
                     } else {
                         static STATE_RE: OnceLock<regex::Regex> = OnceLock::new();
                         let state_re = STATE_RE.get_or_init(|| {
-                            regex::Regex::new(r"^/_matrix/client/(?:v3|r0)/rooms/([^/]+)/state/([^/]+)")
-                                .expect("static regex")
+                            regex::Regex::new(
+                                r"^/_matrix/client/(?:v3|r0)/rooms/([^/]+)/state/([^/]+)",
+                            )
+                            .expect("static regex")
                         });
                         if let Some(caps) = state_re.captures(path) {
-                            let room_id = urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
+                            let room_id =
+                                urlencoding_decode(caps.get(1).map(|m| m.as_str()).unwrap_or(""));
                             let event_type = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-                            if event_type == "m.call.member" || event_type == "org.matrix.msc3401.call.member" {
-                                dispatch_matrix_call_notifications(state, &room_id, event_type, body_bytes, headers).await;
+                            if event_type == "m.call.member"
+                                || event_type == "org.matrix.msc3401.call.member"
+                            {
+                                dispatch_matrix_call_notifications(
+                                    state, &room_id, event_type, body_bytes, headers,
+                                )
+                                .await;
                             }
                         }
                     }

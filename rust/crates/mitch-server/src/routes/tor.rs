@@ -51,8 +51,10 @@ pub async fn handle(
                 Response::builder()
                     .status(StatusCode::BAD_GATEWAY)
                     .header("Content-Type", "application/json")
-                    .body(Body::from(r#"{"ok":false,"error":"Tor client build failed"}"#))
-                    .unwrap(),
+                    .body(Body::from(
+                        r#"{"ok":false,"error":"Tor client build failed"}"#,
+                    ))
+                    .unwrap_or_else(|_| Response::new(Body::empty())),
             )
         }
     };
@@ -110,13 +112,13 @@ pub async fn handle(
                     Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
                         .body(Body::empty())
-                        .unwrap()
+                        .unwrap_or_else(|_| Response::new(Body::empty()))
                 })),
                 Err(_) => Some(
                     Response::builder()
                         .status(StatusCode::BAD_GATEWAY)
                         .body(Body::from("Failed to read response from Tor service"))
-                        .unwrap(),
+                        .unwrap_or_else(|_| Response::new(Body::empty())),
                 ),
             }
         }
@@ -129,7 +131,7 @@ pub async fn handle(
                     .body(Body::from(
                         r#"{"ok":false,"error":"Tor service gateway unavailable"}"#,
                     ))
-                    .unwrap(),
+                    .unwrap_or_else(|_| Response::new(Body::empty())),
             )
         }
     }

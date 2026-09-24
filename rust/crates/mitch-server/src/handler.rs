@@ -720,10 +720,8 @@ pub async fn handle(
 
     // Tor Browser View dispatch
     if path == "/tor/view" {
-        if let Some(resp) = crate::routes::tor::handle(
-            &state, &method, &path, headers, body_bytes, &search,
-        )
-        .await
+        if let Some(resp) =
+            crate::routes::tor::handle(&state, &method, &path, headers, body_bytes, &search).await
         {
             return resp;
         }
@@ -1030,19 +1028,18 @@ pub async fn handle(
         }
         // Tor Browser & Onion Gateway API
         if path.starts_with("/api/tor/") {
-            if let Some(resp) = crate::routes::tor::handle(
-                &state, &method, &path, headers, body_bytes, &search,
-            )
-            .await
+            if let Some(resp) =
+                crate::routes::tor::handle(&state, &method, &path, headers, body_bytes, &search)
+                    .await
             {
                 return resp;
             }
         }
         // Web push subscription routes
         if path.starts_with("/api/push/") {
-            if let Some(resp) = crate::routes::push::handle_push_routes(
-                &state, &method, &path, headers, body_bytes,
-            ) {
+            if let Some(resp) =
+                crate::routes::push::handle_push_routes(&state, &method, &path, headers, body_bytes)
+            {
                 return resp;
             }
         }
@@ -1644,9 +1641,13 @@ pub async fn handle(
     }
 
     // 14. Static.
-    serve_static(&state.static_cache, &webroot, &path, Some(headers), |html| {
-        crate::pipeline::serve_static_html(&state, headers, &path, html)
-    })
+    serve_static(
+        &state.static_cache,
+        &webroot,
+        &path,
+        Some(headers),
+        |html| crate::pipeline::serve_static_html(&state, headers, &path, html),
+    )
 }
 
 fn html_response(html: String) -> Response {
@@ -1945,7 +1946,10 @@ fn handle_unsubscribe(state: &Arc<AppState>, path: &str) -> Option<Response> {
             let _ = state
                 .store
                 .write_document(&unsub_file, &serde_json::json!(list));
-            let _ = std::fs::write(&unsub_file, mitch_lib::data::js_stringify_pretty(&serde_json::json!(list)));
+            let _ = std::fs::write(
+                &unsub_file,
+                mitch_lib::data::js_stringify_pretty(&serde_json::json!(list)),
+            );
         }
         Some(unsubscribe_success_html(&email))
     } else {

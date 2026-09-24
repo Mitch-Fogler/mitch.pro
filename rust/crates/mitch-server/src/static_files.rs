@@ -280,7 +280,9 @@ fn is_hashed_asset(url_path: &str) -> bool {
                     let hash = &rest[..dot];
                     let ext = &rest[dot + 1..];
                     hash.len() >= 8
-                        && hash.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+                        && hash
+                            .chars()
+                            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
                         && matches!(
                             ext.to_ascii_lowercase().as_str(),
                             "js" | "css" | "wasm" | "woff" | "woff2" | "ttf" | "png" | "svg"
@@ -496,15 +498,15 @@ mod tests {
     #[test]
     fn cache_control_classes_match_js() {
         assert_eq!(
-            cache_control_for("html", "text/html; charset=utf-8")[0].1,
+            cache_control_for("html", "text/html; charset=utf-8", "/index.html")[0].1,
             "no-cache, no-store, must-revalidate"
         );
         assert_eq!(
-            cache_control_for("png", "image/png")[0].1,
+            cache_control_for("png", "image/png", "/img.png")[0].1,
             "public, max-age=31536000, immutable"
         );
         assert_eq!(
-            cache_control_for("bin", "application/octet-stream")[0].1,
+            cache_control_for("bin", "application/octet-stream", "/data.bin")[0].1,
             "public, max-age=2592000"
         );
     }

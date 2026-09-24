@@ -52,14 +52,16 @@ pub fn handle(
             .unwrap_or_default();
     }
 
-    let qs: std::collections::HashMap<String, String> =
-        form_urlencoded::parse(search.as_bytes())
-            .into_owned()
-            .collect();
+    let qs: std::collections::HashMap<String, String> = form_urlencoded::parse(search.as_bytes())
+        .into_owned()
+        .collect();
 
     // /api/madlibs/list or ?list=1 returns all available titles
     if path == "/api/madlibs/list"
-        || qs.get("list").map(|v| v == "1" || v == "true").unwrap_or(false)
+        || qs
+            .get("list")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false)
     {
         let titles: Vec<&str> = templates
             .iter()
@@ -206,7 +208,13 @@ mod tests {
 
         // Body must have title, text, and blanks matching length
         let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX);
-        let val: Value = serde_json::from_slice(&tokio::runtime::Runtime::new().unwrap().block_on(body_bytes).unwrap()).unwrap();
+        let val: Value = serde_json::from_slice(
+            &tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(body_bytes)
+                .unwrap(),
+        )
+        .unwrap();
         assert!(val.get("title").and_then(|v| v.as_str()).is_some());
         let text = val.get("text").and_then(|v| v.as_array()).unwrap();
         let blanks = val.get("blanks").and_then(|v| v.as_array()).unwrap();
@@ -226,8 +234,17 @@ mod tests {
         );
         assert_eq!(resp.status(), StatusCode::OK);
         let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX);
-        let val: Value = serde_json::from_slice(&tokio::runtime::Runtime::new().unwrap().block_on(body_bytes).unwrap()).unwrap();
-        assert_eq!(val.get("title").and_then(|v| v.as_str()), Some("How Pizza Was Invented"));
+        let val: Value = serde_json::from_slice(
+            &tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(body_bytes)
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            val.get("title").and_then(|v| v.as_str()),
+            Some("How Pizza Was Invented")
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -238,7 +255,13 @@ mod tests {
         let resp = handle(&state, &Method::GET, "/api/madlibs/list", "");
         assert_eq!(resp.status(), StatusCode::OK);
         let body_bytes = axum::body::to_bytes(resp.into_body(), usize::MAX);
-        let val: Value = serde_json::from_slice(&tokio::runtime::Runtime::new().unwrap().block_on(body_bytes).unwrap()).unwrap();
+        let val: Value = serde_json::from_slice(
+            &tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(body_bytes)
+                .unwrap(),
+        )
+        .unwrap();
         let count = val.get("count").and_then(|v| v.as_u64()).unwrap();
         assert!(count >= 80, "Expected at least 80 templates, got {count}");
 
