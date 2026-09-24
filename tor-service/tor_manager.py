@@ -104,7 +104,8 @@ class TorProcessPool:
                 f"SocksPort 127.0.0.1:{socks_port}",
                 f"ControlPort 127.0.0.1:{control_port}",
                 "CookieAuthentication 0",
-                "AvoidDiskWrites 1",
+                "ClientUseIPv6 0",
+                "ClientPreferIPv6ORPort 0",
                 f"Log notice file {tor_log}",
             ]
 
@@ -454,6 +455,14 @@ async def status_handler(request: web.Request) -> web.Response:
     user_id = get_user_id(request)
     try:
         inst = await pool.get_instance(user_id)
+        log_lines = []
+        tor_log_path = os.path.join(TOR_BASE_DIR, f"user_{inst.user_id}", "tor.log")
+        if os.path.exists(tor_log_path):
+            try:
+                with open(tor_log_path, "r", errors="ignore") as f:
+                    log_lines = [line.strip() for line in f.readlines()[-40:]]
+            except Exception:
+                pass
         return web.json_response({
             "ok": True,
             "user_id": inst.user_id,
@@ -463,7 +472,8 @@ async def status_handler(request: web.Request) -> web.Response:
             "interface": TOR_INTERFACE,
             "outbound_bind_ip": TOR_OUTBOUND_BIND_IP or "default",
             "active_tor_processes": len(pool.instances),
-            "uptime_seconds": int(time.time() - inst.created_at)
+            "uptime_seconds": int(time.time() - inst.created_at),
+            "tor_log": log_lines
         })
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)}, status=500)
