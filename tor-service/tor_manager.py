@@ -307,115 +307,124 @@ def rewrite_html_content(html: str, base_url: str, user_id: str) -> str:
 
 
 async def browse_handler(request: web.Request) -> web.Response:
-    user_id = get_user_id(request)
-
-    if request.method == "POST":
-        post_data = await request.post()
-        target_url = post_data.get("__tor_target") or post_data.get("url") or request.query.get("url", "")
-    else:
-        target_url = request.query.get("url", "")
-
-    if not target_url:
-        return web.json_response({"ok": False, "error": "Missing URL parameter"}, status=400)
-
-    target_url = normalize_target_url(target_url)
-    parsed_target = urllib.parse.urlparse(target_url)
-
     try:
-        inst = await pool.get_instance(user_id)
+        user_id = get_user_id(request)
+
+        if request.method == "POST":
+            post_data = await request.post()
+            target_url = post_data.get("__tor_target") or post_data.get("url") or request.query.get("url", "")
+        else:
+            target_url = request.query.get("url", "")
+
+        if not target_url:
+            return web.json_response({"ok": False, "error": "Missing URL parameter"}, status=400)
+
+        target_url = normalize_target_url(target_url)
+        parsed_target = urllib.parse.urlparse(target_url)
+
+        try:
+            inst = await pool.get_instance(user_id)
+        except Exception as e:
+            logger.error(f"Failed to get Tor instance: {e}")
+            return web.Response(
+                text=f"<h3>Error initializing Tor circuit</h3><p>{str(e)}</p>",
+                content_type="text/html",
+                status=502
+            )
+
+        connector = aiohttp_socks.ProxyConnector.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
+        timeout = ClientTimeout(total=60, connect=30)
+
+        headers = {
+            "Host": parsed_target.netloc,
+            "User-Agent": TOR_USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "identity",
+        }
+
+        try:
+            async with ClientSession(connector=connector, timeout=timeout) as session:
+                req_kwargs = {"headers": headers, "allow_redirects": True, "ssl": False}
+                if request.method == "POST":
+                    form_data = {k: v for k, v in (await request.post()).items() if k != "__tor_target"}
+                    req_kwargs["data"] = form_data
+                    async with session.post(target_url, **req_kwargs) as resp:
+                        status = resp.status
+                        content_type = resp.headers.get("Content-Type", "text/html")
+                        body = await resp.read()
+                        final_url = str(resp.url)
+                else:
+                    async with session.get(target_url, **req_kwargs) as resp:
+                        status = resp.status
+                        content_type = resp.headers.get("Content-Type", "text/html")
+                        body = await resp.read()
+                        final_url = str(resp.url)
+
+                # Check if HTML
+                if "text/html" in content_type.lower():
+                    try:
+                        encoding = resp.charset or "utf-8"
+                        html_text = body.decode(encoding, errors="replace")
+                        rewritten = rewrite_html_content(html_text, final_url, user_id)
+                        body = rewritten.encode("utf-8")
+                        content_type = "text/html; charset=utf-8"
+                    except Exception as e:
+                        logger.warning(f"HTML rewrite error for {final_url}: {e}")
+
+                resp_headers = {
+                    "Content-Type": content_type,
+                    "X-Tor-User": inst.user_id,
+                    "X-Tor-Socks-Port": str(inst.socks_port),
+                    "Access-Control-Allow-Origin": "*",
+                }
+
+                return web.Response(body=body, status=status, headers=resp_headers)
+
+        except asyncio.TimeoutError:
+            return web.Response(
+                text=f"""<div style="font-family:system-ui,sans-serif;background:#0d1117;color:#f85149;padding:32px;text-align:center;">
+                    <h2>🧅 Tor Connection Timed Out</h2>
+                    <p style="color:#8b949e;">The .onion service at <code>{target_url}</code> took too long to respond. The site may be offline, under heavy load, or its Tor descriptor might be propagating.</p>
+                    <button onclick="window.location.reload()" style="background:#238636;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:600;margin-top:16px;">Try Again</button>
+                </div>""",
+                content_type="text/html",
+                status=504
+            )
+        except Exception as e:
+            logger.error(f"Tor browse error for {target_url}: {e}")
+            return web.Response(
+                text=f"""<div style="font-family:system-ui,sans-serif;background:#0d1117;color:#f85149;padding:32px;text-align:center;">
+                    <h2>🧅 Tor Routing Error</h2>
+                    <p style="color:#8b949e;">Could not reach <code>{target_url}</code>: {str(e)}</p>
+                </div>""",
+                content_type="text/html",
+                status=502
+            )
     except Exception as e:
-        logger.error(f"Failed to get Tor instance: {e}")
-        return web.Response(
-            text=f"<h3>Error initializing Tor circuit</h3><p>{str(e)}</p>",
-            content_type="text/html",
-            status=502
-        )
-
-    connector = aiohttp_socks.ProxyConnector.from_url(f"socks5h://127.0.0.1:{inst.socks_port}", rdns=True)
-    timeout = ClientTimeout(total=60, connect=30)
-
-    headers = {
-        "Host": parsed_target.netloc,
-        "User-Agent": TOR_USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Accept-Encoding": "identity",
-    }
-
-    try:
-        async with ClientSession(connector=connector, timeout=timeout) as session:
-            req_kwargs = {"headers": headers, "allow_redirects": True, "ssl": False}
-            if request.method == "POST":
-                # Filter out proxy-internal params
-                form_data = {k: v for k, v in (await request.post()).items() if k != "__tor_target"}
-                req_kwargs["data"] = form_data
-                async with session.post(target_url, **req_kwargs) as resp:
-                    status = resp.status
-                    content_type = resp.headers.get("Content-Type", "text/html")
-                    body = await resp.read()
-                    final_url = str(resp.url)
-            else:
-                async with session.get(target_url, **req_kwargs) as resp:
-                    status = resp.status
-                    content_type = resp.headers.get("Content-Type", "text/html")
-                    body = await resp.read()
-                    final_url = str(resp.url)
-
-            # Check if HTML
-            if "text/html" in content_type.lower():
-                try:
-                    encoding = resp.charset or "utf-8"
-                    html_text = body.decode(encoding, errors="replace")
-                    rewritten = rewrite_html_content(html_text, final_url, user_id)
-                    body = rewritten.encode("utf-8")
-                    content_type = "text/html; charset=utf-8"
-                except Exception as e:
-                    logger.warning(f"HTML rewrite error for {final_url}: {e}")
-
-            resp_headers = {
-                "Content-Type": content_type,
-                "X-Tor-User": inst.user_id,
-                "X-Tor-Socks-Port": str(inst.socks_port),
-                "X-Tor-Final-URL": final_url,
-                "Access-Control-Allow-Origin": "*",
-            }
-
-            return web.Response(body=body, status=status, headers=resp_headers)
-
-    except asyncio.TimeoutError:
+        logger.error(f"Unhandled error in browse_handler: {e}")
         return web.Response(
             text=f"""<div style="font-family:system-ui,sans-serif;background:#0d1117;color:#f85149;padding:32px;text-align:center;">
-                <h2>🧅 Tor Connection Timed Out</h2>
-                <p style="color:#8b949e;">The .onion service at <code>{target_url}</code> took too long to respond. The site may be offline, under heavy load, or its Tor descriptor might be propagating.</p>
-                <button onclick="window.location.reload()" style="background:#238636;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:600;margin-top:16px;">Try Again</button>
+                <h2>🧅 Tor Gateway Error</h2>
+                <p style="color:#8b949e;">{str(e)}</p>
             </div>""",
             content_type="text/html",
-            status=504
-        )
-    except Exception as e:
-        logger.error(f"Tor browse error for {target_url}: {e}")
-        return web.Response(
-            text=f"""<div style="font-family:system-ui,sans-serif;background:#0d1117;color:#f85149;padding:32px;text-align:center;">
-                <h2>🧅 Tor Routing Error</h2>
-                <p style="color:#8b949e;">Could not reach <code>{target_url}</code>: {str(e)}</p>
-            </div>""",
-            content_type="text/html",
-            status=502
+            status=500
         )
 
 
 async def resource_handler(request: web.Request) -> web.Response:
-    user_id = get_user_id(request)
-    raw_url = request.query.get("url", "")
-    if not raw_url:
-        return web.Response(status=404)
-
-    target_url = normalize_target_url(raw_url)
-    parsed_target = urllib.parse.urlparse(target_url)
-
     try:
+        user_id = get_user_id(request)
+        raw_url = request.query.get("url", "")
+        if not raw_url:
+            return web.Response(status=404)
+
+        target_url = normalize_target_url(raw_url)
+        parsed_target = urllib.parse.urlparse(target_url)
+
         inst = await pool.get_instance(user_id)
-        connector = aiohttp_socks.ProxyConnector.from_url(f"socks5h://127.0.0.1:{inst.socks_port}", rdns=True)
+        connector = aiohttp_socks.ProxyConnector.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
         timeout = ClientTimeout(total=45, connect=20)
 
         headers = {
@@ -437,7 +446,7 @@ async def resource_handler(request: web.Request) -> web.Response:
                     }
                 )
     except Exception as e:
-        logger.debug(f"Resource fetch failed for {target_url}: {e}")
+        logger.debug(f"Resource fetch failed: {e}")
         return web.Response(status=502)
 
 
