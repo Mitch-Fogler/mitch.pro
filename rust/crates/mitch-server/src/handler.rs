@@ -1900,6 +1900,7 @@ fn handle_unsubscribe(state: &Arc<AppState>, path: &str) -> Option<Response> {
             let _ = state
                 .store
                 .write_document(&unsub_file, &serde_json::json!(list));
+            let _ = std::fs::write(&unsub_file, mitch_lib::data::js_stringify_pretty(&serde_json::json!(list)));
         }
         Some(unsubscribe_success_html(&email))
     } else {

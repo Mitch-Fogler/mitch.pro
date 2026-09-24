@@ -102,25 +102,85 @@ fn save_email_log(state: &AppState, log: &Value) {
     state.store.write_document(&email_log_path(state), log).ok();
 }
 
+/// Loads the set of unsubscribed email addresses from both the data store and disk.
+/// Contains both raw lowercased addresses and normalized forms so that
+/// variants (e.g. dotted vs non-dotted or domain aliases) match properly.
+pub(crate) fn newsletter_unsub_set(state: &AppState) -> HashSet<String> {
+    let mut set = HashSet::new();
+
+    let mut add_from_val = |val: Value| {
+        if let Some(arr) = val.as_array() {
+            for v in arr {
+                if let Some(s) = v.as_str() {
+                    let low = s.to_lowercase().trim().to_string();
+                    if !low.is_empty() {
+                        let norm = mitch_lib::auth::normalize_email(&low);
+                        set.insert(low);
+                        if !norm.is_empty() {
+                            set.insert(norm);
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    // 1. Read from store (database / disk fallback)
+    let doc = state
+        .store
+        .read_document(&state.data_dir().join("newsletter_unsub.json"), json!([]));
+    add_from_val(doc);
+
+    // 2. Also read directly from disk in case disk has changes not yet in DB
+    if let Ok(raw) = std::fs::read_to_string(state.data_dir().join("newsletter_unsub.json")) {
+        if let Ok(val) = serde_json::from_str::<Value>(&raw) {
+            add_from_val(val);
+        }
+    }
+
+    set
+}
+
+/// Checks whether an email address (or its delivery / canonical counterpart)
+/// is in the unsubscribed set.
+pub(crate) fn is_unsubscribed(
+    state: &AppState,
+    unsub_set: &HashSet<String>,
+    email: &str,
+) -> bool {
+    let low = email.to_lowercase().trim().to_string();
+    if low.is_empty() {
+        return false;
+    }
+    if unsub_set.contains(&low) {
+        return true;
+    }
+    let norm = mitch_lib::auth::normalize_email(&low);
+    if !norm.is_empty() && unsub_set.contains(&norm) {
+        return true;
+    }
+    let target = canonical_email(state, &low);
+    if !target.is_empty() {
+        let target_low = target.to_lowercase().trim().to_string();
+        if unsub_set.contains(&target_low) {
+            return true;
+        }
+        let target_norm = mitch_lib::auth::normalize_email(&target_low);
+        if !target_norm.is_empty() && unsub_set.contains(&target_norm) {
+            return true;
+        }
+    }
+    false
+}
+
 /// `enrolledUsers()` (server.js:4815-4830) — tokens.json entries with an
 /// email, deduped, minus newsletter unsubscribes and keeping only records
-/// with `claimed_domains` or `used`. The unsub file is read straight off
-/// disk like the JS `readFileSync` (it is not store-backed, so this usually
-/// comes up empty — matching the JS catch → empty Set).
+/// with `claimed_domains` or `used`.
 fn enrolled_users(state: &AppState) -> Vec<String> {
     let tokens = state
         .store
         .read_document(&state.data_dir().join("tokens.json"), json!({}));
-    let unsub: HashSet<String> =
-        std::fs::read_to_string(state.data_dir().join("newsletter_unsub.json"))
-            .ok()
-            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
-            .and_then(|v| v.as_array().cloned())
-            .unwrap_or_default()
-            .iter()
-            .filter_map(|e| e.as_str())
-            .map(|e| e.to_lowercase())
-            .collect();
+    let unsub = newsletter_unsub_set(state);
     let mut seen: HashSet<String> = HashSet::new();
     let mut users = Vec::new();
     if let Some(map) = tokens.as_object() {
@@ -132,7 +192,7 @@ fn enrolled_users(state: &AppState) -> Vec<String> {
                 .to_lowercase()
                 .trim()
                 .to_string();
-            if email.is_empty() || seen.contains(&email) || unsub.contains(&email) {
+            if email.is_empty() || seen.contains(&email) || is_unsubscribed(state, &unsub, &email) {
                 continue;
             }
             if !truthy_of(data.get("claimed_domains")) && !truthy_of(data.get("used")) {
@@ -408,12 +468,20 @@ fn weekly_digest_impl(state: &Arc<AppState>) -> Result<(), String> {
         }
     }
 
+    let unsub = newsletter_unsub_set(state);
     for email in enrolled_users(state) {
+        if is_unsubscribed(state, &unsub, &email) {
+            continue;
+        }
         if email_slot(&email, 6) != current_slot {
             continue;
         }
         let ulog = log_entry(&log, &email);
         if ulog.get("weekly_digest").and_then(|v| v.as_str()) == Some(week_key.as_str()) {
+            continue;
+        }
+        let target_email = canonical_email(state, &email);
+        if is_unsubscribed(state, &unsub, &target_email) {
             continue;
         }
         let ud = userdata_for_email(state, &email);
@@ -602,12 +670,20 @@ fn daily_puzzle_impl(state: &Arc<AppState>) -> Result<(), String> {
     if pool.is_empty() {
         return Ok(());
     }
+    let unsub = newsletter_unsub_set(state);
     for email in enrolled_users(state) {
+        if is_unsubscribed(state, &unsub, &email) {
+            continue;
+        }
         if email_slot(&email, 6) != current_slot {
             continue;
         }
         let ulog = log_entry(&log, &email);
         if ulog.get("puzzle").and_then(|v| v.as_str()) == Some(day_key.as_str()) {
+            continue;
+        }
+        let target_email = canonical_email(state, &email);
+        if is_unsubscribed(state, &unsub, &target_email) {
             continue;
         }
         // The log is marked BEFORE the 1-in-10 send gate (server.js:4934-4936).
@@ -1242,5 +1318,87 @@ mod tests {
         assert!(truthy_of(Some(&json!(1))));
         assert!(truthy_of(Some(&json!("x"))));
         assert!(truthy_of(Some(&json!({}))));
+    }
+
+    fn test_state() -> (Arc<AppState>, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "mitch-server-workers-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(dir.join("data")).unwrap_or_default();
+        let cfg = crate::hosts::SiteConfig::load();
+        let cfg = crate::hosts::SiteConfig {
+            data_dir: dir.join("data"),
+            ..cfg
+        };
+        let store = Arc::new(
+            mitch_lib::data::DataStore::open(&dir, &dir.join("data"))
+                .unwrap_or_else(|e| panic!("store: {e}")),
+        );
+        (Arc::new(AppState::new(cfg, Arc::clone(&store))), dir)
+    }
+
+    #[test]
+    fn test_newsletter_unsub_from_store_and_disk() {
+        let (state, dir) = test_state();
+
+        // 1. Store write (simulating API / DB unsubscribe)
+        let _ = state.store.write_document(
+            &state.data_dir().join("newsletter_unsub.json"),
+            &json!(["store_unsub@example.com", "first.last@student.rjuhsd.us"]),
+        );
+
+        // 2. Disk write (simulating manual edit on disk)
+        let _ = std::fs::write(
+            state.data_dir().join("newsletter_unsub.json"),
+            serde_json::to_string(&json!(["disk_unsub@example.com"])).unwrap(),
+        );
+
+        let set = newsletter_unsub_set(&state);
+        // Direct matches
+        assert!(set.contains("store_unsub@example.com"));
+        assert!(set.contains("first.last@student.rjuhsd.us"));
+        assert!(set.contains("disk_unsub@example.com"));
+
+        // Normalized match: firstlast@student.rjuhsd.us should also be present
+        assert!(set.contains("firstlast@student.rjuhsd.us"));
+
+        // is_unsubscribed helper checks
+        assert!(is_unsubscribed(&state, &set, "store_unsub@example.com"));
+        assert!(is_unsubscribed(&state, &set, "disk_unsub@example.com"));
+        assert!(is_unsubscribed(&state, &set, "firstlast@student.rjuhsd.us"));
+        assert!(is_unsubscribed(&state, &set, "first.last@student.rjuhsd.us"));
+        assert!(!is_unsubscribed(&state, &set, "active_user@example.com"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn test_enrolled_users_filters_unsubscribed() {
+        let (state, dir) = test_state();
+
+        // Populate tokens.json with 3 enrolled users
+        let tokens = json!({
+            "tok1": { "email": "active@example.com", "used": true },
+            "tok2": { "email": "unsubbed@example.com", "used": true },
+            "tok3": { "email": "alice.student@student.rjuhsd.us", "claimed_domains": ["mitch.pro"] },
+        });
+        let _ = state
+            .store
+            .write_document(&state.data_dir().join("tokens.json"), &tokens);
+
+        // Unsubscribe tok2 directly, and tok3 via normalized address (without dot)
+        let _ = state.store.write_document(
+            &state.data_dir().join("newsletter_unsub.json"),
+            &json!(["unsubbed@example.com", "alicestudent@student.rjuhsd.us"]),
+        );
+
+        let enrolled = enrolled_users(&state);
+        assert_eq!(enrolled, vec!["active@example.com"]);
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

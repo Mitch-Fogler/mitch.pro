@@ -356,7 +356,8 @@ fn unsubscribe(state: &Arc<AppState>, body_bytes: &[u8], member_name: &str) -> R
         uniq.dedup();
         // JS writeFileSync(file, JSON.stringify([...new Set(unsub)].sort(), null, 2))
         let content = mitch_lib::data::js_stringify_pretty(&json!(uniq));
-        let _ = std::fs::write(&file, content);
+        let _ = std::fs::write(&file, &content);
+        let _ = state.store.write_document(&file, &json!(uniq));
     }
     tracing::info!("[team] unsubscribed {email} by {member_name}");
     json_response(200, json!({ "ok": true }))

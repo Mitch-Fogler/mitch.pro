@@ -750,6 +750,7 @@ fn newsletter_sync_core(
     }
     deduped.sort_by_key(jsval::string);
     let _ = store.write_document(&file, &json!(deduped));
+    let _ = std::fs::write(&file, mitch_lib::data::js_stringify_pretty(&json!(deduped)));
 }
 
 // ── shared helpers ───────────────────────────────────────────────────────────
