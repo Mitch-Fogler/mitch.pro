@@ -43,7 +43,14 @@ pub async fn handle(
     };
 
     let base = tor_service_url();
-    let target = format!("{base}{subpath}{search}");
+    let query_str = if search.is_empty() {
+        String::new()
+    } else if search.starts_with('?') {
+        search.to_string()
+    } else {
+        format!("?{search}")
+    };
+    let target = format!("{base}{subpath}{query_str}");
 
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))

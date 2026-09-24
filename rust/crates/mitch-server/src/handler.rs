@@ -747,8 +747,10 @@ pub async fn handle(
             };
         let target_url = if search.is_empty() {
             target_url
-        } else {
+        } else if search.starts_with('?') {
             format!("{target_url}{search}")
+        } else {
+            format!("{target_url}?{search}")
         };
         let encoded: String = form_urlencoded::byte_serialize(target_url.as_bytes()).collect();
         return redirect(&format!("/tor/?url={encoded}"), 302);
@@ -771,8 +773,10 @@ pub async fn handle(
             };
             let target_url = if search.is_empty() {
                 target_url
-            } else {
+            } else if search.starts_with('?') {
                 format!("{target_url}{search}")
+            } else {
+                format!("{target_url}?{search}")
             };
             let encoded: String = form_urlencoded::byte_serialize(target_url.as_bytes()).collect();
             return redirect(&format!("/tor/?url={encoded}"), 302);
