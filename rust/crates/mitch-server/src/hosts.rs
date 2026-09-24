@@ -109,8 +109,8 @@ pub fn is_mitch_sso_host(cfg: &SiteConfig, hostname: &str) -> bool {
 }
 
 /// `sameOriginRequest()`: Origin or Referer hostname equals the request host
-/// (port-stripped, lowercased).
-pub fn same_origin_request(headers: &axum::http::HeaderMap) -> bool {
+/// (port-stripped, lowercased), or both belong to the trusted Mitch SSO host set.
+pub fn same_origin_request(headers: &axum::http::HeaderMap, cfg: Option<&SiteConfig>) -> bool {
     let host = request_host(headers);
     if host.is_empty() {
         return false;
@@ -119,8 +119,14 @@ pub fn same_origin_request(headers: &axum::http::HeaderMap) -> bool {
     for header_name in ["origin", "referer"] {
         if let Some(raw) = headers.get(header_name).and_then(|v| v.to_str().ok()) {
             if let Ok(u) = url::Url::parse(raw) {
-                if u.host_str().unwrap_or("").to_lowercase() == host_name {
+                let target_host = u.host_str().unwrap_or("").to_lowercase();
+                if target_host == host_name {
                     return true;
+                }
+                if let Some(c) = cfg {
+                    if is_mitch_sso_host(c, &host_name) && is_mitch_sso_host(c, &target_host) {
+                        return true;
+                    }
                 }
             }
         }

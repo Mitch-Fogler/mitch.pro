@@ -3857,7 +3857,10 @@ pub(crate) async fn handle(
                     }
                     rt
                 }
-                Err(_) => json!({ "state": "unavailable" }),
+                Err(e) => {
+                    tracing::warn!("get_status failed for VM {record_id}: {e}");
+                    json!({ "state": "unavailable" })
+                }
             };
             computers.push(public_vm_record(
                 state,

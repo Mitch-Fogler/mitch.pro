@@ -65,6 +65,14 @@ impl ProxmoxServiceError {
     }
 }
 
+impl std::fmt::Display for ProxmoxServiceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {} ({})", self.code, self.message, self.status)
+    }
+}
+
+impl std::error::Error for ProxmoxServiceError {}
+
 /// `Number(v || fallback)` — a truthy non-numeric value stays NaN (unlike
 /// `Number(v) || fallback`, which maps NaN onto the fallback).
 fn js_num_or(v: Option<&Value>, fallback: f64) -> f64 {
@@ -366,7 +374,7 @@ impl ProxmoxDesktopService {
                 .trim()
                 .to_string()
         };
-        let verify_tls = parse_boolean(options.verify_tls.as_deref(), true);
+        let verify_tls = parse_boolean(options.verify_tls.as_deref(), false);
         let tls_server_name = options
             .tls_server_name
             .clone()
@@ -383,11 +391,16 @@ impl ProxmoxDesktopService {
                 }
             }
         }
-        let client = reqwest::Client::builder()
+        let mut builder = reqwest::Client::builder()
             .danger_accept_invalid_certs(!verify_tls)
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+            .redirect(reqwest::redirect::Policy::none());
+        if !tls_server_name.is_empty() {
+            if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+                let socket_addr = std::net::SocketAddr::new(ip, port as u16);
+                builder = builder.resolve(&tls_server_name, socket_addr);
+            }
+        }
+        let client = builder.build().unwrap_or_else(|_| reqwest::Client::new());
         Self {
             host,
             port,
@@ -554,9 +567,17 @@ impl ProxmoxDesktopService {
     ) -> Result<Value, ProxmoxServiceError> {
         self.assert_configured()?;
         let verb = reqwest::Method::from_bytes(method.as_bytes()).unwrap_or(reqwest::Method::GET);
+        let url = if self.verify_tls && !self.tls_server_name.is_empty() {
+            format!(
+                "https://{}:{}/api2/json{}",
+                self.tls_server_name, self.port, api_path
+            )
+        } else {
+            format!("{}{}", self.base_url, api_path)
+        };
         let mut req = self
             .client
-            .request(verb.clone(), format!("{}{}", self.base_url, api_path))
+            .request(verb.clone(), url)
             .header("Authorization", &self.authorization)
             .timeout(Duration::from_millis(timeout_ms));
         if let Some(body) = params.filter(|_| method != "GET") {

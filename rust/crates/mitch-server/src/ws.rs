@@ -289,7 +289,7 @@ pub fn handle_upgrade(
     headers: &HeaderMap,
     upgrade: Option<WebSocketUpgrade>,
 ) -> Response {
-    if !crate::hosts::same_origin_request(headers) {
+    if !crate::hosts::same_origin_request(headers, Some(&state.cfg)) {
         return crate::routes::me::json_response(
             403,
             json!({ "error": "websocket origin rejected" }),

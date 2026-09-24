@@ -574,7 +574,7 @@ pub async fn handle(
     }
 
     // 2. CSRF for mutating /api/ calls (GET is skipped inside csrf_check).
-    if let Some(resp) = csrf_check(headers, &path, &method) {
+    if let Some(resp) = csrf_check(state.as_ref(), headers, &path, &method) {
         return resp;
     }
 
@@ -1707,7 +1707,12 @@ button{{margin-top:8px;border:0;border-radius:9px;background:#ef4444;color:white
 }
 
 /// `csrfFailureIfUnsafe` — only mutating /api/ requests, minus the exempt set.
-fn csrf_check(headers: &HeaderMap, path: &str, method: &Method) -> Option<Response> {
+fn csrf_check(
+    state: &AppState,
+    headers: &HeaderMap,
+    path: &str,
+    method: &Method,
+) -> Option<Response> {
     if !path.starts_with("/api/") {
         return None;
     }
@@ -1715,6 +1720,12 @@ fn csrf_check(headers: &HeaderMap, path: &str, method: &Method) -> Option<Respon
         return None;
     }
     if crate::state::CSRF_EXEMPT_PATHS.contains(&path) {
+        return None;
+    }
+    if path == "/api/presence/heartbeat" || path == "/api/admin/passphrase-status" {
+        if !crate::hosts::same_origin_request(headers, Some(&state.cfg)) {
+            return Some(json_resp(403, serde_json::json!({"error": "csrf_blocked"})));
+        }
         return None;
     }
     let requested_with = headers
@@ -1725,7 +1736,7 @@ fn csrf_check(headers: &HeaderMap, path: &str, method: &Method) -> Option<Respon
     if requested_with != "1" {
         return Some(json_resp(403, serde_json::json!({"error": "csrf_blocked"})));
     }
-    if !crate::hosts::same_origin_request(headers) {
+    if !crate::hosts::same_origin_request(headers, Some(&state.cfg)) {
         return Some(json_resp(403, serde_json::json!({"error": "csrf_blocked"})));
     }
     None
