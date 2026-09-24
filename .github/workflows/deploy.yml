@@ -85,6 +85,8 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 38222
+          timeout: 30m
+          command_timeout: 30m
           script: |
             set -e
             if [ "${{ needs.test.outputs.only_static }}" = "true" ]; then

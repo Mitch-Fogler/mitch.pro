@@ -32,8 +32,12 @@ pub async fn handle(
 ) -> Option<Response<Body>> {
     let subpath = if path.starts_with("/api/tor/") {
         path
-    } else if path == "/tor/view" {
+    } else if path == "/api/tor" {
+        "/api/tor/status"
+    } else if path == "/tor/view" || path == "/tor/view/" {
         "/api/tor/browse"
+    } else if path == "/tor/resource" || path == "/tor/resource/" {
+        "/api/tor/resource"
     } else {
         return None;
     };

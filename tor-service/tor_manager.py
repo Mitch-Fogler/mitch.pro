@@ -97,14 +97,14 @@ class TorProcessPool:
             user_data_dir = os.path.join(TOR_BASE_DIR, f"user_{safe_id}")
             os.makedirs(user_data_dir, exist_ok=True)
 
-            torrc_path = os.path.join(user_data_dir, "torrc")
+            tor_log = os.path.join(user_data_dir, "tor.log")
             torrc_lines = [
                 f"DataDirectory {user_data_dir}",
                 f"SocksPort 127.0.0.1:{socks_port}",
                 f"ControlPort 127.0.0.1:{control_port}",
                 "CookieAuthentication 0",
                 "AvoidDiskWrites 1",
-                "Log notice stdout",
+                f"Log notice file {tor_log}",
             ]
 
             if TOR_OUTBOUND_BIND_IP:
@@ -123,19 +123,30 @@ class TorProcessPool:
             inst = UserTorInstance(safe_id, socks_port, control_port, proc)
             self.instances[safe_id] = inst
 
-            # Wait for SOCKS port to accept connections
+            # Wait for SOCKS port and bootstrap
             ready = False
-            for _ in range(40):  # up to 20 seconds
+            for _ in range(60):  # up to 30 seconds
                 await asyncio.sleep(0.5)
                 if proc.poll() is not None:
                     logger.error(f"Tor process for user {safe_id} exited immediately with code {proc.returncode}")
                     break
                 try:
+                    reader, writer = await asyncio.open_connection('127.0.0.1', control_port)
+                    writer.write(b'AUTHENTICATE ""\r\nGETINFO status/bootstrap-phase\r\nQUIT\r\n')
+                    await writer.drain()
+                    data = await reader.read(512)
+                    writer.close()
+                    await writer.wait_closed()
+                    if b"PROGRESS=100" in data:
+                        ready = True
+                        break
+                except Exception:
+                    pass
+                try:
                     reader, writer = await asyncio.open_connection('127.0.0.1', socks_port)
                     writer.close()
                     await writer.wait_closed()
                     ready = True
-                    break
                 except Exception:
                     pass
 
@@ -208,7 +219,7 @@ def get_user_id(request: web.Request) -> str:
 
 
 def normalize_target_url(raw_url: str) -> str:
-    target = raw_url.strip()
+    target = raw_url.strip().strip('"').strip("'")
     if not target:
         return ONION_AHMIA_SEARCH
 
@@ -218,24 +229,24 @@ def normalize_target_url(raw_url: str) -> str:
     if target.lower() in ("ahmia", "search"):
         return ONION_AHMIA_SEARCH
     if target.lower() == "torch":
-        return "http://xmh57jrknzkhv6y3ls3ubitzfqnkrwxhopf5aygthi7d6rfdvdmeny.onion"
+        return "http://xmh57jrknzkhv6y3ls3ubitzfqnkrwxhopf5aygthi7d6rfdvdmeny.onion/"
     if target.lower() == "duckduckgo":
         return ONION_DUCKDUCKGO
 
     # If already a valid URL
     if target.startswith("http://") or target.startswith("https://"):
-        return target
+        target_res = target
+    elif ".onion" in target:
+        target_res = f"http://{target}"
+    elif "." in target and not " " in target and not target.endswith("."):
+        target_res = f"http://{target}"
+    else:
+        return f"{ONION_AHMIA_SEARCH}{urllib.parse.quote_plus(target)}"
 
-    # If it contains an onion domain
-    if ".onion" in target:
-        return f"http://{target}"
-
-    # If it looks like a domain name with TLD
-    if "." in target and not " " in target and not target.endswith("."):
-        return f"http://{target}"
-
-    # Otherwise treat as search query on Ahmia
-    return f"{ONION_AHMIA_SEARCH}{urllib.parse.quote_plus(target)}"
+    parsed = urllib.parse.urlparse(target_res)
+    if not parsed.path:
+        target_res = f"{target_res}/"
+    return target_res
 
 
 def rewrite_html_content(html: str, base_url: str, user_id: str) -> str:
@@ -307,6 +318,7 @@ async def browse_handler(request: web.Request) -> web.Response:
         return web.json_response({"ok": False, "error": "Missing URL parameter"}, status=400)
 
     target_url = normalize_target_url(target_url)
+    parsed_target = urllib.parse.urlparse(target_url)
 
     try:
         inst = await pool.get_instance(user_id)
@@ -318,10 +330,11 @@ async def browse_handler(request: web.Request) -> web.Response:
             status=502
         )
 
-    connector = aiohttp_socks.ProxyConnector.from_url(f"socks5://127.0.0.1:{inst.socks_port}")
-    timeout = ClientTimeout(total=45, connect=25)
+    connector = aiohttp_socks.ProxyConnector.from_url(f"socks5h://127.0.0.1:{inst.socks_port}", rdns=True)
+    timeout = ClientTimeout(total=60, connect=30)
 
     headers = {
+        "Host": parsed_target.netloc,
         "User-Agent": TOR_USER_AGENT,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
@@ -397,14 +410,20 @@ async def resource_handler(request: web.Request) -> web.Response:
         return web.Response(status=404)
 
     target_url = normalize_target_url(raw_url)
+    parsed_target = urllib.parse.urlparse(target_url)
 
     try:
         inst = await pool.get_instance(user_id)
-        connector = aiohttp_socks.ProxyConnector.from_url(f"socks5://127.0.0.1:{inst.socks_port}")
-        timeout = ClientTimeout(total=30, connect=15)
+        connector = aiohttp_socks.ProxyConnector.from_url(f"socks5h://127.0.0.1:{inst.socks_port}", rdns=True)
+        timeout = ClientTimeout(total=45, connect=20)
+
+        headers = {
+            "Host": parsed_target.netloc,
+            "User-Agent": TOR_USER_AGENT,
+        }
 
         async with ClientSession(connector=connector, timeout=timeout) as session:
-            async with session.get(target_url, headers={"User-Agent": TOR_USER_AGENT}, ssl=False) as resp:
+            async with session.get(target_url, headers=headers, ssl=False) as resp:
                 body = await resp.read()
                 content_type = resp.headers.get("Content-Type", "application/octet-stream")
                 return web.Response(
@@ -451,11 +470,18 @@ async def new_identity_handler(request: web.Request) -> web.Response:
 
 def create_app() -> web.Application:
     app = web.Application()
-    app.router.add_get("/api/tor/status", status_handler)
-    app.router.add_post("/api/tor/new-identity", new_identity_handler)
-    app.router.add_get("/api/tor/browse", browse_handler)
-    app.router.add_post("/api/tor/browse", browse_handler)
-    app.router.add_get("/api/tor/resource", resource_handler)
+    for route in ["/api/tor/status", "/api/tor/status/"]:
+        app.router.add_get(route, status_handler)
+    for route in ["/api/tor/session", "/api/tor/session/"]:
+        app.router.add_get(route, status_handler)
+        app.router.add_post(route, status_handler)
+    for route in ["/api/tor/new-identity", "/api/tor/new-identity/"]:
+        app.router.add_post(route, new_identity_handler)
+    for route in ["/api/tor/browse", "/api/tor/browse/"]:
+        app.router.add_get(route, browse_handler)
+        app.router.add_post(route, browse_handler)
+    for route in ["/api/tor/resource", "/api/tor/resource/"]:
+        app.router.add_get(route, resource_handler)
 
     # Health check
     app.router.add_get("/healthz", lambda _: web.Response(text="OK"))

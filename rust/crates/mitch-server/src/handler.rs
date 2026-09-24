@@ -718,12 +718,64 @@ pub async fn handle(
         return crate::routes::madlibs::handle(&state, &method, &path, &search);
     }
 
-    // Tor Browser View dispatch
-    if path == "/tor/view" {
+    // Tor Browser View and Resource dispatch
+    if path == "/tor/view"
+        || path == "/tor/view/"
+        || path == "/tor/resource"
+        || path == "/tor/resource/"
+    {
         if let Some(resp) =
             crate::routes::tor::handle(&state, &method, &path, headers, body_bytes, &search).await
         {
             return resp;
+        }
+    }
+
+    // Direct .onion URL or /tor/<url> navigation
+    if path.contains(".onion") {
+        let clean = path.trim_start_matches('/');
+        let target_url = if let Some(stripped) = clean.strip_prefix("tor/") {
+            stripped.to_string()
+        } else {
+            clean.to_string()
+        };
+        let target_url =
+            if !target_url.starts_with("http://") && !target_url.starts_with("https://") {
+                format!("http://{target_url}")
+            } else {
+                target_url
+            };
+        let target_url = if search.is_empty() {
+            target_url
+        } else {
+            format!("{target_url}{search}")
+        };
+        let encoded: String = form_urlencoded::byte_serialize(target_url.as_bytes()).collect();
+        return redirect(&format!("/tor/?url={encoded}"), 302);
+    }
+
+    if path.starts_with("/tor/")
+        && path != "/tor/"
+        && path != "/tor/index.html"
+        && path != "/tor/view"
+        && path != "/tor/view/"
+        && path != "/tor/resource"
+        && path != "/tor/resource/"
+    {
+        let sub = path.trim_start_matches("/tor/").trim_start_matches('/');
+        if !sub.is_empty() {
+            let target_url = if !sub.starts_with("http://") && !sub.starts_with("https://") {
+                format!("http://{sub}")
+            } else {
+                sub.to_string()
+            };
+            let target_url = if search.is_empty() {
+                target_url
+            } else {
+                format!("{target_url}{search}")
+            };
+            let encoded: String = form_urlencoded::byte_serialize(target_url.as_bytes()).collect();
+            return redirect(&format!("/tor/?url={encoded}"), 302);
         }
     }
 
@@ -1027,7 +1079,7 @@ pub async fn handle(
             }
         }
         // Tor Browser & Onion Gateway API
-        if path.starts_with("/api/tor/") {
+        if path == "/api/tor" || path.starts_with("/api/tor/") {
             if let Some(resp) =
                 crate::routes::tor::handle(&state, &method, &path, headers, body_bytes, &search)
                     .await

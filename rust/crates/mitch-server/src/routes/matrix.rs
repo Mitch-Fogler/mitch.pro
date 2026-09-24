@@ -3000,7 +3000,8 @@ pub fn add_matrix_notification(state: &AppState, target_norm: &str, notif: &Valu
         Some(l) => l,
         None => {
             if let Some(obj) = all.as_object_mut() {
-                obj.entry(target_norm.to_string()).or_insert_with(|| json!([]));
+                obj.entry(target_norm.to_string())
+                    .or_insert_with(|| json!([]));
                 if let Some(l) = obj.get_mut(target_norm).and_then(|v| v.as_array_mut()) {
                     l
                 } else {
