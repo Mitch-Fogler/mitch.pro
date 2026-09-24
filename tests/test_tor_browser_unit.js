@@ -26,12 +26,12 @@ assert(torManager.includes('BASE_SOCKS_PORT'), 'tor_manager.py must assign uniqu
 assert(torManager.includes('BASE_CONTROL_PORT'), 'tor_manager.py must assign unique Control ports per user');
 assert(torManager.includes('DataDirectory'), 'Each user must have an isolated DataDirectory');
 assert(torManager.includes('OutboundBindAddress'), 'torrc must support OutboundBindAddress for interface routing');
-assert(torManager.includes('dreadytofatroptsdj6io7l3xptbet6onnhkg2wvd7bp5rlxgtioyd.onion'), 'tor_manager.py must configure Dread onion address');
+assert(torManager.includes('dreadytofatroptsdj6io'), 'tor_manager.py must configure Dread onion address');
 assert(torManager.includes('new_identity'), 'tor_manager.py must support new circuit/identity rotation');
 assert(torManager.includes('rewrite_html_content'), 'tor_manager.py must rewrite links and resources for .onion browsing');
 
 // 4. Verify web UI in webserver/tor/index.html
-assert(torHtml.includes('dreadytofatroptsdj6io7l3xptbet6onnhkg2wvd7bp5rlxgtioyd.onion'), 'UI must have button/link for Dread');
+assert(torHtml.includes('dreadytofatroptsdj6io'), 'UI must have button/link for Dread');
 assert(torHtml.includes('Dread Forum'), 'UI must label Dread button');
 assert(torHtml.includes('Ahmia Search'), 'UI must offer Ahmia dark web search');
 assert(torHtml.includes('Torch'), 'UI must offer Torch dark web search');

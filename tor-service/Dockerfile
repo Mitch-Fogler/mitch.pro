@@ -8,6 +8,8 @@ RUN apk add --no-cache \
     py3-aiohttp \
     py3-requests \
     py3-urllib3 \
+    py3-httpx \
+    py3-h2 \
     curl \
     iptables \
     iproute2 \

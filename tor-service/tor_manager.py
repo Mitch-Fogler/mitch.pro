@@ -18,6 +18,8 @@ import subprocess
 
 from aiohttp import web, ClientSession, ClientTimeout
 import aiohttp_socks
+import httpx
+from httpx_socks import AsyncProxyTransport
 from bs4 import BeautifulSoup
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(message)s')
@@ -36,7 +38,7 @@ BASE_CONTROL_PORT = 19100
 MAX_USER_INSTANCES = 500
 
 # Search Engines & Well-Known Darknet Sites
-ONION_DREAD = "http://dreadytofatroptsdj6io7l3xptbet6onnhkg2wvd7bp5rlxgtioyd.onion"
+ONION_DREAD = "http://dreadytofatroptsdj6io7l3xptbet6onoyno2yv7jicoxknyazubrad.onion/"
 ONION_AHMIA_SEARCH = "http://juhanurmihxlp77nkq76byazcldy2hlmovfu2epvl5ankdibsot4csyd.onion/search/?q="
 ONION_TORCH_SEARCH = "http://xmh57jrknzkhv6y3ls3ubitzfqnkrwxhopf5aygthi7d6rfdvdmeny.onion/sub/search.php?q="
 ONION_DUCKDUCKGO = "http://duckduckgogg42xjoc72x3sjasowoarfbgcmvfimaftt6twagswzczad.onion"
@@ -333,39 +335,34 @@ async def browse_handler(request: web.Request) -> web.Response:
                 status=502
             )
 
-        connector = aiohttp_socks.ProxyConnector.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
-        timeout = ClientTimeout(total=60, connect=30)
+        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
+        timeout = httpx.Timeout(60.0, connect=30.0)
 
         headers = {
             "Host": parsed_target.netloc,
             "User-Agent": TOR_USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "identity",
+            "Accept-Encoding": "gzip, deflate, br",
         }
 
         try:
-            async with ClientSession(connector=connector, timeout=timeout) as session:
-                req_kwargs = {"headers": headers, "allow_redirects": True, "ssl": False}
+            async with httpx.AsyncClient(transport=transport, timeout=timeout, http2=True, verify=False) as client:
                 if request.method == "POST":
                     form_data = {k: v for k, v in (await request.post()).items() if k != "__tor_target"}
-                    req_kwargs["data"] = form_data
-                    async with session.post(target_url, **req_kwargs) as resp:
-                        status = resp.status
-                        content_type = resp.headers.get("Content-Type", "text/html")
-                        body = await resp.read()
-                        final_url = str(resp.url)
+                    resp = await client.post(target_url, headers=headers, data=form_data, follow_redirects=True)
                 else:
-                    async with session.get(target_url, **req_kwargs) as resp:
-                        status = resp.status
-                        content_type = resp.headers.get("Content-Type", "text/html")
-                        body = await resp.read()
-                        final_url = str(resp.url)
+                    resp = await client.get(target_url, headers=headers, follow_redirects=True)
+
+                status = resp.status_code
+                content_type = resp.headers.get("content-type", "text/html")
+                body = resp.content
+                final_url = str(resp.url)
 
                 # Check if HTML
                 if "text/html" in content_type.lower():
                     try:
-                        encoding = resp.charset or "utf-8"
+                        encoding = resp.encoding or "utf-8"
                         html_text = body.decode(encoding, errors="replace")
                         rewritten = rewrite_html_content(html_text, final_url, user_id)
                         body = rewritten.encode("utf-8")
@@ -382,7 +379,7 @@ async def browse_handler(request: web.Request) -> web.Response:
 
                 return web.Response(body=body, status=status, headers=resp_headers)
 
-        except asyncio.TimeoutError:
+        except (httpx.TimeoutException, asyncio.TimeoutError):
             return web.Response(
                 text=f"""<div style="font-family:system-ui,sans-serif;background:#0d1117;color:#f85149;padding:32px;text-align:center;">
                     <h2>🧅 Tor Connection Timed Out</h2>
@@ -425,27 +422,27 @@ async def resource_handler(request: web.Request) -> web.Response:
         parsed_target = urllib.parse.urlparse(target_url)
 
         inst = await pool.get_instance(user_id)
-        connector = aiohttp_socks.ProxyConnector.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
-        timeout = ClientTimeout(total=45, connect=20)
+        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True)
+        timeout = httpx.Timeout(45.0, connect=20.0)
 
         headers = {
             "Host": parsed_target.netloc,
             "User-Agent": TOR_USER_AGENT,
         }
 
-        async with ClientSession(connector=connector, timeout=timeout) as session:
-            async with session.get(target_url, headers=headers, ssl=False) as resp:
-                body = await resp.read()
-                content_type = resp.headers.get("Content-Type", "application/octet-stream")
-                return web.Response(
-                    body=body,
-                    status=resp.status,
-                    headers={
-                        "Content-Type": content_type,
-                        "Cache-Control": "public, max-age=3600",
-                        "Access-Control-Allow-Origin": "*"
-                    }
-                )
+        async with httpx.AsyncClient(transport=transport, timeout=timeout, http2=True, verify=False) as client:
+            resp = await client.get(target_url, headers=headers, follow_redirects=True)
+            body = resp.content
+            content_type = resp.headers.get("content-type", "application/octet-stream")
+            return web.Response(
+                body=body,
+                status=resp.status_code,
+                headers={
+                    "Content-Type": content_type,
+                    "Cache-Control": "public, max-age=3600",
+                    "Access-Control-Allow-Origin": "*"
+                }
+            )
     except Exception as e:
         logger.debug(f"Resource fetch failed: {e}")
         return web.Response(status=502)
