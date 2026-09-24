@@ -335,11 +335,10 @@ async def browse_handler(request: web.Request) -> web.Response:
                 status=502
             )
 
-        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True, verify=False)
+        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True, verify=False, http2=True)
         timeout = httpx.Timeout(60.0, connect=30.0)
 
         headers = {
-            "Host": parsed_target.netloc,
             "User-Agent": TOR_USER_AGENT,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
@@ -422,11 +421,10 @@ async def resource_handler(request: web.Request) -> web.Response:
         parsed_target = urllib.parse.urlparse(target_url)
 
         inst = await pool.get_instance(user_id)
-        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True, verify=False)
+        transport = AsyncProxyTransport.from_url(f"socks5://127.0.0.1:{inst.socks_port}", rdns=True, verify=False, http2=True)
         timeout = httpx.Timeout(45.0, connect=20.0)
 
         headers = {
-            "Host": parsed_target.netloc,
             "User-Agent": TOR_USER_AGENT,
         }
 
