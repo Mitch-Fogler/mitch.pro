@@ -22,6 +22,7 @@ pub mod friends;
 pub mod games;
 pub mod jeopardy;
 pub mod livekit;
+pub mod madlibs;
 pub mod marketplace;
 pub mod matrix;
 pub mod me;

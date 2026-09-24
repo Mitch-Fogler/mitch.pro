@@ -31,6 +31,7 @@ data/*
 !data/prox_blocklist.json
 !data/admins.json
 !data/moderators.json
+!data/madlibs.json
 logs/
 mail/*
 !mail/*.js

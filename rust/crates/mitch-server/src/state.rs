@@ -620,6 +620,9 @@ pub const PUBLIC_API_PATHS: &[&str] = &[
     "/api/verify-open",
     "/verify-open.json",
     "/api/backgrounds/list",
+    "/api/madlibs",
+    "/api/madlibs/random",
+    "/api/madlibs/list",
 ];
 
 /// `CSRF_EXEMPT_PATHS` (server.js:5705-5728) — verbatim. Team POSTs are NOT

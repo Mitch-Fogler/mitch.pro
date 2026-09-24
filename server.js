@@ -258,6 +258,28 @@ const HEATMAP_FILE           = join(DATA_DIR, 'heatmap.json');
 const MATRIX_USERS_FILE      = join(DATA_DIR, 'matrix_users.json');
 const MATRIX_NOTIFICATIONS_FILE = join(DATA_DIR, 'matrix_notifications.json');
 const MATRIX_EMAIL_SENT_FILE    = join(DATA_DIR, 'matrix_email_sent.json');
+const MADLIBS_FILE            = join(DATA_DIR, 'madlibs.json');
+let _cachedMadlibs = null;
+let _cachedMadlibsMtime = 0;
+function loadMadlibsTemplates() {
+  try {
+    if (!existsSync(MADLIBS_FILE)) return _cachedMadlibs || [];
+    const st = statSync(MADLIBS_FILE);
+    if (_cachedMadlibs && st.mtimeMs === _cachedMadlibsMtime) {
+      return _cachedMadlibs;
+    }
+    const raw = readFileSync(MADLIBS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      _cachedMadlibs = parsed;
+      _cachedMadlibsMtime = st.mtimeMs;
+      return _cachedMadlibs;
+    }
+  } catch (err) {
+    if (_cachedMadlibs) return _cachedMadlibs;
+  }
+  return _cachedMadlibs || [];
+}
 const MATRIX_ROOM_SETTINGS_FILE  = join(DATA_DIR, 'matrix_room_settings.json');
 const ADMIN_ACTION_LOG_FILE   = join(DATA_DIR, 'admin_actions.json');
 const MODERATORS_FILE        = join(DATA_DIR, 'moderators.json');
@@ -2931,6 +2953,9 @@ const PUBLIC_API_PATHS = new Set([
   '/api/verify-open',
   '/verify-open.json',
   '/api/backgrounds/list',
+  '/api/madlibs',
+  '/api/madlibs/random',
+  '/api/madlibs/list',
   '/api/matrix/sso-login',
   '/api/matrix/sso-status',
   '/api/matrix/report-room',
@@ -10866,6 +10891,73 @@ async function handleRequest(req, server) {
         },
       });
     }
+  }
+
+  // Mad Libs CORS-friendly API (cross-origin friendly for Pyodide, curl, etc.)
+  if (path === '/api/madlibs' || path === '/api/madlibs/random' || path === '/api/madlibs/list' || path.startsWith('/api/madlibs/')) {
+    if (method === 'OPTIONS') {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Access-Control-Max-Age': '86400',
+        },
+      });
+    }
+    if (method !== 'GET' && method !== 'HEAD') {
+      return new Response(JSON.stringify({ error: 'method not allowed' }), {
+        status: 405,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+    const templates = loadMadlibsTemplates();
+    if (!templates.length) {
+      return new Response(JSON.stringify({ error: 'no templates available' }), {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+    if (path === '/api/madlibs/list' || url.searchParams.get('list') === '1' || url.searchParams.get('list') === 'true') {
+      const titles = templates.map(t => t.title).filter(Boolean);
+      return new Response(method === 'HEAD' ? null : JSON.stringify({ count: titles.length, titles }), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        },
+      });
+    }
+    const requestedTitle = url.searchParams.get('title') || url.searchParams.get('name') ||
+      (path.startsWith('/api/madlibs/story/') ? decodeURIComponent(path.slice('/api/madlibs/story/'.length)) : null);
+    let chosen = null;
+    if (requestedTitle) {
+      const low = requestedTitle.toLowerCase().trim();
+      chosen = templates.find(t => t.title && t.title.toLowerCase().trim() === low);
+    }
+    if (!chosen) {
+      chosen = templates[Math.floor(Math.random() * templates.length)];
+    }
+    return new Response(method === 'HEAD' ? null : JSON.stringify(chosen), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+        'Access-Control-Allow-Headers': '*',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    });
   }
 
   // Public site identity (from data/site.json) so the rjuhsd hub and other

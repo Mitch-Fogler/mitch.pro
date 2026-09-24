@@ -595,7 +595,7 @@ pub async fn handle(
     // timing check (server.js:5992-5999) with the same exempt suffixes
     // (/state, /inbox, /heartbeat, /groups, /dm/send, /canvas/,
     // /blooket-bot/status).
-    if path.starts_with("/api/") && !node_env_test {
+    if path.starts_with("/api/") && method != Method::OPTIONS && !node_env_test {
         let ip = get_real_ip(headers, None);
         // getIdKey (server.js:5915-5920): studentId || id from the
         // session-restoring cookie map, 'id:<val>' when the HMAC validates,
@@ -709,6 +709,11 @@ pub async fn handle(
     // Open verification endpoint (server.js:10517-10548)
     if path == "/verify-open.json" {
         return crate::routes::misc::verify_open(&method);
+    }
+
+    // Mad Libs CORS-friendly API (cross-origin friendly for Pyodide, curl, etc.)
+    if path == "/api/madlibs" || path.starts_with("/api/madlibs/") {
+        return crate::routes::madlibs::handle(&state, &method, &path, &search);
     }
 
     // Open general proxy removed -> game proxy redirects & 410 gone (server.js:10777-10791)
