@@ -97,6 +97,7 @@ class TorProcessPool:
             user_data_dir = os.path.join(TOR_BASE_DIR, f"user_{safe_id}")
             os.makedirs(user_data_dir, exist_ok=True)
 
+            torrc_path = os.path.join(user_data_dir, "torrc")
             tor_log = os.path.join(user_data_dir, "tor.log")
             torrc_lines = [
                 f"DataDirectory {user_data_dir}",
