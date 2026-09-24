@@ -8,7 +8,7 @@ use crate::state::AppState;
 use axum::http::{header, Method, Response, StatusCode};
 use serde_json::{json, Value};
 
-const EMBEDDED_MADLIBS: &str = include_str!("../../../../../data/madlibs.json");
+const EMBEDDED_MADLIBS: &str = include_str!("madlibs.json");
 
 /// Handle `/api/madlibs`, `/api/madlibs/random`, `/api/madlibs/list`, etc.
 pub fn handle(
