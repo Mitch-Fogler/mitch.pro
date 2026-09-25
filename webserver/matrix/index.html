@@ -144,6 +144,33 @@
     <script>
       window.global ||= window;
 
+      // ── Clean up and prevent Element Web auto-updater reload loop ──
+      try {
+        if (window.location.search && window.location.search.includes('updated=')) {
+          const cleanUrl = new URL(window.location.href);
+          cleanUrl.searchParams.delete('updated');
+          window.history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash);
+        }
+      } catch (_) {}
+
+      (function() {
+        const origFetch = window.fetch;
+        if (typeof origFetch === 'function') {
+          window.fetch = function(input, init) {
+            try {
+              const urlStr = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+              if (urlStr === 'version' || urlStr === '/matrix/version' || urlStr.endsWith('/version')) {
+                return Promise.resolve(new Response('v1.12.28\n', {
+                  status: 200,
+                  headers: { 'Content-Type': 'text/plain; charset=utf-8' }
+                }));
+              }
+            } catch (_) {}
+            return origFetch.apply(this, arguments);
+          };
+        }
+      })();
+
       // ── Ensure Sun/Theme Button is Never Rendered in Matrix UI ──
       (function() {
         function removeSun() {
