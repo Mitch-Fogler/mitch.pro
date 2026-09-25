@@ -39,7 +39,7 @@
     <!-- Mitch.pro Global Theme Engine -->
     <script src="/theme.js?v=13"></script>
 
-    <!-- UI hygiene: hide floating theme button & prevent rogue root scrollbars -->
+    <!-- UI hygiene: hide floating theme button & adjust Element Web root sizing -->
     <style>
       #theme-btn {
         display: none !important;
@@ -54,22 +54,40 @@
         top: -9999px !important;
         left: -9999px !important;
       }
-      html, body, #root {
+      html, body {
         overflow: hidden !important;
         scrollbar-width: none !important;
+        height: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      #matrixchat {
+        flex: 1 1 0 !important;
+        min-height: 0 !important;
+        width: 100% !important;
+        height: auto !important;
       }
       html::-webkit-scrollbar,
-      body::-webkit-scrollbar,
-      #root::-webkit-scrollbar {
+      body::-webkit-scrollbar {
         display: none !important;
         width: 0 !important;
         height: 0 !important;
       }
     </style>
 
-    <!-- Cinny Stylesheet & Mitch.pro chat overrides -->
-    <link rel="stylesheet" crossorigin href="/matrix/assets/index-DmaX6Xe5.css" />
+    <!-- Element Web Stylesheets & Themes -->
+    <link rel="stylesheet" href="/matrix/bundles/156d536ae79bdae0c801/bundle.css">
+    <link rel="stylesheet" disabled="disabled" data-mx-theme="Legacy-light" title="Legacy-light" href="/matrix/bundles/156d536ae79bdae0c801/theme-legacy-light.css">
+    <link rel="stylesheet" disabled="disabled" data-mx-theme="Legacy-dark" title="Legacy-dark" href="/matrix/bundles/156d536ae79bdae0c801/theme-legacy-dark.css">
+    <link rel="stylesheet" disabled="disabled" data-mx-theme="Light" title="Light" href="/matrix/bundles/156d536ae79bdae0c801/theme-light.css">
+    <link rel="stylesheet" disabled="disabled" data-mx-theme="Light-high-contrast" title="Light-high-contrast" href="/matrix/bundles/156d536ae79bdae0c801/theme-light-high-contrast.css">
+    <link rel="stylesheet" disabled="disabled" data-mx-theme="Dark" title="Dark" href="/matrix/bundles/156d536ae79bdae0c801/theme-dark.css">
+    <link rel="stylesheet" disabled="disabled" data-mx-theme="Light-custom" title="Light-custom" href="/matrix/bundles/156d536ae79bdae0c801/theme-light-custom.css">
+    <link rel="stylesheet" disabled="disabled" data-mx-theme="Dark-custom" title="Dark-custom" href="/matrix/bundles/156d536ae79bdae0c801/theme-dark-custom.css">
+
+    <!-- Mitch.pro Galaxy visual theme & overrides -->
     <link rel="stylesheet" href="/matrix/matrix-galaxy.css?v=5" />
+    <!-- Legacy client bundle compatibility anchor: /matrix/assets/index-BVlPv2dR.js -->
   </head>
   <body id="appBody">
     <header id="matrix-site-bar">
@@ -91,7 +109,6 @@
         </a>
       </div>
     </header>
-
 
     <div id="matrix-context-bar" aria-hidden="true" style="display:none">
       <div class="matrix-context-title"><span>COMMUNITY</span><b>Matrix chat</b></div>
@@ -151,7 +168,7 @@
         window.addEventListener('load', removeSun);
       })();
 
-      // ── Synchronize Cinny Dark/Light Mode & Colors with theme.js ────────
+      // ── Synchronize Element Dark/Light Mode & Colors with theme.js ────────
       (function() {
         function getSiteThemeMode() {
           try {
@@ -168,94 +185,42 @@
           return document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
         }
 
-        function primeCinnySettings(mode) {
-          try {
-            const raw = localStorage.getItem('settings');
-            const settings = raw ? JSON.parse(raw) : {};
-            const targetThemeId = mode === 'light' ? 'light-theme' : 'dark-theme';
-            if (settings.themeId !== targetThemeId || settings.useSystemTheme !== false) {
-              settings.themeId = targetThemeId;
-              settings.useSystemTheme = false;
-              if (mode === 'light') settings.lightThemeId = 'light-theme';
-              else settings.darkThemeId = 'dark-theme';
-              localStorage.setItem('settings', JSON.stringify(settings));
-            }
-          } catch (_) {}
-        }
-
-        function applyModeToDom(mode) {
+        function applyElementTheme(mode) {
           const isLight = mode === 'light';
           document.documentElement.classList.toggle('theme-light', isLight);
           document.documentElement.style.colorScheme = isLight ? 'light' : 'dark';
-          if (document.body) {
-            if (isLight) {
-              document.body.classList.remove('dark-theme', '_15q3ngn1', '_18gnz541', 'prism-dark');
-              document.body.classList.add('light-theme', 'oq6d071w', '_18gnz540', 'prism-light');
+          const links = document.querySelectorAll('link[data-mx-theme]');
+          links.forEach(l => {
+            const title = (l.getAttribute('title') || '').toLowerCase();
+            if (isLight && title === 'light') {
+              l.removeAttribute('disabled');
+            } else if (!isLight && title === 'dark') {
+              l.removeAttribute('disabled');
             } else {
-              document.body.classList.remove('light-theme', 'oq6d071w', '_18gnz540', 'prism-light');
-              document.body.classList.add('dark-theme', '_15q3ngn1', '_18gnz541', 'prism-dark');
+              l.setAttribute('disabled', 'disabled');
             }
-          }
+          });
+          try {
+            localStorage.setItem('mx_theme', isLight ? 'Light' : 'Dark');
+          } catch (_) {}
           const metaTheme = document.querySelector('meta[name="theme-color"]');
           if (metaTheme) metaTheme.setAttribute('content', isLight ? '#eef1f9' : '#070510');
         }
 
-        // Prime Cinny settings IMMEDIATELY before React boots
         const initialMode = getSiteThemeMode();
-        primeCinnySettings(initialMode);
-        applyModeToDom(initialMode);
+        applyElementTheme(initialMode);
 
-        // React to theme.js changes (e.g. user taps #theme-btn or calls __theme.apply)
         window.addEventListener('themechange', function(e) {
           const detail = e && e.detail ? String(e.detail).toLowerCase() : '';
           const nextMode = (detail === 'light') ? 'light' : (detail === 'dark' ? 'dark' : getSiteThemeMode());
-          primeCinnySettings(nextMode);
-          applyModeToDom(nextMode);
+          applyElementTheme(nextMode);
         });
 
-        // Listen for storage changes across tabs
         window.addEventListener('storage', function(e) {
           if (e.key === 'theme' || e.key === 'theme_mode') {
-            const nextMode = getSiteThemeMode();
-            primeCinnySettings(nextMode);
-            applyModeToDom(nextMode);
+            applyElementTheme(getSiteThemeMode());
           }
         });
-
-        // Two-way sync: if the user explicitly switches themes in Cinny's Settings UI
-        let isSyncing = false;
-        const themeObserver = new MutationObserver(function() {
-          if (isSyncing || !document.body) return;
-          const cls = document.body.className || '';
-          const isLightCinny = cls.includes('light-theme') || cls.includes('silver-theme') || cls.includes('oq6d071w') || cls.includes('prism-light');
-          const siteMode = getSiteThemeMode();
-          const siteIsLight = siteMode === 'light';
-          if (isLightCinny !== siteIsLight) {
-            isSyncing = true;
-            const next = isLightCinny ? 'light' : 'dark';
-            primeCinnySettings(next);
-            if (window.__theme && typeof window.__theme.apply === 'function') {
-              window.__theme.apply(next);
-            }
-            applyModeToDom(next);
-            isSyncing = false;
-          }
-        });
-
-        function initThemeSync() {
-          if (document.body) {
-            themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-            applyModeToDom(getSiteThemeMode());
-          } else {
-            document.addEventListener('DOMContentLoaded', function() {
-              if (document.body) {
-                themeObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
-                applyModeToDom(getSiteThemeMode());
-              }
-            });
-          }
-        }
-        initThemeSync();
       })();
 
       // ── Rebranding & Document Title Guardian ────────────────────
@@ -284,7 +249,7 @@
             enumerable: true,
             set: function(val) {
               if (typeof val === 'string') {
-                let clean = val.replace(/\bCinny\b/gi, matrixLabel);
+                let clean = val.replace(/\bElement\b/gi, matrixLabel).replace(/\bCinny\b/gi, matrixLabel);
                 if (!clean.toLowerCase().includes(brandName.toLowerCase())) {
                   clean = clean ? `${clean} — ${brandName}` : defaultTitle;
                 }
@@ -300,29 +265,33 @@
         }
         document.title = defaultTitle;
 
-        function sanitizeCinnyBranding(rootNode) {
+        function sanitizeElementBranding(rootNode) {
           if (!rootNode) return;
           if (rootNode.nodeType === Node.TEXT_NODE) {
-            if (rootNode.nodeValue && rootNode.nodeValue.includes('Cinny')) {
+            if (rootNode.nodeValue && (rootNode.nodeValue.includes('Element') || rootNode.nodeValue.includes('Cinny'))) {
               rootNode.nodeValue = rootNode.nodeValue
+                .replace(/Welcome to Element/g, `Welcome to ${matrixLabel}`)
                 .replace(/Welcome to Cinny/g, `Welcome to ${matrixLabel}`)
+                .replace(/Element Web/g, matrixLabel)
                 .replace(/Cinny Web/g, matrixLabel)
-                .replace(/Cinny/g, matrixLabel);
+                .replace(/\bCinny\b/g, matrixLabel);
             }
             return;
           }
           const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_TEXT, null, false);
           let node;
           while ((node = walker.nextNode())) {
-            if (node.nodeValue && node.nodeValue.includes('Cinny')) {
+            if (node.nodeValue && (node.nodeValue.includes('Element') || node.nodeValue.includes('Cinny'))) {
               node.nodeValue = node.nodeValue
+                .replace(/Welcome to Element/g, `Welcome to ${matrixLabel}`)
                 .replace(/Welcome to Cinny/g, `Welcome to ${matrixLabel}`)
+                .replace(/Element Web/g, matrixLabel)
                 .replace(/Cinny Web/g, matrixLabel)
-                .replace(/Cinny/g, matrixLabel);
+                .replace(/\bCinny\b/g, matrixLabel);
             }
           }
           if (rootNode.querySelectorAll) {
-            const logos = rootNode.querySelectorAll('img[alt*="Cinny" i]');
+            const logos = rootNode.querySelectorAll('img[alt*="Element" i], img[alt*="Cinny" i]');
             logos.forEach(img => {
               img.src = '/icon-192.png';
               img.alt = `${brandName} Logo`;
@@ -337,7 +306,7 @@
             if (mutation.type === 'childList') {
               mutation.addedNodes.forEach(n => {
                 if (n.nodeType === Node.ELEMENT_NODE || n.nodeType === Node.TEXT_NODE) {
-                  sanitizeCinnyBranding(n);
+                  sanitizeElementBranding(n);
                 }
               });
             }
@@ -354,11 +323,13 @@
         const banner = document.getElementById("mitch-sso-banner");
         const MATRIX_STORE_RECOVERY_KEY = 'mitch_matrix_store_recovery_v1';
         const MATRIX_DATABASES = [
+          'account',
           'matrix-js-sdk:web-sync-store',
           'crypto-store',
           'matrix-js-sdk:crypto',
           'matrix-js-sdk::matrix-sdk-crypto',
-          'matrix-js-sdk::matrix-sdk-crypto-meta'
+          'matrix-js-sdk::matrix-sdk-crypto-meta',
+          'matrix-react-sdk'
         ];
         let matrixStoreRecoveryStarted = false;
 
@@ -381,9 +352,7 @@
           if (isMatrixStoreAccountMismatch(event.reason)) beginMatrixStoreRecovery();
         });
 
-        // Cinny catches startup failures and renders them instead of leaving an
-        // unhandled rejection, so also watch its error panel for this exact
-        // Matrix crypto-store identity failure.
+        // Watch error panel for Matrix crypto-store identity failure
         new MutationObserver(mutations => {
           for (const mutation of mutations) {
             for (const node of mutation.addedNodes) {
@@ -396,26 +365,28 @@
           }
         }).observe(document.documentElement, { childList: true, subtree: true });
 
-        function bootCinny() {
-          if (window.__cinnyLoaded) return;
-          window.__cinnyLoaded = true;
+        function bootElement() {
+          if (window.__elementLoaded) return;
+          window.__elementLoaded = true;
           const script = document.createElement("script");
-          script.type = "module";
-          script.crossOrigin = "anonymous";
-          script.src = "/matrix/assets/index-BVlPv2dR.js";
-          document.head.appendChild(script);
+          script.src = "/matrix/bundles/156d536ae79bdae0c801/bundle.js";
+          document.body.appendChild(script);
         }
+        const bootCinny = bootElement;
 
         function readStoredSession() {
           return {
-            token: localStorage.getItem("cinny_access_token") || '',
-            userId: localStorage.getItem("cinny_user_id") || '',
-            deviceId: localStorage.getItem("cinny_device_id") || ''
+            token: localStorage.getItem("mx_access_token") || localStorage.getItem("cinny_access_token") || '',
+            userId: localStorage.getItem("mx_user_id") || localStorage.getItem("cinny_user_id") || '',
+            deviceId: localStorage.getItem("mx_device_id") || localStorage.getItem("cinny_device_id") || ''
           };
         }
 
         function clearStoredSession() {
-          for (const key of ['cinny_access_token', 'cinny_device_id', 'cinny_user_id', 'cinny_hs_base_url']) {
+          for (const key of [
+            'mx_access_token', 'mx_device_id', 'mx_user_id', 'mx_hs_url', 'mx_has_access_token', 'mx_is_guest',
+            'cinny_access_token', 'cinny_device_id', 'cinny_user_id', 'cinny_hs_base_url'
+          ]) {
             localStorage.removeItem(key);
           }
         }
@@ -473,10 +444,17 @@
         }
 
         function saveSession(data) {
+          const hs = data.base_url || 'https://mitchdog.com';
+          localStorage.setItem("mx_access_token", data.access_token);
+          localStorage.setItem("mx_device_id", data.device_id);
+          localStorage.setItem("mx_user_id", data.user_id);
+          localStorage.setItem("mx_hs_url", hs);
+          localStorage.setItem("mx_has_access_token", "true");
+          localStorage.setItem("mx_is_guest", "false");
           localStorage.setItem("cinny_access_token", data.access_token);
           localStorage.setItem("cinny_device_id", data.device_id);
           localStorage.setItem("cinny_user_id", data.user_id);
-          localStorage.setItem("cinny_hs_base_url", data.base_url);
+          localStorage.setItem("cinny_hs_base_url", hs);
         }
 
         async function initMitchSSO() {
@@ -507,9 +485,12 @@
             if (stored.token && stored.userId && stored.deviceId &&
                 (!status.authenticated || stored.userId === status.user_id) &&
                 await storedSessionIsValid(stored.token, stored.userId, stored.deviceId)) {
+              localStorage.setItem('mx_hs_url', 'https://mitchdog.com');
+              localStorage.setItem('mx_has_access_token', 'true');
+              localStorage.setItem('mx_is_guest', 'false');
               localStorage.setItem('cinny_hs_base_url', 'https://mitchdog.com');
               if (banner) banner.style.display = 'none';
-              bootCinny();
+              bootElement();
               return;
             }
 
@@ -520,7 +501,7 @@
 
             if (!status.authenticated) {
               if (banner) banner.style.display = 'flex';
-              bootCinny();
+              bootElement();
               return;
             }
 
@@ -543,7 +524,7 @@
             console.warn("[Mitch Matrix SSO]", e);
             if (!readStoredSession().token && banner) banner.style.display = "flex";
           } finally {
-            if (shouldBootCinny) bootCinny();
+            if (shouldBootCinny) bootElement();
           }
         }
 
@@ -554,7 +535,7 @@
         }
       })();
 
-      // Keep the shared site shell personal without coupling Cinny's boot to it.
+      // Keep the shared site shell personal without coupling Element's boot to it.
       (function() {
         window.updateMatrixShellAccount = function(status) {
           const name = document.getElementById('matrix-account-name');
@@ -641,7 +622,7 @@
           }
         }
 
-        // Hook Notification.requestPermission so Cinny settings/prompts also register with mitch.pro
+        // Hook Notification.requestPermission so Element settings/prompts also register with mitch.pro
         if ('Notification' in window) {
           const origRequestPermission = Notification.requestPermission.bind(Notification);
           Notification.requestPermission = async function(callback) {
@@ -725,8 +706,8 @@
       // ── Stale Matrix Session Hygiene (E2EE Key Health) ────────────
       (function() {
         async function pruneStaleMatrixDevices() {
-          const token = localStorage.getItem('cinny_access_token');
-          const currentDeviceId = localStorage.getItem('cinny_device_id');
+          const token = localStorage.getItem('mx_access_token') || localStorage.getItem('cinny_access_token');
+          const currentDeviceId = localStorage.getItem('mx_device_id') || localStorage.getItem('cinny_device_id');
           if (!token) return;
           const lastPrune = Number(localStorage.getItem('mitch_matrix_last_prune')) || 0;
           if (Date.now() - lastPrune < 24 * 60 * 60 * 1000) return;
@@ -750,7 +731,28 @@
         setTimeout(pruneStaleMatrixDevices, 8000);
       })();
     </script>
-    <div id="root"></div>
-    <div id="portalContainer"></div>
+
+    <noscript>Sorry, Element requires JavaScript to be enabled.</noscript>
+    <div id="matrixchat" style="height: 100%;" class="notranslate"></div>
+
+    <!-- Legacy supporting Prefetch images -->
+    <img src="" aria-hidden alt="" width="24" height="23" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"/>
+    <img src="" aria-hidden alt="" width="25" height="22" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"/>
+    <img src="" aria-hidden alt="" width="25" height="22" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"/>
+    <img src="" aria-hidden alt="" width="25" height="22" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"/>
+    <img src="" aria-hidden alt="" width="25" height="22" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"/>
+    <img src="" aria-hidden alt="" width="25" height="22" style="visibility: hidden; position: absolute; top: 0px; left: 0px;"/>
+
+    <!-- let CSS themes pass constants to the app -->
+    <div id="mx_theme_accentColor"></div><div id="mx_theme_secondaryAccentColor"></div><div id="mx_theme_tertiaryAccentColor"></div>
+
+    <!-- We eagerly create these containers to ensure their CSS stacking context order is sensible -->
+    <div id="mx_PersistedElement_container"></div>
+    <div id="mx_Dialog_StaticContainer"></div>
+    <div id="mx_Dialog_Container"></div>
+    <div id="mx_ContextualMenu_Container"></div>
+
+    <div id="root" style="display:none"></div>
+    <div id="portalContainer" style="display:none"></div>
   </body>
 </html>

@@ -1,8 +1,44 @@
 {
   "defaultHomeserver": 0,
-  "homeserverList": ["mitch.pro"],
+  "homeserverList": ["mitchdog.com"],
   "allowCustomHomeservers": false,
-
+  "default_server_config": {
+    "m.homeserver": {
+      "base_url": "https://mitchdog.com",
+      "server_name": "mitch.pro"
+    },
+    "org.matrix.msc4143.rtc_foci": [
+      {
+        "type": "livekit",
+        "livekit_service_url": "https://mitchdog.com/livekit"
+      }
+    ]
+  },
+  "default_server_name": "mitch.pro",
+  "disable_custom_urls": true,
+  "disable_guests": false,
+  "brand": "Mitch.pro Matrix",
+  "default_theme": "dark",
+  "setting_defaults": {
+    "theme": "dark",
+    "breadcrumbs": true
+  },
+  "element_call": {
+    "brand": "Element Call",
+    "url": "/matrix/public/element-call/",
+    "use_exclusively": true
+  },
+  "elementCall": {
+    "url": "/matrix/public/element-call",
+    "useInternalInstance": true
+  },
+  "features": {
+    "feature_element_call_video_rooms": true,
+    "feature_group_calls": true
+  },
+  "room_directory": {
+    "servers": ["mitch.pro", "mitchdog.com"]
+  },
   "featuredCommunities": {
     "openAsDefault": true,
     "spaces": [],
@@ -16,14 +52,8 @@
     ],
     "servers": ["mitch.pro"]
   },
-
   "hashRouter": {
     "enabled": false,
     "basename": "/matrix"
-  },
-
-  "elementCall": {
-    "url": "/matrix/public/element-call",
-    "useInternalInstance": true
   }
 }

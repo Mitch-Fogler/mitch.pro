@@ -636,6 +636,8 @@ pub async fn handle(
     if path.starts_with("/.well-known/matrix/")
         || path.starts_with("/_matrix/")
         || path == "/matrix/config.json"
+        || path == "/matrix/public/element-call/config.json"
+        || path == "/matrix/public/element-call/config.json/"
     {
         if let Some(resp) = crate::routes::matrix::handle_matrix_gateway(
             &state, &method, &path, headers, &search, body_bytes,
@@ -718,18 +720,7 @@ pub async fn handle(
         return crate::routes::madlibs::handle(&state, &method, &path, &search);
     }
 
-    // Tor Browser View and Resource dispatch
-    if path == "/tor/view"
-        || path == "/tor/view/"
-        || path == "/tor/resource"
-        || path == "/tor/resource/"
-    {
-        if let Some(resp) =
-            crate::routes::tor::handle(&state, &method, &path, headers, body_bytes, &search).await
-        {
-            return resp;
-        }
-    }
+
 
     // Direct .onion URL or /tor/<url> navigation
     if path.contains(".onion") {
@@ -942,9 +933,8 @@ pub async fn handle(
         || clean_path == "/matrix"
         || clean_path.starts_with("/matrix/")
         || clean_path.starts_with("/api/matrix/")
-        || clean_path == "/tor"
-        || clean_path.starts_with("/tor/")
-        || clean_path.starts_with("/api/tor/")
+        || clean_path == "/livekit"
+        || clean_path.starts_with("/livekit/")
         || clean_path.starts_with("/game-portal")
         || clean_path.starts_with("/msn-games")
         || clean_path == "/rjuhsd"
@@ -1082,8 +1072,14 @@ pub async fn handle(
                 return resp;
             }
         }
-        // Tor Browser & Onion Gateway API
-        if path == "/api/tor" || path.starts_with("/api/tor/") {
+        // Tor Browser & Onion Gateway API, View, and Resource
+        if path == "/api/tor"
+            || path.starts_with("/api/tor/")
+            || path == "/tor/view"
+            || path == "/tor/view/"
+            || path == "/tor/resource"
+            || path == "/tor/resource/"
+        {
             if let Some(resp) =
                 crate::routes::tor::handle(&state, &method, &path, headers, body_bytes, &search)
                     .await

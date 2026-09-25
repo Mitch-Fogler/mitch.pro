@@ -23,7 +23,7 @@ pub fn tor_service_url() -> String {
 }
 
 pub async fn handle(
-    _state: &Arc<AppState>,
+    state: &Arc<AppState>,
     method: &Method,
     path: &str,
     headers: &HeaderMap,
@@ -41,6 +41,43 @@ pub async fn handle(
     } else {
         return None;
     };
+
+    // Authenticate requester: must have valid signed session or site password
+    let cookie_str = headers
+        .get("cookie")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = mitch_lib::auth::get_cookies_from_header_value(
+        cookie_str,
+        &state.store,
+        &state.id_secret,
+        false,
+    );
+    let sid = cookies.auth_sid();
+    let has_valid_session = !sid.is_empty() && mitch_lib::auth::valid_id(&sid, &state.id_secret);
+    let has_pwd = state.check_password_cookie(headers, None);
+
+    if !has_valid_session && !has_pwd {
+        if path.starts_with("/api/tor") {
+            return Some(
+                Response::builder()
+                    .status(StatusCode::UNAUTHORIZED)
+                    .header("Content-Type", "application/json")
+                    .body(Body::from(
+                        r#"{"ok":false,"error":"Unauthorized: Login required to use Tor gateway"}"#,
+                    ))
+                    .unwrap_or_else(|_| Response::new(Body::empty())),
+            );
+        } else {
+            return Some(
+                Response::builder()
+                    .status(StatusCode::FOUND)
+                    .header("Location", "/enroll/?return_to=/tor/")
+                    .body(Body::empty())
+                    .unwrap_or_else(|_| Response::new(Body::empty())),
+            );
+        }
+    }
 
     let base = tor_service_url();
     let query_str = if search.is_empty() {
@@ -89,6 +126,8 @@ pub async fn handle(
         if let Ok(u) = user_hdr.to_str() {
             req = req.header("x-tor-user", u);
         }
+    } else if !sid.is_empty() {
+        req = req.header("x-tor-user", &sid);
     }
     if let Some(ct) = headers.get("content-type") {
         if let Ok(c) = ct.to_str() {

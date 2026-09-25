@@ -1198,15 +1198,97 @@ pub fn handle_cinny_config() -> Response {
             "defaultHomeserver": 0,
             "homeserverList": ["mitchdog.com"],
             "allowCustomHomeservers": false,
+            "default_server_config": {
+                "m.homeserver": {
+                    "base_url": "https://mitchdog.com",
+                    "server_name": "mitch.pro"
+                },
+                "org.matrix.msc4143.rtc_foci": [
+                    {
+                        "type": "livekit",
+                        "livekit_service_url": "https://mitchdog.com/livekit"
+                    }
+                ]
+            },
+            "default_server_name": "mitch.pro",
+            "disable_custom_urls": true,
+            "disable_guests": false,
+            "brand": "Mitch.pro Matrix",
+            "default_theme": "dark",
+            "setting_defaults": {
+                "theme": "dark",
+                "breadcrumbs": true
+            },
+            "element_call": {
+                "brand": "Element Call",
+                "url": "/matrix/public/element-call/",
+                "use_exclusively": true
+            },
+            "elementCall": {
+                "url": "/matrix/public/element-call",
+                "useInternalInstance": true
+            },
+            "features": {
+                "feature_element_call_video_rooms": true,
+                "feature_group_calls": true
+            },
+            "room_directory": {
+                "servers": ["mitch.pro", "mitchdog.com"]
+            },
             "featuredCommunities": {
                 "openAsDefault": true,
                 "servers": ["mitch.pro"],
-                "rooms": ["#general:mitch.pro"],
+                "rooms": [
+                    "#general:mitch.pro",
+                    "#tech:mitch.pro",
+                    "#biking:mitch.pro",
+                    "#gaming:mitch.pro",
+                    "#computers:mitch.pro",
+                    "#random:mitch.pro"
+                ],
                 "spaces": []
             },
             "hashRouter": {
                 "enabled": false,
                 "basename": "/matrix"
+            }
+        }),
+    )
+}
+
+/// Dynamic Element Call configuration matching current request host and protocol.
+pub fn handle_element_call_config(headers: &HeaderMap) -> Response {
+    let host = request_host(headers);
+    let proto = if host.starts_with("localhost") || host.starts_with("127.0.0.1") {
+        "http://"
+    } else {
+        "https://"
+    };
+    cors_json_response(
+        200,
+        json!({
+            "default_server_config": {
+                "m.homeserver": {
+                    "base_url": format!("{proto}{host}"),
+                    "server_name": "mitch.pro"
+                },
+                "org.matrix.msc4143.rtc_foci": [
+                    {
+                        "type": "livekit",
+                        "livekit_service_url": format!("{proto}{host}/livekit")
+                    }
+                ]
+            },
+            "livekit": {
+                "livekit_service_url": format!("{proto}{host}/livekit")
+            },
+            "features": {
+                "feature_use_device_session_member_events": true
+            },
+            "matrix_rtc_session": {
+                "wait_for_key_rotation_ms": 5000,
+                "delayed_leave_event_restart_ms": 4000,
+                "delayed_leave_event_delay_ms": 18000
             }
         }),
     )
@@ -3696,6 +3778,13 @@ pub async fn handle_matrix_gateway(
 
     if path == "/matrix/config.json" && method == Method::GET {
         return Some(handle_cinny_config());
+    }
+
+    if (path == "/matrix/public/element-call/config.json"
+        || path == "/matrix/public/element-call/config.json/")
+        && method == Method::GET
+    {
+        return Some(handle_element_call_config(headers));
     }
 
     if path.starts_with("/.well-known/matrix/") {
